@@ -155,8 +155,8 @@ final class AddPrinterWindowController: NSWindowController {
                 "Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account.")
         case .bambu:
             infoLabel.stringValue = settings.text(
-                "Wybierz urządzenie znalezione w Wi‑Fi albo wpisz dane ręcznie. ",
-                "Select a device found on Wi-Fi or enter its details manually. ")
+                "Wykrywanie działa przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. Drukarkę przez VPN (np. Tailscale) dodaj, wpisując jej adres w Ustawieniach → „Dodatkowe adresy do skanowania”. ",
+                "Discovery uses SSDP and a subnet scan. Pick a device from the list or enter details manually. For a printer over a VPN (e.g. Tailscale), add its address in Settings → “Extra scan targets”. ")
                 + (AccessCodeStore.usesKeychain
                     ? settings.text("Kod zostanie zapisany w pęku kluczy macOS.", "The code is stored in macOS Keychain.")
                     : settings.text("Kod zostanie zapisany w lokalnych ustawieniach tego Maca.", "The code is stored in this Mac's local preferences."))

@@ -51,6 +51,7 @@ Version 0.3.0 adds Creality CFS support, per-printer slicer and camera options, 
 - preserves empty AMS positions and highlights active or low-filament slots
 - reports HMS errors and useful printer notifications
 - reconnects automatically and refreshes printer addresses on the local network
+- discovers printers via SSDP multicast and a unicast subnet scan; extra IP, CIDR or range targets can be added for printers reached over a VPN such as Tailscale
 - supports Polish and English, light and dark appearance
 - offers a Local build and a macOS Keychain build
 - pins each printer's TLS certificate after the first trusted connection
@@ -115,7 +116,7 @@ swift build --disable-sandbox
 .build/debug/BambuBar --certificate-pin-self-test
 ```
 
-The self-test covers SSDP parsing, MQTT framing, Unicode print names, telemetry and both four-slot and single-slot AMS layouts. Run the unit tests with `./scripts/run-tests.sh`.
+The self-test covers SSDP parsing, subnet-target parsing, MQTT framing, Unicode print names, telemetry and both four-slot and single-slot AMS layouts. Run the unit tests with `./scripts/run-tests.sh`.
 
 ### Privacy
 
@@ -151,6 +152,7 @@ Wersja 0.3.0 dodaje obsługę Creality CFS, opcje slicera i kamery per drukarka,
 - zachowuje puste pozycje AMS i wyróżnia aktywne sloty lub te z niskim poziomem filamentu
 - zgłasza błędy HMS i przydatne powiadomienia z drukarki
 - łączy się ponownie automatycznie i odświeża adresy drukarek w sieci lokalnej
+- wykrywa drukarki przez multicast SSDP i unicastowy skan podsieci; można dodać własne adresy IP, CIDR lub zakresy dla drukarek dostępnych przez VPN, np. Tailscale
 - obsługuje polski i angielski, wygląd jasny i ciemny
 - oferuje wariant Local oraz wariant z pękiem kluczy macOS
 - przypina (pinuje) certyfikat TLS każdej drukarki po pierwszym zaufanym połączeniu
@@ -215,7 +217,7 @@ swift build --disable-sandbox
 .build/debug/BambuBar --certificate-pin-self-test
 ```
 
-Self-test obejmuje parsowanie SSDP, ramkowanie MQTT, nazwy druków z Unicode, telemetrię oraz układy AMS cztero- i jednoslotowe. Testy jednostkowe uruchomisz przez `./scripts/run-tests.sh`.
+Self-test obejmuje parsowanie SSDP, parsowanie celów skanu, ramkowanie MQTT, nazwy druków z Unicode, telemetrię oraz układy AMS cztero- i jednoslotowe. Testy jednostkowe uruchomisz przez `./scripts/run-tests.sh`.
 
 ### Prywatność
 

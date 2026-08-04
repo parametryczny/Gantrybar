@@ -143,6 +143,8 @@
                         <ListBox x:Name="DetectedList" Height="110" Background="Transparent" Foreground="#FFF5F5F7" BorderThickness="0"/>
                     </Border>
                     <Button x:Name="ImportButton" Height="30" Margin="0,0,0,8"/>
+                    <TextBlock x:Name="DiscoveryHint" Foreground="#FF9A9A9E" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,0,0,8"/>
                     <Border Height="1" Background="#20FFFFFF" Margin="0,4,0,10"/>
                 </StackPanel>
 

@@ -65,6 +65,9 @@ public partial class AddPrinterWindow : Window
         Heading.Text = Title;
         DetectedLabel.Text = AppSettings.Text("Wykryte drukarki", "Detected printers");
         ImportButton.Content = AppSettings.Text("Importuj z Bambu Studio", "Import from Bambu Studio");
+        DiscoveryHint.Text = AppSettings.Text(
+            "Wykrywanie: SSDP + skan podsieci. Drukarkę przez VPN (Tailscale) dodaj, wpisując jej adres w Ustawieniach → „Dodatkowe adresy do skanowania”.",
+            "Discovery: SSDP + subnet scan. For a printer over a VPN (Tailscale), add its address in Settings → “Extra scan targets”.");
         NameLabel.Text = AppSettings.Text("Nazwa (opcjonalnie)", "Name (optional)");
         HostLabel.Text = AppSettings.Text("Adres IP", "IP address");
         SerialLabel.Text = AppSettings.Text("Numer seryjny", "Serial number");
