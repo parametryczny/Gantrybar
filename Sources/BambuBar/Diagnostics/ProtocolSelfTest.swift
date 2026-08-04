@@ -6,7 +6,37 @@ enum ProtocolSelfTest {
         checkSSDP(&failures)
         checkTelemetry(&failures)
         checkMQTTFraming(&failures)
+        checkSubnetTargets(&failures)
         return failures
+    }
+
+    private static func checkSubnetTargets(_ failures: inout [String]) {
+        func count(_ input: String) -> Int? {
+            if case .ok(let hosts) = SubnetTargets.expand(input) { return hosts.count }
+            return nil
+        }
+        // empty is valid and yields nothing
+        if SubnetTargets.expand("") != .ok([]) { failures.append("subnet: empty not ok") }
+        // single IP
+        if SubnetTargets.expand("192.168.1.50") != .ok(["192.168.1.50"]) { failures.append("subnet: single IP") }
+        // CIDR host counts (network + broadcast excluded for /30 and larger)
+        if count("192.168.1.0/24") != 254 { failures.append("subnet: /24 count") }
+        if count("192.168.1.0/30") != 2 { failures.append("subnet: /30 count") }
+        if count("192.168.1.0/31") != 2 { failures.append("subnet: /31 count") }
+        if count("192.168.1.5/32") != 1 { failures.append("subnet: /32 count") }
+        // range, inclusive
+        if count("192.168.1.10-192.168.1.12") != 3 { failures.append("subnet: range count") }
+        // de-duplication across tokens
+        if count("192.168.1.1, 192.168.1.1 192.168.1.2") != 2 { failures.append("subnet: dedupe") }
+        // rejected, not truncated, when past the limit (a whole Tailnet, a /16, or a /21)
+        if SubnetTargets.expand("100.64.0.0/10") != .tooLarge { failures.append("subnet: /10 not rejected") }
+        if SubnetTargets.expand("192.168.0.0/16") != .tooLarge { failures.append("subnet: /16 not rejected") }
+        if SubnetTargets.expand("192.168.0.0/21") != .tooLarge { failures.append("subnet: /21 not rejected") }
+        if SubnetTargets.expand("192.168.0.0/22") == .tooLarge { failures.append("subnet: /22 wrongly rejected") }
+        // malformed input
+        for bad in ["999.1.1.1", "192.168.1.0/33", "abc", "1.2.3", "192.168.1.5-192.168.1.1"] {
+            if SubnetTargets.expand(bad) != .invalid { failures.append("subnet: '\(bad)' not invalid") }
+        }
     }
 
     private static func checkSSDP(_ failures: inout [String]) {

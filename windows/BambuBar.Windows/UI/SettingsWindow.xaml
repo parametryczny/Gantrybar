@@ -84,6 +84,15 @@
                         <Button Grid.Column="1" x:Name="LanguageButton" MinWidth="96"/>
                     </Grid>
                     <CheckBox x:Name="StartupCheckBox" Margin="0,10,0,4"/>
+                    <Border Height="1" Background="#18FFFFFF" Margin="0,10,0,8"/>
+                    <TextBlock x:Name="SubnetTargetsLabel" FontSize="13" Margin="0,2,0,4"/>
+                    <TextBox x:Name="SubnetTargetsBox" FontSize="13" Padding="8,5"
+                             Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7"
+                             BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                    <TextBlock x:Name="SubnetTargetsError" FontSize="11" Foreground="#FFE0912B"
+                               Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    <TextBlock x:Name="SubnetTargetsHint" FontSize="11" Foreground="#FF9A9A9E"
+                               Margin="0,4,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 

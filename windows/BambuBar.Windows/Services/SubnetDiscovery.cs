@@ -13,15 +13,18 @@ namespace BambuBar.Services;
 /// </summary>
 public sealed class SubnetDiscovery
 {
-    public async Task<List<DiscoveredPrinter>> ScanAsync()
-    {
-        var prefixes = LocalIPv4Prefixes();
-        if (prefixes.Count == 0) return new List<DiscoveredPrinter>();
+    // Overall budget so a large custom range can't keep probing in the background long after the UI
+    // has given up (8 s); once it elapses, in-flight probes are cancelled.
+    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(9);
 
-        var hosts = prefixes
-            .SelectMany(prefix => Enumerable.Range(1, 254).Select(i => $"{prefix}.{i}"))
-            .Distinct()
-            .ToList();
+    public async Task<List<DiscoveredPrinter>> ScanAsync(CancellationToken externalToken = default)
+    {
+        var hosts = HostsToScan();
+        if (hosts.Count == 0) return new List<DiscoveredPrinter>();
+
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+        budget.CancelAfter(Budget);
+        var ct = budget.Token;
 
         var found = new Dictionary<string, DiscoveredPrinter>();
         var gate = new object();
@@ -29,23 +32,44 @@ public sealed class SubnetDiscovery
 
         var tasks = hosts.Select(async host =>
         {
-            await limiter.WaitAsync();
+            try { await limiter.WaitAsync(ct); }
+            catch (OperationCanceledException) { return; }
             try
             {
-                var printer = await ProbeAsync(host);
+                var printer = await ProbeAsync(host, ct);
                 if (printer is not null)
                     lock (gate) found[printer.Serial] = printer;
             }
             finally { limiter.Release(); }
         });
-        await Task.WhenAll(tasks);
+        try { await Task.WhenAll(tasks); }
+        catch (OperationCanceledException) { /* budget elapsed — return whatever was found */ }
 
         return found.Values
             .OrderBy(p => p.Host, new HostComparer())
             .ToList();
     }
 
-    private static async Task<DiscoveredPrinter?> ProbeAsync(string host)
+    /// <summary>The automatic local /24 hosts plus any valid extra targets from settings (IPs / CIDR /
+    /// ranges), for reaching printers outside the LAN, e.g. over a Tailscale VPN.</summary>
+    private static List<string> HostsToScan()
+    {
+        var hosts = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var prefix in LocalIPv4Prefixes())
+            for (int i = 1; i <= 254; i++)
+            {
+                var host = $"{prefix}.{i}";
+                if (seen.Add(host)) hosts.Add(host);
+            }
+        // Invalid/oversized input is rejected in Settings before it's saved, so trust it here.
+        if (SubnetTargets.Expand(AppSettings.SubnetScanTargets, out var custom) == SubnetTargets.Kind.Ok)
+            foreach (var host in custom)
+                if (seen.Add(host)) hosts.Add(host);
+        return hosts;
+    }
+
+    private static async Task<DiscoveredPrinter?> ProbeAsync(string host, CancellationToken ct)
     {
         string? serial = null;
         TcpClient? tcp = null;
@@ -53,7 +77,8 @@ public sealed class SubnetDiscovery
         try
         {
             tcp = new TcpClient();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2.0));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(2.0));
             await tcp.ConnectAsync(host, 8883, timeout.Token);
             ssl = new SslStream(tcp.GetStream(), false, (_, certificate, _, _) =>
             {

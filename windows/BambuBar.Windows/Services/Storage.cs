@@ -164,6 +164,14 @@ public static class AppSettings
         set => Defaults.SetBool("notifications-high-ams-humidity", value);
     }
 
+    /// Extra discovery targets (IPs / CIDR / ranges) scanned in addition to the local subnet — lets a
+    /// printer reached over a VPN like Tailscale be found.
+    public static string SubnetScanTargets
+    {
+        get => Defaults.GetString("discovery-subnet-targets") ?? string.Empty;
+        set => Defaults.SetString("discovery-subnet-targets", value.Trim());
+    }
+
     public static string Text(string polish, string english) => Polish ? polish : english;
 
     private static string DefaultLanguage()

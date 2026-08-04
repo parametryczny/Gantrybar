@@ -41,6 +41,7 @@ public partial class App : Application
             try
             {
                 BambuStudioConfig.RunSelfTest();
+                SubnetTargets.RunSelfTest();
                 Shutdown(0);
             }
             catch

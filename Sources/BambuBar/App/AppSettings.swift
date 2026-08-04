@@ -32,6 +32,13 @@ final class AppSettings: ObservableObject {
     @Published var notifyLowFilament: Bool { didSet { defaults.set(notifyLowFilament, forKey: "notify-low-filament") } }
     @Published var notifyHumidity: Bool { didSet { defaults.set(notifyHumidity, forKey: "notify-humidity") } }
 
+    /// Extra discovery targets (IPs / CIDR / ranges) scanned in addition to the local subnet — lets a
+    /// printer reached over a VPN like Tailscale be found. Read at scan time, so not @Published.
+    var subnetScanTargets: String {
+        get { defaults.string(forKey: "discovery-subnet-targets") ?? "" }
+        set { defaults.set(newValue, forKey: "discovery-subnet-targets") }
+    }
+
     private let defaults = BambuDefaults.shared
 
     /// System language on first launch: Polish only if the OS preference is Polish, else English —

@@ -43,8 +43,9 @@ final class PrinterStore: ObservableObject {
         isScanning = true
         globalMessage = nil
         Task {
+            let extraTargets = AppSettings.shared.subnetScanTargets
             async let ssdpResults = discovery.scan()
-            async let subnetResults = subnetDiscovery.scan()
+            async let subnetResults = subnetDiscovery.scan(extraTargets: extraTargets)
             let combined = await ssdpResults + subnetResults
             guard scanToken == token else { return }
             let results = Array(Dictionary(grouping: combined, by: \.serial).compactMap { $0.value.first })

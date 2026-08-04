@@ -6,13 +6,17 @@ import Security
 /// Finds Bambu printers even when their UDP multicast announcements are filtered.
 /// A Bambu MQTTs certificate exposes the printer serial number as its subject CN.
 final class BambuSubnetDiscovery: @unchecked Sendable {
-    func scan() async -> [DiscoveredPrinter] {
-        let hosts = localIPv4Prefixes().flatMap { prefix in
-            (1...254).map { "\(prefix).\($0)" }
-        }
-        guard !hosts.isEmpty else { return [] }
+    /// Overall budget so a large custom range can't keep probing in the background long after the UI
+    /// has given up: once it elapses, no new probes are launched and in-flight ones finish (≤2 s).
+    private static let budget: TimeInterval = 9
 
-        let uniqueHosts = Array(Set(hosts))
+    func scan(extraTargets: String = "") async -> [DiscoveredPrinter] {
+        var hostSet = Set(localIPv4Prefixes().flatMap { prefix in (1...254).map { "\(prefix).\($0)" } })
+        if case .ok(let custom) = SubnetTargets.expand(extraTargets) { hostSet.formUnion(custom) }
+        let uniqueHosts = Array(hostSet)
+        guard !uniqueHosts.isEmpty else { return [] }
+
+        let deadline = Date().addingTimeInterval(Self.budget)
         return await withTaskGroup(of: DiscoveredPrinter?.self) { group in
             var iterator = uniqueHosts.makeIterator()
             for _ in 0..<min(128, uniqueHosts.count) {
@@ -23,7 +27,7 @@ final class BambuSubnetDiscovery: @unchecked Sendable {
             var found: [String: DiscoveredPrinter] = [:]
             while let result = await group.next() {
                 if let result { found[result.serial] = result }
-                if let host = iterator.next() {
+                if Date() < deadline, let host = iterator.next() {
                     group.addTask { await self.probe(host: host) }
                 }
             }
