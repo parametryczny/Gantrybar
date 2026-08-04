@@ -143,8 +143,15 @@
                         <ListBox x:Name="DetectedList" Height="110" Background="Transparent" Foreground="#FFF5F5F7" BorderThickness="0"/>
                     </Border>
                     <Button x:Name="ImportButton" Height="30" Margin="0,0,0,8"/>
-                    <TextBlock x:Name="DiscoveryHint" Foreground="#FF9A9A9E" FontSize="11"
-                               TextWrapping="Wrap" Margin="0,0,0,8"/>
+                    <TextBlock x:Name="SubnetTargetsLabel" Foreground="#FF9A9A9E" FontSize="12"
+                               TextWrapping="Wrap" Margin="0,2,0,4"/>
+                    <TextBox x:Name="SubnetTargetsBox" FontSize="13" Padding="8,5"
+                             Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7"
+                             BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                    <TextBlock x:Name="SubnetTargetsError" Foreground="#FFE0912B" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+                    <TextBlock x:Name="SubnetTargetsHint" Foreground="#FF9A9A9E" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,4,0,8"/>
                     <Border Height="1" Background="#20FFFFFF" Margin="0,4,0,10"/>
                 </StackPanel>
 

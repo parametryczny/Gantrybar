@@ -30,37 +30,7 @@ public partial class SettingsWindow : Window
         QuietHoursCheckBox.Click += (_, _) => { QuietHours.Enabled = QuietHoursCheckBox.IsChecked == true; QuietTimesRow.IsEnabled = QuietHoursCheckBox.IsChecked == true; };
         QuietStartBox.LostFocus += (_, _) => SaveQuietTimes();
         QuietEndBox.LostFocus += (_, _) => SaveQuietTimes();
-        SubnetTargetsBox.LostFocus += (_, _) => SaveSubnetTargets();
-        SubnetTargetsBox.TextChanged += (_, _) => ValidateSubnetTargets();
         CloseButton.Click += (_, _) => Close();
-    }
-
-    private void SaveSubnetTargets()
-    {
-        var input = (SubnetTargetsBox.Text ?? string.Empty).Trim();
-        // Save only when valid; leave an invalid entry in place (message shown) instead of silently reverting.
-        if (SubnetTargets.IsValid(input))
-        {
-            AppSettings.SubnetScanTargets = input;
-            SubnetTargetsBox.Text = input;
-        }
-        ValidateSubnetTargets();
-    }
-
-    private void ValidateSubnetTargets()
-    {
-        var input = SubnetTargetsBox.Text ?? string.Empty;
-        if (SubnetTargets.IsValid(input))
-        {
-            SubnetTargetsError.Visibility = Visibility.Collapsed;
-            return;
-        }
-        SubnetTargetsError.Visibility = Visibility.Visible;
-        SubnetTargetsError.Text = SubnetTargets.IsTooLarge(input)
-            ? AppSettings.Text($"Zakres za duży (max {SubnetTargets.MaxHosts} adresów) — podaj węższy zakres lub pojedynczy adres.",
-                               $"Range too large (max {SubnetTargets.MaxHosts} addresses) — use a narrower range or a single address.")
-            : AppSettings.Text("Nieprawidłowy wpis — użyj IP, zakresu a-b lub CIDR /n.",
-                               "Invalid entry — use an IP, an a-b range or CIDR /n.");
     }
 
     private void SaveQuietTimes()
@@ -92,11 +62,6 @@ public partial class SettingsWindow : Window
         LanguageLabel.Text = AppSettings.Text("Język", "Language");
         LanguageButton.Content = AppSettings.Polish ? "Polski" : "English";
         StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
-        SubnetTargetsLabel.Text = AppSettings.Text("Dodatkowe adresy do skanowania (VPN)", "Extra scan targets (VPN)");
-        SubnetTargetsHint.Text = AppSettings.Text(
-            $"Skanowane dodatkowo — dla drukarek spoza LAN (np. przez Tailscale). Najlepiej pojedynczy adres. IP, zakres a-b lub CIDR /n. Duże zakresy są odrzucane (limit {SubnetTargets.MaxHosts}).",
-            $"Scanned in addition — for printers outside the LAN (e.g. over Tailscale). Best: a single address. IP, a-b range or CIDR /n. Large ranges are rejected (limit {SubnetTargets.MaxHosts}).");
-        ValidateSubnetTargets();
 
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
         PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished");
@@ -127,7 +92,6 @@ public partial class SettingsWindow : Window
         QuietStartBox.Text = MinutesToText(QuietHours.StartMinutes);
         QuietEndBox.Text = MinutesToText(QuietHours.EndMinutes);
         QuietTimesRow.IsEnabled = QuietHours.Enabled;
-        SubnetTargetsBox.Text = AppSettings.SubnetScanTargets;
     }
 
     private async Task CheckUpdatesAsync()

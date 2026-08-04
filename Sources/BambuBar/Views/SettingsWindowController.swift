@@ -2,7 +2,7 @@ import AppKit
 import Combine
 
 @MainActor
-final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
+final class SettingsWindowController: NSWindowController {
     private let titleLabel = NSTextField(labelWithString: "")
     private let authorLabel = NSTextField(labelWithString: "")
     private let githubButton = NSButton()
@@ -27,10 +27,6 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let quietHoursCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let quietStartPicker = NSDatePicker()
     private let quietEndPicker = NSDatePicker()
-    private let discoveryLabel = NSTextField(labelWithString: "")
-    private let subnetTargetsField = NSTextField()
-    private let subnetTargetsHint = NSTextField(wrappingLabelWithString: "")
-    private let subnetTargetsError = NSTextField(labelWithString: "")
     private var settingsSubscription: AnyCancellable?
 
     init() {
@@ -161,22 +157,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         quietRow.spacing = 6
         notificationsStack.addArrangedSubview(quietRow)
 
-        subnetTargetsField.delegate = self
-        subnetTargetsField.font = .systemFont(ofSize: 12)
-        subnetTargetsField.placeholderString = "100.100.100.5, 192.168.1.20-192.168.1.40"
-        discoveryLabel.textColor = .secondaryLabelColor
-        subnetTargetsHint.font = .systemFont(ofSize: 10)
-        subnetTargetsHint.textColor = .tertiaryLabelColor
-        subnetTargetsHint.maximumNumberOfLines = 4
-        subnetTargetsError.font = .systemFont(ofSize: 10, weight: .medium)
-        subnetTargetsError.textColor = .systemOrange
-        subnetTargetsError.isHidden = true
-        let discoveryStack = NSStackView(views: [discoveryLabel, subnetTargetsField, subnetTargetsHint, subnetTargetsError])
-        discoveryStack.orientation = .vertical
-        discoveryStack.alignment = .leading
-        discoveryStack.spacing = 4
-
-        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, notificationsStack, discoveryStack, separator, updateRow, actionRow])
+        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, notificationsStack, separator, updateRow, actionRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -191,9 +172,6 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             form.widthAnchor.constraint(equalTo: stack.widthAnchor),
             launchRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             notificationsStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            discoveryStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            subnetTargetsField.widthAnchor.constraint(equalTo: discoveryStack.widthAnchor),
-            subnetTargetsHint.widthAnchor.constraint(equalTo: discoveryStack.widthAnchor),
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
             updateRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             actionRow.widthAnchor.constraint(equalTo: stack.widthAnchor)
@@ -240,47 +218,6 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         supportButton.title = settings.text("Wesprzyj projekt", "Support the project")
         closeButton.title = settings.text("Gotowe", "Done")
         updateButton.title = settings.text("Sprawdź aktualizacje", "Check for updates")
-
-        discoveryLabel.stringValue = settings.text("Dodatkowe adresy do skanowania (VPN):", "Extra scan targets (VPN):")
-        subnetTargetsHint.stringValue = settings.text(
-            "Skanowane dodatkowo przy wykrywaniu — dla drukarek spoza LAN (np. przez Tailscale). Najlepiej pojedynczy adres. Obsługiwane: IP, zakres a-b, CIDR /n. Duże zakresy są odrzucane (limit \(SubnetTargets.maxHosts) adresów).",
-            "Scanned in addition to discovery — for printers outside the LAN (e.g. over Tailscale). Best: a single address. Supports: IP, a-b range, CIDR /n. Large ranges are rejected (limit \(SubnetTargets.maxHosts) addresses).")
-        if subnetTargetsField.currentEditor() == nil {
-            subnetTargetsField.stringValue = settings.subnetScanTargets
-        }
-        validateSubnetField()
-    }
-
-    func controlTextDidChange(_ obj: Notification) {
-        guard (obj.object as AnyObject) === subnetTargetsField else { return }
-        validateSubnetField()
-    }
-
-    func controlTextDidEndEditing(_ obj: Notification) {
-        guard (obj.object as AnyObject) === subnetTargetsField else { return }
-        let text = subnetTargetsField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Save only when valid; leave an invalid entry in place (with the message shown) so the user
-        // can see and fix it rather than having it silently reverted.
-        if SubnetTargets.isValid(text) {
-            AppSettings.shared.subnetScanTargets = text
-            subnetTargetsField.stringValue = text
-        }
-        validateSubnetField()
-    }
-
-    private func validateSubnetField() {
-        let settings = AppSettings.shared
-        let text = subnetTargetsField.stringValue
-        if SubnetTargets.isValid(text) {
-            subnetTargetsError.isHidden = true
-        } else {
-            subnetTargetsError.isHidden = false
-            subnetTargetsError.stringValue = SubnetTargets.isTooLarge(text)
-                ? settings.text("Zakres za duży (max \(SubnetTargets.maxHosts) adresów) — podaj węższy zakres lub pojedynczy adres.",
-                                "Range too large (max \(SubnetTargets.maxHosts) addresses) — use a narrower range or a single address.")
-                : settings.text("Nieprawidłowy wpis — użyj IP, zakresu a-b lub CIDR /n.",
-                                "Invalid entry — use an IP, an a-b range or CIDR /n.")
-        }
     }
 
     @objc private func languageChanged() {

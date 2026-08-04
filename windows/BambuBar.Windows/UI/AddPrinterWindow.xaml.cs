@@ -49,6 +49,8 @@ public partial class AddPrinterWindow : Window
         PrusaRadio.Checked += (_, _) => ApplyKind();
         ScanButton.Click += (_, _) => _store.Scan();
         ImportButton.Click += (_, _) => ImportFromStudio();
+        SubnetTargetsBox.LostFocus += (_, _) => SaveSubnetTargets();
+        SubnetTargetsBox.TextChanged += (_, _) => ValidateSubnetTargets();
         SaveButton.Click += (_, _) => Save();
         CancelButton.Click += (_, _) => Close();
         DetectedList.SelectionChanged += OnDetectedSelected;
@@ -65,9 +67,13 @@ public partial class AddPrinterWindow : Window
         Heading.Text = Title;
         DetectedLabel.Text = AppSettings.Text("Wykryte drukarki", "Detected printers");
         ImportButton.Content = AppSettings.Text("Importuj z Bambu Studio", "Import from Bambu Studio");
-        DiscoveryHint.Text = AppSettings.Text(
-            "Wykrywanie: SSDP + skan podsieci. Drukarkę przez VPN (Tailscale) dodaj, wpisując jej adres w Ustawieniach → „Dodatkowe adresy do skanowania”.",
-            "Discovery: SSDP + subnet scan. For a printer over a VPN (Tailscale), add its address in Settings → “Extra scan targets”.");
+        SubnetTargetsLabel.Text = AppSettings.Text("Nie widać drukarki? Dodatkowe adresy do skanowania (VPN):",
+                                                   "Printer not listed? Extra scan targets (VPN):");
+        SubnetTargetsHint.Text = AppSettings.Text(
+            $"Bambu wykrywa się w sieci lokalnej. Drukarkę spoza LAN (np. przez Tailscale) dopisz tu jej adresem, potem kliknij ⟳. Pojedynczy adres (zalecane), zakres a-b lub CIDR /n. Duże zakresy odrzucane (limit {SubnetTargets.MaxHosts}).",
+            $"Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. A single address (best), an a-b range or CIDR /n. Large ranges are rejected (limit {SubnetTargets.MaxHosts}).");
+        if (!SubnetTargetsBox.IsKeyboardFocusWithin) SubnetTargetsBox.Text = AppSettings.SubnetScanTargets;
+        ValidateSubnetTargets();
         NameLabel.Text = AppSettings.Text("Nazwa (opcjonalnie)", "Name (optional)");
         HostLabel.Text = AppSettings.Text("Adres IP", "IP address");
         SerialLabel.Text = AppSettings.Text("Numer seryjny", "Serial number");
@@ -193,6 +199,34 @@ public partial class AddPrinterWindow : Window
         {
             ShowError(ex.Message);
         }
+    }
+
+    private void SaveSubnetTargets()
+    {
+        var input = (SubnetTargetsBox.Text ?? string.Empty).Trim();
+        // Save only when valid; leave an invalid entry in place (message shown) instead of silently reverting.
+        if (SubnetTargets.IsValid(input))
+        {
+            AppSettings.SubnetScanTargets = input;
+            SubnetTargetsBox.Text = input;
+        }
+        ValidateSubnetTargets();
+    }
+
+    private void ValidateSubnetTargets()
+    {
+        var input = SubnetTargetsBox.Text ?? string.Empty;
+        if (SubnetTargets.IsValid(input))
+        {
+            SubnetTargetsError.Visibility = Visibility.Collapsed;
+            return;
+        }
+        SubnetTargetsError.Visibility = Visibility.Visible;
+        SubnetTargetsError.Text = SubnetTargets.IsTooLarge(input)
+            ? AppSettings.Text($"Zakres za duży (max {SubnetTargets.MaxHosts}) — podaj węższy zakres lub pojedynczy adres.",
+                               $"Range too large (max {SubnetTargets.MaxHosts}) — use a narrower range or a single address.")
+            : AppSettings.Text("Nieprawidłowy wpis — użyj IP, zakresu a-b lub CIDR /n.",
+                               "Invalid entry — use an IP, an a-b range or CIDR /n.");
     }
 
     private void ShowError(string message)

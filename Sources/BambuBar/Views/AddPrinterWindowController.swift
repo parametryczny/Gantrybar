@@ -2,7 +2,7 @@ import AppKit
 import Combine
 
 @MainActor
-final class AddPrinterWindowController: NSWindowController {
+final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate {
     private let store: PrinterStore
     private let printerPopup = NSPopUpButton()
     private let nameField = NSTextField()
@@ -29,6 +29,11 @@ final class AddPrinterWindowController: NSWindowController {
     private let portLabel = NSTextField(labelWithString: "")
     private let apiKeyLabel = NSTextField(labelWithString: "")
     private let progressCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let subnetSection = NSStackView()
+    private let subnetTargetsLabel = NSTextField(labelWithString: "")
+    private let subnetTargetsField = NSTextField()
+    private let subnetTargetsHint = NSTextField(wrappingLabelWithString: "")
+    private let subnetTargetsError = NSTextField(labelWithString: "")
     private var form = NSGridView()
     private var subscription: AnyCancellable?
     private var popupPrinters: [DiscoveredPrinter] = []
@@ -103,7 +108,22 @@ final class AddPrinterWindowController: NSWindowController {
         buttons.orientation = .horizontal
         buttons.spacing = 8
 
-        let stack = NSStackView(views: [titleLabel, typeControl, infoLabel, form, progressCheck, statusLabel, buttons])
+        subnetTargetsField.delegate = self
+        subnetTargetsField.placeholderString = "100.71.10.5"
+        subnetTargetsLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        subnetTargetsLabel.textColor = .secondaryLabelColor
+        subnetTargetsHint.font = .systemFont(ofSize: 10)
+        subnetTargetsHint.textColor = .tertiaryLabelColor
+        subnetTargetsHint.maximumNumberOfLines = 4
+        subnetTargetsError.font = .systemFont(ofSize: 10, weight: .medium)
+        subnetTargetsError.textColor = .systemOrange
+        subnetTargetsError.isHidden = true
+        subnetSection.orientation = .vertical
+        subnetSection.alignment = .leading
+        subnetSection.spacing = 3
+        [subnetTargetsLabel, subnetTargetsField, subnetTargetsHint, subnetTargetsError].forEach { subnetSection.addArrangedSubview($0) }
+
+        let stack = NSStackView(views: [titleLabel, typeControl, infoLabel, form, subnetSection, progressCheck, statusLabel, buttons])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 14
@@ -116,6 +136,9 @@ final class AddPrinterWindowController: NSWindowController {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
             infoLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             form.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            subnetSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            subnetTargetsField.widthAnchor.constraint(equalTo: subnetSection.widthAnchor),
+            subnetTargetsHint.widthAnchor.constraint(equalTo: subnetSection.widthAnchor),
             statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             buttons.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
@@ -143,20 +166,21 @@ final class AddPrinterWindowController: NSWindowController {
         form.row(at: 5).isHidden = hostBased
         form.row(at: 6).isHidden = !hostBased
         form.row(at: 7).isHidden = !hostBased
+        subnetSection.isHidden = hostBased   // extra scan targets apply to Bambu discovery only
         let settings = AppSettings.shared
         switch selectedKind {
         case .klipper:
             infoLabel.stringValue = settings.text(
-                "Podaj adres IP hosta Klipper (Moonraker, port 7125). Kod dostępu nie jest wymagany.",
-                "Enter the Klipper host IP (Moonraker, port 7125). No access code is needed.")
+                "Podaj adres IP hosta Klipper (Moonraker, port 7125). Kod dostępu nie jest wymagany. Działa też przez VPN — wpisz po prostu adres Tailscale.",
+                "Enter the Klipper host IP (Moonraker, port 7125). No access code is needed. Works over VPN too — just enter the Tailscale IP.")
         case .prusa:
             infoLabel.stringValue = settings.text(
-                "Podaj adres IP drukarki Prusa (PrusaLink, port 80) i klucz API z ustawień PrusaLink. Bez konta Prusy.",
-                "Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account.")
+                "Podaj adres IP drukarki Prusa (PrusaLink, port 80) i klucz API z ustawień PrusaLink. Bez konta Prusy. Działa też przez VPN — wpisz po prostu adres Tailscale.",
+                "Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account. Works over VPN too — just enter the Tailscale IP.")
         case .bambu:
             infoLabel.stringValue = settings.text(
-                "Wykrywanie działa przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. Drukarkę przez VPN (np. Tailscale) dodaj, wpisując jej adres w Ustawieniach → „Dodatkowe adresy do skanowania”. ",
-                "Discovery uses SSDP and a subnet scan. Pick a device from the list or enter details manually. For a printer over a VPN (e.g. Tailscale), add its address in Settings → “Extra scan targets”. ")
+                "Wykrywanie przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. ",
+                "Discovery via SSDP and a subnet scan. Pick a device from the list or enter details manually. ")
                 + (AccessCodeStore.usesKeychain
                     ? settings.text("Kod zostanie zapisany w pęku kluczy macOS.", "The code is stored in macOS Keychain.")
                     : settings.text("Kod zostanie zapisany w lokalnych ustawieniach tego Maca.", "The code is stored in this Mac's local preferences."))
@@ -206,6 +230,45 @@ final class AddPrinterWindowController: NSWindowController {
         apiKeyField.placeholderString = settings.text("opcjonalny", "optional")
         progressCheck.title = settings.text("Pokaż postęp tej drukarki na pasku menu",
                                             "Show this printer's progress in the menu bar")
+
+        subnetTargetsLabel.stringValue = settings.text("Nie widać drukarki? Dodatkowe adresy do skanowania (VPN):",
+                                                       "Printer not listed? Extra scan targets (VPN):")
+        subnetTargetsHint.stringValue = settings.text(
+            "Bambu wykrywa się w sieci lokalnej. Drukarkę spoza LAN (np. przez Tailscale) dopisz tu jej adresem, potem kliknij ⟳. Obsługiwane: pojedynczy adres (zalecane), zakres a-b, CIDR /n. Duże zakresy odrzucane (limit \(SubnetTargets.maxHosts)).",
+            "Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. Supports: a single address (best), an a-b range, CIDR /n. Large ranges are rejected (limit \(SubnetTargets.maxHosts)).")
+        if subnetTargetsField.currentEditor() == nil { subnetTargetsField.stringValue = settings.subnetScanTargets }
+        validateSubnetField()
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as AnyObject) === subnetTargetsField else { return }
+        validateSubnetField()
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard (obj.object as AnyObject) === subnetTargetsField else { return }
+        let text = subnetTargetsField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Save only when valid; leave an invalid entry in place (with the message shown) so it can be fixed.
+        if SubnetTargets.isValid(text) {
+            AppSettings.shared.subnetScanTargets = text
+            subnetTargetsField.stringValue = text
+        }
+        validateSubnetField()
+    }
+
+    private func validateSubnetField() {
+        let settings = AppSettings.shared
+        let text = subnetTargetsField.stringValue
+        if SubnetTargets.isValid(text) {
+            subnetTargetsError.isHidden = true
+        } else {
+            subnetTargetsError.isHidden = false
+            subnetTargetsError.stringValue = SubnetTargets.isTooLarge(text)
+                ? settings.text("Zakres za duży (max \(SubnetTargets.maxHosts)) — podaj węższy zakres lub pojedynczy adres.",
+                                "Range too large (max \(SubnetTargets.maxHosts)) — use a narrower range or a single address.")
+                : settings.text("Nieprawidłowy wpis — użyj IP, zakresu a-b lub CIDR /n.",
+                                "Invalid entry — use an IP, an a-b range or CIDR /n.")
+        }
     }
 
     private func refreshDiscovery() {
