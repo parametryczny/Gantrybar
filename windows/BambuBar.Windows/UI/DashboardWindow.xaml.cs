@@ -117,6 +117,9 @@ public partial class DashboardWindow : Window
         window.ShowDialog();
     }
 
+    /// <summary>Opens the add-printer dialog — same as the panel's + button (used from the tray menu).</summary>
+    public void OpenAddPrinter() => OpenAddWindow();
+
     private readonly Dictionary<string, ICardView> _views = new();
     private List<string> _renderedSerials = new();
     private bool? _renderedCompact;

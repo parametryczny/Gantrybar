@@ -167,6 +167,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          enabled: !store.isScanning) { [weak self] in
             self?.store.scan()
         })
+        menu.addItem(row(icon: "plus",
+                         title: settings.text("Dodaj drukarkę…", "Add printer…")) { [weak self] in
+            self?.showAddPrinter()
+        })
         menu.addItem(row(icon: "arrow.clockwise",
                          title: settings.text("Połącz ponownie (wszystkie)", "Reconnect (all)"),
                          enabled: !store.printers.isEmpty) { [weak self] in
