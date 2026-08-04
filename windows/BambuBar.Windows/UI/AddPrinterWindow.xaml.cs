@@ -32,11 +32,11 @@ public partial class AddPrinterWindow : Window
             CodeBox.Text = "";
             // The printer kind cannot change once added; lock the selector to the saved type.
             TypeSection.Visibility = Visibility.Collapsed;
+            PortBox.Text = editing.Port?.ToString() ?? "";   // Bambu too (tunnel port)
             if (editing.Kind != PrinterKind.Bambu)
             {
                 if (editing.Kind == PrinterKind.Klipper) KlipperRadio.IsChecked = true;
                 else PrusaRadio.IsChecked = true;
-                PortBox.Text = editing.Port?.ToString() ?? "";
                 ApiKeyBox.Text = editing.ApiKey ?? "";
             }
             // The tray-pin checkbox is offered only when editing a saved printer (its serial is known).
@@ -101,14 +101,16 @@ public partial class AddPrinterWindow : Window
         DiscoverySection.Visibility = (hostBased || _editing is not null) ? Visibility.Collapsed : Visibility.Visible;
         SerialLabel.Visibility = SerialBox.Visibility = hostBased ? Visibility.Collapsed : Visibility.Visible;
         CodeLabel.Visibility = CodeBox.Visibility = hostBased ? Visibility.Collapsed : Visibility.Visible;
-        PortLabel.Visibility = PortBox.Visibility = hostBased ? Visibility.Visible : Visibility.Collapsed;
+        PortLabel.Visibility = PortBox.Visibility = Visibility.Visible;   // Bambu too (optional — tunnels)
         ApiKeyLabel.Visibility = ApiKeyBox.Visibility = hostBased ? Visibility.Visible : Visibility.Collapsed;
         HostLabel.Text = hostBased
             ? AppSettings.Text("Adres IP / nazwa hosta", "IP address / host name")
             : AppSettings.Text("Adres IP", "IP address");
         PortLabel.Text = IsPrusa
             ? AppSettings.Text("Port PrusaLink (domyślnie 80)", "PrusaLink port (default 80)")
-            : AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)");
+            : IsKlipper
+                ? AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)")
+                : AppSettings.Text("Port (zwykle 8883 — zmień przy tunelu, np. socat)", "Port (usually 8883 — change for a tunnel, e.g. socat)");
         ApiKeyLabel.Text = IsPrusa
             ? AppSettings.Text("Klucz API PrusaLink", "PrusaLink API key")
             : AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
@@ -165,16 +167,16 @@ public partial class AddPrinterWindow : Window
     {
         try
         {
+            int? port = null;
+            var portText = PortBox.Text.Trim();
+            if (portText.Length > 0)
+            {
+                if (!int.TryParse(portText, out var parsed) || parsed <= 0 || parsed > 65535)
+                    throw new ArgumentException(AppSettings.Text("Nieprawidłowy port.", "Invalid port."));
+                port = parsed;
+            }
             if (UsesHostFields)
             {
-                int? port = null;
-                var portText = PortBox.Text.Trim();
-                if (portText.Length > 0)
-                {
-                    if (!int.TryParse(portText, out var parsed) || parsed <= 0 || parsed > 65535)
-                        throw new ArgumentException(AppSettings.Text("Nieprawidłowy port.", "Invalid port."));
-                    port = parsed;
-                }
                 // Editing may change the host, which changes the derived serial; drop the old entry first.
                 if (_editing is not null && _editing.Host != HostBox.Text.Trim())
                     _store.Remove(_editing);
@@ -182,9 +184,9 @@ public partial class AddPrinterWindow : Window
                 else _store.AddKlipper(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
             }
             else if (_editing is not null)
-                _store.Update(_editing.Serial, NameBox.Text, SerialBox.Text, HostBox.Text, CodeBox.Text);
+                _store.Update(_editing.Serial, NameBox.Text, SerialBox.Text, HostBox.Text, CodeBox.Text, port);
             else
-                _store.AddManually(NameBox.Text, SerialBox.Text, HostBox.Text, CodeBox.Text);
+                _store.AddManually(NameBox.Text, SerialBox.Text, HostBox.Text, CodeBox.Text, port);
 
             // The tray-pin checkbox is only shown when editing, so the final serial is known here.
             if (_editing is not null)

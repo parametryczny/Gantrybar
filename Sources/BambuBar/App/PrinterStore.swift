@@ -76,7 +76,7 @@ final class PrinterStore: ObservableObject {
         self.discovered.removeAll { $0.serial == printer.serial }
     }
 
-    func addManually(name: String, serial: String, host: String, accessCode: String) throws {
+    func addManually(name: String, serial: String, host: String, accessCode: String, port: Int? = nil) throws {
         let cleanSerial = serial.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanCode = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -84,7 +84,8 @@ final class PrinterStore: ObservableObject {
             throw ValidationError("Adres IP, numer seryjny i kod dostępu są wymagane.")
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        try upsert(SavedPrinter(serial: cleanSerial, name: cleanName.isEmpty ? "Bambu \(cleanSerial.suffix(4))" : cleanName, host: cleanHost), accessCode: cleanCode)
+        try upsert(SavedPrinter(serial: cleanSerial, name: cleanName.isEmpty ? "Bambu \(cleanSerial.suffix(4))" : cleanName,
+                                host: cleanHost, port: port), accessCode: cleanCode)
     }
 
     /// Adds a Klipper printer (Moonraker). No access code — only host, optional port and API key.
@@ -165,7 +166,7 @@ final class PrinterStore: ObservableObject {
         return imported
     }
 
-    func update(originalSerial: String, name: String, serial: String, host: String, accessCode: String) throws {
+    func update(originalSerial: String, name: String, serial: String, host: String, accessCode: String, port: Int? = nil) throws {
         let cleanSerial = serial.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -189,7 +190,8 @@ final class PrinterStore: ObservableObject {
         let printer = SavedPrinter(
             serial: cleanSerial,
             name: cleanName.isEmpty ? "Bambu \(cleanSerial.suffix(4))" : cleanName,
-            host: cleanHost
+            host: cleanHost,
+            port: port
         )
         try upsert(printer, accessCode: code)
     }

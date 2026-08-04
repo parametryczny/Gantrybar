@@ -75,7 +75,11 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
 
         let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
         parameters.serviceClass = .responsiveData
-        guard let port = NWEndpoint.Port(rawValue: 8883) else { return }
+        // Default MQTTs port 8883, or a custom one (e.g. a socat tunnel forwarding several printers
+        // through one host on different ports). TLS/cert pinning is unaffected — the tunnel just
+        // forwards TCP, so the printer still presents its own certificate.
+        let portValue = UInt16(exactly: printer.port ?? 8883) ?? 8883
+        guard let port = NWEndpoint.Port(rawValue: portValue) else { return }
         let connection = NWConnection(host: NWEndpoint.Host(printer.host), port: port, using: parameters)
         self.connection = connection
         connection.stateUpdateHandler = { [weak self] state in self?.handle(state) }

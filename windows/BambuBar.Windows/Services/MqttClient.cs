@@ -57,7 +57,7 @@ public sealed class MqttClient : IPrinterConnection
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, connectTimeout.Token);
             try
             {
-                await _tcp.ConnectAsync(_printer.Host, 8883, linked.Token);
+                await _tcp.ConnectAsync(_printer.Host, _printer.Port ?? 8883, linked.Token);
             }
             catch (OperationCanceledException) when (connectTimeout.IsCancellationRequested)
             {

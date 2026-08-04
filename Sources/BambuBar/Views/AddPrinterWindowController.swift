@@ -164,10 +164,11 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         form.row(at: 1).isHidden = hostBased
         form.row(at: 4).isHidden = hostBased
         form.row(at: 5).isHidden = hostBased
-        form.row(at: 6).isHidden = !hostBased
+        form.row(at: 6).isHidden = false   // port shown for every kind (optional for Bambu — tunnels)
         form.row(at: 7).isHidden = !hostBased
         subnetSection.isHidden = hostBased   // extra scan targets apply to Bambu discovery only
         let settings = AppSettings.shared
+        portField.placeholderString = selectedKind == .bambu ? "8883" : (selectedKind == .prusa ? "80" : "7125")
         switch selectedKind {
         case .klipper:
             infoLabel.stringValue = settings.text(
@@ -179,8 +180,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
                 "Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account. Works over VPN too — just enter the Tailscale IP.")
         case .bambu:
             infoLabel.stringValue = settings.text(
-                "Wykrywanie przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. ",
-                "Discovery via SSDP and a subnet scan. Pick a device from the list or enter details manually. ")
+                "Wykrywanie przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. Port zwykle 8883 — zmień tylko przy tunelu (np. socat na kilka drukarek). ",
+                "Discovery via SSDP and a subnet scan. Pick a device from the list or enter details manually. Port is usually 8883 — change it only for a tunnel (e.g. socat forwarding several printers). ")
                 + (AccessCodeStore.usesKeychain
                     ? settings.text("Kod zostanie zapisany w pęku kluczy macOS.", "The code is stored in macOS Keychain.")
                     : settings.text("Kod zostanie zapisany w lokalnych ustawieniach tego Maca.", "The code is stored in this Mac's local preferences."))
@@ -388,10 +389,11 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
                         name: nameField.stringValue,
                         serial: serialField.stringValue,
                         host: hostField.stringValue,
-                        accessCode: codeField.stringValue
+                        accessCode: codeField.stringValue,
+                        port: port
                     )
                 } else {
-                    try store.addManually(name: nameField.stringValue, serial: serialField.stringValue, host: hostField.stringValue, accessCode: codeField.stringValue)
+                    try store.addManually(name: nameField.stringValue, serial: serialField.stringValue, host: hostField.stringValue, accessCode: codeField.stringValue, port: port)
                 }
             }
             // The menu-bar pin checkbox is only shown when editing, so its serial is known here.
@@ -456,8 +458,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         hostField.stringValue = printer.host
         statusLabel.stringValue = ""
         statusLabel.textColor = .systemRed
+        portField.stringValue = printer.port.map(String.init) ?? ""   // Bambu too (tunnel port)
         if printer.kind != .bambu {
-            portField.stringValue = printer.port.map(String.init) ?? ""
             apiKeyField.stringValue = printer.apiKey ?? ""
         } else {
             serialField.stringValue = printer.serial

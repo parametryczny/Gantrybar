@@ -121,7 +121,7 @@ public sealed class PrinterStore
         RaiseUpdated();
     }
 
-    public void AddManually(string name, string serial, string host, string accessCode)
+    public void AddManually(string name, string serial, string host, string accessCode, int? port = null)
     {
         var cleanSerial = serial.Trim();
         var cleanHost = host.Trim();
@@ -134,7 +134,8 @@ public sealed class PrinterStore
         {
             Serial = cleanSerial,
             Name = cleanName.Length == 0 ? $"Bambu {suffix}" : cleanName,
-            Host = cleanHost
+            Host = cleanHost,
+            Port = port
         }, cleanCode);
         RaiseUpdated();
     }
@@ -219,7 +220,7 @@ public sealed class PrinterStore
         return imported;
     }
 
-    public void Update(string originalSerial, string name, string serial, string host, string accessCode)
+    public void Update(string originalSerial, string name, string serial, string host, string accessCode, int? port = null)
     {
         var cleanSerial = serial.Trim();
         var cleanHost = host.Trim();
@@ -247,7 +248,8 @@ public sealed class PrinterStore
         {
             Serial = cleanSerial,
             Name = cleanName.Length == 0 ? $"Bambu {suffix}" : cleanName,
-            Host = cleanHost
+            Host = cleanHost,
+            Port = port
         }, code);
         RaiseUpdated();
     }
