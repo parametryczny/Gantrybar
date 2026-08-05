@@ -63,11 +63,25 @@ final class SSDPDiscovery: @unchecked Sendable {
         inet_pton(AF_INET, "239.255.255.250", &destination.sin_addr)
 
         let message = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: urn:bambulab-com:device:3dprinter:1\r\n\r\n"
-        message.withCString { pointer in
-            withUnsafePointer(to: &destination) { address in
-                address.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    _ = sendto(descriptor, pointer, strlen(pointer), 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        func sendQuery() {
+            message.withCString { pointer in
+                withUnsafePointer(to: &destination) { address in
+                    address.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        _ = sendto(descriptor, pointer, strlen(pointer), 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
                 }
+            }
+        }
+        // Send the query out of EVERY local interface, not just the default route — a printer on a
+        // secondary NIC/subnet is otherwise missed. (A VPN like Tailscale carries no multicast at
+        // all, so that case is handled by the unicast address scan, not by SSDP.)
+        let interfaces = localIPv4Addresses()
+        if interfaces.isEmpty {
+            sendQuery()
+        } else {
+            for var interfaceAddress in interfaces {
+                setsockopt(descriptor, IPPROTO_IP, IP_MULTICAST_IF, &interfaceAddress, socklen_t(MemoryLayout<in_addr>.size))
+                sendQuery()
             }
         }
 
@@ -95,5 +109,27 @@ final class SSDPDiscovery: @unchecked Sendable {
             }
         }
         return found.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Local IPv4 interface addresses (up, non-loopback) to send the M-SEARCH from, so every
+    /// attached network/subnet is queried — not only the default route's interface.
+    private func localIPv4Addresses() -> [in_addr] {
+        var addresses: [in_addr] = []
+        var interfaces: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaces) == 0, let first = interfaces else { return [] }
+        defer { freeifaddrs(interfaces) }
+        var cursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let interface = cursor?.pointee {
+            defer { cursor = interface.ifa_next }
+            guard let address = interface.ifa_addr,
+                  address.pointee.sa_family == UInt8(AF_INET),
+                  interface.ifa_flags & UInt32(IFF_UP) != 0,
+                  interface.ifa_flags & UInt32(IFF_LOOPBACK) == 0 else { continue }
+            let name = String(cString: interface.ifa_name)
+            guard !name.hasPrefix("awdl"), !name.hasPrefix("llw") else { continue }   // Apple link-local only
+            let sin = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
+            addresses.append(sin)
+        }
+        return addresses
     }
 }

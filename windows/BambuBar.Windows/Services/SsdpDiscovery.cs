@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using BambuBar.Models;
@@ -34,7 +35,27 @@ public sealed class SsdpDiscovery
 
             var message = Encoding.ASCII.GetBytes(
                 "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: urn:bambulab-com:device:3dprinter:1\r\n\r\n");
-            try { await udp.SendAsync(message, message.Length, new IPEndPoint(Multicast, 1900)); } catch { }
+            // Send the query out of EVERY local interface, not just the default route — a printer on a
+            // secondary NIC/subnet is otherwise missed. (A VPN like Tailscale carries no multicast at
+            // all, so that case is handled by the unicast address scan, not by SSDP.)
+            var interfaces = LocalIPv4Addresses();
+            if (interfaces.Count == 0)
+            {
+                try { await udp.SendAsync(message, message.Length, new IPEndPoint(Multicast, 1900)); } catch { }
+            }
+            else
+            {
+                foreach (var local in interfaces)
+                {
+                    try
+                    {
+                        udp.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface,
+                                                   local.GetAddressBytes());
+                        await udp.SendAsync(message, message.Length, new IPEndPoint(Multicast, 1900));
+                    }
+                    catch { /* interface without multicast — skip */ }
+                }
+            }
 
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
             while (!deadline.IsCancellationRequested)
@@ -54,5 +75,21 @@ public sealed class SsdpDiscovery
         return found.Values
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>Local IPv4 interface addresses (up, non-loopback) to send the M-SEARCH from, so every
+    /// attached network/subnet is queried — not only the default route's interface.</summary>
+    private static List<IPAddress> LocalIPv4Addresses()
+    {
+        var list = new List<IPAddress>();
+        foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (ni.OperationalStatus != OperationalStatus.Up) continue;
+            if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+            foreach (var addr in ni.GetIPProperties().UnicastAddresses)
+                if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
+                    list.Add(addr.Address);
+        }
+        return list;
     }
 }
