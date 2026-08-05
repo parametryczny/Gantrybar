@@ -47,13 +47,24 @@ public partial class DashboardWindow : Window
     {
         HideCardMenu();
         _cardMenu = menu;
-        // Right-align the menu under the "…" button; MinWidth keeps positioning stable pre-layout.
-        var corner = anchor.TranslatePoint(new Point(anchor.ActualWidth, anchor.ActualHeight), MenuLayer);
         menu.HorizontalAlignment = HorizontalAlignment.Left;
         menu.VerticalAlignment = VerticalAlignment.Top;
-        menu.Margin = new Thickness(Math.Max(4, corner.X - 200), corner.Y + 2, 0, 0);
         MenuLayer.Children.Add(menu);
         MenuLayer.Visibility = Visibility.Visible;
+
+        // Measure the menu so we can right-align it under the "…" button and, crucially, flip it
+        // ABOVE the button when opening downward would run past the bottom of the panel and clip it.
+        menu.Measure(new Size(MenuLayer.ActualWidth, double.PositiveInfinity));
+        double menuHeight = menu.DesiredSize.Height;
+        double menuWidth = Math.Max(menu.DesiredSize.Width, 200);
+        var below = anchor.TranslatePoint(new Point(anchor.ActualWidth, anchor.ActualHeight), MenuLayer);
+        var above = anchor.TranslatePoint(new Point(anchor.ActualWidth, 0), MenuLayer);
+
+        double left = Math.Max(4, below.X - menuWidth);
+        double top = below.Y + 2;
+        if (top + menuHeight > MenuLayer.ActualHeight - 4)   // would be clipped at the bottom → flip up
+            top = Math.Max(4, above.Y - menuHeight - 2);
+        menu.Margin = new Thickness(left, top, 0, 0);
     }
 
     private void HideCardMenu()
