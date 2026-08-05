@@ -111,6 +111,12 @@ public sealed class TrayIcon : IDisposable
 
         menu.Items.Add(BuildColourLegend());
 
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Postaw kawę ☕️", "Buy me a coffee ☕️"), null, (_, _) =>
+        {
+            try { Process.Start(new ProcessStartInfo("https://buycoffee.to/parametryczny") { UseShellExecute = true }); }
+            catch { /* browser unavailable */ }
+        }));
+
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Zakończ", "Quit"), null, (_, _) => Application.Current.Shutdown()));
         _ = pl;

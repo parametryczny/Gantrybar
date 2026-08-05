@@ -15,6 +15,7 @@ final class SettingsWindowController: NSWindowController {
     private let launchLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
     private let supportButton = NSButton()
+    private let supportSubtitle = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
     private let updateButton = NSButton()
     private let updateStatusLabel = NSTextField(labelWithString: "")
@@ -106,15 +107,23 @@ final class SettingsWindowController: NSWindowController {
         supportButton.target = self
         supportButton.action = #selector(openSupport)
         supportButton.bezelStyle = .rounded
-        supportButton.image = NSImage(systemSymbolName: "heart.fill", accessibilityDescription: "Support")
+        supportButton.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Support")
         supportButton.imagePosition = .imageLeading
+        supportSubtitle.font = .systemFont(ofSize: 10)
+        supportSubtitle.textColor = .tertiaryLabelColor
+        supportSubtitle.alignment = .center
         closeButton.target = self
         closeButton.action = #selector(closeSettings)
         closeButton.keyEquivalent = "\r"
-        let actionRow = NSStackView(views: [versionLabel, NSView(), supportButton, closeButton])
+        let actionRow = NSStackView(views: [versionLabel, NSView(), closeButton])
         actionRow.orientation = .horizontal
         actionRow.alignment = .centerY
         actionRow.spacing = 8
+        // Support lives at the very bottom, with a light-hearted one-liner beneath the button.
+        let supportStack = NSStackView(views: [supportButton, supportSubtitle])
+        supportStack.orientation = .vertical
+        supportStack.alignment = .centerX
+        supportStack.spacing = 3
 
         updateButton.target = self
         updateButton.action = #selector(checkForUpdates)
@@ -157,7 +166,7 @@ final class SettingsWindowController: NSWindowController {
         quietRow.spacing = 6
         notificationsStack.addArrangedSubview(quietRow)
 
-        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, notificationsStack, separator, updateRow, actionRow])
+        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, notificationsStack, separator, updateRow, actionRow, supportStack])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -174,7 +183,8 @@ final class SettingsWindowController: NSWindowController {
             notificationsStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
             updateRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            actionRow.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            actionRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            supportStack.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
     }
 
@@ -215,7 +225,10 @@ final class SettingsWindowController: NSWindowController {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "0.1.19"
         versionLabel.stringValue = settings.text("Wersja \(version)", "Version \(version)") + " • \(AccessCodeStore.modeName)"
-        supportButton.title = settings.text("Wesprzyj projekt", "Support the project")
+        supportButton.title = settings.text("Postaw kawę ☕️", "Buy me a coffee ☕️")
+        supportSubtitle.stringValue = settings.text(
+            "Kawką nie pogadamy, ale grzeje przy nocnych kompilacjach ☕️",
+            "We won't chat over it, but it fuels the late-night builds ☕️")
         closeButton.title = settings.text("Gotowe", "Done")
         updateButton.title = settings.text("Sprawdź aktualizacje", "Check for updates")
     }
@@ -349,7 +362,7 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func openSupport() {
-        guard let url = URL(string: "https://suppi.pl/parametryczny") else { return }
+        guard let url = URL(string: "https://buycoffee.to/parametryczny") else { return }
         NSWorkspace.shared.open(url)
     }
 

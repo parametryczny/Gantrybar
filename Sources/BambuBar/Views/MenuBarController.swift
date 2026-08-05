@@ -208,6 +208,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         legendItem.submenu = colourLegendMenu(settings: settings)
         menu.addItem(legendItem)
 
+        menu.addItem(row(icon: "cup.and.saucer.fill",
+                         title: settings.text("Postaw kawę ☕️", "Buy me a coffee ☕️")) {
+            if let url = URL(string: "https://buycoffee.to/parametryczny") { NSWorkspace.shared.open(url) }
+        })
+
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "power",
