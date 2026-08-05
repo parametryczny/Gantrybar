@@ -15,7 +15,7 @@ final class SettingsWindowController: NSWindowController {
     private let launchLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
     private let supportButton = NSButton()
-    private let supportSubtitle = NSTextField(labelWithString: "")
+    private let supportSubtitle = NSTextField(wrappingLabelWithString: "")
     private let closeButton = NSButton()
     private let updateButton = NSButton()
     private let updateStatusLabel = NSTextField(labelWithString: "")
@@ -184,7 +184,8 @@ final class SettingsWindowController: NSWindowController {
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
             updateRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             actionRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            supportStack.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            supportStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            supportSubtitle.widthAnchor.constraint(equalTo: supportStack.widthAnchor)
         ])
     }
 
@@ -225,10 +226,10 @@ final class SettingsWindowController: NSWindowController {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "0.1.19"
         versionLabel.stringValue = settings.text("Wersja \(version)", "Version \(version)") + " • \(AccessCodeStore.modeName)"
-        supportButton.title = settings.text("Postaw kawę ☕️", "Buy me a coffee ☕️")
+        supportButton.title = settings.text("Wesprzyj projekt", "Support the project")
         supportSubtitle.stringValue = settings.text(
-            "Kawką nie pogadamy, ale grzeje przy nocnych kompilacjach ☕️",
-            "We won't chat over it, but it fuels the late-night builds ☕️")
+            "Dobrą kawką nie pogardzę, a ta wirtualna daje mi kofeinowego kopa do działania nad kolejnymi projektami! 🚀 Jeśli chcesz dorzucić się do mojego kolejnego kubka i wesprzeć moje działania, kliknij „Wesprzyj projekt”.",
+            "I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
         closeButton.title = settings.text("Gotowe", "Done")
         updateButton.title = settings.text("Sprawdź aktualizacje", "Check for updates")
     }
