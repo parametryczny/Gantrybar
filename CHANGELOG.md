@@ -1,6 +1,17 @@
-# Historia zmian PrismBar
+# Historia zmian Gantry
 
-Wszystkie istotne zmiany w aplikacji PrismBar (dawniej BambuBar) są opisane w tym pliku.
+Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są opisane w tym pliku.
+
+## 0.6.0 — 2026-08-09
+
+- **nowa nazwa i logo: Gantry** — litera **G** na pasku menu / w zasobniku i jako ikona aplikacji (macOS `.icns`, Windows `.ico`); zapisane drukarki, kody i uprawnienia pozostają bez zmian
+- **modularny filament** — każdy fizyczny moduł (AMS, AMS HT, CFS, MMU, EXT) to osobna grupa z własną nazwą, wilgotnością i temperaturą; AMS HT / pojedyncza szpula pokazują 1 slot, standardowy AMS trzyma 4 pozycje (puste zostają szare)
+- **Creality CFS** — każdy box jako osobny zestaw (`CFS 1`, `CFS 2`), szpula zewnętrzna jako `EXT`; **Klipper / Happy Hare** — dowolna liczba bramek `T0…Tn` bez sztucznego dzielenia po cztery
+- **dwie dysze** na drukarkach dwudyszowych (H2D) pokazywane jawnie jako **L / P** (PL) lub **L / R** (EN); **temperatura komory** tylko dla drukarek z realnym czujnikiem
+- **prywatność: import konfiguracji Bambu Studio za jawną zgodą** — nic nie jest czytane z plików slicera, dopóki nie zaznaczysz zgody (checkbox + komunikat) przy dodawaniu drukarki
+- przeprojektowane kafle: duże kafelki koloru z etykietą pod spodem, aktywny slot z białym pierścieniem, równa wysokość kafli w wierszu
+- **poprawka:** biała ramka aktywnego slotu AMS nie znika już po połączeniu — częściowy raport MQTT nie kasuje aktywnego slotu ani grup
+- ten sam model danych i układ na macOS, Windows i GNU/Linux
 
 ## 0.5.0 — 2026-08-05
 

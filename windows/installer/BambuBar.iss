@@ -1,5 +1,5 @@
 #define MyAppName "Gantry"
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.6.0"
 #define MyAppPublisher "Kamil Grzegorczyk"
 #define MyAppURL "https://github.com/parametryczny/BambuBar"
 #define MyAppExeName "BambuBar.exe"
@@ -29,7 +29,7 @@ CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=0.5.0.0
+VersionInfoVersion=0.6.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Gantry Windows Beta Installer
 VersionInfoProductName={#MyAppName}
