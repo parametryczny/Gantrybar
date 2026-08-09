@@ -39,10 +39,10 @@ dotnet run   --project BambuBar.Windows\BambuBar.Windows.csproj
 
 ```bat
 cd windows
-dotnet publish BambuBar.Windows\BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o publish
+dotnet publish BambuBar.Windows\BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
 ```
 
-The result is the self-contained `windows\publish\BambuBar.exe`, which does not require a
+The result is the self-contained `folder windows\publish\ (Gantry.exe)`, which does not require a
 separate .NET installation. The GitHub Actions workflow `.github/workflows/windows.yml`
 packages it as `BambuBar-Windows-x64.zip` on every relevant push.
 
@@ -100,10 +100,10 @@ dotnet run   --project BambuBar.Windows\BambuBar.Windows.csproj
 
 ```bat
 cd windows
-dotnet publish BambuBar.Windows\BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o publish
+dotnet publish BambuBar.Windows\BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
 ```
 
-Wynik to samodzielny `windows\publish\BambuBar.exe`, który nie wymaga osobnej instalacji
+Wynik to samodzielny `folder windows\publish\ (Gantry.exe)`, który nie wymaga osobnej instalacji
 .NET. Workflow `.github/workflows/windows.yml` przy każdym odpowiednim pushu pakuje go jako
 `BambuBar-Windows-x64.zip`.
 

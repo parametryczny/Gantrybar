@@ -3,20 +3,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "BambuBar",
+    name: "Gantry",
     platforms: [.macOS("26.0")],
     products: [
-        .executable(name: "BambuBar", targets: ["BambuBar"])
+        .executable(name: "Gantry", targets: ["Gantry"])
     ],
     targets: [
         .executableTarget(
-            name: "BambuBar",
-            path: "Sources/BambuBar"
+            name: "Gantry",
+            path: "Sources/Gantry"
         ),
         .testTarget(
-            name: "BambuBarTests",
-            dependencies: ["BambuBar"],
-            path: "Tests/BambuBarTests"
+            name: "GantryTests",
+            dependencies: ["Gantry"],
+            path: "Tests/GantryTests"
         )
     ]
 )

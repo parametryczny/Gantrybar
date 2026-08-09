@@ -2,7 +2,7 @@
 #define MyAppVersion "0.6.0"
 #define MyAppPublisher "Kamil Grzegorczyk"
 #define MyAppURL "https://github.com/parametryczny/BambuBar"
-#define MyAppExeName "BambuBar.exe"
+#define MyAppExeName "Gantry.exe"
 
 [Setup]
 AppId={{D83CD1A0-DC31-4A57-A152-8B7EE75046F1}
@@ -42,7 +42,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
 
 [Files]
-Source: "..\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Package the whole self-contained folder (not a self-extracting single-file exe) — the self-extract
+; pattern is the main trigger for Avast/SmartScreen false positives (issue #20).
+Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"

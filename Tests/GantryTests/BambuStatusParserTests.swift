@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import BambuBar
+@testable import Gantry
 
 @Suite struct BambuStatusParserTests {
     private func telemetry(_ json: String, previous: PrinterTelemetry = .init()) -> PrinterTelemetry? {

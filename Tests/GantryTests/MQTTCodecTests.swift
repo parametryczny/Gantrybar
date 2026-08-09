@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import BambuBar
+@testable import Gantry
 
 @Suite struct MQTTCodecTests {
     @Test func connectPacketHeaderAndProtocol() {

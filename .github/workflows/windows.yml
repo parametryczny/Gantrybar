@@ -29,9 +29,11 @@ jobs:
       - name: Build
         run: dotnet build BambuBar.Windows/BambuBar.Windows.csproj -c Release --no-restore
       - name: Test Bambu Studio config import
-        run: .\BambuBar.Windows\bin\Release\net8.0-windows\BambuBar.exe --self-test
-      - name: Publish self-contained single-file exe
-        run: dotnet publish BambuBar.Windows/BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o publish
+        run: .\BambuBar.Windows\bin\Release\net8.0-windows\Gantry.exe --self-test
+      # Self-contained FOLDER publish (not a self-extracting single-file exe). The self-extract
+      # pattern is the main trigger for Avast/SmartScreen false positives — see issue #20.
+      - name: Publish self-contained app
+        run: dotnet publish BambuBar.Windows/BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
       - name: Install Inno Setup
         shell: pwsh
         run: |
@@ -51,17 +53,17 @@ jobs:
       - name: Test silent install, autostart and uninstall
         shell: pwsh
         run: |
-          $setup = Resolve-Path "installer-output\BambuBar-Setup-Windows-x64.exe"
+          $setup = Resolve-Path "installer-output\Gantry-Setup-Windows-x64.exe"
           $install = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)." }
 
-          $installedExe = Join-Path $env:LOCALAPPDATA "Programs\BambuBar\BambuBar.exe"
+          $installedExe = Join-Path $env:LOCALAPPDATA "Programs\Gantry\Gantry.exe"
           if (-not (Test-Path $installedExe)) { throw "Installed application was not found." }
 
           $runValue = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "BambuBar" -ErrorAction Stop).BambuBar
-          if ($runValue -notlike "*BambuBar.exe*") { throw "Autostart registry value is invalid." }
+          if ($runValue -notlike "*Gantry.exe*") { throw "Autostart registry value is invalid." }
 
-          $uninstaller = Join-Path $env:LOCALAPPDATA "Programs\BambuBar\unins000.exe"
+          $uninstaller = Join-Path $env:LOCALAPPDATA "Programs\Gantry\unins000.exe"
           $uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($uninstall.ExitCode)." }
           if (Test-Path $installedExe) { throw "Application remained after uninstall." }
@@ -70,16 +72,16 @@ jobs:
           if ($null -ne $runKey) { throw "Autostart value remained after uninstall." }
       - name: Package ZIP
         shell: pwsh
-        run: Compress-Archive -Path publish/BambuBar.exe -DestinationPath publish/BambuBar-Windows-x64.zip -Force
+        run: Compress-Archive -Path publish/* -DestinationPath Gantry-Windows-x64.zip -Force
       - name: Upload packaged application
         uses: actions/upload-artifact@v7
         with:
-          name: BambuBar-Windows-x64
-          path: windows/publish/BambuBar-Windows-x64.zip
+          name: Gantry-Windows-x64
+          path: windows/Gantry-Windows-x64.zip
           if-no-files-found: error
       - name: Upload Windows installer
         uses: actions/upload-artifact@v7
         with:
-          name: BambuBar-Windows-Installer-x64
-          path: windows/installer-output/BambuBar-Setup-Windows-x64.exe
+          name: Gantry-Windows-Installer-x64
+          path: windows/installer-output/Gantry-Setup-Windows-x64.exe
           if-no-files-found: error
