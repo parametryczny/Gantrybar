@@ -25,9 +25,9 @@ jobs:
       - name: Run core tests
         run: PYTHONPATH=linux python3 -m unittest discover -s linux/tests -v
       - name: Compile Python sources
-        run: PYTHONPATH=linux python3 -m compileall -q linux/bambubar
+        run: PYTHONPATH=linux python3 -m compileall -q linux/gantry
       - name: Load GTK application module
-        run: xvfb-run -a env PYTHONPATH=linux python3 -c "import bambubar.app"
+        run: xvfb-run -a env PYTHONPATH=linux python3 -c "import gantry.app"
       - name: Build Debian package
         run: sh linux/scripts/build-deb.sh
       - name: Inspect Debian package

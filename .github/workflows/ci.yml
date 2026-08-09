@@ -18,10 +18,10 @@ jobs:
       - name: Build
         run: swift build --disable-sandbox
       - name: Run protocol self-test
-        run: .build/debug/BambuBar --self-test
+        run: .build/debug/Gantry --self-test
       - name: Run local storage self-test
-        run: .build/debug/BambuBar --storage-self-test
+        run: .build/debug/Gantry --storage-self-test
       - name: Run certificate pin self-test
-        run: .build/debug/BambuBar --certificate-pin-self-test
+        run: .build/debug/Gantry --certificate-pin-self-test
       - name: Compile Keychain variant
         run: swift build --disable-sandbox -Xswiftc -DKEYCHAIN_STORAGE
