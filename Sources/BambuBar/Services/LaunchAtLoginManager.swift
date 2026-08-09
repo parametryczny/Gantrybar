@@ -17,7 +17,7 @@ enum LaunchAtLoginManager {
         }
         let appPath = Bundle.main.bundleURL.standardizedFileURL.path
         guard appPath.hasSuffix(".app"), FileManager.default.fileExists(atPath: appPath) else {
-            throw LaunchAtLoginError("Nie udało się ustalić ścieżki PrismBar.app.")
+            throw LaunchAtLoginError("Nie udało się ustalić ścieżki Gantry.app.")
         }
         let directory = agentURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

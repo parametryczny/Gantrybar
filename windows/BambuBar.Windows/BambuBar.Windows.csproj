@@ -10,8 +10,9 @@
     <AssemblyName>BambuBar</AssemblyName>
     <RootNamespace>BambuBar</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.4.1</Version>
-    <Product>PrismBar</Product>
+    <Version>0.5.0</Version>
+    <Product>Gantry</Product>
+    <ApplicationIcon>gantry.ico</ApplicationIcon>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 

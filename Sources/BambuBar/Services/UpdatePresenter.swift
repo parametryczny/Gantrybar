@@ -37,8 +37,8 @@ enum UpdatePresenter {
         let alert = NSAlert()
         alert.messageText = settings.text("Dostępna aktualizacja: \(release.version)", "Update available: \(release.version)")
         alert.informativeText = settings.text(
-            "Masz wersję \(UpdateService.currentVersion). Zainstalować \(release.version)? PrismBar pobierze aktualizację i uruchomi się ponownie.",
-            "You have \(UpdateService.currentVersion). Install \(release.version)? PrismBar will download the update and restart."
+            "Masz wersję \(UpdateService.currentVersion). Zainstalować \(release.version)? Gantry pobierze aktualizację i uruchomi się ponownie.",
+            "You have \(UpdateService.currentVersion). Install \(release.version)? Gantry will download the update and restart."
         )
         alert.addButton(withTitle: settings.text("Zainstaluj", "Install"))
         alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page"))

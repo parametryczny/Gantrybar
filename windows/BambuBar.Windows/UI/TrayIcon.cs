@@ -25,7 +25,7 @@ public sealed class TrayIcon : IDisposable
         {
             Icon = BuildIcon(),
             Visible = true,
-            Text = "PrismBar"
+            Text = "Gantry"
         };
         _notifyIcon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleDashboard(); };
         _notifyIcon.BalloonTipClicked += (_, _) => OpenPendingUpdate();
@@ -56,7 +56,7 @@ public sealed class TrayIcon : IDisposable
                     UpdateChecker.MarkNotified(release.Version);
                     _pendingUpdateUrl = release.PageUrl;
                     ShowNotification(
-                        AppSettings.Text("Dostępna aktualizacja PrismBar", "PrismBar update available"),
+                        AppSettings.Text("Dostępna aktualizacja Gantry", "Gantry update available"),
                         AppSettings.Text($"Wersja {release.Version} jest do pobrania. Kliknij, aby otworzyć stronę.",
                                          $"Version {release.Version} is available. Click to open the page."),
                         null);
@@ -191,8 +191,8 @@ public sealed class TrayIcon : IDisposable
         int active = _store.ActivePrintCount;
         int total = _store.Printers.Count;
         _notifyIcon.Text = active > 0
-            ? AppSettings.Text($"PrismBar — {active} drukuje", $"PrismBar — {active} printing")
-            : AppSettings.Text($"PrismBar — {total} drukarek", $"PrismBar — {total} printers");
+            ? AppSettings.Text($"Gantry — {active} drukuje", $"Gantry — {active} printing")
+            : AppSettings.Text($"Gantry — {total} drukarek", $"Gantry — {total} printers");
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
@@ -281,33 +281,15 @@ public sealed class TrayIcon : IDisposable
         return Icon.FromHandle(bmp.GetHicon());
     }
 
-    // Front-face polygons of the PrismBar mark in a 400x400 design space (flat x,y pairs).
-    private static readonly float[][] LogoPolygons =
-    {
-        new float[] { 197, 55, 119, 212, 188, 195 },
-        new float[] { 203, 55, 193, 193, 263, 182 },
-        new float[] { 115, 225, 268, 195, 303, 263, 92, 272 },
-        new float[] { 81, 285, 51, 345, 175, 345 },
-        new float[] { 100, 276, 303, 268, 282, 345, 182, 345 },
-        new float[] { 315, 272, 288, 345, 345, 345 },
-    };
-
-    /// <summary>Draws the PrismBar mark filled into <paramref name="dst"/>, centered and scaled.</summary>
+    /// <summary>Draws the Gantry "G" mark filled into <paramref name="dst"/>, centered.</summary>
     private static void DrawLogo(Graphics g, RectangleF dst, Color color)
     {
-        const float minX = 51f, minY = 55f, srcW = 294f, srcH = 290f;
-        float scale = Math.Min(dst.Width / srcW, dst.Height / srcH);
-        float offsetX = dst.X + (dst.Width - srcW * scale) / 2f;
-        float offsetY = dst.Y + (dst.Height - srcH * scale) / 2f;
+        // Gantry logo: a bold "G" glyph fitted to the destination rectangle.
         using var brush = new SolidBrush(color);
-        foreach (var polygon in LogoPolygons)
-        {
-            var points = new PointF[polygon.Length / 2];
-            for (int i = 0; i < points.Length; i++)
-                points[i] = new PointF(offsetX + (polygon[i * 2] - minX) * scale,
-                                       offsetY + (polygon[i * 2 + 1] - minY) * scale);
-            g.FillPolygon(brush, points);
-        }
+        using var font = new Font("Segoe UI", dst.Height * 0.86f, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        g.DrawString("G", font, brush,
+            new RectangleF(dst.X, dst.Y - dst.Height * 0.04f, dst.Width, dst.Height), format);
     }
 
     private static GraphicsPath RoundedRect(Rectangle bounds, int radius)

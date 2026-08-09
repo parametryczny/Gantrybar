@@ -3,23 +3,25 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>PrismBar</string>
+	<string>Gantry</string>
 	<key>CFBundleExecutable</key>
-	<string>BambuBar</string>
+	<string>Gantry</string>
 	<key>CFBundleGetInfoString</key>
-	<string>PrismBar by Kamil Grzegorczyk (@parametryczny)</string>
+	<string>Gantry by Kamil Grzegorczyk (@parametryczny)</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>pl.bambubar.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>PrismBar</string>
+	<string>Gantry</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4.1</string>
+	<string>0.5.0</string>
 	<key>CFBundleVersion</key>
-	<string>0.1.19</string>
+	<string>0.5.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
@@ -31,7 +33,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Kamil Grzegorczyk (@parametryczny)</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>BambuBar wykrywa i monitoruje drukarki Bambu Lab w lokalnej sieci.</string>
+	<string>Gantry wykrywa i monitoruje drukarki 3D w sieci lokalnej.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+html,body{margin:0;width:1536px;height:1024px;overflow:hidden;background:#ddd}.hero{position:relative;width:1536px;height:1024px;background:url('../renders/gantry-all-platforms-hero-logo.png') 0 0/1536px 1024px no-repeat}.windows-screen{position:absolute;left:0;top:0;width:1234px;height:730px;transform-origin:0 0;display:block}
+</style></head><body><main class="hero"><img class="windows-screen" id="windows-screen" src="gantry-windows-screen.png" alt=""></main><script>
+// Solve the projective transform that maps the complete, flat Windows desktop
+// into the four inner corners of the photographed monitor. Because the app and
+// taskbar are one bitmap, their edges always remain perfectly parallel.
+function solve(A,b){for(let i=0;i<8;i++){let m=i;for(let j=i+1;j<8;j++)if(Math.abs(A[j][i])>Math.abs(A[m][i]))m=j;[A[i],A[m]]=[A[m],A[i]];[b[i],b[m]]=[b[m],b[i]];const p=A[i][i];for(let k=i;k<8;k++)A[i][k]/=p;b[i]/=p;for(let j=0;j<8;j++){if(j===i)continue;const q=A[j][i];for(let k=i;k<8;k++)A[j][k]-=q*A[i][k];b[j]-=q*b[i]}}return b}
+const src=[[0,0],[1234,0],[1234,730],[0,730]];
+const dst=[[796,118],[1454,139],[1451,521],[793,493]];
+const A=[],b=[];
+for(let i=0;i<4;i++){const [x,y]=src[i],[u,v]=dst[i];A.push([x,0,y,0,1,0,-u*x,-u*y]);b.push(u);A.push([0,x,0,y,0,1,-v*x,-v*y]);b.push(v)}
+const [a,b1,c,d,e,f,g,h]=solve(A,b);
+document.getElementById('windows-screen').style.transform=`matrix3d(${a},${b1},0,${g},${c},${d},0,${h},0,0,1,0,${e},${f},0,1)`;
+</script></body></html>

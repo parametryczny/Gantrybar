@@ -80,11 +80,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
         button.title = ""
-        button.image = PrismBarLogo.statusItemImage()
+        button.image = GantryLogo.statusItemImage(height: 14)
         button.imagePosition = .imageOnly
         button.toolTip = store.activePrintCount > 0
-            ? AppSettings.shared.text("PrismBar — drukuje: \(store.activePrintCount)", "PrismBar — printing: \(store.activePrintCount)")
-            : "PrismBar"
+            ? AppSettings.shared.text("Gantry — drukuje: \(store.activePrintCount)", "Gantry — printing: \(store.activePrintCount)")
+            : "Gantry"
     }
 
     /// Adds/removes/updates one extra status item per printer pinned to the menu bar, showing its
@@ -216,7 +216,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "power",
-                         title: settings.text("Zakończ PrismBar", "Quit PrismBar"),
+                         title: settings.text("Zakończ Gantry", "Quit Gantry"),
                          accessory: .detail("⌘Q")) {
             NSApplication.shared.terminate(nil)
         })

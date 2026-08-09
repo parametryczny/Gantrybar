@@ -26,7 +26,7 @@ enum UpdateChecker {
 
         let settings = AppSettings.shared
         NotificationService.post(
-            title: settings.text("Dostępna aktualizacja PrismBar", "PrismBar update available"),
+            title: settings.text("Dostępna aktualizacja Gantry", "Gantry update available"),
             body: settings.text("Wersja \(release.version) jest do pobrania. Kliknij, aby zainstalować.",
                                 "Version \(release.version) is available. Click to install."),
             userInfo: ["type": "update"]

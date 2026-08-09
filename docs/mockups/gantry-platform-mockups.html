@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gantry — platform mockups</title>
+  <style>
+    *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden} body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Arial,sans-serif;background:#ecebe7;color:#f5f7f9}
+    .scene{display:none;position:relative;width:1600px;height:1000px;overflow:hidden}.scene.active{display:block}
+    .app{background:rgba(24,27,31,.97);border:1px solid rgba(255,255,255,.13);box-shadow:0 28px 70px rgba(0,0,0,.38);color:#f3f5f7;overflow:hidden}
+    .appbar{height:68px;display:flex;align-items:center;padding:0 24px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:760;font-size:24px;letter-spacing:-.5px}.brand img{width:28px;height:28px;object-fit:contain;filter:invert(1)}.brand img.wordmark{width:90px;height:22px;filter:invert(1) brightness(1.35)}
+    .summary{margin-left:16px;color:#9ba2aa;font-size:13px}.app-actions{margin-left:auto;display:flex;gap:8px}.round{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#393e44;color:#fff;font-size:20px}.pill{padding:8px 13px;border-radius:10px;background:#393e44;color:#e9edf1;font-size:13px;font-weight:650}
+    .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:18px}.card{min-height:138px;border-radius:18px;background:#2e3237;border:1px solid rgba(255,255,255,.09);padding:16px 18px;box-shadow:inset 0 1px rgba(255,255,255,.035)}
+    .cardtop{display:flex;align-items:center;gap:8px}.printer{font-size:18px;font-weight:750}.proto{font-size:9px;font-weight:800;letter-spacing:.4px;padding:4px 6px;border-radius:6px;background:#42484f;color:#c7ccd2}.status{margin-left:auto;color:#28a9ff;font-size:11px;background:rgba(0,153,255,.14);padding:4px 7px;border-radius:6px}.job{margin:10px 0 9px;color:#adb3ba;font-size:13px}.progress{height:7px;border-radius:10px;background:#494f56;overflow:hidden}.progress i{display:block;height:100%;background:#0a9cff}.meta{display:flex;gap:16px;margin-top:10px;color:#b1b7bd;font-size:11px}.ams{display:flex;align-items:center;gap:6px;margin-top:10px;color:#9299a1;font-size:10px;font-weight:700}.spool{width:20px;height:15px;border-radius:5px;border:1px solid rgba(255,255,255,.55)}
+    .os-label{position:absolute;z-index:20;left:76px;top:62px;color:#111;font-size:15px;font-weight:750;letter-spacing:.18em;text-transform:uppercase}.os-label span{display:block;margin-top:8px;font-size:30px;letter-spacing:-.04em;text-transform:none}.soft-label{color:rgba(255,255,255,.9)}
+
+    /* macOS */
+    #macos{background:linear-gradient(142deg,#fafafa 0 45%,#e7e8ea 100%)}
+    .mac-device{position:absolute;width:1320px;height:790px;left:310px;top:108px;transform:rotate(-5deg);transform-origin:center;border-radius:44px;background:linear-gradient(145deg,#dfe1e3,#aeb2b6 60%,#878c91);padding:13px;box-shadow:0 54px 80px rgba(18,23,29,.25)}
+    .mac-screen{position:relative;width:100%;height:100%;overflow:hidden;border-radius:33px;background:radial-gradient(circle at 70% 70%,#6d91cf 0,#344e85 35%,#101b32 75%)}
+    .mac-screen:before{content:"";position:absolute;width:900px;height:700px;right:-160px;bottom:-310px;border-radius:50%;background:linear-gradient(135deg,#bbd5ff,#4768a8 40%,#152744);filter:blur(2px)}
+    .menubar{position:absolute;z-index:4;top:0;left:0;right:0;height:34px;background:rgba(17,24,37,.70);backdrop-filter:blur(22px);display:flex;align-items:center;padding:0 17px;color:#fff;font-size:12px;gap:19px}.menubar b{font-size:15px}.menubar .right{margin-left:auto;display:flex;gap:14px}
+    .mac-popover{position:absolute;z-index:3;width:590px;height:475px;right:58px;top:54px;border-radius:25px}.mac-popover .appbar{height:62px}.mac-popover .cards{gap:10px;padding:14px}.mac-popover .card{min-height:167px}.mac-popover:before{content:"";position:absolute;right:38px;top:-11px;width:23px;height:23px;background:#1a1d21;transform:rotate(45deg);border-left:1px solid rgba(255,255,255,.12);border-top:1px solid rgba(255,255,255,.12)}
+    .dock{position:absolute;z-index:4;bottom:16px;left:50%;transform:translateX(-50%);height:58px;padding:8px 11px;border-radius:17px;background:rgba(235,238,245,.30);border:1px solid rgba(255,255,255,.38);backdrop-filter:blur(20px);display:flex;gap:8px}.dock i{width:41px;height:41px;border-radius:10px;background:linear-gradient(150deg,#fafafa,#7f9dcc)}.dock i:nth-child(2){background:linear-gradient(150deg,#59d6ff,#1672df)}.dock i:nth-child(3){background:linear-gradient(150deg,#fff,#ee5c71)}.dock i:nth-child(4){background:#20242a url('../branding/gantry-g-icon.svg') center/28px no-repeat;filter:invert(1)}
+
+    /* Windows */
+    #windows{background:linear-gradient(135deg,#e9ecf2,#cdd5e1)}#windows .os-label{left:215px;top:115px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.55)}
+    .win-monitor{position:absolute;left:174px;top:80px;width:1250px;height:772px;padding:16px 16px 27px;border-radius:25px;background:linear-gradient(150deg,#2c2d30,#090a0b);box-shadow:0 48px 70px rgba(27,37,54,.28)}
+    .win-screen{position:relative;width:100%;height:100%;overflow:hidden;background:radial-gradient(circle at 25% 20%,#2d65a8,#13294e 42%,#081529 80%)}
+    .win-screen:before,.win-screen:after{content:"";position:absolute;background:linear-gradient(135deg,rgba(104,185,255,.85),rgba(25,73,143,.25));filter:blur(1px);transform:rotate(25deg)}.win-screen:before{width:510px;height:700px;left:40px;top:40px}.win-screen:after{width:560px;height:620px;left:430px;top:-80px;transform:rotate(-12deg)}
+    .win-app{position:absolute;z-index:3;right:30px;bottom:58px;width:635px;height:500px;border-radius:12px}.win-title{height:38px;background:#191b1f;display:flex;align-items:center;padding:0 13px;font-size:11px;border-bottom:1px solid #30343a}.win-title img{width:20px;height:20px;filter:invert(1);margin-right:8px}.window-controls{margin-left:auto;letter-spacing:17px;color:#adb2b8}.win-app .appbar{height:58px}.win-app .cards{padding:13px}.win-app .card{min-height:173px;border-radius:13px}
+    .taskbar{position:absolute;z-index:5;left:0;right:0;bottom:0;height:48px;background:rgba(20,27,40,.82);backdrop-filter:blur(22px);display:flex;align-items:center;justify-content:center;gap:10px}.taskbar i{width:31px;height:31px;border-radius:7px;background:#2b89dd}.taskbar i:nth-child(2){background:#e5e8ec}.taskbar i:nth-child(3){background:#f3c944}.taskbar .tray{position:absolute;right:18px;color:#eef2f7;font-size:11px}.win-stand{position:absolute;left:730px;top:848px;width:145px;height:95px;background:linear-gradient(90deg,#a8aaad,#e6e7e8,#989a9d);clip-path:polygon(35% 0,65% 0,78% 80%,100% 88%,100% 100%,0 100%,0 88%,22% 80%)}
+
+    /* Linux */
+    #linux{background:linear-gradient(145deg,#e9e4dc,#c8c3bb)}#linux .os-label{left:225px;top:172px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.6)}
+    .linux-laptop{position:absolute;left:180px;top:100px;width:1250px;height:720px;padding:15px;border-radius:28px 28px 12px 12px;background:#242426;box-shadow:0 45px 70px rgba(34,29,25,.24)}
+    .linux-screen{position:relative;width:100%;height:100%;overflow:hidden;background:radial-gradient(circle at 38% 35%,#d45a88 0,#6d2c79 35%,#231335 75%)}
+    .gnomebar{position:absolute;z-index:5;left:0;right:0;top:0;height:31px;background:rgba(18,14,23,.88);display:flex;align-items:center;padding:0 14px;font-size:11px}.gnomebar b{margin-right:auto}.gnomebar span{margin-left:auto}.linux-dock{position:absolute;z-index:4;left:11px;top:100px;width:48px;padding:7px;border-radius:14px;background:rgba(25,19,31,.58);display:grid;gap:8px}.linux-dock i{height:34px;border-radius:8px;background:#f16a3d}.linux-dock i:nth-child(2){background:#4b8bd8}.linux-dock i:nth-child(3){background:#e7e7e7}.linux-dock i:nth-child(4){background:#1c2024 url('../branding/gantry-g-icon.svg') center/24px no-repeat;filter:invert(1)}
+    .linux-app{position:absolute;z-index:3;right:34px;top:45px;width:700px;height:510px;border-radius:13px}.linux-title{height:43px;background:#25282d;display:flex;align-items:center;padding:0 16px;font-size:13px}.linux-app:before{content:"";position:absolute;right:45px;top:-10px;width:20px;height:20px;background:#25282d;transform:rotate(45deg);border-left:1px solid rgba(255,255,255,.08);border-top:1px solid rgba(255,255,255,.08)}.traffic{margin-left:auto;display:flex;gap:8px}.traffic i{width:11px;height:11px;border-radius:50%;background:#777}.linux-app .appbar{height:60px}.linux-app .cards{padding:14px}.linux-app .card{min-height:166px;border-radius:14px}.linux-base{position:absolute;left:105px;right:105px;top:820px;height:60px;background:linear-gradient(#d4d5d6,#9d9fa2);clip-path:polygon(6% 0,94% 0,100% 78%,98% 100%,2% 100%,0 78%);box-shadow:0 25px 30px rgba(0,0,0,.16)}
+
+    /* Raspberry Pi kiosk */
+    #raspberry{background:linear-gradient(180deg,#9d9c95 0 57%,#5b554d 57%)}#raspberry .os-label{left:76px;top:58px;text-shadow:0 2px 16px rgba(0,0,0,.55)}
+    #raspberry:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 49.7%,rgba(60,59,55,.16) 50%,transparent 50.3%),linear-gradient(0deg,transparent 49.7%,rgba(60,59,55,.10) 50%,transparent 50.3%);background-size:280px 280px;opacity:.6}
+    .workbench{position:absolute;left:0;right:0;bottom:0;height:255px;background:linear-gradient(8deg,#342f29,#74695a 45%,#4c453c);box-shadow:inset 0 16px 25px rgba(0,0,0,.28)}
+    .tool{position:absolute;background:#252728;box-shadow:0 8px 20px rgba(0,0,0,.3)}.tool.t1{width:110px;height:240px;left:65px;top:92px;border-radius:8px}.tool.t2{width:185px;height:70px;right:40px;top:140px;border-radius:10px}.tool.t3{width:16px;height:205px;right:132px;top:205px;background:#cf4e38}
+    .kiosk-arm{position:absolute;left:753px;top:70px;width:32px;height:185px;background:linear-gradient(90deg,#393b3b,#747879,#333);box-shadow:0 12px 20px rgba(0,0,0,.3)}
+    .kiosk-device{position:absolute;left:250px;top:160px;width:1100px;height:650px;padding:18px;border-radius:26px;background:linear-gradient(145deg,#393b3e,#0e0f10);box-shadow:0 42px 70px rgba(0,0,0,.45)}
+    .kiosk-screen{position:relative;width:100%;height:100%;overflow:hidden;border-radius:12px;background:#17191d}.kiosk-head{height:76px;padding:0 25px;display:flex;align-items:center;border-bottom:1px solid #353941}.kiosk-head .brand{font-size:28px}.kiosk-head .summary{font-size:14px}.clock{margin-left:auto;font-size:22px;font-weight:700}.kiosk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:18px}.kiosk-card{height:224px;border-radius:16px;background:#282c31;border:1px solid #3e444c;padding:17px}.kiosk-card .printer{font-size:19px}.kiosk-card .job{margin-top:14px}.kiosk-card.alert{border-color:#d45a57;background:#39272a}.kiosk-card.done{border-color:#3e9c67;background:#21352c}.kiosk-foot{position:absolute;bottom:14px;right:20px;color:#7f8790;font-size:11px}.kiosk-cable{position:absolute;left:774px;top:805px;width:10px;height:140px;background:#171819}
+  </style>
+</head>
+<body>
+  <section class="scene" id="macos">
+    <div class="os-label">Gantry for<span>macOS</span></div>
+    <div class="mac-device"><div class="mac-screen">
+      <div class="menubar"><b>●</b><b>Finder</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span><div class="right"><span>◉</span><span>Wi-Fi</span><b>10:42</b></div></div>
+      <div class="app mac-popover"><div class="appbar"><div class="brand"><img src="../branding/gantry-g-icon.svg">Gantry</div><div class="summary">5 drukarek · 4 online</div><div class="app-actions"><span class="pill">Zwiń</span><span class="round">↻</span><span class="round">＋</span></div></div><div class="cards" data-cards="mac"></div></div>
+      <div class="dock"><i></i><i></i><i></i><i></i></div>
+    </div></div>
+  </section>
+
+  <section class="scene" id="windows">
+    <div class="os-label">Gantry for<span>Windows 11</span></div>
+    <div class="win-monitor"><div class="win-screen">
+      <div class="app win-app"><div class="win-title"><img src="../branding/gantry-g-icon.svg">Gantry<div class="window-controls">— □ ×</div></div><div class="appbar"><div class="brand"><img class="wordmark" src="../branding/gantry-wordmark-black-tight.png" alt="GANTRY"></div><div class="summary">4 printers · 3 online</div><div class="app-actions"><span class="round">↻</span><span class="round">＋</span></div></div><div class="cards" data-cards="win"></div></div>
+      <div class="taskbar"><i></i><i></i><i></i><div class="tray">⌃　Wi-Fi　ENG　10:42</div></div>
+    </div></div><div class="win-stand"></div>
+  </section>
+
+  <section class="scene" id="linux">
+    <div class="os-label">Gantry for<span>GNU/Linux</span></div>
+    <div class="linux-laptop"><div class="linux-screen">
+      <div class="gnomebar"><b>Activities</b><em>Thu 10:42</em><span>●　Wi-Fi　▾</span></div><div class="linux-dock"><i></i><i></i><i></i><i></i></div>
+      <div class="app linux-app"><div class="linux-title">Gantry<div class="traffic"><i></i><i></i><i></i></div></div><div class="appbar"><div class="brand"><img src="../branding/gantry-g-icon.svg">Gantry</div><div class="summary">6 printers · 5 online</div><div class="app-actions"><span class="pill">Compact</span><span class="round">↻</span></div></div><div class="cards" data-cards="linux"></div></div>
+    </div></div><div class="linux-base"></div>
+  </section>
+
+  <section class="scene" id="raspberry">
+    <div class="os-label soft-label">Gantry Kiosk<span>Raspberry Pi</span></div><div class="tool t1"></div><div class="tool t2"></div><div class="tool t3"></div><div class="workbench"></div><div class="kiosk-arm"></div><div class="kiosk-cable"></div>
+    <div class="kiosk-device"><div class="kiosk-screen"><div class="kiosk-head"><div class="brand"><img src="../branding/gantry-g-icon.svg">Gantry</div><div class="summary">Workshop overview · 8 printers</div><div class="clock">10:42</div></div><div class="kiosk-grid" data-kiosk></div><div class="kiosk-foot">Auto refresh · 10:42:18</div></div></div>
+  </section>
+  <script>
+    const printers=[
+      ['X1 Carbon','Bambu Lab','demo_1.3mf',72,'#129cff'],['MK4S','Prusa','demo_2.bgcode',46,'#f08b32'],['Voron 2.4','Klipper','demo_3.gcode',91,'#a878e8'],['P1S','Bambu Lab','demo_4.3mf',18,'#129cff']
+    ];
+    function card(p,i){return `<div class="card"><div class="cardtop"><span class="printer">${p[0]}</span><span class="proto">${p[1]}</span><span class="status">Printing</span></div><div class="job">${p[2]}</div><div class="progress"><i style="width:${p[3]}%;background:${p[4]}"></i></div><div class="meta"><span>◷ ${18+i*11}m</span><span>▱ ${64+i*22}/${180+i*31}</span><span>${p[3]}%</span></div><div class="ams">AMS <i class="spool" style="background:#f3f3ef"></i><i class="spool" style="background:${p[4]}"></i><i class="spool" style="background:#45484d"></i><i class="spool" style="background:#e3bd68"></i></div></div>`}
+    document.querySelectorAll('[data-cards]').forEach(el=>el.innerHTML=printers.map(card).join(''));
+    const kiosk=[...printers,['A1 mini','Bambu Lab','Ready',0,'#6f767e'],['MINI+','Prusa','Finished',100,'#43c879']];
+    document.querySelector('[data-kiosk]').innerHTML=kiosk.map((p,i)=>`<div class="kiosk-card ${i===2?'alert':''} ${i===5?'done':''}"><div class="cardtop"><span class="printer">${p[0]}</span><span class="proto">${p[1]}</span><span class="status">${i===2?'Attention':i===5?'Finished':i===4?'Ready':'Printing'}</span></div><div class="job">${p[2]}</div><div class="progress"><i style="width:${p[3]}%;background:${p[4]}"></i></div><div class="meta"><span>${p[3]}%</span><span>◷ ${i===5?'0':14+i*9}m</span><span>▱ ${25+i*24}/${150+i*18}</span></div><div class="ams">AMS <i class="spool" style="background:#eee"></i><i class="spool" style="background:${p[4]}"></i><i class="spool" style="background:#555"></i><i class="spool" style="background:#d8b36a"></i></div></div>`).join('');
+    const requested=new URLSearchParams(location.search).get('platform')||'macos';
+    (document.getElementById(requested)||document.getElementById('macos')).classList.add('active');
+  </script>
+</body>
+</html>

@@ -1,5 +1,5 @@
-#define MyAppName "BambuBar"
-#define MyAppVersion "0.3.0"
+#define MyAppName "Gantry"
+#define MyAppVersion "0.5.0"
 #define MyAppPublisher "Kamil Grzegorczyk"
 #define MyAppURL "https://github.com/parametryczny/BambuBar"
 #define MyAppExeName "BambuBar.exe"
@@ -20,17 +20,18 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\installer-output
-OutputBaseFilename=BambuBar-Setup-Windows-x64
+OutputBaseFilename=Gantry-Setup-Windows-x64
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\BambuBar.Windows\gantry.ico
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=0.3.0.0
+VersionInfoVersion=0.5.0.0
 VersionInfoCompany={#MyAppPublisher}
-VersionInfoDescription=BambuBar Windows Beta Installer
+VersionInfoDescription=Gantry Windows Beta Installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoCopyright=Copyright (C) 2026 Kamil Grzegorczyk

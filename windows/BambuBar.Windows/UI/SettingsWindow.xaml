@@ -1,7 +1,7 @@
 <Window x:Class="BambuBar.UI.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PrismBar" Width="440" SizeToContent="Height"
+        Title="Gantry" Width="440" SizeToContent="Height"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="True"
         AllowsTransparency="False" Background="Transparent"

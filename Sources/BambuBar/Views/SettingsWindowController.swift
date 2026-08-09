@@ -193,7 +193,7 @@ final class SettingsWindowController: NSWindowController {
         guard let window else { return }
         let settings = AppSettings.shared
         window.appearance = settings.appearance
-        window.title = settings.text("Ustawienia PrismBar", "PrismBar Settings")
+        window.title = settings.text("Ustawienia Gantry", "Gantry Settings")
         titleLabel.stringValue = settings.text("Ustawienia", "Settings")
         authorLabel.stringValue = "Kamil Grzegorczyk"
         githubButton.title = "@parametryczny on GitHub"
@@ -264,7 +264,7 @@ final class SettingsWindowController: NSWindowController {
             try LaunchAtLoginManager.setEnabled(launchSwitch.state == .on)
         } catch {
             launchSwitch.state = LaunchAtLoginManager.isEnabled ? .on : .off
-            NotificationService.post(title: "PrismBar", body: error.localizedDescription)
+            NotificationService.post(title: "Gantry", body: error.localizedDescription)
         }
     }
 
@@ -307,8 +307,8 @@ final class SettingsWindowController: NSWindowController {
         let alert = NSAlert()
         alert.messageText = settings.text("Dostępna aktualizacja: \(release.version)", "Update available: \(release.version)")
         alert.informativeText = settings.text(
-            "Masz wersję \(UpdateService.currentVersion). Zainstalować \(release.version)? PrismBar pobierze aktualizację i uruchomi się ponownie.",
-            "You have \(UpdateService.currentVersion). Install \(release.version)? PrismBar will download the update and restart."
+            "Masz wersję \(UpdateService.currentVersion). Zainstalować \(release.version)? Gantry pobierze aktualizację i uruchomi się ponownie.",
+            "You have \(UpdateService.currentVersion). Install \(release.version)? Gantry will download the update and restart."
         )
         alert.addButton(withTitle: settings.text("Zainstaluj", "Install"))
         alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page"))

@@ -55,7 +55,7 @@ public partial class SettingsWindow : Window
 
     private void ApplyLanguage()
     {
-        Title = AppSettings.Text("Ustawienia PrismBar", "PrismBar Settings");
+        Title = AppSettings.Text("Ustawienia Gantry", "Gantry Settings");
         Heading.Text = AppSettings.Text("Ustawienia", "Settings");
 
         GeneralHeading.Text = AppSettings.Text("OGÓLNE", "GENERAL");
