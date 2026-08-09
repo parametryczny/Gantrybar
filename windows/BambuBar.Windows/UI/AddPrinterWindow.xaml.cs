@@ -49,6 +49,9 @@ public partial class AddPrinterWindow : Window
         PrusaRadio.Checked += (_, _) => ApplyKind();
         ScanButton.Click += (_, _) => _store.Scan();
         ImportButton.Click += (_, _) => ImportFromStudio();
+        // Reading the slicer config is opt-in: it holds access codes, so gate the button on consent.
+        ImportConsent.Checked += (_, _) => ImportButton.IsEnabled = true;
+        ImportConsent.Unchecked += (_, _) => ImportButton.IsEnabled = false;
         SubnetTargetsBox.LostFocus += (_, _) => SaveSubnetTargets();
         SubnetTargetsBox.TextChanged += (_, _) => ValidateSubnetTargets();
         SaveButton.Click += (_, _) => Save();
@@ -67,6 +70,10 @@ public partial class AddPrinterWindow : Window
         Heading.Text = Title;
         DetectedLabel.Text = AppSettings.Text("Wykryte drukarki", "Detected printers");
         ImportButton.Content = AppSettings.Text("Importuj z Bambu Studio", "Import from Bambu Studio");
+        ImportConsent.Content = AppSettings.Text("Pozwól odczytać konfigurację Bambu Studio", "Allow reading the Bambu Studio configuration");
+        ImportHint.Text = AppSettings.Text(
+            "Przyspiesza dodawanie, ale odczytuje lokalny plik slicera z kodami dostępu. Nic nie jest czytane, dopóki tego nie zaznaczysz.",
+            "Speeds up adding, but reads the local slicer file containing access codes. Nothing is read until you tick this.");
         SubnetTargetsLabel.Text = AppSettings.Text("Nie widać drukarki? Dodatkowe adresy do skanowania (VPN):",
                                                    "Printer not listed? Extra scan targets (VPN):");
         SubnetTargetsHint.Text = AppSettings.Text(
@@ -151,10 +158,12 @@ public partial class AddPrinterWindow : Window
 
     private void ImportFromStudio()
     {
+        // Defensive: never read the slicer config without explicit consent.
+        if (ImportConsent.IsChecked != true) return;
         try
         {
             int count = _store.ImportFromBambuStudio();
-            MessageBox.Show(this, AppSettings.Text($"Zaimportowano drukarek: {count}", $"Imported printers: {count}"), "PrismBar");
+            MessageBox.Show(this, AppSettings.Text($"Zaimportowano drukarek: {count}", $"Imported printers: {count}"), "Gantry");
             Close();
         }
         catch (Exception ex)

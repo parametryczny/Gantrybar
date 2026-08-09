@@ -13,6 +13,10 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     private let statusLabel = NSTextField(labelWithString: "")
     private let scanButton = NSButton(title: "", target: nil, action: nil)
     private let importButton = NSButton(title: "", target: nil, action: nil)
+    // Reading the slicer config is opt-in: it holds printer access codes, so the import button stays
+    // disabled until the user ticks this consent checkbox.
+    private let importConsent = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let importHint = NSTextField(wrappingLabelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
     private let saveButton = NSButton(title: "", target: nil, action: nil)
     private let cancelButton = NSButton(title: "", target: nil, action: nil)
@@ -65,6 +69,16 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         scanButton.action = #selector(scan)
         importButton.target = self
         importButton.action = #selector(importFromBambuStudio)
+        importButton.isEnabled = false   // gated behind the consent checkbox below
+        importConsent.target = self
+        importConsent.action = #selector(importConsentChanged)
+        importHint.font = .systemFont(ofSize: 10)
+        importHint.textColor = .secondaryLabelColor
+        importHint.maximumNumberOfLines = 3
+        let importColumn = NSStackView(views: [importConsent, importButton, importHint])
+        importColumn.orientation = .vertical
+        importColumn.alignment = .leading
+        importColumn.spacing = 4
         let discoveryRow = NSStackView(views: [printerPopup, scanButton])
         discoveryRow.orientation = .horizontal
         discoveryRow.spacing = 8
@@ -83,7 +97,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
 
         form = NSGridView(views: [
             [detectedLabel, discoveryRow],
-            [bambuStudioLabel, importButton],
+            [bambuStudioLabel, importColumn],
             [nameLabel, nameField],
             [hostLabel, hostField],
             [serialLabel, serialField],
@@ -213,6 +227,14 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             "Dopasuj wykryte drukarki i pobierz ich kody z lokalnej konfiguracji Bambu Studio",
             "Match detected printers and load their codes from the local Bambu Studio configuration"
         )
+        importConsent.title = settings.text(
+            "Pozwól odczytać konfigurację Bambu Studio",
+            "Allow reading the Bambu Studio configuration"
+        )
+        importHint.stringValue = settings.text(
+            "Przyspiesza dodawanie, ale odczytuje lokalny plik slicera z kodami dostępu do drukarek. Nic nie jest czytane, dopóki tego nie zaznaczysz.",
+            "Speeds up adding, but reads the local slicer file containing printer access codes. Nothing is read until you tick this."
+        )
         pasteCodeButton.title = settings.text("Wklej", "Paste")
         pasteCodeButton.toolTip = settings.text("Wklej kod dostępu ze schowka", "Paste access code from clipboard")
         detectedLabel.stringValue = settings.text("Wykryte:", "Detected:")
@@ -274,8 +296,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
 
     private func refreshDiscovery() {
         scanButton.isEnabled = !store.isScanning
-        // Import reads the Bambu Studio config directly, so it never needs to wait for a scan.
-        importButton.isEnabled = editingSerial == nil
+        // Import reads the Bambu Studio config directly, so it never needs to wait for a scan — but
+        // stays gated behind the consent checkbox.
+        importButton.isEnabled = editingSerial == nil && importConsent.state == .on
         guard editingSerial == nil else { return }
         if store.isScanning {
             statusLabel.stringValue = AppSettings.shared.text("Skanowanie sieci…", "Scanning network…")
@@ -331,15 +354,21 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         store.scan()
     }
 
+    @objc private func importConsentChanged() {
+        importButton.isEnabled = editingSerial == nil && importConsent.state == .on
+    }
+
     @objc private func importFromBambuStudio() {
+        // Defensive: never read the slicer config without explicit consent.
+        guard importConsent.state == .on else { return }
         statusLabel.stringValue = ""
         do {
             let count = try store.importFromBambuStudio()
             let alert = NSAlert()
             alert.messageText = AppSettings.shared.text("Zaimportowano drukarki", "Printers imported")
             alert.informativeText = AppSettings.shared.text(
-                "Dodano lub zaktualizowano: \(count). PrismBar będzie używać kodów z lokalnej konfiguracji Bambu Studio.",
-                "Added or updated: \(count). PrismBar will use codes from the local Bambu Studio configuration."
+                "Dodano lub zaktualizowano: \(count). Gantry będzie używać kodów z lokalnej konfiguracji Bambu Studio.",
+                "Added or updated: \(count). Gantry will use codes from the local Bambu Studio configuration."
             )
             alert.addButton(withTitle: "OK")
             if let window {
@@ -430,7 +459,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         codeField.placeholderString = "PIN / Access Code"
         printerPopup.isEnabled = true
         scanButton.isEnabled = true
-        importButton.isEnabled = true
+        importConsent.state = .off
+        importButton.isEnabled = false   // re-gate: consent is per-open, not remembered
         clear()
         popupPrinters = []
         printerPopup.removeAllItems()
