@@ -11,7 +11,7 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>pl.bambubar.app</string>
+	<string>pl.gantry.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -28,7 +28,7 @@
 	<true/>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_bambubar._tcp</string>
+		<string>_gantry._tcp</string>
 	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Kamil Grzegorczyk (@parametryczny)</string>

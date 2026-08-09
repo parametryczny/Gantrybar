@@ -1,12 +1,12 @@
-# BambuBar for Windows
+# Gantry for Windows
 
 **[English](#english)** · **[Polski](#polski)**
 
-A system-tray port of BambuBar for Windows, built with .NET 8 (WPF + WinForms tray).
+A system-tray port of Gantry for Windows, built with .NET 8 (WPF + WinForms tray).
 It mirrors the macOS app: local-network discovery, MQTT-over-TLS monitoring, certificate
 pinning, AMS/HMS details and notifications — no Bambu Cloud account required.
 
-![BambuBar Windows 11 beta dashboard and system tray menu](../docs/renders/bambubar-windows-11-beta.jpg)
+![Gantry Windows 11 beta dashboard and system tray menu](../docs/renders/gantry-windows-11-beta.jpg)
 
 ---
 
@@ -21,8 +21,8 @@ pinning, AMS/HMS details and notifications — no Bambu Cloud account required.
 
 ### Installation
 
-Download `BambuBar-Setup-Windows-x64.exe` from the latest GitHub Release. The per-user
-installer does not require administrator rights, starts BambuBar after installation and
+Download `Gantry-Setup-Windows-x64.exe` from the latest GitHub Release. The per-user
+installer does not require administrator rights, starts Gantry after installation and
 enables launch at Windows sign-in. It also adds a Start menu shortcut and a standard
 uninstaller. The portable ZIP remains available as an alternative.
 
@@ -30,21 +30,21 @@ uninstaller. The portable ZIP remains available as an alternative.
 
 ```bat
 cd windows
-dotnet restore BambuBar.Windows\BambuBar.Windows.csproj
-dotnet build   BambuBar.Windows\BambuBar.Windows.csproj -c Release
-dotnet run   --project BambuBar.Windows\BambuBar.Windows.csproj
+dotnet restore Gantry.Windows\Gantry.Windows.csproj
+dotnet build   Gantry.Windows\Gantry.Windows.csproj -c Release
+dotnet run   --project Gantry.Windows\Gantry.Windows.csproj
 ```
 
 ### Single-file executable
 
 ```bat
 cd windows
-dotnet publish BambuBar.Windows\BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
+dotnet publish Gantry.Windows\Gantry.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
 ```
 
 The result is the self-contained `folder windows\publish\ (Gantry.exe)`, which does not require a
 separate .NET installation. The GitHub Actions workflow `.github/workflows/windows.yml`
-packages it as `BambuBar-Windows-x64.zip` on every relevant push.
+packages it as `Gantry-Windows-x64.zip` on every relevant push.
 
 ### How it maps to the macOS app
 
@@ -56,7 +56,7 @@ packages it as `BambuBar-Windows-x64.zip` on every relevant push.
 | SSDP multicast discovery | `Services/SsdpDiscovery.cs` (UDP 2021 / 239.255.255.250) |
 | subnet cert-CN probe | `Services/SubnetDiscovery.cs` |
 | certificate pinning | `Services/CertificatePinStore.cs` (SHA-256) |
-| Keychain / defaults | `Services/Storage.cs` — JSON in `%AppData%\BambuBar` + DPAPI for codes |
+| Keychain / defaults | `Services/Storage.cs` — JSON in `%AppData%\Gantry` + DPAPI for codes |
 | status/AMS/HMS parsing | `Services/StatusParser.cs`, `Services/HmsResolver.cs` |
 | notifications | tray balloon tips (`Services/NotificationService.cs`) |
 | Launch at Login | `Services/LaunchAtLogin.cs` (HKCU Run key) |
@@ -65,7 +65,7 @@ packages it as `BambuBar-Windows-x64.zip` on every relevant push.
 ### Storage & privacy
 
 Access codes are encrypted with Windows DPAPI (per-user) and stored under
-`%AppData%\BambuBar\defaults.json`; certificate pins and settings live in the same file.
+`%AppData%\Gantry\defaults.json`; certificate pins and settings live in the same file.
 The app talks only to the local network. Bambu Studio codes are imported only after you
 explicitly choose **Import from Bambu Studio** (reads `%AppData%\BambuStudio\BambuStudio.conf`).
 
@@ -82,8 +82,8 @@ explicitly choose **Import from Bambu Studio** (reads `%AppData%\BambuStudio\Bam
 
 ### Instalacja
 
-Pobierz `BambuBar-Setup-Windows-x64.exe` z najnowszego wydania GitHub. Instalator działa
-dla bieżącego użytkownika bez uprawnień administratora, uruchamia BambuBar po instalacji i
+Pobierz `Gantry-Setup-Windows-x64.exe` z najnowszego wydania GitHub. Instalator działa
+dla bieżącego użytkownika bez uprawnień administratora, uruchamia Gantry po instalacji i
 włącza start aplikacji przy logowaniu do Windows. Dodaje również skrót w menu Start oraz
 standardowy deinstalator. Wariant przenośny ZIP pozostaje dostępny jako alternatywa.
 
@@ -91,26 +91,26 @@ standardowy deinstalator. Wariant przenośny ZIP pozostaje dostępny jako altern
 
 ```bat
 cd windows
-dotnet restore BambuBar.Windows\BambuBar.Windows.csproj
-dotnet build   BambuBar.Windows\BambuBar.Windows.csproj -c Release
-dotnet run   --project BambuBar.Windows\BambuBar.Windows.csproj
+dotnet restore Gantry.Windows\Gantry.Windows.csproj
+dotnet build   Gantry.Windows\Gantry.Windows.csproj -c Release
+dotnet run   --project Gantry.Windows\Gantry.Windows.csproj
 ```
 
 ### Pojedynczy plik .exe
 
 ```bat
 cd windows
-dotnet publish BambuBar.Windows\BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
+dotnet publish Gantry.Windows\Gantry.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
 ```
 
 Wynik to samodzielny `folder windows\publish\ (Gantry.exe)`, który nie wymaga osobnej instalacji
 .NET. Workflow `.github/workflows/windows.yml` przy każdym odpowiednim pushu pakuje go jako
-`BambuBar-Windows-x64.zip`.
+`Gantry-Windows-x64.zip`.
 
 ### Przechowywanie i prywatność
 
 Kody dostępu są szyfrowane przez Windows DPAPI (dla użytkownika) i zapisywane w
-`%AppData%\BambuBar\defaults.json`; tam też trafiają piny certyfikatów i ustawienia.
+`%AppData%\Gantry\defaults.json`; tam też trafiają piny certyfikatów i ustawienia.
 Aplikacja komunikuje się wyłącznie z siecią lokalną. Kody z Bambu Studio są importowane
 dopiero po świadomym wybraniu **Importuj z Bambu Studio**.
 

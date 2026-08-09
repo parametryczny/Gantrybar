@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+AUTOSTART_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+AUTOSTART_FILE="$AUTOSTART_DIR/gantry-kiosk.desktop"
+
+if [ "${1:-}" = "--disable" ]; then
+  rm -f "$AUTOSTART_FILE"
+  printf '%s\n' "Gantry Workshop: autostart wyłączony."
+  exit 0
+fi
+
+mkdir -p "$AUTOSTART_DIR"
+rm -f "$AUTOSTART_DIR/gantry.desktop"
+install -m 0644 /usr/share/applications/gantry-kiosk.desktop "$AUTOSTART_FILE"
+
+if command -v xdg-user-dir >/dev/null 2>&1; then
+  DOCUMENTS_DIR=$(xdg-user-dir DOCUMENTS)
+else
+  DOCUMENTS_DIR="${XDG_DOCUMENTS_DIR:-$HOME/Documents}"
+fi
+mkdir -p "$DOCUMENTS_DIR"
+if [ ! -e "$DOCUMENTS_DIR/Gantry-printers-template.csv" ]; then
+  install -m 0600 /usr/share/doc/gantry/Gantry-printers-template.csv "$DOCUMENTS_DIR/Gantry-printers-template.csv"
+fi
+
+printf '%s\n' \
+  "Gantry Workshop: autostart włączony." \
+  "Szablon CSV: $DOCUMENTS_DIR/Gantry-printers-template.csv" \
+  "Uruchom teraz poleceniem: gantry-kiosk" \
+  "Wyłącz autostart: gantry-kiosk-setup --disable"

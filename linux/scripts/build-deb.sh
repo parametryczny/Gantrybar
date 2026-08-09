@@ -2,30 +2,30 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-VERSION=$(PYTHONPATH="$ROOT/linux" python3 -c 'from bambubar import __version__; print(__version__)')
+VERSION=$(PYTHONPATH="$ROOT/linux" python3 -c 'from gantry import __version__; print(__version__)')
 ARCH=all
-BUILD="$ROOT/linux/build/bambubar_${VERSION}_${ARCH}"
+BUILD="$ROOT/linux/build/gantry_${VERSION}_${ARCH}"
 OUTPUT="$ROOT/linux/dist/Gantry-${VERSION}-Linux-${ARCH}.deb"
 
 rm -rf "$BUILD"
 mkdir -p "$BUILD/DEBIAN" \
   "$BUILD/usr/bin" \
-  "$BUILD/usr/lib/python3/dist-packages/bambubar" \
+  "$BUILD/usr/lib/python3/dist-packages/gantry" \
   "$BUILD/usr/share/applications" \
   "$BUILD/usr/share/icons/hicolor/scalable/apps" \
   "$BUILD/usr/share/metainfo" \
-  "$BUILD/usr/share/doc/bambubar" \
+  "$BUILD/usr/share/doc/gantry" \
   "$ROOT/linux/dist"
 
 cat > "$BUILD/DEBIAN/control" <<EOF
-Package: bambubar
+Package: gantry
 Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: $ARCH
 Depends: python3 (>= 3.10), python3-gi, python3-websocket, gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1, libsecret-tools, gnome-keyring, libnotify-bin, openssl, avahi-daemon, x11-xserver-utils
 Maintainer: Kamil Grzegorczyk <parametryczny@users.noreply.github.com>
-Homepage: https://github.com/parametryczny/BambuBar
+Homepage: https://github.com/parametryczny/gantrybar
 Description: Gantry 3D printer status monitor
  Gantry monitors Bambu Lab, Klipper/Moonraker and PrusaLink printers over the
  local network, shows print progress, temperatures, layers and filament slots,
@@ -34,17 +34,17 @@ Description: Gantry 3D printer status monitor
  configuration panel protected with an on-screen pairing code.
 EOF
 
-cp -a "$ROOT/linux/bambubar/." "$BUILD/usr/lib/python3/dist-packages/bambubar/"
-find "$BUILD/usr/lib/python3/dist-packages/bambubar" -type d -name __pycache__ -prune -exec rm -rf {} +
-install -m 0755 "$ROOT/linux/packaging/bambubar" "$BUILD/usr/bin/bambubar"
-install -m 0755 "$ROOT/linux/packaging/bambubar-kiosk" "$BUILD/usr/bin/bambubar-kiosk"
-install -m 0755 "$ROOT/linux/packaging/bambubar-kiosk-setup" "$BUILD/usr/bin/bambubar-kiosk-setup"
-install -m 0644 "$ROOT/linux/packaging/bambubar.desktop" "$BUILD/usr/share/applications/bambubar.desktop"
-install -m 0644 "$ROOT/linux/packaging/bambubar-kiosk.desktop" "$BUILD/usr/share/applications/bambubar-kiosk.desktop"
-install -m 0644 "$ROOT/linux/assets/bambubar.svg" "$BUILD/usr/share/icons/hicolor/scalable/apps/bambubar.svg"
-install -m 0644 "$ROOT/linux/packaging/bambubar.metainfo.xml" "$BUILD/usr/share/metainfo/pl.parametryczny.BambuBar.metainfo.xml"
-install -m 0644 "$ROOT/LICENSE" "$BUILD/usr/share/doc/bambubar/copyright"
-install -m 0644 "$ROOT/linux/packaging/BambuBar-printers-template.csv" "$BUILD/usr/share/doc/bambubar/Gantry-printers-template.csv"
+cp -a "$ROOT/linux/gantry/." "$BUILD/usr/lib/python3/dist-packages/gantry/"
+find "$BUILD/usr/lib/python3/dist-packages/gantry" -type d -name __pycache__ -prune -exec rm -rf {} +
+install -m 0755 "$ROOT/linux/packaging/gantry" "$BUILD/usr/bin/gantry"
+install -m 0755 "$ROOT/linux/packaging/gantry-kiosk" "$BUILD/usr/bin/gantry-kiosk"
+install -m 0755 "$ROOT/linux/packaging/gantry-kiosk-setup" "$BUILD/usr/bin/gantry-kiosk-setup"
+install -m 0644 "$ROOT/linux/packaging/gantry.desktop" "$BUILD/usr/share/applications/gantry.desktop"
+install -m 0644 "$ROOT/linux/packaging/gantry-kiosk.desktop" "$BUILD/usr/share/applications/gantry-kiosk.desktop"
+install -m 0644 "$ROOT/linux/assets/gantry.svg" "$BUILD/usr/share/icons/hicolor/scalable/apps/gantry.svg"
+install -m 0644 "$ROOT/linux/packaging/gantry.metainfo.xml" "$BUILD/usr/share/metainfo/pl.parametryczny.Gantry.metainfo.xml"
+install -m 0644 "$ROOT/LICENSE" "$BUILD/usr/share/doc/gantry/copyright"
+install -m 0644 "$ROOT/linux/packaging/Gantry-printers-template.csv" "$BUILD/usr/share/doc/gantry/Gantry-printers-template.csv"
 
 if command -v dpkg-deb >/dev/null 2>&1; then
   dpkg-deb --root-owner-group --build "$BUILD" "$OUTPUT"

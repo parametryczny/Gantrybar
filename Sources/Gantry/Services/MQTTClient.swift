@@ -4,7 +4,7 @@ import OSLog
 import Security
 
 final class MQTTClient: PrinterConnection, @unchecked Sendable {
-    private static let logger = Logger(subsystem: "pl.bambubar.app", category: "MQTT")
+    private static let logger = Logger(subsystem: "pl.gantry.app", category: "MQTT")
     enum Event: Sendable {
         case connected
         case telemetry(PrinterTelemetry)
@@ -30,7 +30,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
         self.printer = printer
         self.accessCode = accessCode
         self.onEvent = onEvent
-        self.queue = DispatchQueue(label: "pl.bambubar.mqtt.\(printer.serial)")
+        self.queue = DispatchQueue(label: "pl.gantry.mqtt.\(printer.serial)")
     }
 
     func start() {
@@ -97,7 +97,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
         switch state {
         case .ready:
             Self.logger.notice("TLS ready")
-            let clientID = "BambuBar-\(UUID().uuidString.prefix(8))"
+            let clientID = "Gantry-\(UUID().uuidString.prefix(8))"
             send(MQTTCodec.connect(clientID: clientID, username: "bblp", password: accessCode))
             receiveNext()
         case .failed(let error):

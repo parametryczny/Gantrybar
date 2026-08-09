@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 
-private let printerCardPasteboardType = NSPasteboard.PasteboardType("pl.bambubar.printer-card")
+private let printerCardPasteboardType = NSPasteboard.PasteboardType("pl.gantry.printer-card")
 
 /// Flipped so a scroll's document anchors its content to the top-left; short content then
 /// sits at the top instead of the bottom of the clip view.

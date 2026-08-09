@@ -69,8 +69,8 @@ On 64-bit Raspberry Pi OS with Desktop, install the same architecture-independen
 enable the workshop dashboard for the current desktop user:
 
 ```sh
-bambubar-kiosk-setup
-bambubar-kiosk
+gantry-kiosk-setup
+gantry-kiosk
 ```
 
 The setup command creates an XDG autostart entry and a CSV template in the user's Documents folder. Gantry
@@ -98,5 +98,5 @@ system updates and diagnostics.
 Disable kiosk autostart with:
 
 ```sh
-bambubar-kiosk-setup --disable
+gantry-kiosk-setup --disable
 ```

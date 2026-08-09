@@ -4,7 +4,7 @@ import Network
 /// Starting a declared Bonjour browser is Apple's supported way to trigger
 /// the Local Network privacy prompt before direct IP connections are made.
 final class LocalNetworkPermissionPrompter: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "pl.bambubar.local-network-permission")
+    private let queue = DispatchQueue(label: "pl.gantry.local-network-permission")
     private let onAvailable: @Sendable () -> Void
     private var browser: NWBrowser?
     private var reportedAvailable = false
@@ -16,7 +16,7 @@ final class LocalNetworkPermissionPrompter: @unchecked Sendable {
     func start() {
         let parameters = NWParameters.tcp
         parameters.includePeerToPeer = true
-        let browser = NWBrowser(for: .bonjour(type: "_bambubar._tcp", domain: "local."), using: parameters)
+        let browser = NWBrowser(for: .bonjour(type: "_gantry._tcp", domain: "local."), using: parameters)
         self.browser = browser
         browser.stateUpdateHandler = { [weak self] state in
             guard let self else { return }

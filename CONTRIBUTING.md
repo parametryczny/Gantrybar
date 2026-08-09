@@ -14,9 +14,9 @@ Requirements: macOS 26 or newer, Swift 6 and Xcode Command Line Tools.
 
 ```bash
 swift build --disable-sandbox
-.build/debug/BambuBar --self-test
-.build/debug/BambuBar --storage-self-test
-.build/debug/BambuBar --certificate-pin-self-test
+.build/debug/Gantry --self-test
+.build/debug/Gantry --storage-self-test
+.build/debug/Gantry --certificate-pin-self-test
 ```
 
 Run the unit tests (parsers, MQTT codec, discovery) with:

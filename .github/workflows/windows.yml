@@ -25,15 +25,15 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - name: Restore
-        run: dotnet restore BambuBar.Windows/BambuBar.Windows.csproj
+        run: dotnet restore Gantry.Windows/Gantry.Windows.csproj
       - name: Build
-        run: dotnet build BambuBar.Windows/BambuBar.Windows.csproj -c Release --no-restore
+        run: dotnet build Gantry.Windows/Gantry.Windows.csproj -c Release --no-restore
       - name: Test Bambu Studio config import
-        run: .\BambuBar.Windows\bin\Release\net8.0-windows\Gantry.exe --self-test
+        run: .\Gantry.Windows\bin\Release\net8.0-windows\Gantry.exe --self-test
       # Self-contained FOLDER publish (not a self-extracting single-file exe). The self-extract
       # pattern is the main trigger for Avast/SmartScreen false positives — see issue #20.
       - name: Publish self-contained app
-        run: dotnet publish BambuBar.Windows/BambuBar.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
+        run: dotnet publish Gantry.Windows/Gantry.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
       - name: Install Inno Setup
         shell: pwsh
         run: |
@@ -48,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc "installer\BambuBar.iss"
+          & $iscc "installer\Gantry.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test silent install, autostart and uninstall
         shell: pwsh
@@ -60,7 +60,7 @@ jobs:
           $installedExe = Join-Path $env:LOCALAPPDATA "Programs\Gantry\Gantry.exe"
           if (-not (Test-Path $installedExe)) { throw "Installed application was not found." }
 
-          $runValue = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "BambuBar" -ErrorAction Stop).BambuBar
+          $runValue = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "Gantry" -ErrorAction Stop).Gantry
           if ($runValue -notlike "*Gantry.exe*") { throw "Autostart registry value is invalid." }
 
           $uninstaller = Join-Path $env:LOCALAPPDATA "Programs\Gantry\unins000.exe"
@@ -68,7 +68,7 @@ jobs:
           if ($uninstall.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($uninstall.ExitCode)." }
           if (Test-Path $installedExe) { throw "Application remained after uninstall." }
 
-          $runKey = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "BambuBar" -ErrorAction SilentlyContinue
+          $runKey = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "Gantry" -ErrorAction SilentlyContinue
           if ($null -ne $runKey) { throw "Autostart value remained after uninstall." }
       - name: Package ZIP
         shell: pwsh

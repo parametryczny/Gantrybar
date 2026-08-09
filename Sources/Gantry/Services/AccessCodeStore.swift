@@ -11,7 +11,9 @@ enum AccessCodeStore {
     // All codes live in ONE keychain item (a JSON serial→code map). macOS shows its access
     // prompt per keychain item, so a single item means at most one prompt no matter how many
     // printers are saved — instead of one prompt per printer with per-serial items.
-    private static let service = "pl.bambubar.printer-access-codes.v3"
+    private static let service = "pl.gantry.printer-access-codes.v3"
+    // Pre-rebrand consolidated item; read once so upgrades keep their saved codes.
+    private static let legacyConsolidatedService = "pl.bambubar.printer-access-codes.v3"
     private static let account = "all"
     // Older builds stored one item per serial; migration folds these in and deletes them.
     private static let legacyService = "pl.bambubar.printer-access-code.v2"
@@ -51,7 +53,17 @@ enum AccessCodeStore {
     }
 
     private static func readItem() -> [String: String]? {
-        var query = baseQuery()
+        if let dict = readItem(service: service) { return dict }
+        // Migrate codes saved by the pre-rebrand app into the Gantry item.
+        if let legacy = readItem(service: legacyConsolidatedService) {
+            try? persist(legacy)
+            return legacy
+        }
+        return nil
+    }
+
+    private static func readItem(service: String) -> [String: String]? {
+        var query = baseQuery(service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -79,7 +91,7 @@ enum AccessCodeStore {
         }
     }
 
-    private static func baseQuery() -> [String: Any] {
+    private static func baseQuery(service: String = AccessCodeStore.service) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

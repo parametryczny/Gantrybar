@@ -4,13 +4,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from bambubar.core import PrinterKind, PrinterState, expand_scan_targets, parse_telemetry, studio_devices_from_content
-from bambubar.csvimport import parse_printer_csv, template_csv
-from bambubar.discovery import parse_ssdp
-from bambubar.desktop import installed_slicers
-from bambubar.http_clients import parse_cfs, parse_moonraker, parse_prusalink
-from bambubar.mqtt import connect_packet, publish_packet, publish_payload, subscribe_packet
-from bambubar.webconfig import config_page, pairing_code, validate_printer_form
+from gantry.core import PrinterKind, PrinterState, expand_scan_targets, parse_telemetry, studio_devices_from_content
+from gantry.csvimport import parse_printer_csv, template_csv
+from gantry.discovery import parse_ssdp
+from gantry.desktop import installed_slicers
+from gantry.http_clients import parse_cfs, parse_moonraker, parse_prusalink
+from gantry.mqtt import connect_packet, publish_packet, publish_payload, subscribe_packet
+from gantry.webconfig import config_page, pairing_code, validate_printer_form
 
 
 class CoreTests(unittest.TestCase):
@@ -164,7 +164,7 @@ class CoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "orca-slicer"
             executable.touch(mode=0o755)
-            with patch("bambubar.desktop.shutil.which", side_effect=lambda name: str(executable) if name == "orca-slicer" else None):
+            with patch("gantry.desktop.shutil.which", side_effect=lambda name: str(executable) if name == "orca-slicer" else None):
                 values = installed_slicers()
         self.assertEqual([(value.name, value.command) for value in values],
                          [("OrcaSlicer", (str(executable),))])

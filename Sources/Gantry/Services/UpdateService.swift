@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-/// Checks GitHub Releases for a newer BambuBar and, on request, downloads it, swaps the running
+/// Checks GitHub Releases for a newer Gantry and, on request, downloads it, swaps the running
 /// app bundle in place and relaunches. macOS only.
 enum UpdateService {
     struct Release {
@@ -51,12 +51,12 @@ enum UpdateService {
     }
 
     static func latestRelease() async throws -> Release {
-        guard let url = URL(string: "https://api.github.com/repos/parametryczny/BambuBar/releases/latest") else {
+        guard let url = URL(string: "https://api.github.com/repos/parametryczny/gantrybar/releases/latest") else {
             throw UpdateError.network
         }
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("BambuBar", forHTTPHeaderField: "User-Agent")
+        request.setValue("Gantry", forHTTPHeaderField: "User-Agent")
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let data: Data
@@ -69,7 +69,7 @@ enum UpdateService {
               let tag = root["tag_name"] as? String else { throw UpdateError.parse }
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         let pageURL = (root["html_url"] as? String).flatMap(URL.init(string:))
-            ?? URL(string: "https://github.com/parametryczny/BambuBar/releases")!
+            ?? URL(string: "https://github.com/parametryczny/gantrybar/releases")!
 
         let assets = root["assets"] as? [[String: Any]] ?? []
         func assetURL(matching predicate: (String) -> Bool) -> URL? {
@@ -110,7 +110,7 @@ enum UpdateService {
 
         let fileManager = FileManager.default
         let work = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("BambuBar-update-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("Gantry-update-\(UUID().uuidString)", isDirectory: true)
         try? fileManager.createDirectory(at: work, withIntermediateDirectories: true)
 
         let zip = work.appendingPathComponent("update.zip")

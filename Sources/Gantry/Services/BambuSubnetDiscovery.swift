@@ -37,7 +37,7 @@ final class BambuSubnetDiscovery: @unchecked Sendable {
 
     private func probe(host: String) async -> DiscoveredPrinter? {
         await withCheckedContinuation { (continuation: CheckedContinuation<DiscoveredPrinter?, Never>) in
-            let queue = DispatchQueue(label: "pl.bambubar.probe.\(host)")
+            let queue = DispatchQueue(label: "pl.gantry.probe.\(host)")
             let box = ProbeBox { serial in
                 guard let serial, serial.count >= 10,
                       serial.allSatisfy({ $0.isLetter || $0.isNumber }) else {

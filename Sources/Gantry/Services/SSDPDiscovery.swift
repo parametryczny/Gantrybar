@@ -3,7 +3,7 @@ import Foundation
 import OSLog
 
 final class SSDPDiscovery: @unchecked Sendable {
-    private static let logger = Logger(subsystem: "pl.bambubar.app", category: "SSDP")
+    private static let logger = Logger(subsystem: "pl.gantry.app", category: "SSDP")
 
     func scan(seconds: TimeInterval = 4) async -> [DiscoveredPrinter] {
         await withCheckedContinuation { continuation in

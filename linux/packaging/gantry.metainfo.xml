@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>pl.parametryczny.Gantry</id>
+  <name>Gantry</name>
+  <summary>Local 3D printer status monitor</summary>
+  <summary xml:lang="pl">Lokalny monitor stanu drukarek 3D</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer_name>Kamil Grzegorczyk</developer_name>
+  <launchable type="desktop-id">gantry.desktop</launchable>
+  <url type="homepage">https://github.com/parametryczny/gantrybar</url>
+  <url type="bugtracker">https://github.com/parametryczny/gantrybar/issues</url>
+  <description>
+    <p>Gantry shows Bambu Lab, Klipper and Prusa printer progress, temperatures, layers and filament-system status in a compact desktop dashboard.</p>
+  </description>
+  <releases>
+    <release version="0.5.0" date="2026-08-05"/>
+  </releases>
+</component>

@@ -15,7 +15,7 @@ Please do not publish access codes, printer serial numbers, local IP addresses o
 - the GNU/Linux build stores Bambu access codes and PrusaLink/Moonraker API keys in the desktop Secret Service through `secret-tool`; it refuses to save them in plain text when no compatible keyring is available
 - the Raspberry Pi kiosk configuration panel uses a locally generated HTTPS certificate, a rotating on-screen pairing code, an HttpOnly session cookie, CSRF checks and login rate limiting; it is intended only for a trusted LAN
 - bulk-import CSV files contain access codes in plain text by design; delete the source CSV after a successful import
-- printer names, serial numbers, local IP addresses and ordering are stored in the application's local preferences (on GNU/Linux: `~/.config/bambubar/config.json`, mode `0600`)
+- printer names, serial numbers, local IP addresses and ordering are stored in the application's local preferences (on GNU/Linux: `~/.config/gantry/config.json`, mode `0600`)
 - printer certificate fingerprints are stored in local preferences; fingerprints are not secret credentials
 - BambuBar communicates directly with printers and does not send printer data to this repository or to a BambuBar service
 - Bambu Studio configuration is read only after the user selects **Import printers and codes**

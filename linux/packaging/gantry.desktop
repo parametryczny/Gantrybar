@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Gantry
+GenericName=3D printer status monitor
+GenericName[pl]=Monitor stanu drukarek 3D
+Comment=Monitor Bambu Lab, Klipper and Prusa printers from the desktop
+Comment[pl]=Monitoruj drukarki Bambu Lab, Klipper i Prusa z pulpitu
+Exec=gantry
+Icon=gantry
+Terminal=false
+Categories=Utility;Network;
+StartupNotify=true
+Keywords=Bambu;Klipper;Moonraker;Prusa;3D;printer;AMS;MMU;

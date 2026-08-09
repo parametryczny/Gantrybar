@@ -58,12 +58,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             }
         }
         notificationObserver = NotificationCenter.default.addObserver(
-            forName: .bambuBarShowDashboard, object: nil, queue: .main
+            forName: .gantryShowDashboard, object: nil, queue: .main
         ) { [weak self] _ in
             DispatchQueue.main.async { self?.showDashboard() }
         }
         updateNotificationObserver = NotificationCenter.default.addObserver(
-            forName: .bambuBarCheckForUpdates, object: nil, queue: .main
+            forName: .gantryCheckForUpdates, object: nil, queue: .main
         ) { _ in
             DispatchQueue.main.async { UpdatePresenter.checkAndPresent(from: nil) }
         }

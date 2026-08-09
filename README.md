@@ -2,9 +2,9 @@
 
 **[English](#english)** · **[Polski](#polski)**
 
-[![Latest release](https://img.shields.io/github/v/release/parametryczny/BambuBar)](https://github.com/parametryczny/BambuBar/releases/latest)
-[![Total downloads](https://img.shields.io/github/downloads/parametryczny/BambuBar/total)](https://github.com/parametryczny/BambuBar/releases)
-[![License: MIT](https://img.shields.io/github/license/parametryczny/BambuBar)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/parametryczny/gantrybar)](https://github.com/parametryczny/gantrybar/releases/latest)
+[![Total downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total)](https://github.com/parametryczny/gantrybar/releases)
+[![License: MIT](https://img.shields.io/github/license/parametryczny/gantrybar)](LICENSE)
 
 ![PrismBar fleet dashboard](docs/renders/bambubar-fleet-dark-centered.png)
 
@@ -17,9 +17,9 @@
 
 ## Downloads / Pobieranie — published release 0.4.0
 
-- [macOS](https://github.com/parametryczny/BambuBar/releases/download/v0.4.0/BambuBar-macOS-Local-0.4.0.zip) — access codes stored in the macOS Keychain / kody dostępu w pęku kluczy macOS
-- [Windows x64 installer — recommended / zalecany](https://github.com/parametryczny/BambuBar/releases/download/v0.4.0/BambuBar-Setup-Windows-x64.exe)
-- [Windows x64 portable ZIP](https://github.com/parametryczny/BambuBar/releases/download/v0.4.0/BambuBar-Windows-x64.zip)
+- [macOS](https://github.com/parametryczny/gantrybar/releases/download/v0.4.0/BambuBar-macOS-Local-0.4.0.zip) — access codes stored in the macOS Keychain / kody dostępu w pęku kluczy macOS
+- [Windows x64 installer — recommended / zalecany](https://github.com/parametryczny/gantrybar/releases/download/v0.4.0/BambuBar-Setup-Windows-x64.exe)
+- [Windows x64 portable ZIP](https://github.com/parametryczny/gantrybar/releases/download/v0.4.0/BambuBar-Windows-x64.zip)
 
 GNU/Linux support is being prepared locally for version 0.5.0; no Linux package has been
 published yet. / Obsługa GNU/Linux jest lokalnie przygotowywana do wersji 0.5.0; paczka dla
@@ -101,8 +101,8 @@ If discovery is blocked, enter the printer name, local IP address, serial number
 Clone the repository and build either application variant:
 
 ```bash
-git clone https://github.com/parametryczny/BambuBar.git
-cd BambuBar
+git clone https://github.com/parametryczny/gantrybar.git
+cd gantrybar
 chmod +x scripts/build-app.sh scripts/build-release.sh
 ./scripts/build-app.sh local
 ./scripts/build-app.sh keychain
@@ -120,9 +120,9 @@ On the first launch, allow Local Network access when macOS asks for it.
 
 ```bash
 swift build --disable-sandbox
-.build/debug/BambuBar --self-test
-.build/debug/BambuBar --storage-self-test
-.build/debug/BambuBar --certificate-pin-self-test
+.build/debug/Gantry --self-test
+.build/debug/Gantry --storage-self-test
+.build/debug/Gantry --certificate-pin-self-test
 ```
 
 The self-test covers SSDP parsing, subnet-target parsing, MQTT framing, Unicode print names, telemetry and both four-slot and single-slot AMS layouts. Run the unit tests with `./scripts/run-tests.sh`.
@@ -207,8 +207,8 @@ Jeśli wykrywanie jest zablokowane, wpisz ręcznie nazwę drukarki, lokalny adre
 Sklonuj repozytorium i zbuduj wybrany wariant aplikacji:
 
 ```bash
-git clone https://github.com/parametryczny/BambuBar.git
-cd BambuBar
+git clone https://github.com/parametryczny/gantrybar.git
+cd gantrybar
 chmod +x scripts/build-app.sh scripts/build-release.sh
 ./scripts/build-app.sh local
 ./scripts/build-app.sh keychain
@@ -226,9 +226,9 @@ Przy pierwszym uruchomieniu zezwól na dostęp do sieci lokalnej, gdy macOS o to
 
 ```bash
 swift build --disable-sandbox
-.build/debug/BambuBar --self-test
-.build/debug/BambuBar --storage-self-test
-.build/debug/BambuBar --certificate-pin-self-test
+.build/debug/Gantry --self-test
+.build/debug/Gantry --storage-self-test
+.build/debug/Gantry --certificate-pin-self-test
 ```
 
 Self-test obejmuje parsowanie SSDP, parsowanie celów skanu, ramkowanie MQTT, nazwy druków z Unicode, telemetrię oraz układy AMS cztero- i jednoslotowe. Testy jednostkowe uruchomisz przez `./scripts/run-tests.sh`.

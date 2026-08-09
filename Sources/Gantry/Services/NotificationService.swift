@@ -1,8 +1,8 @@
 import AppKit
 import UserNotifications
 
-/// Posts native notifications through UNUserNotificationCenter so they belong to BambuBar
-/// (its own icon, and tapping brings BambuBar forward) instead of the AppleScript host that
+/// Posts native notifications through UNUserNotificationCenter so they belong to Gantry
+/// (its own icon, and tapping brings Gantry forward) instead of the AppleScript host that
 /// `osascript display notification` runs under.
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = NotificationService()
@@ -32,7 +32,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate, @un
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 
-    // Show banners even when BambuBar is the active app.
+    // Show banners even when Gantry is the active app.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
@@ -40,7 +40,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate, @un
         [.banner, .sound]
     }
 
-    // Bring BambuBar forward and open the dashboard when a notification is tapped.
+    // Bring Gantry forward and open the dashboard when a notification is tapped.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
@@ -48,12 +48,12 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate, @un
         let isUpdate = (response.notification.request.content.userInfo["type"] as? String) == "update"
         await MainActor.run {
             NSApp.activate(ignoringOtherApps: true)
-            NotificationCenter.default.post(name: isUpdate ? .bambuBarCheckForUpdates : .bambuBarShowDashboard, object: nil)
+            NotificationCenter.default.post(name: isUpdate ? .gantryCheckForUpdates : .gantryShowDashboard, object: nil)
         }
     }
 }
 
 extension Notification.Name {
-    static let bambuBarShowDashboard = Notification.Name("pl.bambubar.showDashboard")
-    static let bambuBarCheckForUpdates = Notification.Name("pl.bambubar.checkForUpdates")
+    static let gantryShowDashboard = Notification.Name("pl.gantry.showDashboard")
+    static let gantryCheckForUpdates = Notification.Name("pl.gantry.checkForUpdates")
 }
