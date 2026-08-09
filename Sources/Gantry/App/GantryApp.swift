@@ -111,5 +111,7 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         permissionPrompter = prompter
         prompter.start()
         UpdateChecker.start()
+        // After the BambuBar → Gantry rename, offer to remove a leftover old app (once, with consent).
+        LegacyAppCleanup.offerRemovalIfNeeded()
     }
 }
