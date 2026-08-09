@@ -1,7 +1,7 @@
 <Window x:Class="BambuBar.UI.DashboardWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PrismBar" Width="540" Height="660"
+        Title="Gantry" Width="540" Height="660"
         WindowStartupLocation="Manual"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         AllowsTransparency="False" Background="Transparent"
@@ -48,14 +48,9 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal">
-                        <Viewbox Width="26" Height="26" VerticalAlignment="Center" Margin="0,0,10,0">
-                            <Path Fill="#F5F5F7" Data="M197,55 L119,212 L188,195 Z M203,55 L193,193 L263,182 Z M115,225 L268,195 L303,263 L92,272 Z M81,285 L51,345 L175,345 Z M100,276 L303,268 L282,345 L182,345 Z M315,272 L288,345 L345,345 Z"/>
-                        </Viewbox>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="PrismBar" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0"/>
-                        </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="GANTRY" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="CompactButton" MinWidth="64" Height="30" Margin="4,0" Padding="8,0" Visibility="Collapsed"/>

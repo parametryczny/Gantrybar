@@ -23,7 +23,7 @@ public sealed class MoonrakerClient : IPrinterConnection
 
     // Creality CFS lives on the printer's own WebSocket, not Moonraker; fed in on the side.
     private readonly object _cfsLock = new();
-    private List<AmsSlot> _cfsSlots = new();
+    private List<FilamentGroup> _cfsGroups = new();
 
     public MoonrakerClient(SavedPrinter printer, Action<MqttEvent> onEvent)
     {
@@ -61,9 +61,13 @@ public sealed class MoonrakerClient : IPrinterConnection
                 var updated = MoonrakerStatusParser.Telemetry(data, _telemetry);
                 if (updated is not null)
                 {
-                    // A Creality CFS overrides the (absent) Happy Hare gates with its own slots.
-                    var cfs = CurrentCfsSlots();
-                    if (cfs.Count > 0) updated.AmsSlots = cfs;
+                    // A Creality CFS overrides the (absent) Happy Hare gates with its own modules.
+                    var cfs = CurrentCfsGroups();
+                    if (cfs.Count > 0)
+                    {
+                        updated.FilamentGroups = cfs;
+                        updated.AmsSlots = cfs.SelectMany(g => g.LegacyAmsSlots()).ToList();
+                    }
                     _telemetry = updated;
                     if (!_connectedReported) { _connectedReported = true; _onEvent(new MqttEvent { Type = MqttEventType.Connected }); }
                     _onEvent(new MqttEvent { Type = MqttEventType.Telemetry, Telemetry = updated });
@@ -110,14 +114,14 @@ public sealed class MoonrakerClient : IPrinterConnection
         return await response.Content.ReadAsByteArrayAsync(_cts.Token);
     }
 
-    private List<AmsSlot> CurrentCfsSlots()
+    private List<FilamentGroup> CurrentCfsGroups()
     {
-        lock (_cfsLock) return new List<AmsSlot>(_cfsSlots);
+        lock (_cfsLock) return new List<FilamentGroup>(_cfsGroups);
     }
 
-    private void SetCfsSlots(List<AmsSlot> slots)
+    private void SetCfsGroups(List<FilamentGroup> groups)
     {
-        lock (_cfsLock) _cfsSlots = slots;
+        lock (_cfsLock) _cfsGroups = groups;
     }
 
     /// <summary>Best-effort Creality CFS reader. Connects to the printer's ws://host:9999, asks for
@@ -150,8 +154,8 @@ public sealed class MoonrakerClient : IPrinterConnection
                     } while (!result.EndOfMessage);
                     if (result.MessageType == WebSocketMessageType.Close) break;
 
-                    var slots = MoonrakerStatusParser.ParseCfs(stream.ToArray());
-                    if (slots is not null) SetCfsSlots(slots);
+                    var groups = MoonrakerStatusParser.ParseCfsGroups(stream.ToArray());
+                    if (groups is not null) SetCfsGroups(groups);
                 }
             }
             catch (OperationCanceledException) { return; }

@@ -58,7 +58,7 @@ final class PrinterStore: ObservableObject {
             try? await Task.sleep(for: .seconds(8))
             guard scanToken == token, isScanning else { return }
             isScanning = false
-            globalMessage = "Skanowanie przekroczyło 8 sekund. Sprawdź dostęp PrismBar do sieci lokalnej."
+            globalMessage = "Skanowanie przekroczyło 8 sekund. Sprawdź dostęp Gantry do sieci lokalnej."
         }
     }
 
@@ -340,7 +340,7 @@ final class PrinterStore: ObservableObject {
                 var offline = telemetry[printer.serial] ?? PrinterTelemetry()
                 offline.state = .offline
                 telemetry[printer.serial] = offline
-                connectionMessages[printer.serial] = "Brak dostępu do sieci lokalnej — włącz PrismBar w Ustawienia systemowe › Prywatność i ochrona › Sieć lokalna"
+                connectionMessages[printer.serial] = "Brak dostępu do sieci lokalnej — włącz Gantry w Ustawienia systemowe › Prywatność i ochrona › Sieć lokalna"
             }
             schedulePermissionRetry()
         }

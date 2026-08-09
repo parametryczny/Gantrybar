@@ -5,9 +5,50 @@ enum ProtocolSelfTest {
         var failures: [String] = []
         checkSSDP(&failures)
         checkTelemetry(&failures)
+        checkMoonraker(&failures)
         checkMQTTFraming(&failures)
         checkSubnetTargets(&failures)
         return failures
+    }
+
+    private static func checkMoonraker(_ failures: inout [String]) {
+        // Happy Hare: one dynamic MMU module of num_gates gates, never split into fours.
+        let mmuJSON = Data(#"{"result":{"status":{"mmu":{"enabled":true,"num_gates":5,"gate":2,"gate_status":[1,1,1,1,0],"gate_material":["PLA","PETG","ABS","TPU",""],"gate_color":["FF0000","00FF00","0000FF","FFFF00",""]}}}}"#.utf8)
+        guard let mmu = MoonrakerStatusParser.telemetry(from: mmuJSON) else {
+            failures.append("MMU JSON was not parsed")
+            return
+        }
+        if mmu.filamentGroups.count != 1 { failures.append("MMU did not form one module") }
+        if mmu.filamentGroups.first?.sourceType != .mmu { failures.append("MMU wrong source type") }
+        if mmu.filamentGroups.first?.declaredCapacity != 5 { failures.append("MMU gate count not honoured") }
+        if mmu.filamentGroups.first?.slots.map(\.label) != ["T0", "T1", "T2", "T3", "T4"] { failures.append("MMU wrong gate labels") }
+        if mmu.filamentGroups.first?.slots.first(where: { $0.isActive })?.label != "T2" { failures.append("MMU wrong active gate") }
+        if mmu.filamentGroups.first?.slots.last?.isPresent != false { failures.append("MMU empty gate not preserved") }
+        for gates in [1, 7, 12] {
+            let json = Data("{\"result\":{\"status\":{\"mmu\":{\"enabled\":true,\"num_gates\":\(gates),\"gate\":0}}}}".utf8)
+            if MoonrakerStatusParser.telemetry(from: json)?.filamentGroups.first?.declaredCapacity != gates {
+                failures.append("MMU \(gates)-gate count wrong")
+            }
+        }
+
+        // Creality CFS: each materialBoxs element is its own module; type 1 is the external spool.
+        let cfsJSON = Data(#"{"boxsInfo":{"materialBoxs":[{"type":0,"materials":[{"type":"PLA","color":"FF0000","percent":80,"selected":1},{"type":"PETG","color":"00FF00","percent":50}]},{"type":1,"materials":[{"type":"ABS","color":"0000FF","percent":30}]}]}}"#.utf8)
+        guard let cfs = MoonrakerStatusParser.parseCFSGroups(from: cfsJSON) else {
+            failures.append("CFS JSON was not parsed")
+            return
+        }
+        if cfs.count != 2 { failures.append("CFS did not keep box boundaries") }
+        if cfs.first?.sourceType != .cfs { failures.append("CFS box wrong source type") }
+        if cfs.first?.displayName != "CFS 1" { failures.append("CFS box wrong name") }
+        if cfs.first?.declaredCapacity != 4 { failures.append("CFS box did not keep four positions") }
+        if cfs.first?.slots.first(where: { $0.isActive })?.label != "T0" { failures.append("CFS active slot wrong") }
+        if cfs.last?.isExternal != true { failures.append("CFS spool holder not external") }
+        if cfs.last?.displayName != "EXT" { failures.append("CFS spool holder not named EXT") }
+
+        // Two CFS units must give two independent sets.
+        let twoCFSJSON = Data(#"{"boxsInfo":{"materialBoxs":[{"type":0,"materials":[{"type":"PLA"}]},{"type":0,"materials":[{"type":"ABS"}]}]}}"#.utf8)
+        let twoCFS = MoonrakerStatusParser.parseCFSGroups(from: twoCFSJSON)
+        if twoCFS?.map(\.displayName) != ["CFS 1", "CFS 2"] { failures.append("two CFS units not numbered independently") }
     }
 
     private static func checkSubnetTargets(_ failures: inout [String]) {
@@ -85,6 +126,48 @@ enum ProtocolSelfTest {
         }
         if singleAMS.amsSlots.count != 1 { failures.append("single-slot AMS was expanded to four positions") }
         if singleAMS.amsSlots.first?.label != "A1" { failures.append("wrong single-slot AMS label") }
+        if singleAMS.filamentGroups.first?.sourceType != .amsHT { failures.append("single-slot AMS not typed as AMS HT") }
+        if singleAMS.filamentGroups.first?.declaredCapacity != 1 { failures.append("single-slot AMS capacity not 1") }
+
+        // Filament groups: one physical AMS module of capacity four with a stable name.
+        if value.filamentGroups.count != 1 { failures.append("AMS did not form one filament group") }
+        if value.filamentGroups.first?.sourceType != .ams { failures.append("AMS group wrong source type") }
+        if value.filamentGroups.first?.declaredCapacity != 4 { failures.append("AMS group capacity not 4") }
+        if value.filamentGroups.first?.displayName != "AMS A" { failures.append("AMS group wrong name") }
+        if value.filamentGroups.first?.slots.first?.isPresent != true { failures.append("AMS first slot not present") }
+        if value.filamentGroups.first?.slots.dropFirst().contains(where: { $0.isPresent }) == true {
+            failures.append("empty AMS slots were not preserved in group")
+        }
+
+        // Active ring must survive a partial AMS report that carries the tray list without tray_now.
+        let activeAMS = Data(#"{"print":{"ams":{"tray_now":"1","ams":[{"id":"0","tray":[{"id":"0","tray_type":"PLA","tray_color":"FF0000FF"},{"id":"1","tray_type":"PETG","tray_color":"0000FFFF"}]}]}}}"#.utf8)
+        guard let active = BambuStatusParser.telemetry(from: activeAMS) else {
+            failures.append("active AMS JSON was not parsed")
+            return
+        }
+        if active.filamentGroups.first?.slots.first(where: { $0.isActive })?.label != "A2" {
+            failures.append("tray_now did not mark the active slot")
+        }
+        let partialAMS = Data(#"{"print":{"ams":{"ams":[{"id":"0","tray":[{"id":"0","tray_type":"PLA","tray_color":"FF0000FF"},{"id":"1","tray_type":"PETG","tray_color":"0000FFFF"}]}]}}}"#.utf8)
+        let afterPartial = BambuStatusParser.telemetry(from: partialAMS, previous: active)
+        if afterPartial?.filamentGroups.first?.slots.first(where: { $0.isActive })?.label != "A2" {
+            failures.append("active ring lost on partial AMS update")
+        }
+
+        // Single nozzle collapses to one entry; dual nozzle keeps L/R and survives a partial report.
+        if value.nozzles.map(\.position) != [.single] { failures.append("single nozzle not represented as one entry") }
+        let dualJSON = Data(#"{"print":{"device":{"extruder":{"info":[{"id":0,"temp":16056565},{"id":1,"temp":42}]}}}}"#.utf8)
+        guard let dual = BambuStatusParser.telemetry(from: dualJSON) else {
+            failures.append("dual-nozzle JSON was not parsed")
+            return
+        }
+        if dual.nozzles.first(where: { $0.position == .left })?.currentTemperature != 245 { failures.append("wrong left nozzle temperature") }
+        if dual.nozzles.first(where: { $0.position == .right })?.currentTemperature != 42 { failures.append("wrong right nozzle temperature") }
+        let partialNoNozzle = Data(#"{"print":{"mc_percent":10}}"#.utf8)
+        let afterNozzle = BambuStatusParser.telemetry(from: partialNoNozzle, previous: dual)
+        if afterNozzle?.nozzles.first(where: { $0.position == .right })?.currentTemperature != 42 {
+            failures.append("second nozzle zeroed on partial report")
+        }
 
         let modernStageJSON = Data(#"{"print":{"stage":{"_id":24}}}"#.utf8)
         if BambuStatusParser.telemetry(from: modernStageJSON, previous: value)?.currentStage != 24 {

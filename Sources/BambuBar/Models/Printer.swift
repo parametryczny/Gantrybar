@@ -49,10 +49,63 @@ struct PrinterTelemetry: Equatable, Sendable {
     var jobName: String?
     var errorCode: UInt64 = 0
     var hmsCodes: [String] = []
+    // Physical filament modules (AMS / AMS HT / CFS / MMU / external). Replaces the flat slot list
+    // as the primary source for the dashboard; `amsSlots` stays as a flat compatibility view used by
+    // notifications and the menu bar.
+    var filamentGroups: [FilamentGroup] = []
+    // One entry for a single-nozzle machine, two (left/right) for dual-nozzle printers like the H2D.
+    var nozzles: [NozzleTelemetry] = []
     var amsSlots: [AMSSlot] = []
     var amsHumidity: Int?
     var amsTemperature: Double?
     var lastUpdated: Date?
+}
+
+/// Which physical filament system a group came from.
+enum FilamentSourceType: String, Codable, Sendable {
+    case ams        // standard 4-slot Bambu AMS / AMS Lite
+    case amsHT      // single-station Bambu AMS HT
+    case cfs        // Creality Filament System
+    case mmu        // Klipper / Happy Hare multi-material unit
+    case external   // external spool (vt_tray, CFS type 1, …)
+}
+
+/// One physical filament module and its slots. Empty slots stay in the group so the layout never
+/// collapses when a spool is removed.
+struct FilamentGroup: Equatable, Identifiable, Sendable {
+    let id: String
+    let sourceType: FilamentSourceType
+    let displayName: String       // AMS A, AMS HT, CFS 1, MMU, EXT
+    let declaredCapacity: Int     // 1, 4 or a dynamic gate count
+    let humidityPercent: Int?     // per-module, nil when the firmware does not report it
+    let temperatureCelsius: Double?
+    let isExternal: Bool
+    let slots: [FilamentSlot]
+}
+
+struct FilamentSlot: Equatable, Identifiable, Sendable {
+    let id: String
+    let label: String             // A1, B3, T6, EXT
+    let material: String?         // nil / empty → empty slot
+    let colorHex: String?
+    let remainingPercent: Int?
+    let isActive: Bool
+
+    var isPresent: Bool {
+        guard let material else { return false }
+        return !material.isEmpty && material != "—"
+    }
+}
+
+enum NozzlePosition: String, Sendable {
+    case single, left, right
+}
+
+struct NozzleTelemetry: Equatable, Identifiable, Sendable {
+    var id: String { position.rawValue }
+    let position: NozzlePosition
+    let currentTemperature: Double?
+    let targetTemperature: Double?
 }
 
 struct AMSSlot: Equatable, Identifiable, Sendable {
@@ -63,6 +116,23 @@ struct AMSSlot: Equatable, Identifiable, Sendable {
     let remainingPercent: Int?
     let isActive: Bool
     let isExternal: Bool
+}
+
+extension FilamentGroup {
+    /// Flat legacy representation still consumed by notifications, the menu bar and self-tests.
+    var legacyAMSSlots: [AMSSlot] {
+        slots.map { slot in
+            AMSSlot(
+                id: slot.id,
+                label: slot.label,
+                material: slot.isPresent ? (slot.material ?? "—") : "—",
+                colorHex: slot.colorHex ?? "8E8E93FF",
+                remainingPercent: slot.remainingPercent,
+                isActive: slot.isActive,
+                isExternal: isExternal
+            )
+        }
+    }
 }
 
 enum PrinterKind: String, Codable, Sendable {

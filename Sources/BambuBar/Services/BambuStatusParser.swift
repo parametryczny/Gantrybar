@@ -57,13 +57,37 @@ enum BambuStatusParser {
             result.hmsCodes = hms.compactMap(hmsCode)
         }
         if let ams = report["ams"] as? [String: Any] {
-            let amsData = parseAMS(ams)
-            // Partial status updates during a print often carry only `tray_now` without the
-            // tray list, which would otherwise blank the AMS display until the next full
-            // report. Keep the last known slots when the update has none.
-            if !amsData.slots.isEmpty { result.amsSlots = amsData.slots }
-            if let humidity = amsData.humidity { result.amsHumidity = humidity }
-            if let temperature = amsData.temperature { result.amsTemperature = temperature }
+            // Partial status updates during a print often carry only `tray_now` without the tray
+            // list. Rebuilding from that alone would blank the modules and drop the active ring, so
+            // parseAMSGroups keeps the last known groups and preserves the active slot.
+            if let groups = parseAMSGroups(ams, previous: result.filamentGroups) {
+                result.filamentGroups = groups
+            }
+            // Flat compatibility view for notifications / menu bar, plus the legacy humidity/temp
+            // fields used by the AMS summary.
+            let flat = result.filamentGroups.flatMap(\.legacyAMSSlots)
+            if !flat.isEmpty { result.amsSlots = flat }
+            if let humidity = result.filamentGroups.compactMap(\.humidityPercent).first {
+                result.amsHumidity = humidity
+            }
+            if let temperature = result.filamentGroups.compactMap(\.temperatureCelsius).first {
+                result.amsTemperature = temperature
+            }
+        }
+        // Publish the nozzle collection the dashboard renders. Starting from `previous` means a
+        // partial report that omits the second extruder keeps the last known right-nozzle values.
+        if result.nozzleTemperature2 != nil || result.nozzleTargetTemperature2 != nil {
+            result.nozzles = [
+                NozzleTelemetry(position: .left, currentTemperature: result.nozzleTemperature,
+                                targetTemperature: result.nozzleTargetTemperature),
+                NozzleTelemetry(position: .right, currentTemperature: result.nozzleTemperature2,
+                                targetTemperature: result.nozzleTargetTemperature2)
+            ]
+        } else {
+            result.nozzles = [
+                NozzleTelemetry(position: .single, currentTemperature: result.nozzleTemperature,
+                                targetTemperature: result.nozzleTargetTemperature)
+            ]
         }
         if result.errorCode != 0 { result.state = .error }
         result.lastUpdated = Date()
@@ -124,57 +148,92 @@ enum BambuStatusParser {
         return String(format: "%08llX%08llX", attr, code)
     }
 
-    private static func parseAMS(_ ams: [String: Any]) -> (slots: [AMSSlot], humidity: Int?, temperature: Double?) {
+    /// Build one `FilamentGroup` per physical unit (`ams.ams[]`) plus an `EXT` group for `vt_tray`.
+    /// Returns `nil` for a pure-partial report so the caller keeps its previous groups untouched.
+    private static func parseAMSGroups(_ ams: [String: Any], previous: [FilamentGroup]) -> [FilamentGroup]? {
+        let hasTrayNow = ams["tray_now"] != nil
         let activeRaw = string(ams["tray_now"]) ?? integer(ams["tray_now"]).map(String.init) ?? ""
-        var slots: [AMSSlot] = []
-        var humidity: Int?
-        var temperature: Double?
+        // Only trust `tray_now` as authoritative when it names a real slot. Some reports carry the
+        // tray list without a usable `tray_now`; recomputing active from that would wrongly clear
+        // the ring, so we fall back to the previously active slot instead.
+        let activeAuthoritative = hasTrayNow && !activeRaw.isEmpty && activeRaw != "255"
+        let previousActiveID = previous.flatMap(\.slots).first(where: \.isActive)?.id
+        func resolveActive(id: String, matches: Bool) -> Bool {
+            activeAuthoritative ? matches : (id == previousActiveID)
+        }
 
-        if let units = ams["ams"] as? [[String: Any]] {
+        var groups: [FilamentGroup] = []
+
+        if let units = ams["ams"] as? [[String: Any]], !units.isEmpty {
             for (unitIndex, unit) in units.enumerated() {
-                if humidity == nil { humidity = integer(unit["humidity_raw"]) ?? integer(unit["humidity"]) }
-                if temperature == nil { temperature = number(unit["temp"]) }
                 let unitID = string(unit["id"]) ?? String(unitIndex)
-                let unitLetter = String(UnicodeScalar(65 + min(unitIndex, 25))!)
+                let letter = String(UnicodeScalar(65 + min(unitIndex, 25))!)
                 let trays = unit["tray"] as? [[String: Any]] ?? []
-                // A single-spool AMS identifies itself as unit 128. A regular
-                // AMS owns four fixed positions, including currently empty ones.
-                let slotCount = unitID == "128" ? 1 : 4
-                for trayIndex in 0..<slotCount {
+                // A single-spool AMS identifies itself as unit 128. A regular AMS owns four fixed
+                // positions, including currently empty ones — capacity never shrinks when spools go.
+                let isSingle = unitID == "128" || (trays.count == 1 && unitID != String(unitIndex))
+                let capacity = isSingle ? 1 : 4
+                var slots: [FilamentSlot] = []
+                for trayIndex in 0..<capacity {
                     let tray = trays.indices.contains(trayIndex) ? trays[trayIndex] : [:]
                     let trayID = string(tray["id"]) ?? integer(tray["id"]).map(String.init) ?? String(trayIndex)
-                    let material = string(tray["tray_type"]) ?? string(tray["tray_sub_brands"]) ?? ""
-                    let color = material.isEmpty ? "8E8E93FF" : (string(tray["tray_color"]) ?? "8E8E93FF")
+                    let rawMaterial = string(tray["tray_type"]) ?? string(tray["tray_sub_brands"])
+                    let material = (rawMaterial?.isEmpty == false) ? rawMaterial : nil
+                    let slotID = "ams-\(unitID)-\(trayID)"
                     let globalIndex = unitIndex * 4 + trayIndex
-                    let isActive = activeRaw == String(globalIndex) || activeRaw == "\(unitID)\(trayID)"
-                    slots.append(AMSSlot(
-                        id: "ams-\(unitID)-\(trayID)",
-                        label: "\(unitLetter)\(trayIndex + 1)",
-                        material: material.isEmpty ? "—" : material,
-                        colorHex: color,
-                        remainingPercent: material.isEmpty ? nil : integer(tray["remain"]),
-                        isActive: isActive,
-                        isExternal: false
+                    let matches = activeRaw == String(globalIndex) || activeRaw == "\(unitID)\(trayID)"
+                    slots.append(FilamentSlot(
+                        id: slotID,
+                        label: "\(letter)\(trayIndex + 1)",
+                        material: material,
+                        colorHex: material != nil ? (string(tray["tray_color"]) ?? "8E8E93FF") : nil,
+                        remainingPercent: material != nil ? integer(tray["remain"]) : nil,
+                        isActive: resolveActive(id: slotID, matches: matches)
                     ))
                 }
+                groups.append(FilamentGroup(
+                    id: "ams-\(unitID)",
+                    sourceType: isSingle ? .amsHT : .ams,
+                    displayName: unitID == "128" ? "AMS HT" : "AMS \(letter)",
+                    declaredCapacity: capacity,
+                    humidityPercent: integer(unit["humidity_raw"]) ?? integer(unit["humidity"]),
+                    temperatureCelsius: number(unit["temp"]),
+                    isExternal: false,
+                    slots: slots
+                ))
             }
         }
 
         if let external = ams["vt_tray"] as? [String: Any] {
-            let material = string(external["tray_type"]) ?? string(external["tray_sub_brands"]) ?? ""
-            if !material.isEmpty {
+            let rawMaterial = string(external["tray_type"]) ?? string(external["tray_sub_brands"])
+            if let material = rawMaterial, !material.isEmpty {
                 let trayID = string(external["id"]) ?? "254"
-                slots.append(AMSSlot(
-                    id: "external-\(trayID)",
-                    label: "EXT",
-                    material: material,
-                    colorHex: string(external["tray_color"]) ?? "E8E8E8FF",
-                    remainingPercent: integer(external["remain"]),
-                    isActive: activeRaw == trayID || activeRaw == "254" || activeRaw == "255",
-                    isExternal: true
+                let slotID = "external-\(trayID)"
+                let matches = activeRaw == trayID || activeRaw == "254" || activeRaw == "255"
+                groups.append(FilamentGroup(
+                    id: slotID,
+                    sourceType: .external,
+                    displayName: "EXT",
+                    declaredCapacity: 1,
+                    humidityPercent: nil,
+                    temperatureCelsius: nil,
+                    isExternal: true,
+                    slots: [FilamentSlot(
+                        id: slotID,
+                        label: "EXT",
+                        material: material,
+                        colorHex: string(external["tray_color"]) ?? "E8E8E8FF",
+                        remainingPercent: integer(external["remain"]),
+                        isActive: resolveActive(id: slotID, matches: matches)
+                    )]
                 ))
             }
         }
-        return (slots, humidity, temperature)
+
+        // Pure-partial report (no unit list, no external): keep the previously known modules so the
+        // dock and its active ring survive until the next full report.
+        if groups.isEmpty { return previous.isEmpty ? nil : previous }
+        return groups
     }
+
 }

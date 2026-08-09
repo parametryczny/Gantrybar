@@ -253,10 +253,12 @@ public partial class DashboardWindow : Window
         public string Serial { get; }
         private readonly DashboardWindow _owner;
         private Point _dragStart;
-        private readonly TextBlock _name, _pillText, _job, _percent, _eta, _layers, _nozzle, _bed, _message;
+        private readonly TextBlock _name, _pillText, _job, _percent, _eta, _layers, _message;
         private readonly Border _pill;
         private readonly ProgressBar _bar;
-        private readonly WrapPanel _ams;
+        // Temperature rows (nozzle(s)/bed/chamber) and the filament dock are rebuilt per update.
+        private readonly StackPanel _temps;
+        private readonly StackPanel _ams;
 
         public PrinterCard(DashboardWindow owner, SavedPrinter printer, double width = 232)
         {
@@ -308,11 +310,10 @@ public partial class DashboardWindow : Window
             var (etaRow, etaValue, layersValue) = InfoRow("⏱", "▤");
             _eta = etaValue; _layers = layersValue;
             stack.Children.Add(etaRow);
-            var (tempRow, nozzleValue, bedValue) = InfoRow("🌡", "▬");
-            _nozzle = nozzleValue; _bed = bedValue;
-            stack.Children.Add(tempRow);
+            _temps = new StackPanel();
+            stack.Children.Add(_temps);
 
-            _ams = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+            _ams = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
             stack.Children.Add(_ams);
 
             _message = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
@@ -362,17 +363,63 @@ public partial class DashboardWindow : Window
             _percent.Text = $"{t.Progress}%";
             _eta.Text = FormatEta(t.RemainingMinutes);
             _layers.Text = t.CurrentLayer is { } cl && t.TotalLayers is { } tl ? $"{cl}/{tl}" : "—";
-            _nozzle.Text = t.NozzleTemperature2 is { } n2 && t.NozzleTemperature is { } n1
-                ? $"{n1.ToString("0", CultureInfo.InvariantCulture)}°·{n2.ToString("0", CultureInfo.InvariantCulture)}°"  // dual nozzle (H2D)
-                : FormatTemp(t.NozzleTemperature, t.NozzleTargetTemperature);
-            _bed.Text = FormatTemp(t.BedTemperature, t.BedTargetTemperature);
 
+            // Temperature rows: single nozzle → [Nozzle, Bed, Chamber?]; dual nozzle → [L, P] + [Bed, Chamber?].
+            _temps.Children.Clear();
+            var nozzles = t.Nozzles.Count > 0
+                ? t.Nozzles
+                : new List<NozzleTelemetry> { new() { Position = NozzlePosition.Single, CurrentTemperature = t.NozzleTemperature, TargetTemperature = t.NozzleTargetTemperature } };
+            bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
+            string bed = FormatTemp(t.BedTemperature, t.BedTargetTemperature);
+            string bedLabel = pl ? "Stół" : "Bed";
+            string chamberLabel = pl ? "Komora" : "Chamber";
+            string? chamber = t.ChamberTemperature is { } cc ? cc.ToString("0", CultureInfo.InvariantCulture) + "°" : null;
+            if (dual)
+            {
+                var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
+                var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
+                _temps.Children.Add(TempRow(("L", FormatTemp(left.CurrentTemperature, left.TargetTemperature)),
+                                            (pl ? "P" : "R", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature))));
+                _temps.Children.Add(chamber != null
+                    ? TempRow((bedLabel, bed), (chamberLabel, chamber!))
+                    : TempRow((bedLabel, bed)));
+            }
+            else
+            {
+                var single = nozzles[0];
+                string nozzleLabel = pl ? "Dysza" : "Nozzle";
+                _temps.Children.Add(chamber != null
+                    ? TempRow((nozzleLabel, FormatTemp(single.CurrentTemperature, single.TargetTemperature)), (bedLabel, bed), (chamberLabel, chamber!))
+                    : TempRow((nozzleLabel, FormatTemp(single.CurrentTemperature, single.TargetTemperature)), (bedLabel, bed)));
+            }
+
+            // Physical filament modules in rows of up to two, each module's width proportional to its
+            // slot count (AMS wide, EXT narrow) — mirrors the macOS reference.
             _ams.Children.Clear();
-            if (t.AmsSlots.Count > 0)
+            var groups = t.FilamentGroups;
+            if (groups.Count > 0)
             {
                 _ams.Visibility = Visibility.Visible;
-                _ams.Children.Add(new TextBlock { Text = "AMS", FontSize = 10, Foreground = Muted(), Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center });
-                foreach (var slot in t.AmsSlots) _ams.Children.Add(AmsChip(slot));
+                for (int i = 0; i < groups.Count; i += 2)
+                {
+                    var rowGroups = groups.Skip(i).Take(2).ToList();
+                    var rowGrid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+                    if (rowGroups.Count == 2)
+                    {
+                        int w0 = Math.Max(1, rowGroups[0].DeclaredCapacity);
+                        int w1 = Math.Max(1, rowGroups[1].DeclaredCapacity);
+                        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w0, GridUnitType.Star) });
+                        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+                        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w1, GridUnitType.Star) });
+                        var g0 = GroupBlock(rowGroups[0]); Grid.SetColumn(g0, 0); rowGrid.Children.Add(g0);
+                        var g1 = GroupBlock(rowGroups[1]); Grid.SetColumn(g1, 2); rowGrid.Children.Add(g1);
+                    }
+                    else
+                    {
+                        rowGrid.Children.Add(GroupBlock(rowGroups[0]));
+                    }
+                    _ams.Children.Add(rowGrid);
+                }
             }
             else _ams.Visibility = Visibility.Collapsed;
 
@@ -513,29 +560,104 @@ public partial class DashboardWindow : Window
         return (panel, value);
     }
 
-    private static Border AmsChip(AmsSlot slot)
+    /// <summary>A horizontal row of labelled temperature cells, e.g. "L 245/245°", "Stół 65/65°".</summary>
+    private static StackPanel TempRow(params (string Label, string Value)[] cells)
     {
-        var color = ParseHex(slot.ColorHex);
-        var border = new Border
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        foreach (var (label, value) in cells)
+        {
+            var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
+            cell.Children.Add(new TextBlock { Text = label + " ", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Muted() });
+            cell.Children.Add(new TextBlock { Text = value, FontSize = 11 });
+            row.Children.Add(cell);
+        }
+        return row;
+    }
+
+    /// <summary>A physical filament module: tonal block with a name + per-module humidity/temperature
+    /// header and its slots, so an AMS, AMS HT, CFS or EXT reads as one distinct unit.</summary>
+    private static Border GroupBlock(FilamentGroup group)
+    {
+        var inner = new StackPanel();
+
+        // Header: name on the left, per-module humidity (💧) and temperature (🌡) clusters on the right.
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var name = new TextBlock { Text = group.DisplayName, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Colors.White), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(name, 0); header.Children.Add(name);
+        var envPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        if (group.HumidityPercent is { } h)
+        {
+            bool humid = h <= 5 ? h >= 4 : h >= 40;
+            envPanel.Children.Add(EnvCluster("💧", h <= 5 ? $"{h}/5" : $"{h}%",
+                humid ? new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)) : Muted()));
+        }
+        if (group.TemperatureCelsius is { } tc)
+            envPanel.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°C", Muted()));
+        Grid.SetColumn(envPanel, 2); header.Children.Add(envPanel);
+        inner.Children.Add(header);
+
+        // Slots fill the module width equally, labels beneath each swatch.
+        var slotGrid = new System.Windows.Controls.Primitives.UniformGrid
+        {
+            Rows = 1,
+            Columns = Math.Max(1, group.Slots.Count),
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        foreach (var slot in group.Slots) slotGrid.Children.Add(SlotChip(slot, group.IsExternal));
+        inner.Children.Add(slotGrid);
+
+        return new Border
+        {
+            CornerRadius = new CornerRadius(10),
+            Background = new SolidColorBrush(Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(11, 10, 11, 11),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Child = inner
+        };
+    }
+
+    private static StackPanel EnvCluster(string glyph, string text, Brush brush)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        panel.Children.Add(new TextBlock { Text = glyph, FontSize = 10, Foreground = brush, Margin = new Thickness(0, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center });
+        panel.Children.Add(new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeights.Medium, Foreground = brush, VerticalAlignment = VerticalAlignment.Center });
+        return panel;
+    }
+
+    /// <summary>One filament slot: a big colour swatch that fills its share of the module, with the
+    /// label beneath it. Active slot gets a white ring; empty slots stay grey and keep their spot.</summary>
+    private static StackPanel SlotChip(FilamentSlot slot, bool external)
+    {
+        bool present = slot.IsPresent;
+        var color = present ? ParseHex(slot.ColorHex ?? "8E8E93FF") : Color.FromArgb(0x28, 0x8E, 0x8E, 0x93);
+        var swatch = new Border
         {
             Background = new SolidColorBrush(color),
-            CornerRadius = new CornerRadius(4),
-            Width = 26,
-            Height = 20,
-            Margin = new Thickness(2),
-            BorderThickness = new Thickness(slot.IsActive ? 2 : 0),
-            BorderBrush = new SolidColorBrush(Colors.White),
-            ToolTip = $"{slot.Label} • {slot.Material}" + (slot.RemainingPercent is { } r ? $" • {r}%" : "")
+            CornerRadius = new CornerRadius(7),
+            Height = 40,
+            Margin = new Thickness(3, 0, 3, 0),
+            BorderThickness = new Thickness(slot.IsActive ? 2 : 0.5),
+            BorderBrush = new SolidColorBrush(slot.IsActive ? Colors.White : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
+            ToolTip = $"{slot.Label} • {(slot.Material ?? "—")}" + (slot.RemainingPercent is { } r ? $" • {r}%" : "")
         };
-        border.Child = new TextBlock
+        var label = new TextBlock
         {
             Text = slot.Label,
-            FontSize = 9,
+            FontSize = 10,
+            FontWeight = FontWeights.Medium,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Luminance(color) > 0.6 ? Colors.Black : Colors.White)
+            Margin = new Thickness(0, 3, 0, 0),
+            Foreground = slot.IsActive ? new SolidColorBrush(Colors.White) : Muted()
         };
-        return border;
+        var panel = new StackPanel();
+        panel.Children.Add(swatch);
+        panel.Children.Add(label);
+        return panel;
     }
 
     /// <summary>A dark, rounded menu for one printer card, mirroring the macOS "…" card menu:
@@ -600,7 +722,7 @@ public partial class DashboardWindow : Window
             if (Current() is not { } p) return;
             var confirm = MessageBox.Show(this,
                 AppSettings.Text($"Usunąć drukarkę {p.Name}?", $"Remove printer {p.Name}?"),
-                "PrismBar", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                "Gantry", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm == MessageBoxResult.Yes) _store.Remove(p);
         });
 

@@ -48,10 +48,17 @@ enum MoonrakerStatusParser {
         // Chamber: any temperature_sensor / heater_generic whose name mentions "chamber".
         if let chamber = chamberTemperature(in: status) { telemetry.chamberTemperature = chamber }
 
-        if let mmu = status["mmu"] as? [String: Any] {
-            let slots = parseMMU(mmu)
-            if !slots.isEmpty { telemetry.amsSlots = slots }
+        if let mmu = status["mmu"] as? [String: Any], let group = parseMMUGroup(mmu) {
+            telemetry.filamentGroups = [group]
+            telemetry.amsSlots = group.legacyAMSSlots
         }
+
+        // Single-nozzle Klipper machine: expose one nozzle entry so the dashboard renders it via the
+        // shared collection just like Bambu.
+        telemetry.nozzles = [
+            NozzleTelemetry(position: .single, currentTemperature: telemetry.nozzleTemperature,
+                            targetTemperature: telemetry.nozzleTargetTemperature)
+        ]
 
         telemetry.lastUpdated = Date()
         return telemetry
@@ -79,38 +86,48 @@ enum MoonrakerStatusParser {
         return nil
     }
 
-    private static func parseMMU(_ mmu: [String: Any]) -> [AMSSlot] {
-        if let enabled = mmu["enabled"] as? Bool, !enabled { return [] }
-        guard let count = integer(mmu["num_gates"]), count > 0 else { return [] }
+    /// Happy Hare is one dynamic module: `num_gates` gates named `T0…Tn`, never split into sets of
+    /// four. Empty gates (status 0) stay as grey slots so the layout keeps its width.
+    private static func parseMMUGroup(_ mmu: [String: Any]) -> FilamentGroup? {
+        if let enabled = mmu["enabled"] as? Bool, !enabled { return nil }
+        guard let count = integer(mmu["num_gates"]), count > 0 else { return nil }
 
         let materials = mmu["gate_material"] as? [Any] ?? []
         let colors = mmu["gate_color"] as? [Any] ?? []
         let statuses = mmu["gate_status"] as? [Any] ?? []
         let currentGate = integer(mmu["gate"]) ?? -1
 
-        var slots: [AMSSlot] = []
+        var slots: [FilamentSlot] = []
         for index in 0..<count {
             let gateStatus = index < statuses.count ? (integer(statuses[index]) ?? -1) : -1
             let rawMaterial = index < materials.count ? (string(materials[index]) ?? "") : ""
-            let material = gateStatus == 0 || rawMaterial.isEmpty ? "—" : rawMaterial
-            let color = amsColor(index < colors.count ? string(colors[index]) : nil)
-            slots.append(AMSSlot(
+            let present = gateStatus != 0 && !rawMaterial.isEmpty
+            slots.append(FilamentSlot(
                 id: "mmu-\(index)",
                 label: "T\(index)",
-                material: material,
-                colorHex: color,
+                material: present ? rawMaterial : nil,
+                colorHex: present ? amsColor(index < colors.count ? string(colors[index]) : nil) : nil,
                 remainingPercent: nil,
-                isActive: index == currentGate,
-                isExternal: false
+                isActive: index == currentGate
             ))
         }
-        return slots
+        return FilamentGroup(
+            id: "mmu",
+            sourceType: .mmu,
+            displayName: "MMU",
+            declaredCapacity: count,
+            humidityPercent: nil,
+            temperatureCelsius: nil,
+            isExternal: false,
+            slots: slots
+        )
     }
 
-    /// Parses a Creality CFS WebSocket `boxsInfo` reply into AMS slots. Creality's filament system
-    /// is not a Klipper object; it lives on the printer's own `ws://host:9999` API, so this is fed
-    /// separately from the Moonraker poll. Returns nil when the payload holds no material boxes.
-    static func parseCFS(from data: Data) -> [AMSSlot]? {
+    /// Parses a Creality CFS WebSocket `boxsInfo` reply into filament groups. Each `materialBoxs[]`
+    /// element is a separate physical unit: `type == 1` is the external spool holder (EXT), the rest
+    /// are `CFS 1`, `CFS 2`, … keeping four fixed positions. Creality's filament system is not a
+    /// Klipper object; it lives on the printer's own `ws://host:9999` API and is fed in on the side.
+    static func parseCFSGroups(from data: Data) -> [FilamentGroup]? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         // The box data may sit under "boxsInfo" or directly at the root, depending on firmware.
         let container = (root["boxsInfo"] as? [String: Any])
@@ -118,30 +135,48 @@ enum MoonrakerStatusParser {
             ?? root
         guard let boxes = container["materialBoxs"] as? [[String: Any]] else { return nil }
 
-        var slots: [AMSSlot] = []
-        var index = 0
-        for box in boxes {
+        var groups: [FilamentGroup] = []
+        var cfsNumber = 0
+        var slotNumber = 0
+        for (boxIndex, box) in boxes.enumerated() {
             let isSpoolHolder = (integer(box["type"]) ?? 0) == 1
             let materials = box["materials"] as? [[String: Any]] ?? []
-            for material in materials {
+            let capacity = isSpoolHolder ? 1 : 4
+            var slots: [FilamentSlot] = []
+            for slotIndex in 0..<capacity {
+                let material = slotIndex < materials.count ? materials[slotIndex] : [:]
                 let type = string(material["type"]) ?? ""
                 let name = string(material["name"]) ?? ""
-                let display = !type.isEmpty ? type : (name.isEmpty ? "—" : name)
-                let percent = integer(material["percent"])
+                let display = !type.isEmpty ? type : (name.isEmpty ? nil : name)
+                let present = display != nil
                 let isActive = (integer(material["selected"]) ?? 0) == 1
-                slots.append(AMSSlot(
-                    id: "cfs-\(index)",
-                    label: "T\(index)",
+                let label = isSpoolHolder ? "EXT" : "T\(slotNumber)"
+                if !isSpoolHolder { slotNumber += 1 }
+                slots.append(FilamentSlot(
+                    id: "cfs-\(boxIndex)-\(slotIndex)",
+                    label: label,
                     material: display,
-                    colorHex: cfsColor(string(material["color"])),
-                    remainingPercent: percent,
-                    isActive: isActive,
-                    isExternal: isSpoolHolder
+                    colorHex: present ? cfsColor(string(material["color"])) : nil,
+                    remainingPercent: integer(material["percent"]),
+                    isActive: isActive
                 ))
-                index += 1
+            }
+            if isSpoolHolder {
+                groups.append(FilamentGroup(
+                    id: "cfs-ext-\(boxIndex)", sourceType: .external, displayName: "EXT",
+                    declaredCapacity: 1, humidityPercent: nil, temperatureCelsius: nil,
+                    isExternal: true, slots: slots
+                ))
+            } else {
+                cfsNumber += 1
+                groups.append(FilamentGroup(
+                    id: "cfs-\(boxIndex)", sourceType: .cfs, displayName: "CFS \(cfsNumber)",
+                    declaredCapacity: capacity, humidityPercent: nil, temperatureCelsius: nil,
+                    isExternal: false, slots: slots
+                ))
             }
         }
-        return slots.isEmpty ? nil : slots
+        return groups.isEmpty ? nil : groups
     }
 
     /// CFS colours are hex, sometimes with an extra leading zero (e.g. "0fa7c0c" → "fa7c0c").

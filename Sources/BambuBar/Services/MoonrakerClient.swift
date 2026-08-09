@@ -15,7 +15,7 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
     private var cfsTask: Task<Void, Never>?
     private var webSocket: URLSessionWebSocketTask?
     private let cfsLock = NSLock()
-    private var cfsSlots: [AMSSlot] = []
+    private var cfsGroups: [FilamentGroup] = []
     private static let cfsRequest = "{\"method\":\"get\",\"params\":{\"boxsInfo\":1}}"
 
     init(printer: SavedPrinter, onEvent: @escaping @Sendable (MQTTClient.Event) -> Void) {
@@ -45,9 +45,12 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
             do {
                 let data = try await get(queryURL)
                 if var updated = MoonrakerStatusParser.telemetry(from: data, previous: telemetry) {
-                    // A Creality CFS overrides the (absent) Happy Hare gates with its own slots.
-                    let cfs = currentCFSSlots()
-                    if !cfs.isEmpty { updated.amsSlots = cfs }
+                    // A Creality CFS overrides the (absent) Happy Hare gates with its own modules.
+                    let cfs = currentCFSGroups()
+                    if !cfs.isEmpty {
+                        updated.filamentGroups = cfs
+                        updated.amsSlots = cfs.flatMap(\.legacyAMSSlots)
+                    }
                     telemetry = updated
                     if !connectedReported { connectedReported = true; onEvent(.connected) }
                     onEvent(.telemetry(updated))
@@ -93,13 +96,13 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
         return data
     }
 
-    private func currentCFSSlots() -> [AMSSlot] {
+    private func currentCFSGroups() -> [FilamentGroup] {
         cfsLock.lock(); defer { cfsLock.unlock() }
-        return cfsSlots
+        return cfsGroups
     }
 
-    private func setCFSSlots(_ slots: [AMSSlot]) {
-        cfsLock.lock(); cfsSlots = slots; cfsLock.unlock()
+    private func setCFSGroups(_ groups: [FilamentGroup]) {
+        cfsLock.lock(); cfsGroups = groups; cfsLock.unlock()
     }
 
     /// Best-effort Creality CFS reader. Connects to the printer's `ws://host:9999`, asks for
@@ -127,8 +130,8 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
                     case .data(let data): payload = data
                     @unknown default: payload = nil
                     }
-                    if let payload, let slots = MoonrakerStatusParser.parseCFS(from: payload) {
-                        setCFSSlots(slots)
+                    if let payload, let groups = MoonrakerStatusParser.parseCFSGroups(from: payload) {
+                        setCFSGroups(groups)
                     }
                 }
             } catch {

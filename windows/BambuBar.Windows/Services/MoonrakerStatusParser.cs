@@ -54,11 +54,18 @@ public static class MoonrakerStatusParser
         }
         if (ChamberTemperature(status) is { } chamber) t.ChamberTemperature = chamber;
 
-        if (Obj(status, "mmu", out var mmu))
+        if (Obj(status, "mmu", out var mmu) && ParseMmuGroup(mmu) is { } mmuGroup)
         {
-            var slots = ParseMmu(mmu);
-            if (slots.Count > 0) t.AmsSlots = slots;
+            t.FilamentGroups = new List<FilamentGroup> { mmuGroup };
+            t.AmsSlots = mmuGroup.LegacyAmsSlots().ToList();
         }
+
+        // Single-nozzle Klipper machine: expose one nozzle entry so the dashboard renders it via the
+        // shared collection just like Bambu.
+        t.Nozzles = new List<NozzleTelemetry>
+        {
+            new() { Position = NozzlePosition.Single, CurrentTemperature = t.NozzleTemperature, TargetTemperature = t.NozzleTargetTemperature }
+        };
 
         t.LastUpdated = DateTime.Now;
         return t;
@@ -86,35 +93,45 @@ public static class MoonrakerStatusParser
         return null;
     }
 
-    private static List<AmsSlot> ParseMmu(JsonElement mmu)
+    /// <summary>Happy Hare is one dynamic module: num_gates gates named T0..Tn, never split into
+    /// fours. Empty gates (status 0) stay as grey slots so the layout keeps its width.</summary>
+    private static FilamentGroup? ParseMmuGroup(JsonElement mmu)
     {
-        if (mmu.TryGetProperty("enabled", out var enabled) && enabled.ValueKind == JsonValueKind.False) return new();
-        if (Int(mmu, "num_gates") is not { } count || count <= 0) return new();
+        if (mmu.TryGetProperty("enabled", out var enabled) && enabled.ValueKind == JsonValueKind.False) return null;
+        if (Int(mmu, "num_gates") is not { } count || count <= 0) return null;
 
         var materials = Arr(mmu, "gate_material");
         var colors = Arr(mmu, "gate_color");
         var statuses = Arr(mmu, "gate_status");
         int current = Int(mmu, "gate") ?? -1;
 
-        var slots = new List<AmsSlot>();
+        var slots = new List<FilamentSlot>();
         for (int i = 0; i < count; i++)
         {
             int gateStatus = i < statuses.Count ? (IntValue(statuses[i]) ?? -1) : -1;
             string rawMaterial = i < materials.Count ? (StringValue(materials[i]) ?? "") : "";
-            string material = gateStatus == 0 || rawMaterial.Length == 0 ? "—" : rawMaterial;
-            string color = AmsColor(i < colors.Count ? StringValue(colors[i]) : null);
-            slots.Add(new AmsSlot
+            bool present = gateStatus != 0 && rawMaterial.Length > 0;
+            slots.Add(new FilamentSlot
             {
                 Id = $"mmu-{i}",
                 Label = $"T{i}",
-                Material = material,
-                ColorHex = color,
+                Material = present ? rawMaterial : null,
+                ColorHex = present ? AmsColor(i < colors.Count ? StringValue(colors[i]) : null) : null,
                 RemainingPercent = null,
-                IsActive = i == current,
-                IsExternal = false
+                IsActive = i == current
             });
         }
-        return slots;
+        return new FilamentGroup
+        {
+            Id = "mmu",
+            SourceType = FilamentSourceType.Mmu,
+            DisplayName = "MMU",
+            DeclaredCapacity = count,
+            HumidityPercent = null,
+            TemperatureCelsius = null,
+            IsExternal = false,
+            Slots = slots
+        };
     }
 
     private static string AmsColor(string? raw)
@@ -129,7 +146,7 @@ public static class MoonrakerStatusParser
     /// <summary>Parses a Creality CFS WebSocket <c>boxsInfo</c> reply into AMS slots. Creality's
     /// filament system is not a Klipper object; it lives on the printer's own ws://host:9999 API,
     /// so this is fed separately from the Moonraker poll. Returns null when there are no boxes.</summary>
-    public static List<AmsSlot>? ParseCfs(byte[] data)
+    public static List<FilamentGroup>? ParseCfsGroups(byte[] data)
     {
         JsonElement root;
         try { using var doc = JsonDocument.Parse(data); root = doc.RootElement.Clone(); }
@@ -143,31 +160,60 @@ public static class MoonrakerStatusParser
         }
         if (!container.TryGetProperty("materialBoxs", out var boxes) || boxes.ValueKind != JsonValueKind.Array) return null;
 
-        var slots = new List<AmsSlot>();
-        int index = 0;
+        var groups = new List<FilamentGroup>();
+        int boxIndex = 0;
+        int cfsNumber = 0;
+        int slotNumber = 0;
         foreach (var box in boxes.EnumerateArray())
         {
             bool spool = (Int(box, "type") ?? 0) == 1;
-            if (!box.TryGetProperty("materials", out var materials) || materials.ValueKind != JsonValueKind.Array) continue;
-            foreach (var material in materials.EnumerateArray())
+            var materials = box.TryGetProperty("materials", out var m) && m.ValueKind == JsonValueKind.Array
+                ? m.EnumerateArray().ToList()
+                : new List<JsonElement>();
+            int capacity = spool ? 1 : 4;
+            var slots = new List<FilamentSlot>();
+            for (int slotIndex = 0; slotIndex < capacity; slotIndex++)
             {
-                string type = Str(material, "type") ?? "";
-                string name = Str(material, "name") ?? "";
-                string display = type.Length > 0 ? type : (name.Length == 0 ? "—" : name);
-                slots.Add(new AmsSlot
+                bool hasMaterial = slotIndex < materials.Count;
+                JsonElement material = hasMaterial ? materials[slotIndex] : default;
+                string type = hasMaterial ? (Str(material, "type") ?? "") : "";
+                string name = hasMaterial ? (Str(material, "name") ?? "") : "";
+                string? display = type.Length > 0 ? type : (name.Length == 0 ? null : name);
+                bool present = display != null;
+                string label = spool ? "EXT" : $"T{slotNumber}";
+                if (!spool) slotNumber++;
+                slots.Add(new FilamentSlot
                 {
-                    Id = $"cfs-{index}",
-                    Label = $"T{index}",
+                    Id = $"cfs-{boxIndex}-{slotIndex}",
+                    Label = label,
                     Material = display,
-                    ColorHex = CfsColor(Str(material, "color")),
-                    RemainingPercent = Int(material, "percent"),
-                    IsActive = (Int(material, "selected") ?? 0) == 1,
-                    IsExternal = spool
+                    ColorHex = present ? CfsColor(hasMaterial ? Str(material, "color") : null) : null,
+                    RemainingPercent = hasMaterial ? Int(material, "percent") : null,
+                    IsActive = hasMaterial && (Int(material, "selected") ?? 0) == 1
                 });
-                index++;
             }
+            if (spool)
+            {
+                groups.Add(new FilamentGroup
+                {
+                    Id = $"cfs-ext-{boxIndex}", SourceType = FilamentSourceType.External, DisplayName = "EXT",
+                    DeclaredCapacity = 1, HumidityPercent = null, TemperatureCelsius = null,
+                    IsExternal = true, Slots = slots
+                });
+            }
+            else
+            {
+                cfsNumber++;
+                groups.Add(new FilamentGroup
+                {
+                    Id = $"cfs-{boxIndex}", SourceType = FilamentSourceType.Cfs, DisplayName = $"CFS {cfsNumber}",
+                    DeclaredCapacity = capacity, HumidityPercent = null, TemperatureCelsius = null,
+                    IsExternal = false, Slots = slots
+                });
+            }
+            boxIndex++;
         }
-        return slots.Count > 0 ? slots : null;
+        return groups.Count > 0 ? groups : null;
     }
 
     /// <summary>CFS colours are hex, sometimes with an extra leading zero (e.g. "0fa7c0c").</summary>

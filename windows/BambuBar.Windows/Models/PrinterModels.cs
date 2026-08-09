@@ -58,6 +58,11 @@ public sealed class PrinterTelemetry
     public string? JobName { get; set; }
     public ulong ErrorCode { get; set; }
     public List<string> HmsCodes { get; set; } = new();
+    // Physical filament modules (AMS / AMS HT / CFS / MMU / external). Primary source for the
+    // dashboard; AmsSlots stays as a flat compatibility view for notifications / the tray.
+    public List<FilamentGroup> FilamentGroups { get; set; } = new();
+    // One entry for a single-nozzle machine, two (Left/Right) for dual-nozzle printers like the H2D.
+    public List<NozzleTelemetry> Nozzles { get; set; } = new();
     public List<AmsSlot> AmsSlots { get; set; } = new();
     public int? AmsHumidity { get; set; }
     public double? AmsTemperature { get; set; }
@@ -83,6 +88,8 @@ public sealed class PrinterTelemetry
             JobName = JobName,
             ErrorCode = ErrorCode,
             HmsCodes = new List<string>(HmsCodes),
+            FilamentGroups = FilamentGroups.Select(g => g.Clone()).ToList(),
+            Nozzles = Nozzles.Select(n => n.Clone()).ToList(),
             AmsSlots = AmsSlots.Select(s => s.Clone()).ToList(),
             AmsHumidity = AmsHumidity,
             AmsTemperature = AmsTemperature,
@@ -102,6 +109,72 @@ public sealed class AmsSlot
     public bool IsExternal { get; set; }
 
     public AmsSlot Clone() => (AmsSlot)MemberwiseClone();
+}
+
+/// <summary>Which physical filament system a group came from.</summary>
+public enum FilamentSourceType { Ams, AmsHT, Cfs, Mmu, External }
+
+/// <summary>One physical filament module and its slots. Empty slots stay so the layout never
+/// collapses when a spool is removed.</summary>
+public sealed class FilamentGroup
+{
+    public string Id { get; set; } = "";
+    public FilamentSourceType SourceType { get; set; }
+    public string DisplayName { get; set; } = "";   // AMS A, AMS HT, CFS 1, MMU, EXT
+    public int DeclaredCapacity { get; set; }        // 1, 4 or a dynamic gate count
+    public int? HumidityPercent { get; set; }        // per-module, null when the firmware omits it
+    public double? TemperatureCelsius { get; set; }
+    public bool IsExternal { get; set; }
+    public List<FilamentSlot> Slots { get; set; } = new();
+
+    public FilamentGroup Clone() => new()
+    {
+        Id = Id,
+        SourceType = SourceType,
+        DisplayName = DisplayName,
+        DeclaredCapacity = DeclaredCapacity,
+        HumidityPercent = HumidityPercent,
+        TemperatureCelsius = TemperatureCelsius,
+        IsExternal = IsExternal,
+        Slots = Slots.Select(s => s.Clone()).ToList()
+    };
+
+    /// <summary>Flatten to the legacy AmsSlot list still used by notifications / the tray.</summary>
+    public IEnumerable<AmsSlot> LegacyAmsSlots() => Slots.Select(s => new AmsSlot
+    {
+        Id = s.Id,
+        Label = s.Label,
+        Material = s.IsPresent ? (s.Material ?? "—") : "—",
+        ColorHex = s.ColorHex ?? "8E8E93FF",
+        RemainingPercent = s.RemainingPercent,
+        IsActive = s.IsActive,
+        IsExternal = IsExternal
+    });
+}
+
+public sealed class FilamentSlot
+{
+    public string Id { get; set; } = "";
+    public string Label { get; set; } = "";      // A1, B3, T6, EXT
+    public string? Material { get; set; }         // null / empty => empty slot
+    public string? ColorHex { get; set; }
+    public int? RemainingPercent { get; set; }
+    public bool IsActive { get; set; }
+
+    public bool IsPresent => !string.IsNullOrEmpty(Material) && Material != "—";
+
+    public FilamentSlot Clone() => (FilamentSlot)MemberwiseClone();
+}
+
+public enum NozzlePosition { Single, Left, Right }
+
+public sealed class NozzleTelemetry
+{
+    public NozzlePosition Position { get; set; }
+    public double? CurrentTemperature { get; set; }
+    public double? TargetTemperature { get; set; }
+
+    public NozzleTelemetry Clone() => (NozzleTelemetry)MemberwiseClone();
 }
 
 public enum PrinterKind { Bambu, Klipper, Prusa }

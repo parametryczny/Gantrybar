@@ -93,12 +93,35 @@ public static class StatusParser
 
         if (report.TryGetProperty("ams", out var ams) && ams.ValueKind == JsonValueKind.Object)
         {
-            var (slots, humidity, temperature) = ParseAms(ams);
-            // Partial status updates during a print often carry only tray_now without the tray
-            // list; keep the last known slots then instead of blanking the AMS display.
-            if (slots.Count > 0) result.AmsSlots = slots;
-            if (humidity is { }) result.AmsHumidity = humidity;
-            if (temperature is { }) result.AmsTemperature = temperature;
+            // A partial report often carries only tray_now without the tray list. ParseAmsGroups
+            // keeps the last known groups and preserves the active slot instead of blanking them.
+            var groups = ParseAmsGroups(ams, result.FilamentGroups);
+            if (groups is { }) result.FilamentGroups = groups;
+            // Flat compatibility view + legacy humidity/temp for notifications / the tray.
+            var flat = result.FilamentGroups.SelectMany(g => g.LegacyAmsSlots()).ToList();
+            if (flat.Count > 0) result.AmsSlots = flat;
+            if (result.FilamentGroups.FirstOrDefault(g => g.HumidityPercent.HasValue)?.HumidityPercent is { } hum)
+                result.AmsHumidity = hum;
+            if (result.FilamentGroups.FirstOrDefault(g => g.TemperatureCelsius.HasValue)?.TemperatureCelsius is { } tmp)
+                result.AmsTemperature = tmp;
+        }
+
+        // Publish the nozzle collection the dashboard renders. Starting from previous means a partial
+        // report that omits the second extruder keeps the last known right-nozzle values.
+        if (result.NozzleTemperature2 is { } || result.NozzleTargetTemperature2 is { })
+        {
+            result.Nozzles = new List<NozzleTelemetry>
+            {
+                new() { Position = NozzlePosition.Left, CurrentTemperature = result.NozzleTemperature, TargetTemperature = result.NozzleTargetTemperature },
+                new() { Position = NozzlePosition.Right, CurrentTemperature = result.NozzleTemperature2, TargetTemperature = result.NozzleTargetTemperature2 }
+            };
+        }
+        else
+        {
+            result.Nozzles = new List<NozzleTelemetry>
+            {
+                new() { Position = NozzlePosition.Single, CurrentTemperature = result.NozzleTemperature, TargetTemperature = result.NozzleTargetTemperature }
+            };
         }
 
         if (result.ErrorCode != 0) result.State = PrinterState.Error;
@@ -131,71 +154,105 @@ public static class StatusParser
         return value.Normalize(NormalizationForm.FormC);
     }
 
-    private static (List<AmsSlot> Slots, int? Humidity, double? Temperature) ParseAms(JsonElement ams)
+    /// <summary>Build one FilamentGroup per physical unit (ams.ams[]) plus an EXT group for vt_tray.
+    /// Returns null for a pure-partial report so the caller keeps its previous groups untouched.</summary>
+    private static List<FilamentGroup>? ParseAmsGroups(JsonElement ams, List<FilamentGroup> previous)
     {
+        bool hasTrayNow = ams.TryGetProperty("tray_now", out _);
         string activeRaw = Str(ams, "tray_now") ?? Int(ams, "tray_now")?.ToString() ?? "";
-        var slots = new List<AmsSlot>();
-        int? humidity = null;
-        double? temperature = null;
+        // Only trust tray_now when it names a real slot; otherwise fall back to the previously active
+        // slot so a report that carries the tray list without tray_now doesn't clear the ring.
+        bool activeAuthoritative = hasTrayNow && activeRaw.Length > 0 && activeRaw != "255";
+        string? previousActiveId = previous.SelectMany(g => g.Slots).FirstOrDefault(s => s.IsActive)?.Id;
+        bool ResolveActive(string id, bool matches) => activeAuthoritative ? matches : id == previousActiveId;
 
-        if (ams.TryGetProperty("ams", out var units) && units.ValueKind == JsonValueKind.Array)
+        var groups = new List<FilamentGroup>();
+
+        if (ams.TryGetProperty("ams", out var units) && units.ValueKind == JsonValueKind.Array && units.GetArrayLength() > 0)
         {
             int unitIndex = 0;
             foreach (var unit in units.EnumerateArray())
             {
-                humidity ??= Int(unit, "humidity_raw") ?? Int(unit, "humidity");
-                temperature ??= Num(unit, "temp");
                 string unitId = Str(unit, "id") ?? unitIndex.ToString();
-                string unitLetter = ((char)(65 + Math.Min(unitIndex, 25))).ToString();
+                string letter = ((char)(65 + Math.Min(unitIndex, 25))).ToString();
                 var trays = unit.TryGetProperty("tray", out var t) && t.ValueKind == JsonValueKind.Array
                     ? t.EnumerateArray().ToList()
                     : new List<JsonElement>();
                 // A single-spool AMS reports itself as unit 128; a regular AMS owns four fixed positions.
-                int slotCount = unitId == "128" ? 1 : 4;
-                for (int trayIndex = 0; trayIndex < slotCount; trayIndex++)
+                bool isSingle = unitId == "128" || (trays.Count == 1 && unitId != unitIndex.ToString());
+                int capacity = isSingle ? 1 : 4;
+                var slots = new List<FilamentSlot>();
+                for (int trayIndex = 0; trayIndex < capacity; trayIndex++)
                 {
-                    JsonElement tray = trayIndex < trays.Count ? trays[trayIndex] : default;
                     bool hasTray = trayIndex < trays.Count;
+                    JsonElement tray = hasTray ? trays[trayIndex] : default;
                     string trayId = (hasTray ? (Str(tray, "id") ?? Int(tray, "id")?.ToString()) : null) ?? trayIndex.ToString();
-                    string material = (hasTray ? (Str(tray, "tray_type") ?? Str(tray, "tray_sub_brands")) : null) ?? "";
-                    string color = material.Length == 0 ? "8E8E93FF" : ((hasTray ? Str(tray, "tray_color") : null) ?? "8E8E93FF");
+                    string? rawMaterial = hasTray ? (Str(tray, "tray_type") ?? Str(tray, "tray_sub_brands")) : null;
+                    string? material = string.IsNullOrEmpty(rawMaterial) ? null : rawMaterial;
+                    string slotId = $"ams-{unitId}-{trayId}";
                     int globalIndex = unitIndex * 4 + trayIndex;
-                    bool isActive = activeRaw == globalIndex.ToString() || activeRaw == $"{unitId}{trayId}";
-                    slots.Add(new AmsSlot
+                    bool matches = activeRaw == globalIndex.ToString() || activeRaw == $"{unitId}{trayId}";
+                    slots.Add(new FilamentSlot
                     {
-                        Id = $"ams-{unitId}-{trayId}",
-                        Label = $"{unitLetter}{trayIndex + 1}",
-                        Material = material.Length == 0 ? "—" : material,
-                        ColorHex = color,
-                        RemainingPercent = material.Length == 0 ? null : (hasTray ? Int(tray, "remain") : null),
-                        IsActive = isActive,
-                        IsExternal = false
+                        Id = slotId,
+                        Label = $"{letter}{trayIndex + 1}",
+                        Material = material,
+                        ColorHex = material != null ? ((hasTray ? Str(tray, "tray_color") : null) ?? "8E8E93FF") : null,
+                        RemainingPercent = material != null && hasTray ? Int(tray, "remain") : null,
+                        IsActive = ResolveActive(slotId, matches)
                     });
                 }
+                groups.Add(new FilamentGroup
+                {
+                    Id = $"ams-{unitId}",
+                    SourceType = isSingle ? FilamentSourceType.AmsHT : FilamentSourceType.Ams,
+                    DisplayName = unitId == "128" ? "AMS HT" : $"AMS {letter}",
+                    DeclaredCapacity = capacity,
+                    HumidityPercent = Int(unit, "humidity_raw") ?? Int(unit, "humidity"),
+                    TemperatureCelsius = Num(unit, "temp"),
+                    IsExternal = false,
+                    Slots = slots
+                });
                 unitIndex++;
             }
         }
 
         if (ams.TryGetProperty("vt_tray", out var external) && external.ValueKind == JsonValueKind.Object)
         {
-            string material = Str(external, "tray_type") ?? Str(external, "tray_sub_brands") ?? "";
-            if (material.Length > 0)
+            string? rawMaterial = Str(external, "tray_type") ?? Str(external, "tray_sub_brands");
+            if (!string.IsNullOrEmpty(rawMaterial))
             {
                 string trayId = Str(external, "id") ?? "254";
-                slots.Add(new AmsSlot
+                string slotId = $"external-{trayId}";
+                bool matches = activeRaw == trayId || activeRaw == "254" || activeRaw == "255";
+                groups.Add(new FilamentGroup
                 {
-                    Id = $"external-{trayId}",
-                    Label = "EXT",
-                    Material = material,
-                    ColorHex = Str(external, "tray_color") ?? "E8E8E8FF",
-                    RemainingPercent = Int(external, "remain"),
-                    IsActive = activeRaw == trayId || activeRaw == "254" || activeRaw == "255",
-                    IsExternal = true
+                    Id = slotId,
+                    SourceType = FilamentSourceType.External,
+                    DisplayName = "EXT",
+                    DeclaredCapacity = 1,
+                    HumidityPercent = null,
+                    TemperatureCelsius = null,
+                    IsExternal = true,
+                    Slots = new List<FilamentSlot>
+                    {
+                        new()
+                        {
+                            Id = slotId,
+                            Label = "EXT",
+                            Material = rawMaterial,
+                            ColorHex = Str(external, "tray_color") ?? "E8E8E8FF",
+                            RemainingPercent = Int(external, "remain"),
+                            IsActive = ResolveActive(slotId, matches)
+                        }
+                    }
                 });
             }
         }
 
-        return (slots, humidity, temperature);
+        // Pure-partial report (no unit list, no external): keep the previously known modules.
+        if (groups.Count == 0) return previous.Count == 0 ? null : previous;
+        return groups;
     }
 
     private static string? HmsCode(JsonElement item)
