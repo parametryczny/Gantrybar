@@ -32,5 +32,12 @@ To pierwszy release pod nazwą **Gantry** (dawniej BambuBar / PrismBar) — z pr
 - Kafle w wierszu mają **równą wysokość** (niższy dopasowuje się do wyższego).
 - Windows: menu „…" karty odbija się w górę przy dolnych kartach; panel nie rośnie w nieskończoność.
 
+## ⬆️ Aktualizacja z wcześniejszej wersji (BambuBar)
+
+Twoje **drukarki i kody dostępu przenoszą się automatycznie** — nic nie trzeba przepisywać.
+
+- **macOS:** przy pierwszym uruchomieniu Gantry kliknij **Zezwól** w oknie „Sieć lokalna" (Gantry ma nową tożsamość, więc pyta od nowa). Jeśli okno się nie pojawi, **uruchom Maca ponownie** i odpal Gantry jeszcze raz. Starą aplikację **BambuBar** możesz usunąć — przeciągnij ją z Programów do Kosza (Gantry ją zastępuje).
+- **Windows / GNU/Linux:** instalator/aktualizacja podmienia aplikację; ustawienia przenoszą się same. Starego skrótu „BambuBar" (jeśli został) możesz się pozbyć ręcznie.
+
 ## 🖥 Zgodność
 macOS, Windows i GNU/Linux pokazują **te same dane** i interpretują je tak samo.
