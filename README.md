@@ -1,4 +1,4 @@
-# PrismBar
+# Gantry
 
 **[English](#english)** · **[Polski](#polski)**
 
@@ -6,31 +6,29 @@
 [![Total downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total)](https://github.com/parametryczny/gantrybar/releases)
 [![License: MIT](https://img.shields.io/github/license/parametryczny/gantrybar)](LICENSE)
 
-![PrismBar fleet dashboard](docs/renders/bambubar-fleet-dark-centered.png)
+![Gantry fleet dashboard](docs/renders/bambubar-fleet-dark-centered.png)
 
 <p align="center">
-  <img src="docs/renders/bambubar-fleet-light-right.png" width="49%" alt="PrismBar on a light macOS desktop">
-  <img src="docs/renders/bambubar-fleet-dark-left.png" width="49%" alt="PrismBar on a dark macOS desktop">
+  <img src="docs/renders/bambubar-fleet-light-right.png" width="49%" alt="Gantry on a light macOS desktop">
+  <img src="docs/renders/bambubar-fleet-dark-left.png" width="49%" alt="Gantry on a dark macOS desktop">
 </p>
 
 ---
 
-## Downloads / Pobieranie — published release 0.4.0
+## Downloads / Pobieranie
 
-- [macOS](https://github.com/parametryczny/gantrybar/releases/download/v0.4.0/BambuBar-macOS-Local-0.4.0.zip) — access codes stored in the macOS Keychain / kody dostępu w pęku kluczy macOS
-- [Windows x64 installer — recommended / zalecany](https://github.com/parametryczny/gantrybar/releases/download/v0.4.0/BambuBar-Setup-Windows-x64.exe)
-- [Windows x64 portable ZIP](https://github.com/parametryczny/gantrybar/releases/download/v0.4.0/BambuBar-Windows-x64.zip)
+Grab the latest build from the **[Releases page](https://github.com/parametryczny/gantrybar/releases/latest)** / Pobierz najnowszy build ze **[strony wydań](https://github.com/parametryczny/gantrybar/releases/latest)**:
 
-GNU/Linux support is being prepared locally for version 0.5.0; no Linux package has been
-published yet. / Obsługa GNU/Linux jest lokalnie przygotowywana do wersji 0.5.0; paczka dla
-Linuksa nie została jeszcze opublikowana.
+- **macOS** — `Gantry-macOS-*.zip` (access codes in the macOS Keychain / kody dostępu w pęku kluczy macOS)
+- **Windows x64** — installer `Gantry-Setup-Windows-x64.exe` (recommended / zalecany) or portable `Gantry-Windows-x64.zip`
+- **GNU/Linux** — `.deb` package (beta, GTK)
 
-The Windows installer starts PrismBar after installation and enables launch at sign-in. Neither Windows download requires a separate .NET installation. / Instalator Windows uruchamia PrismBar po instalacji i włącza start przy logowaniu. Żaden wariant Windows nie wymaga osobnej instalacji .NET.
+The Windows installer starts Gantry after installation and enables launch at sign-in; neither Windows download requires a separate .NET installation. / Instalator Windows uruchamia Gantry po instalacji i włącza start przy logowaniu; żaden wariant Windows nie wymaga osobnej instalacji .NET.
 
 ### Windows 11 beta / Podgląd wersji beta
 
 <p align="center">
-  <img src="docs/renders/bambubar-windows-11-beta.jpg" width="72%" alt="PrismBar Windows 11 beta dashboard and system tray menu">
+  <img src="docs/renders/bambubar-windows-11-beta.jpg" width="72%" alt="Gantry Windows 11 beta dashboard and system tray menu">
 </p>
 
 ---
@@ -78,11 +76,11 @@ Version 0.5.0 adds the first GNU/Linux/Raspberry Pi beta with Bambu Lab, Klipper
 
 #### Import from Bambu Studio
 
-If Bambu Studio is installed and already has your printers configured, PrismBar can match printers discovered on the local network with access codes stored in the local Bambu Studio configuration.
+If Bambu Studio is installed and already has your printers configured, Gantry can match printers discovered on the local network with access codes stored in the local Bambu Studio configuration.
 
 1. Connect the Mac and printers to the same local network and enable LAN access on every printer.
 2. Make sure the printers are configured and visible in Bambu Studio.
-3. Click the PrismBar icon in the menu bar and then `+`.
+3. Click the Gantry icon in the menu bar and then `+`.
 4. Wait for the network scan to finish; it normally takes about 4 seconds and stops after 8 seconds.
 5. Click **Import printers and codes**. Codes are saved using the storage mode of the installed build.
 
@@ -90,7 +88,7 @@ Installing Bambu Studio alone is not enough: the printers and their access codes
 
 #### Automatic network discovery
 
-Click the PrismBar icon, choose `+`, select a printer from **Detected**, enter its Access Code/PIN and click **Add**. PrismBar fills in the detected name, IP address and serial number automatically.
+Click the Gantry icon, choose `+`, select a printer from **Detected**, enter its Access Code/PIN and click **Add**. Gantry fills in the detected name, IP address and serial number automatically.
 
 #### Manual setup
 
@@ -108,7 +106,7 @@ chmod +x scripts/build-app.sh scripts/build-release.sh
 ./scripts/build-app.sh keychain
 ```
 
-The applications are created at `dist/PrismBar.app` and `dist/PrismBar Keychain.app`. Run `./scripts/build-release.sh` to create both release ZIP archives.
+The applications are created at `dist/Gantry.app` and `dist/Gantry Keychain.app`. Run `./scripts/build-release.sh` to create both release ZIP archives.
 
 See [windows/README.md](windows/README.md) for Windows build instructions. GitHub Actions produces a self-contained `BambuBar.exe` that does not require the .NET runtime on the target PC.
 
@@ -129,15 +127,15 @@ The self-test covers SSDP parsing, subnet-target parsing, MQTT framing, Unicode 
 
 ### Privacy
 
-PrismBar reads printer status only from the local network. The **Local** build stores access codes in the app's preferences; the **Keychain** build stores them in the macOS Keychain. Bambu Studio configuration is read only after the user selects **Import printers and codes**.
+Gantry reads printer status only from the local network. The **Local** build stores access codes in the app's preferences; the **Keychain** build stores them in the macOS Keychain. Bambu Studio configuration is read only after the user selects **Import printers and codes**.
 
 See [SECURITY.md](SECURITY.md) for the local network trust model and vulnerability reporting guidance.
 
 ### Project status
 
-This is an early, community-built release. Bambu Lab's printer MQTT protocol is not a stable public API, so firmware changes may require updates to PrismBar.
+This is an early, community-built release. Bambu Lab's printer MQTT protocol is not a stable public API, so firmware changes may require updates to Gantry.
 
-PrismBar is an independent project and is not affiliated with, endorsed by or sponsored by Bambu Lab. Bambu Lab and related product names are trademarks of their respective owners.
+Gantry is an independent project and is not affiliated with, endorsed by or sponsored by Bambu Lab. Bambu Lab and related product names are trademarks of their respective owners.
 
 ---
 
@@ -184,11 +182,11 @@ Wersja 0.5.0 dodaje pierwszą betę GNU/Linux/Raspberry Pi z obsługą Bambu Lab
 
 #### Import z Bambu Studio
 
-Jeśli Bambu Studio jest zainstalowane i ma już skonfigurowane Twoje drukarki, PrismBar może dopasować drukarki wykryte w sieci lokalnej do kodów dostępu zapisanych w lokalnej konfiguracji Bambu Studio.
+Jeśli Bambu Studio jest zainstalowane i ma już skonfigurowane Twoje drukarki, Gantry może dopasować drukarki wykryte w sieci lokalnej do kodów dostępu zapisanych w lokalnej konfiguracji Bambu Studio.
 
 1. Podłącz Maca i drukarki do tej samej sieci lokalnej i włącz dostęp LAN na każdej drukarce.
 2. Upewnij się, że drukarki są skonfigurowane i widoczne w Bambu Studio.
-3. Kliknij ikonę PrismBar w pasku menu, a następnie `+`.
+3. Kliknij ikonę Gantry w pasku menu, a następnie `+`.
 4. Poczekaj na zakończenie skanowania sieci; zwykle trwa około 4 sekund i kończy się po 8 sekundach.
 5. Kliknij **Importuj drukarki i kody**. Kody są zapisywane zgodnie z trybem przechowywania zainstalowanego wariantu.
 
@@ -196,7 +194,7 @@ Sama instalacja Bambu Studio nie wystarczy: drukarki i ich kody dostępu muszą 
 
 #### Automatyczne wykrywanie w sieci
 
-Kliknij ikonę PrismBar, wybierz `+`, zaznacz drukarkę na liście **Wykryte**, wpisz jej kod dostępu (Access Code / PIN) i kliknij **Dodaj**. PrismBar automatycznie uzupełni wykrytą nazwę, adres IP i numer seryjny.
+Kliknij ikonę Gantry, wybierz `+`, zaznacz drukarkę na liście **Wykryte**, wpisz jej kod dostępu (Access Code / PIN) i kliknij **Dodaj**. Gantry automatycznie uzupełni wykrytą nazwę, adres IP i numer seryjny.
 
 #### Konfiguracja ręczna
 
@@ -214,7 +212,7 @@ chmod +x scripts/build-app.sh scripts/build-release.sh
 ./scripts/build-app.sh keychain
 ```
 
-Aplikacje powstają jako `dist/PrismBar.app` oraz `dist/PrismBar Keychain.app`. Uruchom `./scripts/build-release.sh`, aby utworzyć oba archiwa ZIP do wydania.
+Aplikacje powstają jako `dist/Gantry.app` oraz `dist/Gantry Keychain.app`. Uruchom `./scripts/build-release.sh`, aby utworzyć oba archiwa ZIP do wydania.
 
 Instrukcja budowania wersji Windows znajduje się w [windows/README.md](windows/README.md). GitHub Actions tworzy samodzielny `BambuBar.exe`, który nie wymaga środowiska .NET na komputerze docelowym.
 
@@ -235,15 +233,15 @@ Self-test obejmuje parsowanie SSDP, parsowanie celów skanu, ramkowanie MQTT, na
 
 ### Prywatność
 
-PrismBar odczytuje status drukarek wyłącznie z sieci lokalnej. Wariant **Local** przechowuje kody dostępu w ustawieniach aplikacji; wariant **Keychain** przechowuje je w pęku kluczy macOS. Konfiguracja Bambu Studio jest odczytywana dopiero po wybraniu przez użytkownika opcji **Importuj drukarki i kody**.
+Gantry odczytuje status drukarek wyłącznie z sieci lokalnej. Wariant **Local** przechowuje kody dostępu w ustawieniach aplikacji; wariant **Keychain** przechowuje je w pęku kluczy macOS. Konfiguracja Bambu Studio jest odczytywana dopiero po wybraniu przez użytkownika opcji **Importuj drukarki i kody**.
 
 Zobacz [SECURITY.md](SECURITY.md), gdzie opisano model zaufania w sieci lokalnej oraz zasady zgłaszania podatności.
 
 ### Status projektu
 
-To wczesne wydanie tworzone przez społeczność. Protokół MQTT drukarek Bambu Lab nie jest stabilnym, publicznym API, więc zmiany firmware'u mogą wymagać aktualizacji PrismBar.
+To wczesne wydanie tworzone przez społeczność. Protokół MQTT drukarek Bambu Lab nie jest stabilnym, publicznym API, więc zmiany firmware'u mogą wymagać aktualizacji Gantry.
 
-PrismBar jest projektem niezależnym i nie jest powiązany z Bambu Lab, wspierany ani sponsorowany przez Bambu Lab. Bambu Lab i powiązane nazwy produktów są znakami towarowymi ich właścicieli.
+Gantry jest projektem niezależnym i nie jest powiązany z Bambu Lab, wspierany ani sponsorowany przez Bambu Lab. Bambu Lab i powiązane nazwy produktów są znakami towarowymi ich właścicieli.
 
 ---
 
