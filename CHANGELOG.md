@@ -2,6 +2,22 @@
 
 Wszystkie istotne zmiany w aplikacji PrismBar (dawniej BambuBar) są opisane w tym pliku.
 
+## 0.5.0 — 2026-08-05
+
+- dodano pierwszą wersję beta **Gantry dla GNU/Linux** z interfejsem GTK 3 i ikoną w zasobniku systemowym
+- wersja Linux łączy się bezpośrednio z drukarkami Bambu przez MQTT/TLS, pokazuje stan, postęp, ETA, warstwy, temperatury oraz sloty AMS
+- dodano w Linux i kiosku RPi wybór **Bambu Lab / Klipper / Prusa**; Moonraker obsługuje status, temperatury, ETA, Happy Hare MMU i Creality CFS, a PrusaLink status, postęp, czas, temperatury i nazwę pliku
+- formularz dodawania, panel telefonu oraz import CSV rozpoznają typ drukarki i właściwe porty: Bambu `8883`, Moonraker `7125`, PrusaLink `80`
+- dodano automatyczne wykrywanie przez SSDP i certyfikat MQTT, ręczne IP i port oraz dodatkowe cele VPN w formie IP, zakresu lub CIDR
+- kody dostępu są przechowywane w systemowym Secret Service, a certyfikaty drukarek przypinane po pierwszym zaufanym połączeniu (TOFU)
+- dodano import konfiguracji Bambu Studio z natywnych i Flatpakowych lokalizacji GNU/Linux
+- dodano język polski i angielski, jasny i ciemny wygląd, powiadomienia, autostart po zalogowaniu oraz tryb zwarty dla większej liczby drukarek
+- dodano paczkę instalacyjną `.deb`, testy rdzenia i lokalnie przygotowany workflow budowania dla Ubuntu
+- dodano tryb **Gantry Workshop** dla Raspberry Pi: pełnoekranowy kiosk, układ monitoringu większej floty, alerty, bezpieczny panel WWW ze statusem drukarek oraz automatyczny start po zalogowaniu
+- dodano lokalny panel konfiguracji HTTPS dostępny z telefonu lub komputera, chroniony sześciocyfrowym kodem parowania wyświetlanym na ekranie
+- dodano masowy import drukarek z CSV (`kind,name,host,serial,access_code,port`), pobieranie i lokalne generowanie szablonu oraz import z Dokumentów lub pendrive'a
+- ujednolicono numer wersji macOS, Windows i GNU/Linux oraz poprawiono wersję deklarowaną przez instalator Windows
+
 ## 0.4.0 — 2026-08-03
 
 - dodano obsługę drukarek Prusa przez PrusaLink (macOS i Windows) — lokalnie po IP + klucz API, bez konta Prusy; odczyt stanu, postępu, czasu, temperatur i nazwy pliku

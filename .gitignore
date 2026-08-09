@@ -1,4 +1,8 @@
 .DS_Store
 .build/
 dist/
+linux/build/
+linux/dist/
+__pycache__/
+*.pyc
 *.xcuserstate

@@ -15,11 +15,15 @@
 
 ---
 
-## Downloads / Pobieranie — 0.4.0
+## Downloads / Pobieranie — published release 0.4.0
 
 - [macOS](https://github.com/parametryczny/BambuBar/releases/download/v0.4.0/BambuBar-macOS-Local-0.4.0.zip) — access codes stored in the macOS Keychain / kody dostępu w pęku kluczy macOS
 - [Windows x64 installer — recommended / zalecany](https://github.com/parametryczny/BambuBar/releases/download/v0.4.0/BambuBar-Setup-Windows-x64.exe)
 - [Windows x64 portable ZIP](https://github.com/parametryczny/BambuBar/releases/download/v0.4.0/BambuBar-Windows-x64.zip)
+
+GNU/Linux support is being prepared locally for version 0.5.0; no Linux package has been
+published yet. / Obsługa GNU/Linux jest lokalnie przygotowywana do wersji 0.5.0; paczka dla
+Linuksa nie została jeszcze opublikowana.
 
 The Windows installer starts PrismBar after installation and enables launch at sign-in. Neither Windows download requires a separate .NET installation. / Instalator Windows uruchamia PrismBar po instalacji i włącza start przy logowaniu. Żaden wariant Windows nie wymaga osobnej instalacji .NET.
 
@@ -33,17 +37,18 @@ The Windows installer starts PrismBar after installation and enables launch at s
 
 ## English
 
-A compact, MIT-licensed macOS menu bar and Windows system-tray monitor for Bambu Lab 3D printers. PrismBar discovers printers on the local network and presents larger fleets in an adaptive dashboard.
+A compact, MIT-licensed macOS menu bar, Windows system-tray and GNU/Linux monitor named Gantry. The applications discover printers on the local network and present larger fleets in an adaptive dashboard.
 
 ### Latest changes
 
-Version 0.3.0 adds Creality CFS support, per-printer slicer and camera options, menu-bar/tray progress pins, update-available notifications and a fully restyled Windows UI.
+Version 0.5.0 adds the first GNU/Linux/Raspberry Pi beta with Bambu Lab, Klipper/Moonraker and PrusaLink support, a GTK dashboard, Secret Service credentials and a Debian package.
 
 [Read the full changelog](CHANGELOG.md)
 
 ### Features
 
 - monitors multiple printers from one menu bar popover
+- supports Bambu Lab, Klipper/Moonraker and PrusaLink locally on all three desktop platforms
 - supports persistent drag-and-drop printer card reordering
 - offers a compact one-line status mode when four or more printers are configured
 - shows print state, progress, ETA, layers and temperatures
@@ -51,21 +56,23 @@ Version 0.3.0 adds Creality CFS support, per-printer slicer and camera options, 
 - preserves empty AMS positions and highlights active or low-filament slots
 - reports HMS errors and useful printer notifications
 - reconnects automatically and refreshes printer addresses on the local network
-- discovers printers via SSDP multicast and a unicast subnet scan; extra IP, CIDR or range targets can be added for printers reached over a VPN such as Tailscale
+- discovers printers via SSDP multicast — now sent on every local network interface, not just the default route — plus a unicast subnet scan; a VPN like Tailscale carries no multicast, so a VPN printer is found by adding its IP, CIDR or range as an extra scan target (not by SSDP)
 - supports Polish and English, light and dark appearance
 - offers a Local build and a macOS Keychain build
 - pins each printer's TLS certificate after the first trusted connection
 - communicates locally without requiring a Bambu Cloud account
 - includes a self-contained Windows x64 system-tray build with per-user DPAPI encryption
+- includes a GTK 3 GNU/Linux beta with Secret Service storage and a Debian package
 
 ### Requirements
 
-- macOS 26 or newer, or 64-bit Windows 10/11 for the Windows beta
+- macOS 26 or newer, 64-bit Windows 10/11, or a Debian/Ubuntu-family GNU/Linux desktop for the Linux beta
 - a Mac or PC and the printers on the same local network
 - LAN access enabled on each printer
 - the serial number and Access Code/PIN for each printer
 - Swift 6 and Xcode Command Line Tools when building from source
 - .NET 8 SDK when building the Windows version from source
+- Python 3.10, GTK 3 and Ayatana AppIndicator when running the GNU/Linux version
 
 ### Adding printers
 
@@ -105,6 +112,8 @@ The applications are created at `dist/PrismBar.app` and `dist/PrismBar Keychain.
 
 See [windows/README.md](windows/README.md) for Windows build instructions. GitHub Actions produces a self-contained `BambuBar.exe` that does not require the .NET runtime on the target PC.
 
+See [linux/README.md](linux/README.md) for the GNU/Linux beta, local tests and `.deb` build instructions.
+
 On the first launch, allow Local Network access when macOS asks for it.
 
 ### Tests
@@ -134,17 +143,18 @@ PrismBar is an independent project and is not affiliated with, endorsed by or sp
 
 ## Polski
 
-Kompaktowy monitor drukarek 3D Bambu Lab dla paska menu macOS i zasobnika systemowego Windows, na licencji MIT. PrismBar wykrywa drukarki w sieci lokalnej i prezentuje większe floty na adaptacyjnym pulpicie.
+Kompaktowy monitor drukarek 3D na licencji MIT: Gantry dla macOS, Windows i GNU/Linux. Aplikacje wykrywają drukarki w sieci lokalnej i prezentują większe floty na adaptacyjnym pulpicie.
 
 ### Najnowsze zmiany
 
-Wersja 0.3.0 dodaje obsługę Creality CFS, opcje slicera i kamery per drukarka, przypięcie postępu do paska/zasobnika, powiadomienia o aktualizacji oraz przebudowany interfejs Windows.
+Wersja 0.5.0 dodaje pierwszą betę GNU/Linux/Raspberry Pi z obsługą Bambu Lab, Klipper/Moonraker i PrusaLink, pulpitem GTK, zapisem kodów w Secret Service i paczką Debiana.
 
 [Zobacz pełny changelog](CHANGELOG.md)
 
 ### Funkcje
 
 - monitoruje wiele drukarek z jednego okienka w pasku menu
+- lokalnie obsługuje Bambu Lab, Klipper/Moonraker i PrusaLink na wszystkich trzech platformach desktopowych
 - pozwala trwale porządkować karty drukarek metodą przeciągnij i upuść
 - oferuje kompaktowy, jednoliniowy tryb statusu przy czterech lub więcej drukarkach
 - pokazuje stan druku, postęp, szacowany czas, warstwy i temperatury
@@ -152,21 +162,23 @@ Wersja 0.3.0 dodaje obsługę Creality CFS, opcje slicera i kamery per drukarka,
 - zachowuje puste pozycje AMS i wyróżnia aktywne sloty lub te z niskim poziomem filamentu
 - zgłasza błędy HMS i przydatne powiadomienia z drukarki
 - łączy się ponownie automatycznie i odświeża adresy drukarek w sieci lokalnej
-- wykrywa drukarki przez multicast SSDP i unicastowy skan podsieci; można dodać własne adresy IP, CIDR lub zakresy dla drukarek dostępnych przez VPN, np. Tailscale
+- wykrywa drukarki przez multicast SSDP — teraz wysyłany na każdej karcie sieciowej, nie tylko domyślnej — oraz unicastowy skan podsieci; VPN (np. Tailscale) nie przenosi multicastu, więc drukarkę przez VPN znajdziesz, dodając jej adres IP, CIDR lub zakres jako dodatkowy cel skanu (nie przez SSDP)
 - obsługuje polski i angielski, wygląd jasny i ciemny
 - oferuje wariant Local oraz wariant z pękiem kluczy macOS
 - przypina (pinuje) certyfikat TLS każdej drukarki po pierwszym zaufanym połączeniu
 - komunikuje się lokalnie, bez konieczności posiadania konta Bambu Cloud
 - zawiera samodzielną wersję dla Windows x64 z ikoną w zasobniku i szyfrowaniem DPAPI
+- zawiera wersję beta GTK 3 dla GNU/Linux z systemowym Secret Service i paczką `.deb`
 
 ### Wymagania
 
-- macOS 26 lub nowszy albo 64-bitowy Windows 10/11 dla wersji beta
+- macOS 26 lub nowszy, 64-bitowy Windows 10/11 albo desktop GNU/Linux z rodziny Debian/Ubuntu dla wersji beta
 - Mac lub PC i drukarki w tej samej sieci lokalnej
 - włączony dostęp LAN na każdej drukarce
 - numer seryjny i kod dostępu (Access Code / PIN) każdej drukarki
 - Swift 6 i Xcode Command Line Tools przy budowaniu ze źródeł
 - .NET 8 SDK przy budowaniu wersji Windows ze źródeł
+- Python 3.10, GTK 3 i Ayatana AppIndicator dla wersji GNU/Linux
 
 ### Dodawanie drukarek
 
@@ -205,6 +217,8 @@ chmod +x scripts/build-app.sh scripts/build-release.sh
 Aplikacje powstają jako `dist/PrismBar.app` oraz `dist/PrismBar Keychain.app`. Uruchom `./scripts/build-release.sh`, aby utworzyć oba archiwa ZIP do wydania.
 
 Instrukcja budowania wersji Windows znajduje się w [windows/README.md](windows/README.md). GitHub Actions tworzy samodzielny `BambuBar.exe`, który nie wymaga środowiska .NET na komputerze docelowym.
+
+Instrukcja wersji GNU/Linux, testów lokalnych i budowania paczki `.deb` znajduje się w [linux/README.md](linux/README.md).
 
 Przy pierwszym uruchomieniu zezwól na dostęp do sieci lokalnej, gdy macOS o to zapyta.
 
