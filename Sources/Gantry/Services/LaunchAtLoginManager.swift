@@ -17,7 +17,11 @@ enum LaunchAtLoginManager {
         }
         let appPath = Bundle.main.bundleURL.standardizedFileURL.path
         guard appPath.hasSuffix(".app"), FileManager.default.fileExists(atPath: appPath) else {
-            throw LaunchAtLoginError("Nie udało się ustalić ścieżki Gantry.app.")
+            throw LaunchAtLoginError(localizedText(
+                "Nie udało się ustalić ścieżki Gantry.app.",
+                "The Gantry.app path could not be determined.",
+                "Der Pfad zu Gantry.app konnte nicht ermittelt werden."
+            ))
         }
         let directory = agentURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

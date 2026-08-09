@@ -20,6 +20,8 @@ final class PrinterDashboardViewController: NSViewController {
     private let summaryLabel = NSTextField(labelWithString: "")
     private let resetButton = NSButton()
     private let compactButton = NSButton()
+    private lazy var addButton = iconButton("plus", tooltip: "", action: #selector(addPressed))
+    private lazy var refreshButton = iconButton("arrow.clockwise", tooltip: "", action: #selector(refreshPressed))
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var timerSubscription: AnyCancellable?
@@ -81,15 +83,13 @@ final class PrinterDashboardViewController: NSViewController {
         titleStack.alignment = .leading
         titleStack.spacing = 3
 
-        let addButton = iconButton("plus", tooltip: "Dodaj drukarkę / Add printer", action: #selector(addPressed))
-        let refreshButton = iconButton("arrow.clockwise", tooltip: "Połącz ponownie / Reconnect", action: #selector(refreshPressed))
-        resetButton.title = "ZRESETUJ"
+        resetButton.title = ""
         resetButton.target = self
         resetButton.action = #selector(resetPressed)
         resetButton.bezelStyle = .recessed
         resetButton.controlSize = .small
         resetButton.font = .systemFont(ofSize: 10, weight: .medium)
-        resetButton.toolTip = "Usuń zakończone zadania i stare nazwy plików"
+        resetButton.toolTip = ""
         resetButton.cell?.wraps = false
         resetButton.widthAnchor.constraint(equalToConstant: 67).isActive = true
         compactButton.target = self
@@ -174,9 +174,11 @@ final class PrinterDashboardViewController: NSViewController {
         guard isViewLoaded else { return }
         let online = store.telemetry.values.filter { $0.state != .offline }.count
         let settings = AppSettings.shared
-        summaryLabel.stringValue = settings.language == .pl
-            ? "\(store.printers.count) drukarek • \(online) online"
-            : "\(store.printers.count) printers • \(online) online"
+        summaryLabel.stringValue = settings.text(
+            "\(store.printers.count) drukarek • \(online) online",
+            "\(store.printers.count) printers • \(online) online",
+            "\(store.printers.count) Drucker • \(online) online"
+        )
         let supportsCompactMode = store.printers.count >= 4
         // Full view fits up to 8 printers; above 8 default to compact. A manual toggle overrides.
         let useCompactMode = supportsCompactMode && (compactModeChosen ? prefersCompactMode : store.printers.count > 8)
@@ -185,10 +187,13 @@ final class PrinterDashboardViewController: NSViewController {
         // The popover size is reported once at the end of render() from the cards' real measured
         // height — reporting an estimate here too made the popover oscillate between the two values.
         compactButton.isHidden = !supportsCompactMode
-        compactButton.title = settings.text(useCompactMode ? "Rozwiń" : "Zwiń", useCompactMode ? "Expand" : "Collapse")
+        compactButton.title = settings.text(useCompactMode ? "Rozwiń" : "Zwiń",
+                                            useCompactMode ? "Expand" : "Collapse",
+                                            useCompactMode ? "Ausklappen" : "Einklappen")
         compactButton.toolTip = settings.text(
             useCompactMode ? "Pokaż pełne kafelki drukarek" : "Pokaż zwartą listę drukarek",
-            useCompactMode ? "Show full printer cards" : "Show compact printer list"
+            useCompactMode ? "Show full printer cards" : "Show compact printer list",
+            useCompactMode ? "Vollständige Druckerkarten anzeigen" : "Kompakte Druckerliste anzeigen"
         )
         cardsStack.spacing = useCompactMode ? 3 : 8
         if store.printers.isEmpty {
@@ -199,7 +204,8 @@ final class PrinterDashboardViewController: NSViewController {
             renderedCompactMode = nil
             let empty = NSTextField(wrappingLabelWithString: settings.text(
                 "Brak drukarek. Kliknij +, aby wyszukać urządzenia w sieci.",
-                "No printers. Click + to find devices on your network."
+                "No printers. Click + to find devices on your network.",
+                "Keine Drucker. Klicke auf +, um Geräte in deinem Netzwerk zu finden."
             ))
             empty.alignment = .center
             empty.textColor = .secondaryLabelColor
@@ -333,13 +339,18 @@ final class PrinterDashboardViewController: NSViewController {
 
     private func refreshLocalization() {
         let settings = AppSettings.shared
-        resetButton.title = settings.text("Wyczyść", "Clear")
+        addButton.toolTip = settings.text("Dodaj drukarkę", "Add printer", "Drucker hinzufügen")
+        refreshButton.toolTip = settings.text("Połącz ponownie", "Reconnect", "Neu verbinden")
+        resetButton.title = settings.text("Wyczyść", "Clear", "Leeren")
         resetButton.toolTip = settings.text(
             "Usuń zakończone zadania i stare nazwy plików",
-            "Clear completed jobs and old file names"
+            "Clear completed jobs and old file names",
+            "Abgeschlossene Druckaufträge und alte Dateinamen entfernen"
         )
         let useCompactMode = store.printers.count >= 4 && prefersCompactMode
-        compactButton.title = settings.text(useCompactMode ? "Rozwiń" : "Zwiń", useCompactMode ? "Expand" : "Collapse")
+        compactButton.title = settings.text(useCompactMode ? "Rozwiń" : "Zwiń",
+                                            useCompactMode ? "Expand" : "Collapse",
+                                            useCompactMode ? "Ausklappen" : "Einklappen")
     }
 
     private func iconButton(_ symbol: String, tooltip: String, action: Selector) -> NSButton {
@@ -354,7 +365,8 @@ final class PrinterDashboardViewController: NSViewController {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         let cameraMessage = AppSettings.shared.text(
             "Otwórz kartę Urządzenie, aby zobaczyć kamerę.",
-            "Open the Device tab to view the camera."
+            "Open the Device tab to view the camera.",
+            "Öffne den Tab „Gerät“, um die Kamera anzuzeigen."
         )
         NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, _ in
             if camera {
@@ -371,14 +383,15 @@ final class PrinterDashboardViewController: NSViewController {
     private func confirmRemove(_ printer: SavedPrinter) {
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = settings.text("Usunąć drukarkę \(printer.name)?", "Remove printer \(printer.name)?")
+        alert.messageText = settings.text("Usunąć drukarkę \(printer.name)?", "Remove printer \(printer.name)?", "Drucker \(printer.name) entfernen?")
         alert.informativeText = settings.text(
             "Zapisany kod dostępu i pin certyfikatu tej drukarki zostaną usunięte.",
-            "This printer's saved access code and certificate pin will be removed."
+            "This printer's saved access code and certificate pin will be removed.",
+            "Der gespeicherte Zugriffscode und der Zertifikat-Pin dieses Druckers werden entfernt."
         )
         alert.alertStyle = .warning
-        alert.addButton(withTitle: settings.text("Usuń", "Remove"))
-        alert.addButton(withTitle: settings.text("Anuluj", "Cancel"))
+        alert.addButton(withTitle: settings.text("Usuń", "Remove", "Entfernen"))
+        alert.addButton(withTitle: settings.text("Anuluj", "Cancel", "Abbrechen"))
         // Prefer a modal sheet on the window; fall back to a standalone alert.
         if let window = view.window {
             alert.beginSheetModal(for: window) { [weak self] result in
@@ -520,6 +533,7 @@ private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
     }
 
     func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings) {
+        dragHandle?.localize(using: settings)
         nameLabel.stringValue = printer.name
         nameLabel.toolTip = printer.name
         let baseStatus = message ?? settings.activityLabel(stage: telemetry.currentStage, state: telemetry.state)
@@ -645,6 +659,7 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
     private let filamentDock = FilamentDockView()
     private var layoutWidthConstraint: NSLayoutConstraint?
     private var dragHandle: PrinterDragHandle?
+    private var actionsButton: CardActionsButton?
     private var renderedGroups: [FilamentGroup] = []
     private var lastDualNozzle: Bool?
     private var displayedRemainingMinutes: Int?
@@ -704,29 +719,30 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         statusLabel.lineBreakMode = .byTruncatingTail
 
         var actionEntries: [CardActionsButton.Entry] = [
-            .init(polishTitle: "Połącz ponownie", englishTitle: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)
+            .init(polishTitle: "Połącz ponownie", englishTitle: "Reconnect", germanTitle: "Neu verbinden", symbol: "arrow.clockwise", action: onReconnect)
         ]
         // Camera lives in Bambu Studio, so it only makes sense for Bambu printers.
         if printer.kind == .bambu {
-            actionEntries.append(.init(polishTitle: "Kamera w Bambu Studio", englishTitle: "Camera in Bambu Studio",
+            actionEntries.append(.init(polishTitle: "Kamera w Bambu Studio", englishTitle: "Camera in Bambu Studio", germanTitle: "Kamera in Bambu Studio",
                                        symbol: "video.fill", action: onOpenCamera))
         }
         // Any printer can open a slicer; offer whichever are installed as a submenu.
         let slicers = SlicerLauncher.installed()
         if !slicers.isEmpty {
             let slicerEntries = slicers.map { slicer in
-                CardActionsButton.Entry(polishTitle: slicer.name, englishTitle: slicer.name,
+                CardActionsButton.Entry(polishTitle: slicer.name, englishTitle: slicer.name, germanTitle: slicer.name,
                                         symbol: "square.and.arrow.up", action: { onOpenSlicer(slicer.url) })
             }
-            actionEntries.append(.init(polishTitle: "Otwórz slicer", englishTitle: "Open slicer",
+            actionEntries.append(.init(polishTitle: "Otwórz slicer", englishTitle: "Open slicer", germanTitle: "Slicer öffnen",
                                        symbol: "square.and.arrow.up", submenu: slicerEntries))
         }
         actionEntries.append(contentsOf: [
-            .init(polishTitle: "Kopiuj adres IP", englishTitle: "Copy IP address", symbol: "doc.on.doc", action: onCopyIP),
-            .init(polishTitle: "Edytuj drukarkę", englishTitle: "Edit printer", symbol: "pencil", action: onEdit),
-            .init(polishTitle: "Usuń drukarkę", englishTitle: "Remove printer", symbol: "trash", action: onRemove)
+            .init(polishTitle: "Kopiuj adres IP", englishTitle: "Copy IP address", germanTitle: "IP-Adresse kopieren", symbol: "doc.on.doc", action: onCopyIP),
+            .init(polishTitle: "Edytuj drukarkę", englishTitle: "Edit printer", germanTitle: "Drucker bearbeiten", symbol: "pencil", action: onEdit),
+            .init(polishTitle: "Usuń drukarkę", englishTitle: "Remove printer", germanTitle: "Drucker entfernen", symbol: "trash", action: onRemove)
         ])
         let actions = CardActionsButton(entries: actionEntries)
+        actionsButton = actions
         let handle = PrinterDragHandle { [weak self] event in self?.beginCardDrag(with: event) }
         dragHandle = handle
         // Name and a small secondary manufacturer/model label sit together, e.g. "Warsztat · P1S".
@@ -870,6 +886,8 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
     }
 
     func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings) {
+        dragHandle?.localize(using: settings)
+        actionsButton?.localize(using: settings)
         nameLabel.stringValue = printer.name
         let manufacturer = printer.model.trimmingCharacters(in: .whitespaces)
         manufacturerLabel.stringValue = manufacturer.isEmpty ? "" : "· \(manufacturer)"
@@ -884,7 +902,7 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         }
         statusLabel.toolTip = baseStatus
         statusLabel.textColor = stale ? .systemOrange : (message == nil ? stateColor(telemetry.state) : .secondaryLabelColor)
-        stateDot.image = NSImage(systemSymbolName: telemetry.state.symbol, accessibilityDescription: telemetry.state.label)
+        stateDot.image = NSImage(systemSymbolName: telemetry.state.symbol, accessibilityDescription: settings.stateLabel(telemetry.state))
         stateDot.contentTintColor = stateColor(telemetry.state)
         updateCardEmphasis(for: telemetry.state)
         if telemetry.state == .error {
@@ -900,14 +918,14 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         if telemetry.state == .error {
             let errorDescription = HMSResolver.shared.description(for: telemetry.hmsCodes, serial: printer.serial, language: settings.language)
                 ?? (telemetry.errorCode != 0
-                    ? String(format: settings.text("Kod błędu: 0x%llX", "Error code: 0x%llX"), telemetry.errorCode)
-                    : settings.text("Drukarka zgłosiła błąd", "Printer reported an error"))
+                    ? String(format: settings.text("Kod błędu: 0x%llX", "Error code: 0x%llX", "Fehlercode: 0x%llX"), telemetry.errorCode)
+                    : settings.text("Drukarka zgłosiła błąd", "Printer reported an error", "Drucker hat einen Fehler gemeldet"))
             jobLabel.stringValue = errorDescription
             jobLabel.toolTip = errorDescription
         } else {
             jobLabel.stringValue = telemetry.jobName?.isEmpty == false
                 ? telemetry.jobName!
-                : settings.text("BRAK AKTYWNEGO ZADANIA", "NO ACTIVE JOB")
+                : settings.text("BRAK AKTYWNEGO ZADANIA", "NO ACTIVE JOB", "KEIN AKTIVER DRUCKAUFTRAG")
             jobLabel.toolTip = telemetry.jobName
         }
         progress.value = telemetry.progress
@@ -974,10 +992,10 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
     /// compact single row (Nozzle · Bed · Chamber); dual-nozzle printers split into an L/P row and a
     /// Bed/Chamber row.
     private func configureMetricsLayout(dual: Bool, settings: AppSettings) {
-        leftNozzleMetric.label = dual ? settings.text("L", "L") : settings.text("Dysza", "Nozzle")
-        rightNozzleMetric.label = settings.text("P", "R")
-        bedMetric.label = settings.text("Stół", "Bed")
-        chamberMetric.label = settings.text("Komora", "Chamber")
+        leftNozzleMetric.label = dual ? settings.text("L", "L", "L") : settings.text("Dysza", "Nozzle", "Düse")
+        rightNozzleMetric.label = settings.text("P", "R", "R")
+        bedMetric.label = settings.text("Stół", "Bed", "Druckbett")
+        chamberMetric.label = settings.text("Komora", "Chamber", "Bauraum")
         guard lastDualNozzle != dual else { return }
         lastDualNozzle = dual
         if dual {
@@ -1109,14 +1127,19 @@ private final class PrinterDragHandle: NSImageView {
     init(onDrag: @escaping (NSEvent) -> Void) {
         self.onDrag = onDrag
         super.init(frame: .zero)
-        image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Move printer")
         contentTintColor = .tertiaryLabelColor
-        toolTip = AppSettings.shared.text("Przeciągnij, aby zmienić kolejność", "Drag to reorder")
+        localize(using: AppSettings.shared)
         widthAnchor.constraint(equalToConstant: 17).isActive = true
         heightAnchor.constraint(equalToConstant: 18).isActive = true
     }
 
     required init?(coder: NSCoder) { nil }
+
+    func localize(using settings: AppSettings) {
+        let description = settings.text("Przenieś drukarkę", "Move printer", "Drucker verschieben")
+        image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: description)
+        toolTip = settings.text("Przeciągnij, aby zmienić kolejność", "Drag to reorder", "Zum Sortieren ziehen")
+    }
 
     override func mouseDown(with event: NSEvent) {
         didBeginDrag = false
@@ -1142,14 +1165,16 @@ private final class CardActionsButton: NSButton {
     struct Entry {
         let polishTitle: String
         let englishTitle: String
+        let germanTitle: String
         let symbol: String
         let action: (() -> Void)?
         let submenu: [Entry]?
 
-        init(polishTitle: String, englishTitle: String, symbol: String,
+        init(polishTitle: String, englishTitle: String, germanTitle: String, symbol: String,
              action: (() -> Void)? = nil, submenu: [Entry]? = nil) {
             self.polishTitle = polishTitle
             self.englishTitle = englishTitle
+            self.germanTitle = germanTitle
             self.symbol = symbol
             self.action = action
             self.submenu = submenu
@@ -1166,20 +1191,26 @@ private final class CardActionsButton: NSButton {
     init(entries: [Entry]) {
         self.entries = entries
         super.init(frame: .zero)
-        image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Actions")
+        image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: AppSettings.shared.text("Działania", "Actions", "Aktionen"))
         bezelStyle = .circular
         controlSize = .small
         target = self
         action = #selector(showActions)
-        toolTip = AppSettings.shared.text("Więcej działań", "More actions")
+        toolTip = AppSettings.shared.text("Więcej działań", "More actions", "Weitere Aktionen")
         widthAnchor.constraint(equalToConstant: 24).isActive = true
         heightAnchor.constraint(equalToConstant: 22).isActive = true
     }
 
     required init?(coder: NSCoder) { nil }
 
+    func localize(using settings: AppSettings) {
+        let description = settings.text("Działania", "Actions", "Aktionen")
+        image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: description)
+        toolTip = settings.text("Więcej działań", "More actions", "Weitere Aktionen")
+    }
+
     @objc private func showActions() {
-        toolTip = AppSettings.shared.text("Więcej działań", "More actions")
+        toolTip = AppSettings.shared.text("Więcej działań", "More actions", "Weitere Aktionen")
         let menu = buildMenu(from: entries)
         menu.popUp(positioning: nil, at: NSPoint(x: bounds.maxX, y: bounds.minY), in: self)
     }
@@ -1187,7 +1218,7 @@ private final class CardActionsButton: NSButton {
     private func buildMenu(from entries: [Entry]) -> NSMenu {
         let menu = NSMenu()
         for entry in entries {
-            let title = AppSettings.shared.text(entry.polishTitle, entry.englishTitle)
+            let title = AppSettings.shared.text(entry.polishTitle, entry.englishTitle, entry.germanTitle)
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.image = NSImage(systemSymbolName: entry.symbol, accessibilityDescription: title)
             if let submenu = entry.submenu {

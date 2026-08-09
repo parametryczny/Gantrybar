@@ -10,7 +10,7 @@ final class HMSResolver {
     func description(for codes: [String], serial: String, language: AppLanguage) -> String? {
         guard !codes.isEmpty else { return nil }
         let prefix = String(serial.prefix(3)).uppercased()
-        let languageCode = language == .pl ? "pl" : "en"
+        let languageCode = language.rawValue
         let lookup = messages(prefix: prefix, languageCode: languageCode)
         for code in codes {
             let normalized = normalize(code)

@@ -9,7 +9,7 @@ final class SettingsWindowController: NSWindowController {
     private let xButton = NSButton()
     private let languageLabel = NSTextField(labelWithString: "")
     private let appearanceLabel = NSTextField(labelWithString: "")
-    private let languageControl = NSSegmentedControl(labels: ["PL", "EN"], trackingMode: .selectOne, target: nil, action: nil)
+    private let languageControl = NSSegmentedControl(labels: ["PL", "EN", "DE"], trackingMode: .selectOne, target: nil, action: nil)
     private let themeControl = NSSegmentedControl(labels: ["LIGHT", "DARK"], trackingMode: .selectOne, target: nil, action: nil)
     private let launchSwitch = NSSwitch()
     private let launchLabel = NSTextField(labelWithString: "")
@@ -76,6 +76,7 @@ final class SettingsWindowController: NSWindowController {
         languageControl.segmentStyle = .rounded
         languageControl.setWidth(70, forSegment: 0)
         languageControl.setWidth(70, forSegment: 1)
+        languageControl.setWidth(70, forSegment: 2)
 
         themeControl.target = self
         themeControl.action = #selector(themeChanged)
@@ -193,31 +194,31 @@ final class SettingsWindowController: NSWindowController {
         guard let window else { return }
         let settings = AppSettings.shared
         window.appearance = settings.appearance
-        window.title = settings.text("Ustawienia Gantry", "Gantry Settings")
-        titleLabel.stringValue = settings.text("Ustawienia", "Settings")
+        window.title = settings.text("Ustawienia Gantry", "Gantry Settings", "Gantry-Einstellungen")
+        titleLabel.stringValue = settings.text("Ustawienia", "Settings", "Einstellungen")
         authorLabel.stringValue = "Kamil Grzegorczyk"
-        githubButton.title = "@parametryczny on GitHub"
-        xButton.title = "@parametryczny on X"
-        languageLabel.stringValue = settings.text("Język:", "Language:")
-        appearanceLabel.stringValue = settings.text("Wygląd:", "Appearance:")
-        languageControl.selectedSegment = settings.language == .pl ? 0 : 1
-        themeControl.setLabel(settings.text("JASNY", "LIGHT"), forSegment: 0)
-        themeControl.setLabel(settings.text("CIEMNY", "DARK"), forSegment: 1)
+        githubButton.title = settings.text("@parametryczny na GitHubie", "@parametryczny on GitHub", "@parametryczny auf GitHub")
+        xButton.title = settings.text("@parametryczny na X", "@parametryczny on X", "@parametryczny auf X")
+        languageLabel.stringValue = settings.text("Język:", "Language:", "Sprache:")
+        appearanceLabel.stringValue = settings.text("Wygląd:", "Appearance:", "Darstellung:")
+        languageControl.selectedSegment = AppLanguage.allCases.firstIndex(of: settings.language) ?? 1
+        themeControl.setLabel(settings.text("JASNY", "LIGHT", "HELL"), forSegment: 0)
+        themeControl.setLabel(settings.text("CIEMNY", "DARK", "DUNKEL"), forSegment: 1)
         themeControl.selectedSegment = settings.theme == .light ? 0 : 1
-        launchLabel.stringValue = settings.text("Uruchamiaj przy logowaniu", "Launch at login")
+        launchLabel.stringValue = settings.text("Uruchamiaj przy logowaniu", "Launch at login", "Bei der Anmeldung starten")
         launchSwitch.state = LaunchAtLoginManager.isEnabled ? .on : .off
-        notificationsLabel.stringValue = settings.text("Powiadomienia:", "Notifications:")
-        notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished")
-        notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error")
-        notifyPausedCheck.title = settings.text("Druk wstrzymany", "Print paused")
-        notifyLowFilamentCheck.title = settings.text("Niski poziom filamentu", "Low filament")
-        notifyHumidityCheck.title = settings.text("Wysoka wilgotność AMS", "High AMS humidity")
+        notificationsLabel.stringValue = settings.text("Powiadomienia:", "Notifications:", "Mitteilungen:")
+        notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished", "Druck abgeschlossen")
+        notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error", "Druckerfehler")
+        notifyPausedCheck.title = settings.text("Druk wstrzymany", "Print paused", "Druck pausiert")
+        notifyLowFilamentCheck.title = settings.text("Niski poziom filamentu", "Low filament", "Niedriger Filamentstand")
+        notifyHumidityCheck.title = settings.text("Wysoka wilgotność AMS", "High AMS humidity", "Hohe AMS-Luftfeuchtigkeit")
         notifyFinishedCheck.state = settings.notifyFinished ? .on : .off
         notifyErrorCheck.state = settings.notifyError ? .on : .off
         notifyPausedCheck.state = settings.notifyPaused ? .on : .off
         notifyLowFilamentCheck.state = settings.notifyLowFilament ? .on : .off
         notifyHumidityCheck.state = settings.notifyHumidity ? .on : .off
-        quietHoursCheck.title = settings.text("Godziny ciszy (bez powiadomień)", "Quiet hours (no notifications)")
+        quietHoursCheck.title = settings.text("Godziny ciszy (bez powiadomień)", "Quiet hours (no notifications)", "Ruhezeiten (keine Mitteilungen)")
         quietHoursCheck.state = QuietHours.isEnabled ? .on : .off
         quietStartPicker.dateValue = date(fromMinutes: QuietHours.startMinutes)
         quietEndPicker.dateValue = date(fromMinutes: QuietHours.endMinutes)
@@ -225,17 +226,23 @@ final class SettingsWindowController: NSWindowController {
         quietEndPicker.isEnabled = QuietHours.isEnabled
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "0.1.19"
-        versionLabel.stringValue = settings.text("Wersja \(version)", "Version \(version)") + " • \(AccessCodeStore.modeName)"
-        supportButton.title = settings.text("Wesprzyj projekt", "Support the project")
+        versionLabel.stringValue = settings.text("Wersja \(version)", "Version \(version)", "Version \(version)") + " • \(AccessCodeStore.modeName)"
+        supportButton.title = settings.text("Wesprzyj projekt", "Support the project", "Projekt unterstützen")
+        supportButton.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription:
+            settings.text("Wsparcie", "Support", "Unterstützung"))
         supportSubtitle.stringValue = settings.text(
             "Dobrą kawką nie pogardzę, a ta wirtualna daje mi kofeinowego kopa do działania nad kolejnymi projektami! 🚀 Jeśli chcesz dorzucić się do mojego kolejnego kubka i wesprzeć moje działania, kliknij „Wesprzyj projekt”.",
-            "I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
-        closeButton.title = settings.text("Gotowe", "Done")
-        updateButton.title = settings.text("Sprawdź aktualizacje", "Check for updates")
+            "I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.",
+            "Gegen einen guten Kaffee habe ich nie etwas einzuwenden – und dieser virtuelle gibt mir den nötigen Koffeinschub für weitere Projekte! 🚀 Wenn du meinen nächsten Kaffee und meine Arbeit unterstützen möchtest, klicke auf „Projekt unterstützen“.")
+        closeButton.title = settings.text("Gotowe", "Done", "Fertig")
+        updateButton.title = settings.text("Sprawdź aktualizacje", "Check for updates", "Nach Updates suchen")
+        updateButton.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription:
+            settings.text("Aktualizacje", "Updates", "Updates"))
     }
 
     @objc private func languageChanged() {
-        AppSettings.shared.language = languageControl.selectedSegment == 0 ? .pl : .en
+        guard AppLanguage.allCases.indices.contains(languageControl.selectedSegment) else { return }
+        AppSettings.shared.language = AppLanguage.allCases[languageControl.selectedSegment]
     }
 
     @objc private func quietHoursChanged() {
@@ -281,7 +288,7 @@ final class SettingsWindowController: NSWindowController {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
         updateStatusLabel.textColor = .secondaryLabelColor
-        updateStatusLabel.stringValue = settings.text("Sprawdzam…", "Checking…")
+        updateStatusLabel.stringValue = settings.text("Sprawdzam…", "Checking…", "Wird geprüft …")
         Task { @MainActor in
             defer { updateButton.isEnabled = true }
             do {
@@ -290,12 +297,12 @@ final class SettingsWindowController: NSWindowController {
                     updateStatusLabel.stringValue = ""
                     presentUpdateAvailable(release)
                 } else {
-                    updateStatusLabel.stringValue = settings.text("Masz najnowszą wersję.", "You have the latest version.")
+                    updateStatusLabel.stringValue = settings.text("Masz najnowszą wersję.", "You have the latest version.", "Du hast die neueste Version.")
                 }
             } catch {
                 updateStatusLabel.stringValue = ""
                 presentAlert(
-                    title: settings.text("Nie udało się sprawdzić aktualizacji", "Could not check for updates"),
+                    title: settings.text("Nie udało się sprawdzić aktualizacji", "Could not check for updates", "Updates konnten nicht geprüft werden"),
                     message: error.localizedDescription
                 )
             }
@@ -305,14 +312,15 @@ final class SettingsWindowController: NSWindowController {
     private func presentUpdateAvailable(_ release: UpdateService.Release) {
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = settings.text("Dostępna aktualizacja: \(release.version)", "Update available: \(release.version)")
+        alert.messageText = settings.text("Dostępna aktualizacja: \(release.version)", "Update available: \(release.version)", "Update verfügbar: \(release.version)")
         alert.informativeText = settings.text(
             "Masz wersję \(UpdateService.currentVersion). Zainstalować \(release.version)? Gantry pobierze aktualizację i uruchomi się ponownie.",
-            "You have \(UpdateService.currentVersion). Install \(release.version)? Gantry will download the update and restart."
+            "You have \(UpdateService.currentVersion). Install \(release.version)? Gantry will download the update and restart.",
+            "Du hast \(UpdateService.currentVersion). Möchtest du \(release.version) installieren? Gantry lädt das Update herunter und startet neu."
         )
-        alert.addButton(withTitle: settings.text("Zainstaluj", "Install"))
-        alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page"))
-        alert.addButton(withTitle: settings.text("Anuluj", "Cancel"))
+        alert.addButton(withTitle: settings.text("Zainstaluj", "Install", "Installieren"))
+        alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page", "Seite öffnen"))
+        alert.addButton(withTitle: settings.text("Anuluj", "Cancel", "Abbrechen"))
         let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             switch response {
             case .alertFirstButtonReturn: self?.installUpdate(release)
@@ -328,7 +336,7 @@ final class SettingsWindowController: NSWindowController {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
         updateStatusLabel.textColor = .secondaryLabelColor
-        updateStatusLabel.stringValue = settings.text("Pobieram i instaluję…", "Downloading and installing…")
+        updateStatusLabel.stringValue = settings.text("Pobieram i instaluję…", "Downloading and installing…", "Wird geladen und installiert …")
         Task { @MainActor in
             do {
                 try await UpdateService.downloadAndInstall(release)
@@ -337,12 +345,13 @@ final class SettingsWindowController: NSWindowController {
                 updateButton.isEnabled = true
                 updateStatusLabel.stringValue = ""
                 let alert = NSAlert()
-                alert.messageText = settings.text("Instalacja nie powiodła się", "Installation failed")
+                alert.messageText = settings.text("Instalacja nie powiodła się", "Installation failed", "Installation fehlgeschlagen")
                 alert.informativeText = error.localizedDescription + "\n\n" + settings.text(
                     "Otwórz stronę wydania, aby pobrać ręcznie.",
-                    "Open the release page to download it manually."
+                    "Open the release page to download it manually.",
+                    "Öffne die Release-Seite, um das Update manuell herunterzuladen."
                 )
-                alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page"))
+                alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page", "Seite öffnen"))
                 alert.addButton(withTitle: "OK")
                 let openPage: (NSApplication.ModalResponse) -> Void = { response in
                     if response == .alertFirstButtonReturn { NSWorkspace.shared.open(release.pageURL) }

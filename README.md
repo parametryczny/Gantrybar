@@ -2,6 +2,8 @@
 
 **[English](#english)** · **[Polski](#polski)**
 
+**UI languages:** English · Polski · Deutsch
+
 [![Latest release](https://img.shields.io/github/v/release/parametryczny/gantrybar)](https://github.com/parametryczny/gantrybar/releases/latest)
 [![Total downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total)](https://github.com/parametryczny/gantrybar/releases)
 [![License: MIT](https://img.shields.io/github/license/parametryczny/gantrybar)](LICENSE)
@@ -55,7 +57,7 @@ Version 0.5.0 adds the first GNU/Linux/Raspberry Pi beta with Bambu Lab, Klipper
 - reports HMS errors and useful printer notifications
 - reconnects automatically and refreshes printer addresses on the local network
 - discovers printers via SSDP multicast — now sent on every local network interface, not just the default route — plus a unicast subnet scan; a VPN like Tailscale carries no multicast, so a VPN printer is found by adding its IP, CIDR or range as an extra scan target (not by SSDP)
-- supports Polish and English, light and dark appearance
+- supports Polish, English and German, light and dark appearance
 - offers a Local build and a macOS Keychain build
 - pins each printer's TLS certificate after the first trusted connection
 - communicates locally without requiring a Bambu Cloud account

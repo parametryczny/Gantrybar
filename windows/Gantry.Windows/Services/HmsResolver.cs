@@ -12,11 +12,10 @@ public static class HmsResolver
     private static readonly object Gate = new();
     private static readonly Dictionary<string, Dictionary<string, string>> Cache = new();
 
-    public static string? Description(IReadOnlyList<string> codes, string serial, bool polish)
+    public static string? Description(IReadOnlyList<string> codes, string serial, string languageCode)
     {
         if (codes.Count == 0) return null;
         string prefix = (serial.Length >= 3 ? serial[..3] : serial).ToUpperInvariant();
-        string languageCode = polish ? "pl" : "en";
         var lookup = Messages(prefix, languageCode);
         foreach (var code in codes)
         {

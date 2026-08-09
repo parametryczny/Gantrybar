@@ -147,15 +147,19 @@ public partial class DashboardWindow : Window
     // updates just mutate existing views, so the panel stays responsive.
     private void Rebuild()
     {
-        bool pl = AppSettings.Polish;
+        string language = AppSettings.Language;
         StatusLine.Text = _store.IsScanning
-            ? AppSettings.Text("Skanowanie…", "Scanning…")
+            ? AppSettings.Text("Skanowanie…", "Scanning…", "Wird gesucht …")
             : (_store.GlobalMessage ?? AppSettings.Text($"{_store.Printers.Count} drukarek • {_store.ActivePrintCount} drukuje",
-                                                        $"{_store.Printers.Count} printers • {_store.ActivePrintCount} printing"));
+                                                        $"{_store.Printers.Count} printers • {_store.ActivePrintCount} printing",
+                                                        $"{_store.Printers.Count} Drucker • {_store.ActivePrintCount} druckt"));
+
+        ScanButton.ToolTip = AppSettings.Text("Szukaj drukarek", "Scan for printers", "Nach Druckern suchen");
+        AddButton.ToolTip = AppSettings.Text("Dodaj drukarkę", "Add printer", "Drucker hinzufügen");
 
         bool compact = UseCompactMode();
         CompactButton.Visibility = _store.Printers.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
-        CompactButton.Content = compact ? AppSettings.Text("Rozwiń", "Expand") : AppSettings.Text("Zwiń", "Collapse");
+        CompactButton.Content = compact ? AppSettings.Text("Rozwiń", "Expand", "Ausklappen") : AppSettings.Text("Zwiń", "Collapse", "Einklappen");
 
         var serials = _store.Printers.Select(p => p.Serial).ToList();
         if (!serials.SequenceEqual(_renderedSerials) || _renderedCompact != compact)
@@ -167,7 +171,7 @@ public partial class DashboardWindow : Window
                 _views.Clear();
                 CardsPanel.Children.Add(new TextBlock
                 {
-                    Text = AppSettings.Text("Brak drukarek. Kliknij +, aby dodać.", "No printers. Click + to add one."),
+                    Text = AppSettings.Text("Brak drukarek. Kliknij +, aby dodać.", "No printers. Click + to add one.", "Keine Drucker. Klicke zum Hinzufügen auf +."),
                     Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                     Margin = new Thickness(8)
                 });
@@ -195,7 +199,7 @@ public partial class DashboardWindow : Window
             {
                 var t = _store.Telemetry.TryGetValue(printer.Serial, out var tel) ? tel : new PrinterTelemetry();
                 _store.ConnectionMessages.TryGetValue(printer.Serial, out var msg);
-                view.Update(printer, t, msg, pl);
+                view.Update(printer, t, msg, language);
             }
 
         // Fit the window to the cards' real height — cards vary (multiple AMS units wrap onto extra
@@ -236,7 +240,7 @@ public partial class DashboardWindow : Window
     private interface ICardView
     {
         Border Root { get; }
-        void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl);
+        void Update(SavedPrinter printer, PrinterTelemetry t, string? message, string language);
     }
 
     private void ToggleCardMenu(FrameworkElement anchor, FrameworkElement menu)
@@ -350,14 +354,14 @@ public partial class DashboardWindow : Window
             };
         }
 
-        public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
+        public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, string language)
         {
             _name.Text = printer.Name;
             var accent = ParseHex(t.State.AccentHex() + "FF");
             _pill.Background = new SolidColorBrush(Color.FromArgb(0x33, accent.R, accent.G, accent.B));
-            _pillText.Text = t.State.Label(pl);
+            _pillText.Text = t.ActivityLabel(language);
             _pillText.Foreground = new SolidColorBrush(accent);
-            _job.Text = string.IsNullOrEmpty(t.JobName) ? AppSettings.Text("Brak aktywnego zadania", "No active job") : t.JobName!;
+            _job.Text = string.IsNullOrEmpty(t.JobName) ? AppSettings.Text("Brak aktywnego zadania", "No active job", "Kein aktiver Auftrag") : t.JobName!;
             _bar.Value = t.Progress;
             _bar.Foreground = new SolidColorBrush(accent);
             _percent.Text = $"{t.Progress}%";
@@ -371,15 +375,15 @@ public partial class DashboardWindow : Window
                 : new List<NozzleTelemetry> { new() { Position = NozzlePosition.Single, CurrentTemperature = t.NozzleTemperature, TargetTemperature = t.NozzleTargetTemperature } };
             bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
             string bed = FormatTemp(t.BedTemperature, t.BedTargetTemperature);
-            string bedLabel = pl ? "Stół" : "Bed";
-            string chamberLabel = pl ? "Komora" : "Chamber";
+            string bedLabel = AppSettings.Text("Stół", "Bed", "Druckbett");
+            string chamberLabel = AppSettings.Text("Komora", "Chamber", "Bauraum");
             string? chamber = t.ChamberTemperature is { } cc ? cc.ToString("0", CultureInfo.InvariantCulture) + "°" : null;
             if (dual)
             {
                 var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
                 var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
                 _temps.Children.Add(TempRow(("L", FormatTemp(left.CurrentTemperature, left.TargetTemperature)),
-                                            (pl ? "P" : "R", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature))));
+                                            (language == "pl" ? "P" : "R", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature))));
                 _temps.Children.Add(chamber != null
                     ? TempRow((bedLabel, bed), (chamberLabel, chamber!))
                     : TempRow((bedLabel, bed)));
@@ -387,7 +391,7 @@ public partial class DashboardWindow : Window
             else
             {
                 var single = nozzles[0];
-                string nozzleLabel = pl ? "Dysza" : "Nozzle";
+                string nozzleLabel = AppSettings.Text("Dysza", "Nozzle", "Düse");
                 _temps.Children.Add(chamber != null
                     ? TempRow((nozzleLabel, FormatTemp(single.CurrentTemperature, single.TargetTemperature)), (bedLabel, bed), (chamberLabel, chamber!))
                     : TempRow((nozzleLabel, FormatTemp(single.CurrentTemperature, single.TargetTemperature)), (bedLabel, bed)));
@@ -443,7 +447,7 @@ public partial class DashboardWindow : Window
         private SavedPrinter _printer;
         private PrinterTelemetry _telemetry = new();
         private string? _message;
-        private bool _pl;
+        private string _language = "en";
 
         public CompactRow(DashboardWindow owner, SavedPrinter printer)
         {
@@ -517,24 +521,24 @@ public partial class DashboardWindow : Window
             bool show = _full.Root.Visibility != Visibility.Visible;
             _full.Root.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             _chevron.Text = show ? "⌄" : "›";
-            if (show) _full.Update(_printer, _telemetry, _message, _pl);
+            if (show) _full.Update(_printer, _telemetry, _message, _language);
             _owner.FitHeightToContent();   // grow/shrink to fit the expanded card
         }
 
-        public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
+        public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, string language)
         {
-            _printer = printer; _telemetry = t; _message = message; _pl = pl;
+            _printer = printer; _telemetry = t; _message = message; _language = language;
             _dot.Fill = new SolidColorBrush(ParseHex(t.State.AccentHex() + "FF"));
             _name.Text = printer.Name;
             bool printing = t.State is PrinterState.Printing or PrinterState.Paused;
             string job = string.IsNullOrEmpty(t.JobName) ? "" : t.JobName!;
             _status.Text = printing
                 ? (string.IsNullOrEmpty(job) ? FormatEta(t.RemainingMinutes) : $"{FormatEta(t.RemainingMinutes)} • {job}")
-                : t.State.Label(pl);
+                : t.State.Label(language);
             _percent.Text = printing ? $"{t.Progress}%" : "";
 
             if (_full is not null && _full.Root.Visibility == Visibility.Visible)
-                _full.Update(printer, t, message, pl);
+                _full.Update(printer, t, message, language);
         }
     }
 
@@ -696,32 +700,32 @@ public partial class DashboardWindow : Window
             items.Children.Add(button);
         }
 
-        Item(AppSettings.Text("Połącz ponownie", "Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
+        Item(AppSettings.Text("Połącz ponownie", "Reconnect", "Neu verbinden"), () => { if (Current() is { } p) _store.Reconnect(p); });
 
         var slicers = SlicerLauncher.Installed();
         if (printer.Kind == PrinterKind.Bambu)
         {
             var bambu = slicers.FirstOrDefault(s => s.Name == "Bambu Studio");
             if (bambu is not null)
-                Item(AppSettings.Text("Kamera w Bambu Studio", "Camera in Bambu Studio"), () => SlicerLauncher.Open(bambu.Path));
+                Item(AppSettings.Text("Kamera w Bambu Studio", "Camera in Bambu Studio", "Kamera in Bambu Studio"), () => SlicerLauncher.Open(bambu.Path));
         }
         foreach (var slicer in slicers)
-            Item(AppSettings.Text($"Otwórz w {slicer.Name}", $"Open in {slicer.Name}"), () => SlicerLauncher.Open(slicer.Path));
+            Item(AppSettings.Text($"Otwórz w {slicer.Name}", $"Open in {slicer.Name}", $"In {slicer.Name} öffnen"), () => SlicerLauncher.Open(slicer.Path));
 
-        Item(AppSettings.Text("Kopiuj adres IP", "Copy IP address"), () =>
+        Item(AppSettings.Text("Kopiuj adres IP", "Copy IP address", "IP-Adresse kopieren"), () =>
         {
             if (Current() is { Host.Length: > 0 } p) { try { Clipboard.SetText(p.Host); } catch { } }
         });
 
-        Item(AppSettings.Text("Edytuj drukarkę", "Edit printer"), () =>
+        Item(AppSettings.Text("Edytuj drukarkę", "Edit printer", "Drucker bearbeiten"), () =>
         {
             if (Current() is { } p) { new AddPrinterWindow(_store, p) { Owner = this }.ShowDialog(); }
         });
-        Item(AppSettings.Text("Usuń drukarkę", "Remove printer"), () =>
+        Item(AppSettings.Text("Usuń drukarkę", "Remove printer", "Drucker entfernen"), () =>
         {
             if (Current() is not { } p) return;
             var confirm = MessageBox.Show(this,
-                AppSettings.Text($"Usunąć drukarkę {p.Name}?", $"Remove printer {p.Name}?"),
+                AppSettings.Text($"Usunąć drukarkę {p.Name}?", $"Remove printer {p.Name}?", $"Drucker {p.Name} entfernen?"),
                 "Gantry", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm == MessageBoxResult.Yes) _store.Remove(p);
         });

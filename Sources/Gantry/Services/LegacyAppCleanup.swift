@@ -22,13 +22,14 @@ enum LegacyAppCleanup {
 
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = settings.text("Znaleziono starą aplikację BambuBar", "Old BambuBar app found")
+        alert.messageText = settings.text("Znaleziono starą aplikację BambuBar", "Old BambuBar app found", "Alte BambuBar-App gefunden")
         alert.informativeText = settings.text(
             "Gantry zastępuje BambuBar. Przenieść starą aplikację do Kosza? Twoje drukarki i kody zostały już przeniesione, więc nic nie stracisz.",
-            "Gantry replaces BambuBar. Move the old app to the Trash? Your printers and codes have already been migrated, so nothing is lost."
+            "Gantry replaces BambuBar. Move the old app to the Trash? Your printers and codes have already been migrated, so nothing is lost.",
+            "Gantry ersetzt BambuBar. Möchtest du die alte App in den Papierkorb verschieben? Deine Drucker und Codes wurden bereits übernommen."
         )
-        alert.addButton(withTitle: settings.text("Przenieś do Kosza", "Move to Trash"))
-        alert.addButton(withTitle: settings.text("Zostaw", "Keep"))
+        alert.addButton(withTitle: settings.text("Przenieś do Kosza", "Move to Trash", "In den Papierkorb"))
+        alert.addButton(withTitle: settings.text("Zostaw", "Keep", "Behalten"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         NSWorkspace.shared.recycle([legacyURL]) { _, _ in }

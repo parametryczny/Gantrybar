@@ -133,11 +133,36 @@ public static class Defaults
 /// <summary>User-facing settings mirroring the macOS AppSettings.</summary>
 public static class AppSettings
 {
-    public static bool Polish
+    private static readonly string[] SupportedLanguages = ["pl", "en", "de"];
+    public static event Action? LanguageChanged;
+
+    public static string Language
     {
-        get => (Defaults.GetString("app-language") ?? DefaultLanguage()) == "pl";
-        set => Defaults.SetString("app-language", value ? "pl" : "en");
+        get
+        {
+            var stored = Defaults.GetString("app-language");
+            return stored is not null && SupportedLanguages.Contains(stored) ? stored : DefaultLanguage();
+        }
+        set
+        {
+            string normalized = SupportedLanguages.Contains(value) ? value : DefaultLanguage();
+            if (normalized == Language) return;
+            Defaults.SetString("app-language", normalized);
+            LanguageChanged?.Invoke();
+        }
     }
+
+    public static string LanguageDisplayName => Language switch
+    {
+        "pl" => "Polski",
+        "de" => "Deutsch",
+        _ => "English",
+    };
+
+    public static string LanguageShortName => Language.ToUpperInvariant();
+
+    public static void CycleLanguage()
+        => Language = Language switch { "pl" => "en", "en" => "de", _ => "pl" };
 
     public static bool CompactMode
     {
@@ -189,10 +214,33 @@ public static class AppSettings
         set => Defaults.SetString("discovery-subnet-targets", value.Trim());
     }
 
-    public static string Text(string polish, string english) => Polish ? polish : english;
+    public static string Text(string polish, string english, string german)
+        => TextForLanguage(Language, polish, english, german);
+
+    internal static string TextForLanguage(string language, string polish, string english, string german)
+        => language switch { "pl" => polish, "de" => german, _ => english };
+
+    internal static string LanguageForCulture(string? cultureName)
+    {
+        var code = cultureName?.Split('-', '_')[0].ToLowerInvariant();
+        return code is "pl" or "de" ? code : "en";
+    }
 
     private static string DefaultLanguage()
-        => System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "pl" ? "pl" : "en";
+        => LanguageForCulture(System.Globalization.CultureInfo.CurrentUICulture.Name);
+
+    internal static void RunLocalizationSelfTest()
+    {
+        if (LanguageForCulture("pl-PL") != "pl" || LanguageForCulture("de-DE") != "de" ||
+            LanguageForCulture("fr-FR") != "en" || LanguageForCulture(null) != "en")
+            throw new InvalidOperationException("Language detection self-test failed.");
+        if (TextForLanguage("de", "Gotowa", "Ready", "Bereit") != "Bereit" ||
+            TextForLanguage("unknown", "Gotowa", "Ready", "Bereit") != "Ready")
+            throw new InvalidOperationException("Language selection self-test failed.");
+        var telemetry = new PrinterTelemetry { State = PrinterState.Printing, CurrentStage = 13 };
+        if (telemetry.ActivityLabel("de") != "Referenzfahrt")
+            throw new InvalidOperationException("German print-stage self-test failed.");
+    }
 }
 
 /// <summary>Persists the configured printer list (saved-printers-v1), same schema as macOS.</summary>
@@ -245,7 +293,7 @@ public static class AccessCodeStore
 
     public static string ReadAccessCode(string serial)
         => AccessCode(serial) ?? throw new InvalidOperationException(
-            AppSettings.Text("Brak zapisanego kodu dostępu.", "No stored access code."));
+            AppSettings.Text("Brak zapisanego kodu dostępu.", "No stored access code.", "Kein Zugriffscode gespeichert."));
 
     public static void Delete(string serial)
     {

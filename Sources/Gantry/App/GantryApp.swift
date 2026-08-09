@@ -1,10 +1,12 @@
 import AppKit
+import Combine
 
 @main
 @MainActor
 final class GantryApp: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
     private var permissionPrompter: LocalNetworkPermissionPrompter?
+    private var languageSubscription: AnyCancellable?
 
     static func main() {
         if CommandLine.arguments.contains("--self-test") {
@@ -76,22 +78,23 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         app.run()
     }
 
-    private static func makeMainMenu() -> NSMenu {
+    static func makeMainMenu() -> NSMenu {
+        let settings = AppSettings.shared
         let mainMenu = NSMenu()
         let editRoot = NSMenuItem()
-        let editMenu = NSMenu(title: "Edycja")
+        let editMenu = NSMenu(title: settings.text("Edycja", "Edit", "Bearbeiten"))
 
         func command(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
             NSMenuItem(title: title, action: action, keyEquivalent: key)
         }
 
-        editMenu.addItem(command("Cofnij", Selector(("undo:")), "z"))
-        editMenu.addItem(command("Ponów", Selector(("redo:")), "Z"))
+        editMenu.addItem(command(settings.text("Cofnij", "Undo", "Rückgängig"), Selector(("undo:")), "z"))
+        editMenu.addItem(command(settings.text("Ponów", "Redo", "Wiederholen"), Selector(("redo:")), "Z"))
         editMenu.addItem(.separator())
-        editMenu.addItem(command("Wytnij", #selector(NSText.cut(_:)), "x"))
-        editMenu.addItem(command("Kopiuj", #selector(NSText.copy(_:)), "c"))
-        editMenu.addItem(command("Wklej", #selector(NSText.paste(_:)), "v"))
-        editMenu.addItem(command("Zaznacz wszystko", #selector(NSText.selectAll(_:)), "a"))
+        editMenu.addItem(command(settings.text("Wytnij", "Cut", "Ausschneiden"), #selector(NSText.cut(_:)), "x"))
+        editMenu.addItem(command(settings.text("Kopiuj", "Copy", "Kopieren"), #selector(NSText.copy(_:)), "c"))
+        editMenu.addItem(command(settings.text("Wklej", "Paste", "Einfügen"), #selector(NSText.paste(_:)), "v"))
+        editMenu.addItem(command(settings.text("Zaznacz wszystko", "Select All", "Alles auswählen"), #selector(NSText.selectAll(_:)), "a"))
 
         editRoot.submenu = editMenu
         mainMenu.addItem(editRoot)
@@ -100,6 +103,9 @@ final class GantryApp: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.shared.applyTheme()
+        languageSubscription = AppSettings.shared.$language.dropFirst().sink { _ in
+            NSApp.mainMenu = Self.makeMainMenu()
+        }
         NotificationService.configure()
         if LaunchAtLoginManager.isEnabled { try? LaunchAtLoginManager.setEnabled(true) }
         let store = PrinterStore()
