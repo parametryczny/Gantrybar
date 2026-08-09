@@ -1,0 +1,40 @@
+name: GNU/Linux build
+
+on:
+  push:
+    paths:
+      - 'linux/**'
+      - '.github/workflows/linux.yml'
+  pull_request:
+    paths:
+      - 'linux/**'
+      - '.github/workflows/linux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Install runtime and packaging dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-gi python3-websocket gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 libsecret-tools libnotify-bin xvfb
+      - name: Run core tests
+        run: PYTHONPATH=linux python3 -m unittest discover -s linux/tests -v
+      - name: Compile Python sources
+        run: PYTHONPATH=linux python3 -m compileall -q linux/bambubar
+      - name: Load GTK application module
+        run: xvfb-run -a env PYTHONPATH=linux python3 -c "import bambubar.app"
+      - name: Build Debian package
+        run: sh linux/scripts/build-deb.sh
+      - name: Inspect Debian package
+        run: dpkg-deb --info linux/dist/Gantry-0.5.0-Linux-all.deb
+      - name: Upload GNU/Linux package
+        uses: actions/upload-artifact@v7
+        with:
+          name: Gantry-Linux
+          path: linux/dist/Gantry-0.5.0-Linux-all.deb
+          if-no-files-found: error

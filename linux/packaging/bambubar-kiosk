@@ -1,0 +1,9 @@
+#!/bin/sh
+if command -v xset >/dev/null 2>&1; then
+  xset s off >/dev/null 2>&1 || true
+  xset -dpms >/dev/null 2>&1 || true
+fi
+if command -v systemd-inhibit >/dev/null 2>&1; then
+  exec systemd-inhibit --what=idle:sleep --mode=block --why="Gantry workshop kiosk" /usr/bin/python3 -m bambubar --kiosk "$@"
+fi
+exec /usr/bin/python3 -m bambubar --kiosk "$@"
