@@ -5,7 +5,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-from gi.repository import Gdk, GLib, Gtk
+import gi
+
+# Keep the kiosk entry point safe when imported directly on distributions that
+# install GTK 3 and GTK 4 side by side (notably Ubuntu 26.04).
+gi.require_version("Gdk", "3.0")
+gi.require_version("GLib", "2.0")
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from .app import Gantry, PrinterCard, TEXT
 from .core import Printer, PrinterKind, PrinterState, Telemetry

@@ -8,7 +8,15 @@ from pathlib import Path
 
 import gi
 
+# Ubuntu 26.04 ships both GTK 3 and GTK 4 typelibs.  Importing Gdk from the
+# combined gi.repository statement before its version is pinned lets PyGObject
+# select Gdk 4, after which loading Gtk 3 fails with "Gdk 4.0 is already
+# loaded".  Pin every namespace used by the GTK 3 UI before the first
+# gi.repository import so import order cannot change the selected ABI.
+gi.require_version("Gdk", "3.0")
+gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
+gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 try:

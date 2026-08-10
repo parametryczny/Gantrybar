@@ -4,6 +4,7 @@ Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są op
 
 ## 0.6.0 — 2026-08-09
 
+- **Linux hotfix:** jawne przypięcie `Gdk 3.0`, `Gtk 3.0`, `GLib 2.0` i `Pango 1.0` przed importem PyGObject; usuwa awarię startu na Ubuntu 26.04, gdy równolegle zainstalowane są biblioteki GTK 3 i GTK 4
 - **nowa nazwa i logo: Gantry** — litera **G** na pasku menu / w zasobniku i jako ikona aplikacji (macOS `.icns`, Windows `.ico`); zapisane drukarki, kody i uprawnienia pozostają bez zmian
 - **modularny filament** — każdy fizyczny moduł (AMS, AMS HT, CFS, MMU, EXT) to osobna grupa z własną nazwą, wilgotnością i temperaturą; AMS HT / pojedyncza szpula pokazują 1 slot, standardowy AMS trzyma 4 pozycje (puste zostają szare)
 - **Creality CFS** — każdy box jako osobny zestaw (`CFS 1`, `CFS 2`), szpula zewnętrzna jako `EXT`; **Klipper / Happy Hare** — dowolna liczba bramek `T0…Tn` bez sztucznego dzielenia po cztery

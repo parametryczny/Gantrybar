@@ -5,7 +5,12 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 VERSION=$(PYTHONPATH="$ROOT/linux" python3 -c 'from gantry import __version__; print(__version__)')
 ARCH=all
 BUILD="$ROOT/linux/build/gantry_${VERSION}_${ARCH}"
-OUTPUT="$ROOT/linux/dist/Gantry-${VERSION}-Linux-${ARCH}.deb"
+SUFFIX=${GANTRY_PACKAGE_SUFFIX:-}
+if [ -n "$SUFFIX" ]; then
+  OUTPUT="$ROOT/linux/dist/Gantry-${VERSION}-Linux-${ARCH}-${SUFFIX}.deb"
+else
+  OUTPUT="$ROOT/linux/dist/Gantry-${VERSION}-Linux-${ARCH}.deb"
+fi
 
 rm -rf "$BUILD"
 mkdir -p "$BUILD/DEBIAN" \
@@ -58,9 +63,12 @@ else
   rm -rf "$PARTS"
   mkdir -p "$PARTS"
   printf '2.0\n' > "$PARTS/debian-binary"
-  COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname root --gname root \
+  # BSD tar defaults to PAX and may preserve com.apple.* xattrs.  dpkg on
+  # Ubuntu 26.04 rejects those extended headers as an unsupported tar type,
+  # so the macOS fallback must emit plain ustar archives.
+  COPYFILE_DISABLE=1 tar --format ustar --uid 0 --gid 0 --uname root --gname root \
     -C "$BUILD/DEBIAN" -cJf "$PARTS/control.tar.xz" .
-  COPYFILE_DISABLE=1 tar --uid 0 --gid 0 --uname root --gname root \
+  COPYFILE_DISABLE=1 tar --format ustar --uid 0 --gid 0 --uname root --gname root \
     -C "$BUILD" --exclude ./DEBIAN -cJf "$PARTS/data.tar.xz" .
   python3 "$ROOT/linux/scripts/make_deb_ar.py" "$OUTPUT" \
     "$PARTS/debian-binary" "$PARTS/control.tar.xz" "$PARTS/data.tar.xz"

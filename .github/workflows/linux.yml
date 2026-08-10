@@ -29,12 +29,12 @@ jobs:
       - name: Load GTK application module
         run: xvfb-run -a env PYTHONPATH=linux python3 -c "import gantry.app"
       - name: Build Debian package
-        run: sh linux/scripts/build-deb.sh
+        run: GANTRY_PACKAGE_SUFFIX=hotfix sh linux/scripts/build-deb.sh
       - name: Inspect Debian package
-        run: dpkg-deb --info linux/dist/Gantry-0.6.0-Linux-all.deb
+        run: dpkg-deb --info linux/dist/Gantry-0.6.0-Linux-all-hotfix.deb
       - name: Upload GNU/Linux package
         uses: actions/upload-artifact@v7
         with:
-          name: Gantry-Linux
-          path: linux/dist/Gantry-0.6.0-Linux-all.deb
+          name: Gantry-Linux-hotfix
+          path: linux/dist/Gantry-0.6.0-Linux-all-hotfix.deb
           if-no-files-found: error

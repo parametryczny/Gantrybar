@@ -11,14 +11,16 @@ to the camera view.
 
 ## Install on Ubuntu, Debian, Linux Mint or Pop!_OS
 
-Download `Gantry-0.5.0-Linux-all.deb` from GitHub Releases, then run:
+Download `Gantry-0.6.0-Linux-all-hotfix.deb` from GitHub Releases, then run:
 
 ```sh
-sudo apt install ./Gantry-0.5.0-Linux-all.deb
+sudo apt install ./Gantry-0.6.0-Linux-all-hotfix.deb
 ```
 
 Open **Gantry** from the application menu. The app can be configured to start automatically
 after login in **Settings**.
+
+![Gantry hotfix verified on Ubuntu 26.04](../docs/renders/gantry-ubuntu-26.04-hotfix.png)
 
 ## Add printers
 
@@ -48,10 +50,13 @@ prusa,MK4,192.168.1.31,,PRUSALINK_API_KEY,80
 ## Build a Debian package
 
 ```sh
-sh linux/scripts/build-deb.sh
+GANTRY_PACKAGE_SUFFIX=hotfix sh linux/scripts/build-deb.sh
 ```
 
-The package is written to `linux/dist/`. Core tests do not require a graphical session:
+The hotfix package is written to
+`linux/dist/Gantry-0.6.0-Linux-all-hotfix.deb`. Omit
+`GANTRY_PACKAGE_SUFFIX=hotfix` to produce the regular release filename. Core tests do not require
+a graphical session:
 
 ```sh
 PYTHONPATH=linux python3 -m unittest discover -s linux/tests -v
