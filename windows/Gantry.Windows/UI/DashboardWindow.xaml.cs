@@ -393,33 +393,14 @@ public partial class DashboardWindow : Window
                     : TempRow((nozzleLabel, FormatTemp(single.CurrentTemperature, single.TargetTemperature)), (bedLabel, bed)));
             }
 
-            // Physical filament modules in rows of up to two, each module's width proportional to its
-            // slot count (AMS wide, EXT narrow) — mirrors the macOS reference.
+            // One physical filament module per row, spanning the full card width. The slots fill that
+            // width evenly, so nothing overflows the card even with several AMS units.
             _ams.Children.Clear();
             var groups = t.FilamentGroups;
             if (groups.Count > 0)
             {
                 _ams.Visibility = Visibility.Visible;
-                for (int i = 0; i < groups.Count; i += 2)
-                {
-                    var rowGroups = groups.Skip(i).Take(2).ToList();
-                    var rowGrid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
-                    if (rowGroups.Count == 2)
-                    {
-                        int w0 = Math.Max(1, rowGroups[0].DeclaredCapacity);
-                        int w1 = Math.Max(1, rowGroups[1].DeclaredCapacity);
-                        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w0, GridUnitType.Star) });
-                        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
-                        rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w1, GridUnitType.Star) });
-                        var g0 = GroupBlock(rowGroups[0]); Grid.SetColumn(g0, 0); rowGrid.Children.Add(g0);
-                        var g1 = GroupBlock(rowGroups[1]); Grid.SetColumn(g1, 2); rowGrid.Children.Add(g1);
-                    }
-                    else
-                    {
-                        rowGrid.Children.Add(GroupBlock(rowGroups[0]));
-                    }
-                    _ams.Children.Add(rowGrid);
-                }
+                foreach (var group in groups) _ams.Children.Add(GroupBlock(group));
             }
             else _ams.Visibility = Visibility.Collapsed;
 
@@ -561,12 +542,14 @@ public partial class DashboardWindow : Window
     }
 
     /// <summary>A horizontal row of labelled temperature cells, e.g. "L 245/245°", "Stół 65/65°".</summary>
-    private static StackPanel TempRow(params (string Label, string Value)[] cells)
+    private static Panel TempRow(params (string Label, string Value)[] cells)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        // WrapPanel so cells flow onto a second line on narrow cards instead of clipping the last
+        // label (e.g. "Komora") — issue reported on Windows.
+        var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
         foreach (var (label, value) in cells)
         {
-            var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
+            var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 2) };
             cell.Children.Add(new TextBlock { Text = label + " ", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Muted() });
             cell.Children.Add(new TextBlock { Text = value, FontSize = 11 });
             row.Children.Add(cell);
@@ -585,7 +568,7 @@ public partial class DashboardWindow : Window
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var name = new TextBlock { Text = group.DisplayName, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Colors.White), VerticalAlignment = VerticalAlignment.Center };
+        var name = new TextBlock { Text = group.DisplayName, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Colors.White), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         Grid.SetColumn(name, 0); header.Children.Add(name);
         var envPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         if (group.HumidityPercent is { } h)
@@ -616,6 +599,7 @@ public partial class DashboardWindow : Window
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(11, 10, 11, 11),
+            Margin = new Thickness(0, 0, 0, 6),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = inner
         };
