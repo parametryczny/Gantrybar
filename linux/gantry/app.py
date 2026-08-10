@@ -112,6 +112,8 @@ def css_for(theme: str) -> bytes:
     background, foreground, card, border, secondary, trough, job = colors
     return ("""
 window { background: %(background)s; color: %(foreground)s; }
+window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
+.popover-window .header { padding: 14px 18px 10px; }
 .header { padding: 20px 24px 14px; }
 .title { font-size: 25px; font-weight: 700; }
 .subtitle { color: %(secondary)s; font-size: 13px; }
@@ -199,6 +201,11 @@ class PrinterCard(Gtk.Frame):
         remove.connect("activate", lambda *_: self.app.remove_printer(self.printer))
         menu.append(remove)
         menu.show_all()
+        # Keep the popover panel open while its own card menu is up.
+        window = getattr(self.app, "window", None)
+        if window is not None:
+            window._suppress_hide = True
+            menu.connect("deactivate", lambda *_: setattr(window, "_suppress_hide", False))
         menu.popup_at_widget(button, Gdk.Gravity.SOUTH_EAST, Gdk.Gravity.NORTH_EAST, None)
 
     def _drag_data_get(self, _widget: Gtk.Widget, _context: Gdk.DragContext,
@@ -319,10 +326,31 @@ class PrinterCard(Gtk.Frame):
 
 class Dashboard(Gtk.Window):
     def __init__(self, app: "Gantry") -> None:
-        super().__init__(title="Gantry")
+        super().__init__()
         self.app = app
-        self.set_default_size(920, 720)
-        self.set_position(Gtk.WindowPosition.CENTER)
+        self._just_shown = False
+        self._suppress_hide = False
+        # With a system tray, behave like the macOS menu-bar popover: a borderless panel with no
+        # taskbar entry that drops near the tray and closes when you click elsewhere. Without a tray
+        # (no AppIndicator) fall back to a normal titled window so it stays reachable.
+        self.tray_mode = AppIndicator is not None
+        if self.tray_mode:
+            self.set_default_size(760, 600)
+            self.set_decorated(False)
+            self.set_skip_taskbar_hint(True)
+            self.set_skip_pager_hint(True)
+            self.set_resizable(False)
+            self.set_keep_above(True)
+            try:
+                self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+            except Exception:
+                pass
+            self.get_style_context().add_class("popover-window")
+            self.connect("focus-out-event", self._on_focus_out)
+        else:
+            self.set_title("Gantry")
+            self.set_default_size(920, 720)
+            self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("delete-event", self._hide)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(root)
@@ -344,6 +372,24 @@ class Dashboard(Gtk.Window):
 
     def _hide(self, *_args: object) -> bool:
         self.hide(); return True
+
+    def _on_focus_out(self, *_args: object) -> bool:
+        # Close on click-away, like a popover — but not right after opening, and not while a child
+        # dialog (Add printer / Settings) has taken focus.
+        if not self._just_shown and not self._suppress_hide:
+            self.hide()
+        return False
+
+    def position_top_right(self) -> None:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return
+        monitor = display.get_primary_monitor() or display.get_monitor(0)
+        if monitor is None:
+            return
+        geometry = monitor.get_geometry()
+        width, height = self.get_size()
+        self.move(geometry.x + geometry.width - width - 10, geometry.y + 10)
 
     def _toggle(self, _button: Gtk.Button) -> None:
         self.app.config.data["collapsed"] = not self.app.is_compact()
@@ -559,7 +605,9 @@ class Gantry:
         self.expanded_compact_serial: str | None = None
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         self.reconnect_all()
-        if not background or AppIndicator is None: self.window.show_all()
+        # With a tray, start hidden like a menu-bar app — the panel opens from the tray. Without a
+        # tray there is no other entry point, so show the (regular) window.
+        if AppIndicator is None: self.window.show_all()
 
     def apply_theme(self) -> None:
         settings = Gtk.Settings.get_default(); settings.set_property("gtk-application-prefer-dark-theme", self.config.data.get("theme") == "dark")
@@ -569,7 +617,8 @@ class Gantry:
         if getattr(self, "indicator", None) is not None:
             self.indicator.set_status(AppIndicator.IndicatorStatus.PASSIVE)
         menu = Gtk.Menu()
-        for label, callback in (("Gantry", lambda *_: self.show()), (self.text["scan"], lambda *_: self.scan_and_import()),
+        panel_label = "Panel Gantry" if self.language == "pl" else "Gantry panel"
+        for label, callback in ((panel_label, lambda *_: self.toggle_panel()), (self.text["scan"], lambda *_: self.scan_and_import()),
                                 (self.text["add"], lambda *_: self.open_printer_dialog())):
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
@@ -596,7 +645,23 @@ class Gantry:
         self.config.data["quiet_hours_enabled"] = enabled; self.config.save()
 
     def show(self) -> None:
-        self.window.show_all(); self.window.present()
+        self.window.show_all()
+        if self.window.tray_mode:
+            self.window.position_top_right()
+        self.window.present()
+        # Ignore the focus-out that can fire right as the popover appears.
+        self.window._just_shown = True
+        GLib.timeout_add(300, self._clear_just_shown)
+
+    def _clear_just_shown(self) -> bool:
+        self.window._just_shown = False
+        return False
+
+    def toggle_panel(self) -> None:
+        if self.window.get_visible():
+            self.window.hide()
+        else:
+            self.show()
 
     def rebuild_cards(self) -> None:
         for child in self.window.grid.get_children(): self.window.grid.remove(child)
@@ -611,7 +676,8 @@ class Gantry:
             span = columns if index == len(self.printers) - 1 and len(self.printers) % columns == 1 else 1
             self.window.grid.attach(card, column, row, span, 1)
             if printer.serial in self.telemetry: card.update(self.telemetry[printer.serial])
-        self.window.update_header(); self.window.show_all()
+        # Show the card widgets, but don't force the popover window open on every rebuild.
+        self.window.update_header(); self.window.grid.show_all()
 
     def toggle_compact_printer(self, serial: str) -> None:
         if not self.is_compact():
@@ -641,6 +707,8 @@ class Gantry:
 
     def open_printer_dialog(self, printer: Printer | None = None) -> None:
         dialog = PrinterDialog(self, printer)
+        self.window._suppress_hide = True
+        dialog.connect("destroy", lambda *_: setattr(self.window, "_suppress_hide", False))
         while True:
             response = dialog.run()
             if response == Gtk.ResponseType.CANCEL or response == Gtk.ResponseType.DELETE_EVENT: dialog.destroy(); return
@@ -760,6 +828,13 @@ class Gantry:
         return len(records)
 
     def import_csv_on_screen(self, parent: Gtk.Window | Gtk.Dialog | None = None) -> None:
+        self.window._suppress_hide = True
+        try:
+            self._import_csv_on_screen(parent)
+        finally:
+            self.window._suppress_hide = False
+
+    def _import_csv_on_screen(self, parent: Gtk.Window | Gtk.Dialog | None = None) -> None:
         chooser = Gtk.FileChooserDialog(
             title="Importuj drukarki z CSV" if self.language == "pl" else "Import printers from CSV",
             transient_for=parent or self.window, action=Gtk.FileChooserAction.OPEN,
@@ -780,6 +855,8 @@ class Gantry:
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(self)
+        self.window._suppress_hide = True
+        dialog.connect("destroy", lambda *_: setattr(self.window, "_suppress_hide", False))
         while True:
             response = dialog.run()
             if response != Gtk.ResponseType.OK:
