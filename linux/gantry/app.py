@@ -127,7 +127,7 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .status.finished { color: #35d46a; }
 .status.error { color: #ff5360; }
 .ams { border-radius: 6px; border: 1px solid alpha(#ffffff, 0.12); }
-.ams.active { border: 2px solid #ffffff; }
+.ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
 .ams-group { background: alpha(#ffffff, 0.05); border: 1px solid alpha(#ffffff, 0.10); border-radius: 10px; padding: 8px 10px; }
 button { border-radius: 10px; padding: 7px 12px; }
 entry { padding: 8px; border-radius: 8px; }
@@ -303,16 +303,21 @@ class PrinterCard(Gtk.Frame):
                 sbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
                 swatch = Gtk.Label(label="")
                 swatch.set_size_request(28 if not group.external else 40, 30)
-                swatch.get_style_context().add_class("ams")
+                ctx = swatch.get_style_context()
+                ctx.add_class("ams")
+                if slot.active:
+                    ctx.add_class("active")
                 present = slot.present
                 color = (slot.color or "8E8E93FF").lstrip("#")[:6] if present else "5A5A5E"
+                # Set the colour through a per-widget CSS provider rather than the deprecated
+                # override_background_color(), which paints a flat fill over the CSS border and hides
+                # the white ring on the active slot.
                 try:
-                    rgba = Gdk.RGBA(); rgba.parse(f"#{color}")
-                    swatch.override_background_color(Gtk.StateFlags.NORMAL, rgba)
-                except ValueError:
+                    provider = Gtk.CssProvider()
+                    provider.load_from_data((".ams { background-color: #%s; }" % color).encode())
+                    ctx.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+                except Exception:
                     pass
-                if slot.active:
-                    swatch.get_style_context().add_class("active")
                 caption = Gtk.Label(xalign=0.5)
                 caption.get_style_context().add_class("meta")
                 caption.set_markup(f"<b>{GLib.markup_escape_text(slot.label)}</b>" if slot.active else GLib.markup_escape_text(slot.label))
