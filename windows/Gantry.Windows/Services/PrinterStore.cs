@@ -84,7 +84,7 @@ public sealed class PrinterStore
                     .ToList();
                 IsScanning = false;
                 if (Discovered.Count == 0)
-                    GlobalMessage = AppSettings.Text("Nie znaleziono nowych drukarek.", "No new printers found.");
+                    GlobalMessage = AppSettings.Text("Nie znaleziono nowych drukarek.", "No new printers found.", "Keine neuen Drucker gefunden.");
                 RaiseUpdated();
             });
         });
@@ -96,7 +96,7 @@ public sealed class PrinterStore
             {
                 if (_scanToken != token || !IsScanning) return;
                 IsScanning = false;
-                GlobalMessage = AppSettings.Text("Skanowanie przekroczyło 8 sekund.", "Scan exceeded 8 seconds.");
+                GlobalMessage = AppSettings.Text("Skanowanie przekroczyło 8 sekund.", "Scan exceeded 8 seconds.", "Der Scan hat länger als 8 Sekunden gedauert.");
                 RaiseUpdated();
             });
         });
@@ -107,7 +107,7 @@ public sealed class PrinterStore
     public void Add(DiscoveredPrinter discovered, string accessCode, string? customName = null)
     {
         var code = accessCode.Trim();
-        if (code.Length == 0) throw new ArgumentException(AppSettings.Text("Podaj kod PIN / Access Code drukarki.", "Enter the printer PIN / Access Code."));
+        if (code.Length == 0) throw new ArgumentException(AppSettings.Text("Podaj kod PIN / Access Code drukarki.", "Enter the printer PIN / Access Code.", "Gib die PIN beziehungsweise den Zugriffscode des Druckers ein."));
         var name = customName?.Trim();
         var printer = new SavedPrinter
         {
@@ -127,7 +127,7 @@ public sealed class PrinterStore
         var cleanHost = host.Trim();
         var cleanCode = accessCode.Trim();
         if (cleanSerial.Length == 0 || cleanHost.Length == 0 || cleanCode.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP, numer seryjny i kod dostępu są wymagane.", "IP address, serial number and access code are required."));
+            throw new ArgumentException(AppSettings.Text("Adres IP, numer seryjny i kod dostępu są wymagane.", "IP address, serial number and access code are required.", "IP-Adresse, Seriennummer und Zugriffscode sind erforderlich."));
         var cleanName = name.Trim();
         string suffix = cleanSerial.Length >= 4 ? cleanSerial[^4..] : cleanSerial;
         Upsert(new SavedPrinter
@@ -144,7 +144,7 @@ public sealed class PrinterStore
     {
         var cleanHost = host.Trim();
         if (cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
+            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required.", "IP-Adresse beziehungsweise Hostname ist erforderlich."));
         var cleanName = name.Trim();
         var cleanKey = apiKey?.Trim();
         var printer = new SavedPrinter
@@ -170,7 +170,7 @@ public sealed class PrinterStore
     {
         var cleanHost = host.Trim();
         if (cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
+            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required.", "IP-Adresse beziehungsweise Hostname ist erforderlich."));
         var cleanName = name.Trim();
         var cleanKey = apiKey?.Trim();
         var printer = new SavedPrinter
@@ -215,7 +215,7 @@ public sealed class PrinterStore
 
         Discovered.RemoveAll(d => devices.Any(x => x.Serial == d.Serial));
         if (imported == 0)
-            throw new BambuStudioConfigException(AppSettings.Text("Nie znaleziono drukarek z zapisanym kodem i adresem IP.", "No printers with a stored code and IP address."));
+            throw new BambuStudioConfigException(AppSettings.Text("Nie znaleziono drukarek z zapisanym kodem i adresem IP.", "No printers with a stored code and IP address.", "Keine Drucker mit gespeichertem Code und gespeicherter IP-Adresse gefunden."));
         RaiseUpdated();
         return imported;
     }
@@ -227,12 +227,12 @@ public sealed class PrinterStore
         var cleanName = name.Trim();
         var entered = accessCode.Trim();
         if (cleanSerial.Length == 0 || cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP i numer seryjny są wymagane.", "IP address and serial number are required."));
+            throw new ArgumentException(AppSettings.Text("Adres IP i numer seryjny są wymagane.", "IP address and serial number are required.", "IP-Adresse und Seriennummer sind erforderlich."));
         string? code = entered.Length == 0
             ? (_sessionCodes.TryGetValue(originalSerial, out var s) ? s : AccessCodeStore.AccessCode(originalSerial))
             : entered;
         if (string.IsNullOrEmpty(code))
-            throw new ArgumentException(AppSettings.Text("Podaj kod PIN / Access Code drukarki.", "Enter the printer PIN / Access Code."));
+            throw new ArgumentException(AppSettings.Text("Podaj kod PIN / Access Code drukarki.", "Enter the printer PIN / Access Code.", "Gib die PIN beziehungsweise den Zugriffscode des Druckers ein."));
 
         if (_clients.Remove(originalSerial, out var existing)) existing.Stop();
         if (originalSerial != cleanSerial)
@@ -293,7 +293,7 @@ public sealed class PrinterStore
         if (_reconnectTasks.Remove(printer.Serial, out var task)) task.Cancel();
         if (_clients.Remove(printer.Serial, out var existing)) existing.Stop();
         Telemetry[printer.Serial] = new PrinterTelemetry();
-        ConnectionMessages[printer.Serial] = AppSettings.Text("Łączenie…", "Connecting…");
+        ConnectionMessages[printer.Serial] = AppSettings.Text("Łączenie…", "Connecting…", "Verbindung wird hergestellt …");
 
         if (printer.Kind == PrinterKind.Klipper)
         {
@@ -379,8 +379,8 @@ public sealed class PrinterStore
                 var offline = Telemetry.TryGetValue(serial, out var o) ? o : new PrinterTelemetry();
                 offline.State = PrinterState.Offline;
                 Telemetry[serial] = offline;
-                ConnectionMessages[serial] = (evt.Reason ?? AppSettings.Text("Rozłączono", "Disconnected")) +
-                                             AppSettings.Text(" • ponowna próba za 20 s", " • retrying in 20 s");
+                ConnectionMessages[serial] = (evt.Reason ?? AppSettings.Text("Rozłączono", "Disconnected", "Verbindung getrennt")) +
+                                             AppSettings.Text(" • ponowna próba za 20 s", " • retrying in 20 s", " • neuer Versuch in 20 s");
                 ScheduleReconnect(serial);
                 break;
         }
@@ -402,7 +402,7 @@ public sealed class PrinterStore
             if (refreshNeeded)
             {
                 _lastAddressScan = DateTime.Now;
-                _post(() => { ConnectionMessages[serial] = AppSettings.Text("Szukam aktualnego adresu IP…", "Looking up current IP…"); RaiseUpdated(); });
+                _post(() => { ConnectionMessages[serial] = AppSettings.Text("Szukam aktualnego adresu IP…", "Looking up current IP…", "Aktuelle IP-Adresse wird gesucht …"); RaiseUpdated(); });
                 await RefreshAddressesAsync();
             }
 
@@ -450,34 +450,33 @@ public sealed class PrinterStore
 
     private void NotifyChanges(SavedPrinter printer, PrinterTelemetry? previous, PrinterTelemetry current)
     {
-        bool pl = AppSettings.Polish;
         if (AppSettings.NotifyPrintFinished && current.State == PrinterState.Finished && previous?.State != PrinterState.Finished)
-            NotificationService.Post(AppSettings.Text("Druk zakończony", "Print finished"),
-                current.JobName ?? AppSettings.Text("Zadanie zostało ukończone.", "The job has completed."), printer.Name);
+            NotificationService.Post(AppSettings.Text("Druk zakończony", "Print finished", "Druck abgeschlossen"),
+                current.JobName ?? AppSettings.Text("Zadanie zostało ukończone.", "The job has completed.", "Der Auftrag wurde abgeschlossen."), printer.Name);
 
         if (AppSettings.NotifyPrinterError && current.State == PrinterState.Error && (previous?.State != PrinterState.Error || !SequenceEqual(previous?.HmsCodes, current.HmsCodes)))
         {
-            string description = HmsResolver.Description(current.HmsCodes, printer.Serial, pl)
+            string description = HmsResolver.Description(current.HmsCodes, printer.Serial, AppSettings.Language)
                 ?? (current.ErrorCode != 0
-                    ? string.Format(AppSettings.Text("Kod błędu: 0x{0:X}", "Error code: 0x{0:X}"), current.ErrorCode)
-                    : AppSettings.Text("Drukarka zgłosiła błąd.", "The printer reported an error."));
-            NotificationService.Post(AppSettings.Text("Błąd drukarki", "Printer error"), description, printer.Name);
+                    ? string.Format(AppSettings.Text("Kod błędu: 0x{0:X}", "Error code: 0x{0:X}", "Fehlercode: 0x{0:X}"), current.ErrorCode)
+                    : AppSettings.Text("Drukarka zgłosiła błąd.", "The printer reported an error.", "Der Drucker hat einen Fehler gemeldet."));
+            NotificationService.Post(AppSettings.Text("Błąd drukarki", "Printer error", "Druckerfehler"), description, printer.Name);
         }
         else if (AppSettings.NotifyPrintPaused && current.State == PrinterState.Paused && previous?.State != PrinterState.Paused)
         {
-            NotificationService.Post(AppSettings.Text("Druk wstrzymany", "Print paused"),
-                current.JobName ?? AppSettings.Text("Drukarka oczekuje na działanie.", "The printer needs attention."), printer.Name);
+            NotificationService.Post(AppSettings.Text("Druk wstrzymany", "Print paused", "Druck pausiert"),
+                current.JobName ?? AppSettings.Text("Drukarka oczekuje na działanie.", "The printer needs attention.", "Der Drucker benötigt deine Aufmerksamkeit."), printer.Name);
         }
 
         var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(s => (s.RemainingPercent ?? 100) <= 15).Select(s => s.Id));
         var newLow = current.AmsSlots.Where(s => (s.RemainingPercent ?? 100) <= 15 && !previousLow.Contains(s.Id)).ToList();
         if (AppSettings.NotifyLowFilament && newLow.FirstOrDefault() is { } slot)
-            NotificationService.Post(AppSettings.Text("Niski poziom filamentu", "Low filament"),
+            NotificationService.Post(AppSettings.Text("Niski poziom filamentu", "Low filament", "Niedriger Filamentstand"),
                 $"{slot.Label} • {slot.Material} • {slot.RemainingPercent ?? 0}%", printer.Name);
 
         if (AppSettings.NotifyHighAmsHumidity && IsHumidityHigh(current.AmsHumidity) && !IsHumidityHigh(previous?.AmsHumidity))
-            NotificationService.Post(AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity"),
-                AppSettings.Text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant."), printer.Name);
+            NotificationService.Post(AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity", "Hohe AMS-Luftfeuchtigkeit"),
+                AppSettings.Text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant.", "Prüfe oder trockne das Trockenmittel."), printer.Name);
     }
 
     private static bool IsHumidityHigh(int? value)

@@ -83,7 +83,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         button.image = GantryLogo.statusItemImage(height: 14)
         button.imagePosition = .imageOnly
         button.toolTip = store.activePrintCount > 0
-            ? AppSettings.shared.text("Gantry — drukuje: \(store.activePrintCount)", "Gantry — printing: \(store.activePrintCount)")
+            ? AppSettings.shared.text("Gantry — drukuje: \(store.activePrintCount)", "Gantry — printing: \(store.activePrintCount)", "Gantry — druckt: \(store.activePrintCount)")
             : "Gantry"
     }
 
@@ -156,23 +156,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         menu.autoenablesItems = false
 
         menu.addItem(row(icon: "printer.fill", tint: Self.accentTint,
-                         title: settings.text("Pokaż drukarki", "Show printers")) { [weak self] in
+                         title: settings.text("Pokaż drukarki", "Show printers", "Drucker anzeigen")) { [weak self] in
             self?.showPopoverFromMenu()
         })
 
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "antenna.radiowaves.left.and.right",
-                         title: settings.text("Szukaj drukarek…", "Search printers…"),
+                         title: settings.text("Szukaj drukarek…", "Search printers…", "Drucker suchen …"),
                          enabled: !store.isScanning) { [weak self] in
             self?.store.scan()
         })
         menu.addItem(row(icon: "plus",
-                         title: settings.text("Dodaj drukarkę…", "Add printer…")) { [weak self] in
+                         title: settings.text("Dodaj drukarkę…", "Add printer…", "Drucker hinzufügen …")) { [weak self] in
             self?.showAddPrinter()
         })
         menu.addItem(row(icon: "arrow.clockwise",
-                         title: settings.text("Połącz ponownie (wszystkie)", "Reconnect (all)"),
+                         title: settings.text("Połącz ponownie (wszystkie)", "Reconnect (all)", "Alle neu verbinden"),
                          enabled: !store.printers.isEmpty) { [weak self] in
             self?.store.reconnectAll()
         })
@@ -180,22 +180,22 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "globe",
-                         title: settings.text("Język", "Language"),
-                         accessory: .value(settings.language == .pl ? "PL" : "EN")) {
-            AppSettings.shared.language = AppSettings.shared.language == .pl ? .en : .pl
+                         title: settings.text("Język", "Language", "Sprache"),
+                         accessory: .value(settings.language.shortName)) {
+            AppSettings.shared.language = AppSettings.shared.language.next
         })
         menu.addItem(row(icon: QuietHours.isEnabled ? "moon.fill" : "moon",
-                         title: settings.text("Godziny ciszy", "Quiet hours"),
-                         accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.text("wył.", "off"))) {
+                         title: settings.text("Godziny ciszy", "Quiet hours", "Ruhezeiten"),
+                         accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.text("wył.", "off", "aus"))) {
             QuietHours.isEnabled.toggle()
         })
         menu.addItem(row(icon: "arrow.down.circle",
-                         title: settings.text("Sprawdź aktualizacje…", "Check for updates…"),
+                         title: settings.text("Sprawdź aktualizacje…", "Check for updates…", "Nach Updates suchen …"),
                          accessory: .detail("v\(UpdateService.currentVersion)")) {
             UpdatePresenter.checkAndPresent(from: nil)
         })
         menu.addItem(row(icon: "gearshape",
-                         title: settings.text("Ustawienia…", "Settings…"),
+                         title: settings.text("Ustawienia…", "Settings…", "Einstellungen …"),
                          accessory: .detail("⌘,")) { [weak self] in
             self?.showSettings()
         })
@@ -203,20 +203,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // Every icon in this menu is drawn by a custom row view; a plain NSMenuItem's native image
         // doesn't render here, and a view-based item won't open a submenu on hover. So the icon is an
         // emoji in the title — it always renders and keeps the row expandable.
-        let legendItem = NSMenuItem(title: settings.text("🎨  Legenda kolorów", "🎨  Colour legend"),
+        let legendItem = NSMenuItem(title: settings.text("🎨  Legenda kolorów", "🎨  Colour legend", "🎨  Farblegende"),
                                     action: nil, keyEquivalent: "")
         legendItem.submenu = colourLegendMenu(settings: settings)
         menu.addItem(legendItem)
 
         menu.addItem(row(icon: "cup.and.saucer.fill",
-                         title: settings.text("Postaw kawę ☕️", "Buy me a coffee ☕️")) {
+                         title: settings.text("Postaw kawę ☕️", "Buy me a coffee ☕️", "Kaffee spendieren ☕️")) {
             if let url = URL(string: "https://buycoffee.to/parametryczny") { NSWorkspace.shared.open(url) }
         })
 
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "power",
-                         title: settings.text("Zakończ Gantry", "Quit Gantry"),
+                         title: settings.text("Zakończ Gantry", "Quit Gantry", "Gantry beenden"),
                          accessory: .detail("⌘Q")) {
             NSApplication.shared.terminate(nil)
         })
@@ -228,12 +228,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// the colours crisp inside the submenu without custom drawing.
     private func colourLegendMenu(settings: AppSettings) -> NSMenu {
         let entries: [(String, String)] = [
-            ("🔵", settings.text("Drukuje (świeże dane)", "Printing (live data)")),
-            ("🟢", settings.text("Gotowe / zakończone", "Ready / finished")),
+            ("🔵", settings.text("Drukuje (świeże dane)", "Printing (live data)", "Druckt (Live-Daten)")),
+            ("🟢", settings.text("Gotowe / zakończone", "Ready / finished", "Bereit / abgeschlossen")),
             ("🟠", settings.text("Uwaga: nieświeże dane, pauza lub wilgotność AMS",
-                                 "Attention: stale data, paused, or AMS humidity")),
-            ("🔴", settings.text("Błąd drukarki", "Printer error")),
-            ("⚪", settings.text("Offline / brak / neutralna informacja", "Offline / none / neutral")),
+                                 "Attention: stale data, paused, or AMS humidity",
+                                 "Achtung: veraltete Daten, pausiert oder AMS-Luftfeuchtigkeit")),
+            ("🔴", settings.text("Błąd drukarki", "Printer error", "Druckerfehler")),
+            ("⚪", settings.text("Offline / brak / neutralna informacja", "Offline / none / neutral", "Offline / keine / neutrale Information")),
         ]
         let submenu = NSMenu()
         submenu.autoenablesItems = false

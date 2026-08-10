@@ -61,7 +61,7 @@ public sealed class MqttClient : IPrinterConnection
             }
             catch (OperationCanceledException) when (connectTimeout.IsCancellationRequested)
             {
-                ReportDisconnected(AppSettings.Text("Przekroczono czas połączenia z drukarką", "Connection to the printer timed out"));
+                ReportDisconnected(AppSettings.Text("Przekroczono czas połączenia z drukarką", "Connection to the printer timed out", "Zeitüberschreitung bei der Druckerverbindung"));
                 return;
             }
 
@@ -80,7 +80,7 @@ public sealed class MqttClient : IPrinterConnection
             }
             catch
             {
-                ReportDisconnected(_certificateMismatch ? CertificateMismatchMessage : AppSettings.Text("Nie udało się nawiązać połączenia TLS", "TLS handshake failed"));
+                ReportDisconnected(_certificateMismatch ? CertificateMismatchMessage : AppSettings.Text("Nie udało się nawiązać połączenia TLS", "TLS handshake failed", "TLS-Verbindung fehlgeschlagen"));
                 return;
             }
 
@@ -129,7 +129,7 @@ public sealed class MqttClient : IPrinterConnection
                     case 2: // CONNACK
                         if (packet.Body.Length < 2 || packet.Body[1] != 0)
                         {
-                            ReportDisconnected(AppSettings.Text("Drukarka odrzuciła kod dostępu", "The printer rejected the access code"));
+                            ReportDisconnected(AppSettings.Text("Drukarka odrzuciła kod dostępu", "The printer rejected the access code", "Der Drucker hat den Zugriffscode abgelehnt"));
                             Stop();
                             return;
                         }
@@ -186,5 +186,6 @@ public sealed class MqttClient : IPrinterConnection
 
     private static string CertificateMismatchMessage => AppSettings.Text(
         "Certyfikat drukarki zmienił się. Połączenie zablokowano; usuń i dodaj drukarkę ponownie.",
-        "The printer certificate changed. Connection blocked; remove and re-add the printer.");
+        "The printer certificate changed. Connection blocked; remove and re-add the printer.",
+        "Das Druckerzertifikat hat sich geändert. Die Verbindung wurde blockiert; entferne den Drucker und füge ihn erneut hinzu.");
 }

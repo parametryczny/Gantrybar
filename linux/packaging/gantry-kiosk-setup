@@ -3,10 +3,35 @@ set -eu
 
 AUTOSTART_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
 AUTOSTART_FILE="$AUTOSTART_DIR/gantry-kiosk.desktop"
+LOCALE_NAME="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
+
+case "$LOCALE_NAME" in
+  de*)
+    DISABLED="Gantry Werkstatt: Autostart deaktiviert."
+    ENABLED="Gantry Werkstatt: Autostart aktiviert."
+    TEMPLATE="CSV-Vorlage"
+    RUN_NOW="Jetzt starten mit"
+    DISABLE="Autostart deaktivieren"
+    ;;
+  pl*)
+    DISABLED="Gantry Workshop: autostart wyłączony."
+    ENABLED="Gantry Workshop: autostart włączony."
+    TEMPLATE="Szablon CSV"
+    RUN_NOW="Uruchom teraz poleceniem"
+    DISABLE="Wyłącz autostart"
+    ;;
+  *)
+    DISABLED="Gantry Workshop: autostart disabled."
+    ENABLED="Gantry Workshop: autostart enabled."
+    TEMPLATE="CSV template"
+    RUN_NOW="Start now with"
+    DISABLE="Disable autostart"
+    ;;
+esac
 
 if [ "${1:-}" = "--disable" ]; then
   rm -f "$AUTOSTART_FILE"
-  printf '%s\n' "Gantry Workshop: autostart wyłączony."
+  printf '%s\n' "$DISABLED"
   exit 0
 fi
 
@@ -25,7 +50,7 @@ if [ ! -e "$DOCUMENTS_DIR/Gantry-printers-template.csv" ]; then
 fi
 
 printf '%s\n' \
-  "Gantry Workshop: autostart włączony." \
-  "Szablon CSV: $DOCUMENTS_DIR/Gantry-printers-template.csv" \
-  "Uruchom teraz poleceniem: gantry-kiosk" \
-  "Wyłącz autostart: gantry-kiosk-setup --disable"
+  "$ENABLED" \
+  "$TEMPLATE: $DOCUMENTS_DIR/Gantry-printers-template.csv" \
+  "$RUN_NOW: gantry-kiosk" \
+  "$DISABLE: gantry-kiosk-setup --disable"

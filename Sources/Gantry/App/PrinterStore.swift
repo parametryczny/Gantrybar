@@ -52,19 +52,35 @@ final class PrinterStore: ObservableObject {
             discovered = results.filter { candidate in !printers.contains { $0.serial == candidate.serial } }
                 .sorted { $0.host.compare($1.host, options: .numeric) == .orderedAscending }
             isScanning = false
-            if discovered.isEmpty { globalMessage = "Nie znaleziono nowych drukarek po 4 sekundach." }
+            if discovered.isEmpty {
+                globalMessage = AppSettings.shared.text(
+                    "Nie znaleziono nowych drukarek po 4 sekundach.",
+                    "No new printers were found after 4 seconds.",
+                    "Nach 4 Sekunden wurden keine neuen Drucker gefunden."
+                )
+            }
         }
         Task {
             try? await Task.sleep(for: .seconds(8))
             guard scanToken == token, isScanning else { return }
             isScanning = false
-            globalMessage = "Skanowanie przekroczyło 8 sekund. Sprawdź dostęp Gantry do sieci lokalnej."
+            globalMessage = AppSettings.shared.text(
+                "Skanowanie przekroczyło 8 sekund. Sprawdź dostęp Gantry do sieci lokalnej.",
+                "The scan exceeded 8 seconds. Check Gantry's Local Network access.",
+                "Der Scan hat länger als 8 Sekunden gedauert. Prüfe Gantrys Zugriff auf das lokale Netzwerk."
+            )
         }
     }
 
     func add(_ discovered: DiscoveredPrinter, accessCode: String, customName: String? = nil) throws {
         let code = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty else { throw ValidationError("Podaj kod PIN / Access Code drukarki.") }
+        guard !code.isEmpty else {
+            throw ValidationError(AppSettings.shared.text(
+                "Podaj kod PIN / Access Code drukarki.",
+                "Enter the printer PIN / Access Code.",
+                "Gib die PIN beziehungsweise den Zugriffscode des Druckers ein."
+            ))
+        }
         let name = customName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let printer = SavedPrinter(
             serial: discovered.serial,
@@ -81,7 +97,11 @@ final class PrinterStore: ObservableObject {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanCode = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanSerial.isEmpty, !cleanHost.isEmpty, !cleanCode.isEmpty else {
-            throw ValidationError("Adres IP, numer seryjny i kod dostępu są wymagane.")
+            throw ValidationError(AppSettings.shared.text(
+                "Adres IP, numer seryjny i kod dostępu są wymagane.",
+                "IP address, serial number and access code are required.",
+                "IP-Adresse, Seriennummer und Zugriffscode sind erforderlich."
+            ))
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         try upsert(SavedPrinter(serial: cleanSerial, name: cleanName.isEmpty ? "Bambu \(cleanSerial.suffix(4))" : cleanName,
@@ -92,7 +112,11 @@ final class PrinterStore: ObservableObject {
     func addKlipper(name: String, host: String, port: Int?, apiKey: String?) throws {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanHost.isEmpty else {
-            throw ValidationError("Podaj adres IP drukarki Klipper.")
+            throw ValidationError(AppSettings.shared.text(
+                "Podaj adres IP drukarki Klipper.",
+                "Enter the Klipper printer IP address.",
+                "Gib die IP-Adresse des Klipper-Druckers ein."
+            ))
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "klipper-\(cleanHost)"
@@ -118,7 +142,11 @@ final class PrinterStore: ObservableObject {
     func addPrusa(name: String, host: String, port: Int?, apiKey: String?) throws {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanHost.isEmpty else {
-            throw ValidationError("Podaj adres IP drukarki Prusa.")
+            throw ValidationError(AppSettings.shared.text(
+                "Podaj adres IP drukarki Prusa.",
+                "Enter the Prusa printer IP address.",
+                "Gib die IP-Adresse des Prusa-Druckers ein."
+            ))
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "prusa-\(cleanHost)"
@@ -161,7 +189,11 @@ final class PrinterStore: ObservableObject {
 
         discovered.removeAll { found in devices.contains { $0.serial == found.serial } }
         guard imported > 0 else {
-            throw BambuStudioConfigError("Nie znaleziono drukarek z zapisanym kodem i adresem IP.")
+            throw BambuStudioConfigError(AppSettings.shared.text(
+                "Nie znaleziono drukarek z zapisanym kodem i adresem IP.",
+                "No printers with a saved code and IP address were found.",
+                "Es wurden keine Drucker mit gespeichertem Code und IP-Adresse gefunden."
+            ))
         }
         return imported
     }
@@ -172,11 +204,19 @@ final class PrinterStore: ObservableObject {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let enteredCode = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanSerial.isEmpty, !cleanHost.isEmpty else {
-            throw ValidationError("Adres IP i numer seryjny są wymagane.")
+            throw ValidationError(AppSettings.shared.text(
+                "Adres IP i numer seryjny są wymagane.",
+                "IP address and serial number are required.",
+                "IP-Adresse und Seriennummer sind erforderlich."
+            ))
         }
         guard let code = enteredCode.isEmpty ? (sessionCodes[originalSerial] ?? AccessCodeStore.accessCode(for: originalSerial)) : enteredCode,
               !code.isEmpty else {
-            throw ValidationError("Podaj kod PIN / Access Code drukarki.")
+            throw ValidationError(AppSettings.shared.text(
+                "Podaj kod PIN / Access Code drukarki.",
+                "Enter the printer PIN / Access Code.",
+                "Gib die PIN beziehungsweise den Zugriffscode des Druckers ein."
+            ))
         }
 
         clients.removeValue(forKey: originalSerial)?.stop()
@@ -224,7 +264,7 @@ final class PrinterStore: ObservableObject {
         reconnectTasks.removeValue(forKey: printer.serial)?.cancel()
         clients.removeValue(forKey: printer.serial)?.stop()
         telemetry[printer.serial] = PrinterTelemetry()
-        connectionMessages[printer.serial] = "Łączenie…"
+        connectionMessages[printer.serial] = AppSettings.shared.text("Łączenie…", "Connecting…", "Verbindung wird hergestellt …")
 
         let handler: @Sendable (MQTTClient.Event) -> Void = { [weak self] event in
             Task { @MainActor [weak self] in self?.handle(event, serial: printer.serial) }
@@ -329,7 +369,12 @@ final class PrinterStore: ObservableObject {
             var offline = telemetry[serial] ?? PrinterTelemetry()
             offline.state = .offline
             telemetry[serial] = offline
-            connectionMessages[serial] = (reason ?? "Rozłączono") + " • ponowna próba za 20 s"
+            let disconnected = reason ?? AppSettings.shared.text("Rozłączono", "Disconnected", "Verbindung getrennt")
+            connectionMessages[serial] = disconnected + AppSettings.shared.text(
+                " • ponowna próba za 20 s",
+                " • retrying in 20 s",
+                " • neuer Versuch in 20 s"
+            )
             scheduleReconnect(serial: serial)
         case .localNetworkDenied:
             localNetworkWasDenied = true
@@ -340,7 +385,11 @@ final class PrinterStore: ObservableObject {
                 var offline = telemetry[printer.serial] ?? PrinterTelemetry()
                 offline.state = .offline
                 telemetry[printer.serial] = offline
-                connectionMessages[printer.serial] = "Brak dostępu do sieci lokalnej — włącz Gantry w Ustawienia systemowe › Prywatność i ochrona › Sieć lokalna"
+                connectionMessages[printer.serial] = AppSettings.shared.text(
+                    "Brak dostępu do sieci lokalnej — włącz Gantry w Ustawienia systemowe › Prywatność i ochrona › Sieć lokalna",
+                    "No Local Network access — enable Gantry in System Settings › Privacy & Security › Local Network",
+                    "Kein Zugriff auf das lokale Netzwerk — aktiviere Gantry unter Systemeinstellungen › Datenschutz & Sicherheit › Lokales Netzwerk"
+                )
             }
             schedulePermissionRetry()
         }
@@ -371,7 +420,11 @@ final class PrinterStore: ObservableObject {
             }
             if self.lastAddressScan.map({ Date().timeIntervalSince($0) >= 300 }) ?? true {
                 self.lastAddressScan = Date()
-                self.connectionMessages[serial] = "Szukam aktualnego adresu IP…"
+                self.connectionMessages[serial] = AppSettings.shared.text(
+                    "Szukam aktualnego adresu IP…",
+                    "Looking for the current IP address…",
+                    "Aktuelle IP-Adresse wird gesucht …"
+                )
                 await self.refreshAddresses()
             }
             guard !Task.isCancelled,
@@ -419,21 +472,21 @@ final class PrinterStore: ObservableObject {
         let settings = AppSettings.shared
         if settings.notifyFinished, current.state == .finished, previous?.state != .finished {
             NotificationService.post(
-                title: settings.text("Druk zakończony", "Print finished"),
-                body: current.jobName ?? settings.text("Zadanie zostało ukończone.", "The job has completed."),
+                title: settings.text("Druk zakończony", "Print finished", "Druck abgeschlossen"),
+                body: current.jobName ?? settings.text("Zadanie zostało ukończone.", "The job has completed.", "Der Druckauftrag ist abgeschlossen."),
                 subtitle: printer.name
             )
         }
         if settings.notifyError, current.state == .error, previous?.state != .error || previous?.hmsCodes != current.hmsCodes {
             let description = HMSResolver.shared.description(for: current.hmsCodes, serial: printer.serial, language: settings.language)
                 ?? (current.errorCode != 0
-                    ? String(format: settings.text("Kod błędu: 0x%llX", "Error code: 0x%llX"), current.errorCode)
-                    : settings.text("Drukarka zgłosiła błąd.", "The printer reported an error."))
-            NotificationService.post(title: settings.text("Błąd drukarki", "Printer error"), body: description, subtitle: printer.name)
+                    ? String(format: settings.text("Kod błędu: 0x%llX", "Error code: 0x%llX", "Fehlercode: 0x%llX"), current.errorCode)
+                    : settings.text("Drukarka zgłosiła błąd.", "The printer reported an error.", "Der Drucker hat einen Fehler gemeldet."))
+            NotificationService.post(title: settings.text("Błąd drukarki", "Printer error", "Druckerfehler"), body: description, subtitle: printer.name)
         } else if settings.notifyPaused, current.state == .paused, previous?.state != .paused {
             NotificationService.post(
-                title: settings.text("Druk wstrzymany", "Print paused"),
-                body: current.jobName ?? settings.text("Drukarka oczekuje na działanie.", "The printer needs attention."),
+                title: settings.text("Druk wstrzymany", "Print paused", "Druck pausiert"),
+                body: current.jobName ?? settings.text("Drukarka oczekuje na działanie.", "The printer needs attention.", "Der Drucker benötigt deine Aufmerksamkeit."),
                 subtitle: printer.name
             )
         }
@@ -442,7 +495,7 @@ final class PrinterStore: ObservableObject {
         let newLow = current.amsSlots.filter { ($0.remainingPercent ?? 100) <= 15 && !previousLow.contains($0.id) }
         if settings.notifyLowFilament, let slot = newLow.first {
             NotificationService.post(
-                title: settings.text("Niski poziom filamentu", "Low filament"),
+                title: settings.text("Niski poziom filamentu", "Low filament", "Niedriger Filamentstand"),
                 body: "\(slot.label) • \(slot.material) • \(slot.remainingPercent ?? 0)%",
                 subtitle: printer.name
             )
@@ -450,8 +503,8 @@ final class PrinterStore: ObservableObject {
 
         if settings.notifyHumidity, isHumidityHigh(current.amsHumidity), !isHumidityHigh(previous?.amsHumidity) {
             NotificationService.post(
-                title: settings.text("Wysoka wilgotność AMS", "High AMS humidity"),
-                body: settings.text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant."),
+                title: settings.text("Wysoka wilgotność AMS", "High AMS humidity", "Hohe AMS-Luftfeuchtigkeit"),
+                body: settings.text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant.", "Prüfe oder trockne das Trockenmittel."),
                 subtitle: printer.name
             )
         }

@@ -168,12 +168,20 @@ enum AccessCodeStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missing:
-            "Brak zapisanego kodu dostępu. Użyj importu z Bambu Studio albo edytuj drukarkę."
+            localizedText(
+                "Brak zapisanego kodu dostępu. Użyj importu z Bambu Studio albo edytuj drukarkę.",
+                "No access code is stored. Import it from Bambu Studio or edit the printer.",
+                "Es ist kein Zugriffscode gespeichert. Importiere ihn aus Bambu Studio oder bearbeite den Drucker."
+            )
         case .invalidData:
-            "Zapisanego kodu dostępu nie można odczytać."
+            localizedText(
+                "Zapisanego kodu dostępu nie można odczytać.",
+                "The stored access code could not be read.",
+                "Der gespeicherte Zugriffscode konnte nicht gelesen werden."
+            )
         #if KEYCHAIN_STORAGE
         case .keychain(let operation, let status):
-            "Keychain \(operation): \(SecCopyErrorMessageString(status, nil) as String? ?? "błąd") (\(status))"
+            "Keychain \(operation): \(SecCopyErrorMessageString(status, nil) as String? ?? localizedText("błąd", "error", "Fehler")) (\(status))"
         #endif
         }
     }

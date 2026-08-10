@@ -4,6 +4,7 @@
   <name>Gantry</name>
   <summary>Local 3D printer status monitor</summary>
   <summary xml:lang="pl">Lokalny monitor stanu drukarek 3D</summary>
+  <summary xml:lang="de">Lokale Statusanzeige für 3D-Drucker</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <developer_name>Kamil Grzegorczyk</developer_name>

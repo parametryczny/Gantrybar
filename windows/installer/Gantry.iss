@@ -40,6 +40,7 @@ LicenseFile=..\..\LICENSE
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Files]
 ; Package the whole self-contained folder (not a self-extracting single-file exe) — the self-extract

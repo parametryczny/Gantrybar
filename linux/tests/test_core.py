@@ -9,7 +9,9 @@ from gantry.csvimport import parse_printer_csv, template_csv
 from gantry.discovery import parse_ssdp
 from gantry.desktop import installed_slicers
 from gantry.http_clients import parse_cfs, parse_moonraker, parse_prusalink
+from gantry.localization import CATALOGS, detected_language, stage_text, tr
 from gantry.mqtt import connect_packet, publish_packet, publish_payload, subscribe_packet
+from gantry.storage import Config
 from gantry.webconfig import config_page, pairing_code, validate_printer_form
 
 
@@ -129,6 +131,42 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_printer_csv(content)
 
+    def test_localization_catalogs_and_locale_detection(self):
+        self.assertEqual(set(CATALOGS), {"pl", "en", "de"})
+        self.assertEqual({len(value) for value in CATALOGS.values()}, {len(CATALOGS["en"])})
+        self.assertTrue(all(set(value) == set(CATALOGS["en"]) for value in CATALOGS.values()))
+        self.assertEqual(detected_language("pl_PL.UTF-8"), "pl")
+        self.assertEqual(detected_language("de-DE"), "de")
+        self.assertEqual(detected_language("fr_FR"), "en")
+        self.assertEqual(tr("de", "ready"), "Bereit")
+        self.assertEqual(tr("de", "certificate"), "Das Druckerzertifikat hat sich geändert. Die Verbindung wurde blockiert.")
+        self.assertEqual(stage_text("de", 13), "Referenzfahrt")
+        self.assertEqual(stage_text("de", 77), "AMS wird vorbereitet")
+
+    def test_config_preserves_german_and_safely_handles_unknown_language(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = Path(directory) / "config.json"
+            config_file.write_text('{"language":"de"}', encoding="utf-8")
+            with patch("gantry.storage.CONFIG_FILE", config_file), patch("gantry.storage.APP_DIR", Path(directory)):
+                self.assertEqual(Config().data["language"], "de")
+            config_file.write_text('{"language":"unexpected"}', encoding="utf-8")
+            with patch("gantry.storage.CONFIG_FILE", config_file), patch("gantry.storage.APP_DIR", Path(directory)):
+                self.assertEqual(Config().data["language"], "en")
+
+    def test_fresh_config_uses_german_system_locale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = Path(directory) / "config.json"
+            with patch("gantry.storage.CONFIG_FILE", config_file), patch("gantry.storage.APP_DIR", Path(directory)), \
+                 patch("gantry.storage.detected_language", return_value="de"):
+                self.assertEqual(Config().data["language"], "de")
+
+    def test_german_csv_errors(self):
+        with self.assertRaisesRegex(ValueError, "Kopfzeile"):
+            parse_printer_csv("", language="de")
+        duplicate = "name,host,serial,access_code,port\nA,192.168.1.2,S1,C1,8883\nB,192.168.1.3,S1,C2,8883\n"
+        with self.assertRaisesRegex(ValueError, "doppelte Seriennummer"):
+            parse_printer_csv(duplicate, language="de")
+
     def test_web_config_validation_and_pairing(self):
         code = pairing_code()
         self.assertEqual(len(code), 6)
@@ -159,6 +197,14 @@ class CoreTests(unittest.TestCase):
         }]}, "csrf-token")
         for expected in ("GANTRY", "demo_1.3mf", "42%", "A1", "printer-grid", "location.reload"):
             self.assertIn(expected, page)
+
+    def test_german_web_panel_and_validation(self):
+        page = config_page({"printers": []}, "csrf-token", "Drucker wurde hinzugefügt.", True, "de")
+        for expected in ('lang="de"', "Druckerstatus", "CSV-Vorlage herunterladen",
+                         "Drucker manuell hinzufügen", "Drucker wurde hinzugefügt."):
+            self.assertIn(expected, page)
+        _value, error = validate_printer_form({"kind": "unknown"}, "de")
+        self.assertEqual(error, "Wähle einen unterstützten Druckertyp.")
 
     def test_native_slicer_detection(self):
         with tempfile.TemporaryDirectory() as directory:

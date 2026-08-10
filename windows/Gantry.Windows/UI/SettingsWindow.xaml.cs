@@ -17,7 +17,7 @@ public partial class SettingsWindow : Window
 
         LanguageButton.Click += (_, _) =>
         {
-            AppSettings.Polish = !AppSettings.Polish;
+            AppSettings.CycleLanguage();
             ApplyLanguage();
         };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
@@ -53,31 +53,33 @@ public partial class SettingsWindow : Window
         return true;
     }
 
+    internal void RefreshLanguage() => ApplyLanguage();
+
     private void ApplyLanguage()
     {
-        Title = AppSettings.Text("Ustawienia Gantry", "Gantry Settings");
-        Heading.Text = AppSettings.Text("Ustawienia", "Settings");
+        Title = AppSettings.Text("Ustawienia Gantry", "Gantry Settings", "Gantry-Einstellungen");
+        Heading.Text = AppSettings.Text("Ustawienia", "Settings", "Einstellungen");
 
-        GeneralHeading.Text = AppSettings.Text("OGÓLNE", "GENERAL");
-        LanguageLabel.Text = AppSettings.Text("Język", "Language");
-        LanguageButton.Content = AppSettings.Polish ? "Polski" : "English";
-        StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
+        GeneralHeading.Text = AppSettings.Text("OGÓLNE", "GENERAL", "ALLGEMEIN");
+        LanguageLabel.Text = AppSettings.Text("Język", "Language", "Sprache");
+        LanguageButton.Content = AppSettings.LanguageDisplayName;
+        StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows", "Bei der Anmeldung starten");
 
-        NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
-        PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished");
-        PrinterErrorCheckBox.Content = AppSettings.Text("Błąd drukarki", "Printer error");
-        PrintPausedCheckBox.Content = AppSettings.Text("Druk wstrzymany", "Print paused");
-        LowFilamentCheckBox.Content = AppSettings.Text("Niski poziom filamentu", "Low filament");
-        HighHumidityCheckBox.Content = AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity");
-        QuietHoursCheckBox.Content = AppSettings.Text("Godziny ciszy (bez powiadomień)", "Quiet hours (no notifications)");
-        QuietFromLabel.Text = AppSettings.Text("od", "from");
-        QuietToLabel.Text = AppSettings.Text("do", "to");
+        NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS", "MITTEILUNGEN");
+        PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished", "Druck abgeschlossen");
+        PrinterErrorCheckBox.Content = AppSettings.Text("Błąd drukarki", "Printer error", "Druckerfehler");
+        PrintPausedCheckBox.Content = AppSettings.Text("Druk wstrzymany", "Print paused", "Druck pausiert");
+        LowFilamentCheckBox.Content = AppSettings.Text("Niski poziom filamentu", "Low filament", "Niedriger Filamentstand");
+        HighHumidityCheckBox.Content = AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity", "Hohe AMS-Luftfeuchtigkeit");
+        QuietHoursCheckBox.Content = AppSettings.Text("Godziny ciszy (bez powiadomień)", "Quiet hours (no notifications)", "Ruhezeiten (keine Mitteilungen)");
+        QuietFromLabel.Text = AppSettings.Text("od", "from", "von");
+        QuietToLabel.Text = AppSettings.Text("do", "to", "bis");
 
-        UpdatesHeading.Text = AppSettings.Text("AKTUALIZACJE", "UPDATES");
-        UpdateStatus.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion}", $"Version {UpdateChecker.CurrentVersion}");
-        CheckUpdatesButton.Content = AppSettings.Text("Sprawdź aktualizacje", "Check for updates");
+        UpdatesHeading.Text = AppSettings.Text("AKTUALIZACJE", "UPDATES", "UPDATES");
+        UpdateStatus.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion}", $"Version {UpdateChecker.CurrentVersion}", $"Version {UpdateChecker.CurrentVersion}");
+        CheckUpdatesButton.Content = AppSettings.Text("Sprawdź aktualizacje", "Check for updates", "Nach Updates suchen");
 
-        CloseButton.Content = AppSettings.Text("Zamknij", "Close");
+        CloseButton.Content = AppSettings.Text("Zamknij", "Close", "Schließen");
     }
 
     private void LoadSettings()
@@ -97,24 +99,26 @@ public partial class SettingsWindow : Window
     private async Task CheckUpdatesAsync()
     {
         CheckUpdatesButton.IsEnabled = false;
-        UpdateStatus.Text = AppSettings.Text("Sprawdzam…", "Checking…");
+        UpdateStatus.Text = AppSettings.Text("Sprawdzam…", "Checking…", "Wird geprüft …");
         try
         {
             var result = await UpdateChecker.LatestAsync();
             if (result is not { } r)
             {
-                UpdateStatus.Text = AppSettings.Text("Nie udało się sprawdzić.", "Could not check.");
+                UpdateStatus.Text = AppSettings.Text("Nie udało się sprawdzić.", "Could not check.", "Prüfung fehlgeschlagen.");
             }
             else if (r.IsNewer)
             {
                 UpdateStatus.Text = AppSettings.Text($"Dostępna wersja {r.Release.Version} — otwieram stronę…",
-                                                     $"Version {r.Release.Version} available — opening page…");
+                                                     $"Version {r.Release.Version} available — opening page…",
+                                                     $"Version {r.Release.Version} verfügbar – Seite wird geöffnet …");
                 try { Process.Start(new ProcessStartInfo(r.Release.PageUrl) { UseShellExecute = true }); } catch { }
             }
             else
             {
                 UpdateStatus.Text = AppSettings.Text($"Masz najnowszą wersję ({UpdateChecker.CurrentVersion}).",
-                                                     $"You have the latest version ({UpdateChecker.CurrentVersion}).");
+                                                     $"You have the latest version ({UpdateChecker.CurrentVersion}).",
+                                                     $"Du hast die neueste Version ({UpdateChecker.CurrentVersion}).");
             }
         }
         finally

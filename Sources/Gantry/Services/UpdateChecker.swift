@@ -26,9 +26,10 @@ enum UpdateChecker {
 
         let settings = AppSettings.shared
         NotificationService.post(
-            title: settings.text("Dostępna aktualizacja Gantry", "Gantry update available"),
+            title: settings.text("Dostępna aktualizacja Gantry", "Gantry update available", "Gantry-Update verfügbar"),
             body: settings.text("Wersja \(release.version) jest do pobrania. Kliknij, aby zainstalować.",
-                                "Version \(release.version) is available. Click to install."),
+                                "Version \(release.version) is available. Click to install.",
+                                "Version \(release.version) ist verfügbar. Klicke zum Installieren."),
             userInfo: ["type": "update"]
         )
     }

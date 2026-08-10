@@ -14,9 +14,10 @@ gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
-from .app import Gantry, PrinterCard, TEXT
+from .app import Gantry, PrinterCard
 from .core import Printer, PrinterKind, PrinterState, Telemetry
 from .http_clients import HttpConnection
+from .localization import catalog, normalize_language, tr
 from .csvimport import parse_printer_csv, template_csv
 from .mqtt import MqttConnection
 from .storage import Config, SecretStore, SecretStoreError
@@ -41,7 +42,7 @@ Result = TypeVar("Result")
 
 class KioskDashboard(Gtk.Window):
     def __init__(self, app: "KioskGantry") -> None:
-        super().__init__(title="Gantry Workshop")
+        super().__init__(title=tr(app.language, "web_title"))
         self.app = app
         self.set_decorated(False)
         self.connect("delete-event", lambda *_args: True)
@@ -52,16 +53,16 @@ class KioskDashboard(Gtk.Window):
         header.get_style_context().add_class("kiosk-header")
         branding = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         brand = Gtk.Label(label="GANTRY", xalign=0); brand.get_style_context().add_class("kiosk-brand")
-        tag = Gtk.Label(label="WARSZTAT • RASPBERRY PI", xalign=0); tag.get_style_context().add_class("kiosk-tag")
-        branding.pack_start(brand, False, False, 0); branding.pack_start(tag, False, False, 0)
+        self.tag = Gtk.Label(xalign=0); self.tag.get_style_context().add_class("kiosk-tag")
+        branding.pack_start(brand, False, False, 0); branding.pack_start(self.tag, False, False, 0)
         self.summary = Gtk.Label(xalign=0); self.summary.get_style_context().add_class("kiosk-summary")
         self.clock = Gtk.Label(xalign=1); self.clock.get_style_context().add_class("kiosk-clock")
-        settings = Gtk.Button(label="⚙  Konfiguracja")
-        settings.connect("clicked", lambda _button: app.open_kiosk_menu())
+        self.settings_button = Gtk.Button()
+        self.settings_button.connect("clicked", lambda _button: app.open_kiosk_menu())
         header.pack_start(branding, False, False, 0)
         header.pack_start(self.summary, True, True, 8)
         header.pack_start(self.clock, False, False, 0)
-        header.pack_start(settings, False, False, 0)
+        header.pack_start(self.settings_button, False, False, 0)
         root.pack_start(header, False, False, 0)
 
         self.alert = Gtk.Label(xalign=0)
@@ -80,11 +81,12 @@ class KioskDashboard(Gtk.Window):
         footer = Gtk.Box(spacing=18)
         footer.get_style_context().add_class("kiosk-footer")
         self.remote = Gtk.Label(xalign=0)
-        self.freshness = Gtk.Label(label="Monitoring aktywny", xalign=1)
+        self.freshness = Gtk.Label(xalign=1)
         footer.pack_start(self.remote, True, True, 0)
         footer.pack_start(self.freshness, False, False, 0)
         root.pack_end(footer, False, False, 0)
 
+        self.localize()
         self._update_clock()
         GLib.timeout_add_seconds(1, self._update_clock)
 
@@ -93,28 +95,32 @@ class KioskDashboard(Gtk.Window):
         self.clock.set_text(now.strftime("%H:%M  •  %d.%m.%Y"))
         return True
 
+    def localize(self) -> None:
+        self.tag.set_text(tr(self.app.language, "workshop_tag"))
+        self.settings_button.set_label("⚙  " + tr(self.app.language, "configuration"))
+        self.freshness.set_text(tr(self.app.language, "monitoring_active"))
+
     def update_header(self) -> None:
         values = list(self.app.telemetry.values())
         online = sum(value.state != PrinterState.OFFLINE for value in values)
         printing = sum(value.state in {PrinterState.PRINTING, PrinterState.PAUSED} for value in values)
         errors = [printer for printer in self.app.printers
                   if self.app.telemetry.get(printer.serial, Telemetry()).state == PrinterState.ERROR]
-        self.summary.set_text(
-            f"{len(self.app.printers)} drukarek   •   {online} online   •   {printing} drukuje"
-            + (f"   •   {len(errors)} błąd" if errors else "")
-        )
+        error_text = tr(self.app.language, "kiosk_errors", count=len(errors)) if errors else ""
+        self.summary.set_text(tr(self.app.language, "kiosk_summary", printers=len(self.app.printers),
+                                 online=online, printing=printing, errors=error_text))
         if errors:
             names = ", ".join(printer.name for printer in errors[:3])
-            self.alert.set_text(f"⚠  {names}  •  drukarka wymaga uwagi")
+            self.alert.set_text(tr(self.app.language, "attention", names=names))
             self.alert.set_no_show_all(False); self.alert.show()
         else:
             self.alert.hide(); self.alert.set_no_show_all(True)
         server = self.app.web_config
         if server.error:
-            self.remote.set_text("Panel zdalny niedostępny • użyj Konfiguracji na ekranie")
+            self.remote.set_text(tr(self.app.language, "remote_unavailable"))
         else:
             formatted = f"{server.code[:3]} {server.code[3:]}"
-            self.remote.set_text(f"Telefon: {server.url}   •   kod parowania {formatted}")
+            self.remote.set_text(tr(self.app.language, "remote_footer", url=server.url, code=formatted))
 
 
 class KioskPrinterCard(PrinterCard):
@@ -126,49 +132,60 @@ class KioskPrinterCard(PrinterCard):
 
 class KioskMenuDialog(Gtk.Dialog):
     def __init__(self, app: "KioskGantry") -> None:
-        super().__init__(title="Gantry Workshop", transient_for=app.window, modal=True)
+        super().__init__(title=tr(app.language, "web_title"), transient_for=app.window, modal=True)
         self.app = app
         self.set_default_size(480, 330)
-        self.add_button("Zamknij", Gtk.ResponseType.CLOSE)
+        self.close_button = self.add_button(tr(app.language, "close"), Gtk.ResponseType.CLOSE)
         box = self.get_content_area(); box.set_spacing(12); box.set_border_width(20)
-        title = Gtk.Label(label="Konfiguracja ekranu warsztatowego", xalign=0)
-        title.get_style_context().add_class("title"); box.pack_start(title, False, False, 0)
-        remote = Gtk.Label(xalign=0)
+        self.title_label = Gtk.Label(xalign=0)
+        self.title_label.get_style_context().add_class("title"); box.pack_start(self.title_label, False, False, 0)
+        self.remote = Gtk.Label(xalign=0)
         if app.web_config.error:
-            remote.set_text("Panel z telefonu jest niedostępny. Sprawdź port 8443 i pakiet openssl.")
+            self.remote.set_text(tr(app.language, "web_unavailable"))
         else:
             code = f"{app.web_config.code[:3]} {app.web_config.code[3:]}"
-            remote.set_markup(f"Telefon / komputer:\n<b>{app.web_config.url}</b>\nKod parowania: <b>{code}</b>")
-        box.pack_start(remote, False, False, 0)
+            self.remote.set_markup(tr(app.language, "computer_pairing", url=app.web_config.url, code=code))
+        box.pack_start(self.remote, False, False, 0)
         actions = Gtk.Grid(column_spacing=10, row_spacing=10)
-        add = Gtk.Button(label="＋  Dodaj drukarkę")
-        add.connect("clicked", lambda _button: self._run_and_return(app.open_printer_dialog))
-        settings = Gtk.Button(label="⚙  Ustawienia")
-        settings.connect("clicked", lambda _button: self._run_and_return(app.open_settings))
-        import_csv = Gtk.Button(label="⇩  Importuj CSV")
-        import_csv.connect("clicked", lambda _button: self._run_and_return(app.import_csv_on_screen))
-        template = Gtk.Button(label="Dokumenty: szablon CSV")
-        template.connect("clicked", lambda _button: self._run_and_return(app.save_csv_template))
-        reconnect = Gtk.Button(label="↻  Połącz ponownie")
-        reconnect.connect("clicked", lambda _button: app.reconnect_all())
-        rotate = Gtk.Button(label="Nowy kod parowania")
-        rotate.connect("clicked", lambda _button: self._rotate(remote))
-        actions.attach(add, 0, 0, 1, 1); actions.attach(settings, 1, 0, 1, 1)
-        actions.attach(import_csv, 0, 1, 1, 1); actions.attach(template, 1, 1, 1, 1)
-        actions.attach(reconnect, 0, 2, 1, 1); actions.attach(rotate, 1, 2, 1, 1)
+        self.add_action = Gtk.Button(); self.add_action.connect("clicked", lambda _button: self._run_and_return(app.open_printer_dialog))
+        self.settings_action = Gtk.Button(); self.settings_action.connect("clicked", lambda _button: self._run_and_return(app.open_settings))
+        self.import_action = Gtk.Button(); self.import_action.connect("clicked", lambda _button: self._run_and_return(app.import_csv_on_screen))
+        self.template_action = Gtk.Button(); self.template_action.connect("clicked", lambda _button: self._run_and_return(app.save_csv_template))
+        self.reconnect_action = Gtk.Button(); self.reconnect_action.connect("clicked", lambda _button: app.reconnect_all())
+        self.rotate_action = Gtk.Button(); self.rotate_action.connect("clicked", lambda _button: self._rotate(self.remote))
+        actions.attach(self.add_action, 0, 0, 1, 1); actions.attach(self.settings_action, 1, 0, 1, 1)
+        actions.attach(self.import_action, 0, 1, 1, 1); actions.attach(self.template_action, 1, 1, 1, 1)
+        actions.attach(self.reconnect_action, 0, 2, 1, 1); actions.attach(self.rotate_action, 1, 2, 1, 1)
         box.pack_start(actions, True, True, 0)
-        hint = Gtk.Label(label="SSH służy tylko do aktualizacji i diagnostyki.", xalign=0)
-        hint.get_style_context().add_class("meta"); box.pack_end(hint, False, False, 0)
+        self.hint = Gtk.Label(xalign=0)
+        self.hint.get_style_context().add_class("meta"); box.pack_end(self.hint, False, False, 0)
+        self.localize()
         self.show_all()
 
     def _run_and_return(self, action: Callable[[], None]) -> None:
-        self.hide(); action(); self.show_all(); self.present()
+        self.hide(); action(); self.localize(); self.show_all(); self.present()
+
+    def localize(self) -> None:
+        self.close_button.set_label(tr(self.app.language, "close"))
+        self.title_label.set_text(tr(self.app.language, "screen_configuration"))
+        self.add_action.set_label("＋  " + tr(self.app.language, "add"))
+        self.settings_action.set_label("⚙  " + tr(self.app.language, "settings"))
+        self.import_action.set_label("⇩  " + tr(self.app.language, "import_csv"))
+        self.template_action.set_label(tr(self.app.language, "csv_template_documents"))
+        self.reconnect_action.set_label("↻  " + tr(self.app.language, "reconnect"))
+        self.rotate_action.set_label(tr(self.app.language, "new_pairing_code"))
+        self.hint.set_text(tr(self.app.language, "ssh_hint"))
+        if self.app.web_config.error:
+            self.remote.set_text(tr(self.app.language, "web_unavailable"))
+        else:
+            code = f"{self.app.web_config.code[:3]} {self.app.web_config.code[3:]}"
+            self.remote.set_markup(tr(self.app.language, "computer_pairing", url=self.app.web_config.url, code=code))
 
     def _rotate(self, label: Gtk.Label) -> None:
         self.app.web_config.code = pairing_code()
         self.app.web_config.sessions.clear()
         code = f"{self.app.web_config.code[:3]} {self.app.web_config.code[3:]}"
-        label.set_markup(f"Telefon / komputer:\n<b>{self.app.web_config.url}</b>\nKod parowania: <b>{code}</b>")
+        label.set_markup(tr(self.app.language, "computer_pairing", url=self.app.web_config.url, code=code))
         self.app.window.update_header()
 
 
@@ -176,14 +193,15 @@ class KioskGantry(Gantry):
     def __init__(self) -> None:
         self.config, self.secrets = Config(), SecretStore()
         self.config.data["theme"] = "dark"
-        self.language = str(self.config.data.get("language", "pl")); self.text = TEXT.get(self.language, TEXT["pl"])
+        self.language = normalize_language(str(self.config.data.get("language", "en"))); self.text = catalog(self.language)
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
         self.connections: dict[str, MqttConnection | HttpConnection] = {}
         self.cards: dict[str, KioskPrinterCard] = {}
         self.expanded_compact_serial: str | None = None
         self.web_config = WebConfigServer(
-            self._remote_snapshot, self._remote_add, self._remote_remove, self._remote_import
+            self._remote_snapshot, self._remote_add, self._remote_remove, self._remote_import,
+            language_provider=lambda: self.language,
         )
         self.window = KioskDashboard(self)
         self.apply_theme()
@@ -206,6 +224,7 @@ class KioskGantry(Gantry):
         self.window.show_all(); self.window.fullscreen(); self.window.present()
 
     def rebuild_cards(self) -> None:
+        self.window.localize()
         for child in self.window.grid.get_children(): self.window.grid.remove(child)
         self.cards = {}
         count = len(self.printers)
@@ -231,9 +250,9 @@ class KioskGantry(Gantry):
             finished.set(); return False
         GLib.idle_add(run)
         if not finished.wait(timeout):
-            return False, "Przekroczono czas operacji."
+            return False, tr(self.language, "operation_timeout")
         if not result or isinstance(result[0], Exception):
-            return False, str(result[0]) if result else "Nieznany błąd."
+            return False, str(result[0]) if result else tr(self.language, "unknown_error")
         return True, result[0]
 
     def _remote_snapshot(self) -> dict[str, Any]:
@@ -265,10 +284,10 @@ class KioskGantry(Gantry):
             if values.get("code"):
                 self.secrets.set(printer.serial, str(values["code"]))
             self.upsert_printer(printer); self.reconnect_all()
-            return "Drukarka została dodana."
+            return tr(self.language, "printer_added")
         ok, value = self._on_ui(add, timeout=30)
         if not ok:
-            message = "Nie udało się zapisać kodu w systemowym pęku kluczy." if "secret" in str(value).lower() else str(value)
+            message = tr(self.language, "secret_error") if "secret" in str(value).lower() else str(value)
             return False, message
         return True, str(value)
 
@@ -304,7 +323,7 @@ class KioskGantry(Gantry):
         self.printers = list(by_serial.values())
         self.config.printers = self.printers
         self.rebuild_cards(); self.reconnect_all()
-        return f"Zaimportowano {len(records)} drukarek. Usuń plik CSV, ponieważ zawiera kody dostępu."
+        return tr(self.language, "imported_delete_csv", count=len(records))
 
     def _remote_import(self, records: list[dict[str, Any]]) -> tuple[bool, str]:
         ok, value = self._on_ui(lambda: self._import_records(records), timeout=60)
@@ -312,28 +331,29 @@ class KioskGantry(Gantry):
 
     def import_csv_on_screen(self, parent: Gtk.Window | Gtk.Dialog | None = None) -> None:
         chooser = Gtk.FileChooserDialog(
-            title="Importuj drukarki z CSV", transient_for=parent or self.window,
+            title=tr(self.language, "import_csv_title"), transient_for=parent or self.window,
             action=Gtk.FileChooserAction.OPEN,
         )
-        chooser.add_buttons("Anuluj", Gtk.ResponseType.CANCEL, "Importuj", Gtk.ResponseType.OK)
-        csv_filter = Gtk.FileFilter(); csv_filter.set_name("Pliki CSV"); csv_filter.add_pattern("*.csv")
+        chooser.add_buttons(tr(self.language, "cancel"), Gtk.ResponseType.CANCEL, tr(self.language, "import_csv"), Gtk.ResponseType.OK)
+        csv_filter = Gtk.FileFilter(); csv_filter.set_name(tr(self.language, "csv_files")); csv_filter.add_pattern("*.csv")
         chooser.add_filter(csv_filter)
         response = chooser.run(); filename = chooser.get_filename(); chooser.destroy()
         if response != Gtk.ResponseType.OK or not filename:
             return
         try:
-            records = parse_printer_csv(Path(filename).read_text(encoding="utf-8-sig"))
+            records = parse_printer_csv(Path(filename).read_text(encoding="utf-8-sig"), language=self.language)
             message = self._import_records(records)
-            self._message("Import zakończony", message, Gtk.MessageType.INFO)
+            self._message(tr(self.language, "import_complete"), message, Gtk.MessageType.INFO)
         except (OSError, UnicodeError, ValueError, SecretStoreError) as error:
-            self._message("Nie udało się zaimportować CSV", str(error), Gtk.MessageType.ERROR)
+            message = tr(self.language, "secret_error") if isinstance(error, SecretStoreError) else str(error)
+            self._message(tr(self.language, "import_failed"), message, Gtk.MessageType.ERROR)
 
     def save_csv_template(self) -> None:
         chooser = Gtk.FileChooserDialog(
-            title="Zapisz szablon CSV", transient_for=self.window,
+            title=tr(self.language, "save_template_title"), transient_for=self.window,
             action=Gtk.FileChooserAction.SAVE,
         )
-        chooser.add_buttons("Anuluj", Gtk.ResponseType.CANCEL, "Zapisz", Gtk.ResponseType.OK)
+        chooser.add_buttons(tr(self.language, "cancel"), Gtk.ResponseType.CANCEL, tr(self.language, "save"), Gtk.ResponseType.OK)
         chooser.set_current_name("Gantry-printers-template.csv")
         documents = Path.home() / "Documents"
         if documents.exists(): chooser.set_current_folder(str(documents))
@@ -343,9 +363,9 @@ class KioskGantry(Gantry):
             return
         try:
             Path(filename).write_text("\ufeff" + template_csv(), encoding="utf-8")
-            self._message("Szablon zapisany", filename, Gtk.MessageType.INFO)
+            self._message(tr(self.language, "template_saved"), filename, Gtk.MessageType.INFO)
         except OSError as error:
-            self._message("Nie udało się zapisać szablonu", str(error), Gtk.MessageType.ERROR)
+            self._message(tr(self.language, "template_save_failed"), str(error), Gtk.MessageType.ERROR)
 
     def _message(self, title: str, body: str, kind: Gtk.MessageType) -> None:
         dialog = Gtk.MessageDialog(
@@ -357,9 +377,9 @@ class KioskGantry(Gantry):
     def _remote_remove(self, serial: str) -> tuple[bool, str]:
         def remove() -> str:
             printer = next((item for item in self.printers if item.serial == serial), None)
-            if not printer: raise ValueError("Nie znaleziono drukarki.")
+            if not printer: raise ValueError(tr(self.language, "printer_not_found"))
             self.remove_printer(printer)
-            return "Drukarka została usunięta."
+            return tr(self.language, "printer_removed")
         ok, value = self._on_ui(remove)
         return ok, str(value)
 

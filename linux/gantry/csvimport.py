@@ -4,6 +4,8 @@ import csv
 import io
 from typing import Any
 
+from .localization import tr
+
 
 HEADERS = ("kind", "name", "host", "serial", "access_code", "port")
 
@@ -15,14 +17,14 @@ def template_csv() -> str:
     return output.getvalue()
 
 
-def parse_printer_csv(content: str, maximum: int = 200) -> list[dict[str, Any]]:
+def parse_printer_csv(content: str, maximum: int = 200, language: str = "pl") -> list[dict[str, Any]]:
     reader = csv.DictReader(io.StringIO(content.lstrip("\ufeff")))
     if not reader.fieldnames:
-        raise ValueError("Plik CSV nie ma nagłówka.")
+        raise ValueError(tr(language, "csv_no_header"))
     normalized = {name.strip().lower(): name for name in reader.fieldnames if name}
     missing = [name for name in ("name", "host") if name not in normalized]
     if missing:
-        raise ValueError("Brak kolumn: " + ", ".join(missing))
+        raise ValueError(tr(language, "csv_missing_columns", columns=", ".join(missing)))
     result: list[dict[str, Any]] = []
     seen: set[str] = set()
     for line_number, row in enumerate(reader, start=2):
@@ -32,25 +34,25 @@ def parse_printer_csv(content: str, maximum: int = 200) -> list[dict[str, Any]]:
         name, host = values.get("name", ""), values.get("host", "")
         kind = values.get("kind", "bambu").lower() or "bambu"
         if kind not in {"bambu", "klipper", "prusa"}:
-            raise ValueError(f"Wiersz {line_number}: nieznany typ drukarki {kind}.")
+            raise ValueError(tr(language, "csv_unknown_kind", line=line_number, kind=kind))
         default_port = {"bambu": 8883, "klipper": 7125, "prusa": 80}[kind]
         serial, code = values.get("serial", ""), values.get("access_code", "")
         try:
             port = int(values.get("port") or str(default_port))
         except ValueError as error:
-            raise ValueError(f"Wiersz {line_number}: niepoprawny port.") from error
+            raise ValueError(tr(language, "csv_invalid_port", line=line_number)) from error
         if kind != "bambu" and not serial:
             serial = f"{kind}-{host}-{port}"
         if not name or not host or not serial or (kind in {"bambu", "prusa"} and not code):
-            raise ValueError(f"Wiersz {line_number}: brakuje wymaganych danych.")
+            raise ValueError(tr(language, "csv_missing_data", line=line_number))
         if not 1 <= port <= 65535 or any(character.isspace() for character in host):
-            raise ValueError(f"Wiersz {line_number}: niepoprawny adres lub port.")
+            raise ValueError(tr(language, "csv_invalid_address", line=line_number))
         if serial in seen:
-            raise ValueError(f"Wiersz {line_number}: powtórzony numer seryjny {serial}.")
+            raise ValueError(tr(language, "csv_duplicate_serial", line=line_number, serial=serial))
         seen.add(serial)
         result.append({"kind": kind, "name": name, "host": host, "serial": serial, "code": code, "port": port})
         if len(result) > maximum:
-            raise ValueError(f"Plik zawiera więcej niż {maximum} drukarek.")
+            raise ValueError(tr(language, "csv_too_many", maximum=maximum))
     if not result:
-        raise ValueError("Plik CSV nie zawiera drukarek.")
+        raise ValueError(tr(language, "csv_empty"))
     return result

@@ -60,39 +60,61 @@ public partial class AddPrinterWindow : Window
         ApplyKind();
 
         _store.Updated += OnStoreUpdated;
-        Closed += (_, _) => _store.Updated -= OnStoreUpdated;
+        AppSettings.LanguageChanged += OnLanguageChanged;
+        Closed += (_, _) =>
+        {
+            _store.Updated -= OnStoreUpdated;
+            AppSettings.LanguageChanged -= OnLanguageChanged;
+        };
+        RefreshDetected();
+    }
+
+    private void OnLanguageChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(OnLanguageChanged);
+            return;
+        }
+        Localize();
+        ApplyKind();
         RefreshDetected();
     }
 
     private void Localize()
     {
-        Title = _editing is null ? AppSettings.Text("Dodaj drukarkę", "Add printer") : AppSettings.Text("Edytuj drukarkę", "Edit printer");
+        Title = _editing is null ? AppSettings.Text("Dodaj drukarkę", "Add printer", "Drucker hinzufügen") : AppSettings.Text("Edytuj drukarkę", "Edit printer", "Drucker bearbeiten");
         Heading.Text = Title;
-        DetectedLabel.Text = AppSettings.Text("Wykryte drukarki", "Detected printers");
-        ImportButton.Content = AppSettings.Text("Importuj z Bambu Studio", "Import from Bambu Studio");
-        ImportConsent.Content = AppSettings.Text("Pozwól odczytać konfigurację Bambu Studio", "Allow reading the Bambu Studio configuration");
+        DetectedLabel.Text = AppSettings.Text("Wykryte drukarki", "Detected printers", "Gefundene Drucker");
+        ScanButton.ToolTip = AppSettings.Text("Szukaj drukarek", "Scan for printers", "Nach Druckern suchen");
+        ImportButton.Content = AppSettings.Text("Importuj z Bambu Studio", "Import from Bambu Studio", "Aus Bambu Studio importieren");
+        ImportConsent.Content = AppSettings.Text("Pozwól odczytać konfigurację Bambu Studio", "Allow reading the Bambu Studio configuration", "Lesen der Bambu-Studio-Konfiguration erlauben");
         ImportHint.Text = AppSettings.Text(
             "Przyspiesza dodawanie, ale odczytuje lokalny plik slicera z kodami dostępu. Nic nie jest czytane, dopóki tego nie zaznaczysz.",
-            "Speeds up adding, but reads the local slicer file containing access codes. Nothing is read until you tick this.");
+            "Speeds up adding, but reads the local slicer file containing access codes. Nothing is read until you tick this.",
+            "Beschleunigt das Hinzufügen, liest aber die lokale Slicer-Datei mit Zugriffscodes. Ohne deine Zustimmung wird nichts gelesen.");
         SubnetTargetsLabel.Text = AppSettings.Text("Nie widać drukarki? Dodatkowe adresy do skanowania (VPN):",
-                                                   "Printer not listed? Extra scan targets (VPN):");
+                                                   "Printer not listed? Extra scan targets (VPN):",
+                                                   "Drucker nicht gefunden? Zusätzliche Scan-Ziele (VPN):");
         SubnetTargetsHint.Text = AppSettings.Text(
             $"Bambu wykrywa się w sieci lokalnej. Drukarkę spoza LAN (np. przez Tailscale) dopisz tu jej adresem, potem kliknij ⟳. Pojedynczy adres (zalecane), zakres a-b lub CIDR /n. Duże zakresy odrzucane (limit {SubnetTargets.MaxHosts}).",
-            $"Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. A single address (best), an a-b range or CIDR /n. Large ranges are rejected (limit {SubnetTargets.MaxHosts}).");
+            $"Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. A single address (best), an a-b range or CIDR /n. Large ranges are rejected (limit {SubnetTargets.MaxHosts}).",
+            $"Bambu wird im lokalen Netzwerk gefunden. Trage für einen Drucker außerhalb des LAN (z. B. über Tailscale) hier seine Adresse ein und klicke dann auf ⟳. Einzelne Adresse (empfohlen), Bereich a-b oder CIDR /n. Große Bereiche werden abgelehnt (Limit {SubnetTargets.MaxHosts}).");
         if (!SubnetTargetsBox.IsKeyboardFocusWithin) SubnetTargetsBox.Text = AppSettings.SubnetScanTargets;
         ValidateSubnetTargets();
-        NameLabel.Text = AppSettings.Text("Nazwa (opcjonalnie)", "Name (optional)");
-        HostLabel.Text = AppSettings.Text("Adres IP", "IP address");
-        SerialLabel.Text = AppSettings.Text("Numer seryjny", "Serial number");
-        CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN");
-        BambuRadio.Content = AppSettings.Text("Bambu Lab", "Bambu Lab");
-        KlipperRadio.Content = AppSettings.Text("Klipper (Moonraker)", "Klipper (Moonraker)");
-        PrusaRadio.Content = AppSettings.Text("Prusa (PrusaLink)", "Prusa (PrusaLink)");
-        ApiKeyLabel.Text = AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
-        CancelButton.Content = AppSettings.Text("Anuluj", "Cancel");
-        SaveButton.Content = _editing is null ? AppSettings.Text("Dodaj", "Add") : AppSettings.Text("Zapisz", "Save");
+        NameLabel.Text = AppSettings.Text("Nazwa (opcjonalnie)", "Name (optional)", "Name (optional)");
+        HostLabel.Text = AppSettings.Text("Adres IP", "IP address", "IP-Adresse");
+        SerialLabel.Text = AppSettings.Text("Numer seryjny", "Serial number", "Seriennummer");
+        CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN", "Zugriffscode / PIN");
+        BambuRadio.Content = AppSettings.Text("Bambu Lab", "Bambu Lab", "Bambu Lab");
+        KlipperRadio.Content = AppSettings.Text("Klipper (Moonraker)", "Klipper (Moonraker)", "Klipper (Moonraker)");
+        PrusaRadio.Content = AppSettings.Text("Prusa (PrusaLink)", "Prusa (PrusaLink)", "Prusa (PrusaLink)");
+        ApiKeyLabel.Text = AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)", "API-Schlüssel (optional)");
+        CancelButton.Content = AppSettings.Text("Anuluj", "Cancel", "Abbrechen");
+        SaveButton.Content = _editing is null ? AppSettings.Text("Dodaj", "Add", "Hinzufügen") : AppSettings.Text("Zapisz", "Save", "Speichern");
         ProgressCheck.Content = AppSettings.Text("Pokaż postęp tej drukarki w zasobniku",
-                                                 "Show this printer's progress in the tray");
+                                                 "Show this printer's progress in the tray",
+                                                 "Fortschritt dieses Druckers im Tray anzeigen");
     }
 
     private bool IsKlipper => KlipperRadio.IsChecked == true;
@@ -111,16 +133,16 @@ public partial class AddPrinterWindow : Window
         PortLabel.Visibility = PortBox.Visibility = Visibility.Visible;   // Bambu too (optional — tunnels)
         ApiKeyLabel.Visibility = ApiKeyBox.Visibility = hostBased ? Visibility.Visible : Visibility.Collapsed;
         HostLabel.Text = hostBased
-            ? AppSettings.Text("Adres IP / nazwa hosta", "IP address / host name")
-            : AppSettings.Text("Adres IP", "IP address");
+            ? AppSettings.Text("Adres IP / nazwa hosta", "IP address / host name", "IP-Adresse / Hostname")
+            : AppSettings.Text("Adres IP", "IP address", "IP-Adresse");
         PortLabel.Text = IsPrusa
-            ? AppSettings.Text("Port PrusaLink (domyślnie 80)", "PrusaLink port (default 80)")
+            ? AppSettings.Text("Port PrusaLink (domyślnie 80)", "PrusaLink port (default 80)", "PrusaLink-Port (Standard: 80)")
             : IsKlipper
-                ? AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)")
-                : AppSettings.Text("Port (zwykle 8883 — zmień przy tunelu, np. socat)", "Port (usually 8883 — change for a tunnel, e.g. socat)");
+                ? AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)", "Moonraker-Port (Standard: 7125)")
+                : AppSettings.Text("Port (zwykle 8883 — zmień przy tunelu, np. socat)", "Port (usually 8883 — change for a tunnel, e.g. socat)", "Port (normalerweise 8883 – für einen Tunnel ändern, z. B. socat)");
         ApiKeyLabel.Text = IsPrusa
-            ? AppSettings.Text("Klucz API PrusaLink", "PrusaLink API key")
-            : AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
+            ? AppSettings.Text("Klucz API PrusaLink", "PrusaLink API key", "PrusaLink-API-Schlüssel")
+            : AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)", "API-Schlüssel (optional)");
     }
 
     private void OnStoreUpdated(object? sender, EventArgs e) => Dispatcher.Invoke(RefreshDetected);
@@ -133,8 +155,8 @@ public partial class AddPrinterWindow : Window
         foreach (var d in _store.Discovered)
             DetectedList.Items.Add(new DiscoveredItem(d));
         DetectedLabel.Text = _store.IsScanning
-            ? AppSettings.Text("Skanowanie…", "Scanning…")
-            : AppSettings.Text($"Wykryte drukarki ({_store.Discovered.Count})", $"Detected printers ({_store.Discovered.Count})");
+            ? AppSettings.Text("Skanowanie…", "Scanning…", "Wird gesucht …")
+            : AppSettings.Text($"Wykryte drukarki ({_store.Discovered.Count})", $"Detected printers ({_store.Discovered.Count})", $"Gefundene Drucker ({_store.Discovered.Count})");
         if (selectedSerial is not null)
         {
             _restoringSelection = true;
@@ -163,7 +185,7 @@ public partial class AddPrinterWindow : Window
         try
         {
             int count = _store.ImportFromBambuStudio();
-            MessageBox.Show(this, AppSettings.Text($"Zaimportowano drukarek: {count}", $"Imported printers: {count}"), "Gantry");
+            MessageBox.Show(this, AppSettings.Text($"Zaimportowano drukarek: {count}", $"Imported printers: {count}", $"Importierte Drucker: {count}"), "Gantry");
             Close();
         }
         catch (Exception ex)
@@ -181,7 +203,7 @@ public partial class AddPrinterWindow : Window
             if (portText.Length > 0)
             {
                 if (!int.TryParse(portText, out var parsed) || parsed <= 0 || parsed > 65535)
-                    throw new ArgumentException(AppSettings.Text("Nieprawidłowy port.", "Invalid port."));
+                    throw new ArgumentException(AppSettings.Text("Nieprawidłowy port.", "Invalid port.", "Ungültiger Port."));
                 port = parsed;
             }
             if (UsesHostFields)
@@ -235,9 +257,11 @@ public partial class AddPrinterWindow : Window
         SubnetTargetsError.Visibility = Visibility.Visible;
         SubnetTargetsError.Text = SubnetTargets.IsTooLarge(input)
             ? AppSettings.Text($"Zakres za duży (max {SubnetTargets.MaxHosts}) — podaj węższy zakres lub pojedynczy adres.",
-                               $"Range too large (max {SubnetTargets.MaxHosts}) — use a narrower range or a single address.")
+                               $"Range too large (max {SubnetTargets.MaxHosts}) — use a narrower range or a single address.",
+                               $"Bereich zu groß (max. {SubnetTargets.MaxHosts}) – verwende einen kleineren Bereich oder eine einzelne Adresse.")
             : AppSettings.Text("Nieprawidłowy wpis — użyj IP, zakresu a-b lub CIDR /n.",
-                               "Invalid entry — use an IP, an a-b range or CIDR /n.");
+                               "Invalid entry — use an IP, an a-b range or CIDR /n.",
+                               "Ungültige Eingabe – verwende eine IP-Adresse, einen Bereich a-b oder CIDR /n.");
     }
 
     private void ShowError(string message)

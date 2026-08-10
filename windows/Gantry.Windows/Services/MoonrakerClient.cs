@@ -50,7 +50,8 @@ public sealed class MoonrakerClient : IPrinterConnection
         if (query is null)
         {
             ReportDisconnected(AppSettings.Text($"Nie znaleziono API Moonraker (port {_printer.Port ?? 7125})",
-                $"Moonraker API not found (port {_printer.Port ?? 7125})"));
+                $"Moonraker API not found (port {_printer.Port ?? 7125})",
+                $"Moonraker-API nicht gefunden (Port {_printer.Port ?? 7125})"));
             return;
         }
         while (!_cts.IsCancellationRequested)

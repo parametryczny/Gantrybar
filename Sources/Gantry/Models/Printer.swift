@@ -8,17 +8,6 @@ enum PrinterState: String, Codable, Sendable {
     case error
     case offline
 
-    var label: String {
-        switch self {
-        case .idle: "Gotowa"
-        case .printing: "Drukowanie"
-        case .paused: "Wstrzymana"
-        case .finished: "Zakończono"
-        case .error: "Błąd"
-        case .offline: "Offline"
-        }
-    }
-
     var symbol: String {
         switch self {
         case .idle: "checkmark.circle.fill"

@@ -86,7 +86,11 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
         connection.start(queue: queue)
         let timeout = DispatchWorkItem { [weak self] in
             guard let self, !self.stopped else { return }
-            self.reportDisconnected("Przekroczono czas połączenia z drukarką")
+            self.reportDisconnected(localizedText(
+                "Przekroczono czas połączenia z drukarką",
+                "The printer connection timed out",
+                "Zeitüberschreitung bei der Druckerverbindung"
+            ))
             self.connection?.cancel()
         }
         connectTimeout = timeout
@@ -110,7 +114,11 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
                 disconnectReported = true
                 onEvent(.localNetworkDenied)
             } else {
-                reportDisconnected(certificateMismatch ? certificateMismatchMessage : "Brak połączenia: \(error.localizedDescription)")
+                reportDisconnected(certificateMismatch ? certificateMismatchMessage : localizedText(
+                    "Brak połączenia: \(error.localizedDescription)",
+                    "Connection failed: \(error.localizedDescription)",
+                    "Verbindung fehlgeschlagen: \(error.localizedDescription)"
+                ))
             }
             connection?.cancel()
         case .cancelled:
@@ -144,7 +152,11 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
                     let result = packet.body.count >= 2 ? packet.body[1] : 255
                     Self.logger.error("MQTT authentication rejected, CONNACK=\(result, privacy: .public)")
                     connectTimeout?.cancel()
-                    reportDisconnected("Drukarka odrzuciła kod dostępu")
+                    reportDisconnected(localizedText(
+                        "Drukarka odrzuciła kod dostępu",
+                        "The printer rejected the access code",
+                        "Der Drucker hat den Zugriffscode abgelehnt"
+                    ))
                     connection?.cancel()
                     return
                 }
@@ -197,7 +209,11 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
     }
 
     private var certificateMismatchMessage: String {
-        "Certyfikat drukarki zmienił się. Połączenie zablokowano; sprawdź sieć, a następnie usuń i dodaj drukarkę ponownie."
+        localizedText(
+            "Certyfikat drukarki zmienił się. Połączenie zablokowano; sprawdź sieć, a następnie usuń i dodaj drukarkę ponownie.",
+            "The printer certificate changed. The connection was blocked; check the network, then remove and add the printer again.",
+            "Das Druckerzertifikat hat sich geändert. Die Verbindung wurde blockiert; prüfe das Netzwerk und entferne den Drucker, bevor du ihn erneut hinzufügst."
+        )
     }
 
 }

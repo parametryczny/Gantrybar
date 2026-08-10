@@ -4,6 +4,14 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Gantry</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>pl</string>
+		<string>de</string>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>Gantry</string>
 	<key>CFBundleGetInfoString</key>
@@ -33,7 +41,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Kamil Grzegorczyk (@parametryczny)</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Gantry wykrywa i monitoruje drukarki 3D w sieci lokalnej.</string>
+	<string>Gantry discovers and monitors 3D printers on your local network.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

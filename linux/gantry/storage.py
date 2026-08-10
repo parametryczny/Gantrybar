@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import locale
 import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from .core import Printer, printer_to_dict
+from .localization import detected_language, normalize_language
 
 
 APP_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "gantry"
@@ -32,7 +32,7 @@ def _migrate_legacy_config() -> None:
 
 
 DEFAULTS: dict[str, Any] = {
-    "language": "pl",
+    "language": "en",
     "theme": "dark",
     "collapsed": False,
     "scan_targets": "",
@@ -55,9 +55,9 @@ class Config:
         _migrate_legacy_config()
         self.data = dict(DEFAULTS)
         if not CONFIG_FILE.exists():
-            language = (locale.getlocale()[0] or os.environ.get("LANG", "")).lower()
-            self.data["language"] = "pl" if language.startswith("pl") else "en"
+            self.data["language"] = detected_language()
         self.load()
+        self.data["language"] = normalize_language(str(self.data.get("language", "en")))
 
     def load(self) -> None:
         try:
