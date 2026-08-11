@@ -142,6 +142,18 @@ public sealed class TrayIcon : IDisposable
             // No Click handler — informational only; kept enabled so the emoji dot stays full-colour.
             legend.DropDownItems.Add(new ToolStripMenuItem($"{dot}  {text}"));
         }
+        legend.DropDownItems.Add(new ToolStripSeparator());
+        var header = new ToolStripMenuItem(AppSettings.Text("Sloty filamentu:", "Filament slots:")) { Enabled = false };
+        legend.DropDownItems.Add(header);
+        (string Dot, string Text)[] slotEntries =
+        {
+            ("⭕", AppSettings.Text("Slot AMS z białym pierścieniem — aktywny (drukuje z niego)",
+                                    "AMS slot with a white ring — active (printing from it)")),
+            ("🔴", AppSettings.Text("Czerwona kropka na slocie — mało filamentu (≤15%)",
+                                    "Red dot on a slot — low filament (≤15%)")),
+        };
+        foreach (var (dot, text) in slotEntries)
+            legend.DropDownItems.Add(new ToolStripMenuItem($"{dot}  {text}"));
         return legend;
     }
 

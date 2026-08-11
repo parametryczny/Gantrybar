@@ -272,8 +272,9 @@ public partial class DashboardWindow : Window
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var grip = new TextBlock
             {
-                Text = "⠿", FontSize = 13, Foreground = Muted(), Margin = new Thickness(0, 0, 7, 0),
-                VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll
+                Text = "⌵⌃", FontSize = 12, Foreground = Muted(), Margin = new Thickness(0, 0, 7, 0),
+                VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll,
+                ToolTip = "Przeciągnij, aby zmienić kolejność • Drag to reorder"
             };
             grip.PreviewMouseLeftButtonDown += (_, e) => _dragStart = e.GetPosition(null);
             grip.MouseMove += (_, e) =>
@@ -370,28 +371,27 @@ public partial class DashboardWindow : Window
                 ? t.Nozzles
                 : new List<NozzleTelemetry> { new() { Position = NozzlePosition.Single, CurrentTemperature = t.NozzleTemperature, TargetTemperature = t.NozzleTargetTemperature } };
             bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
-            string bed = FormatTemp(t.BedTemperature, t.BedTargetTemperature);
             string bedLabel = pl ? "Stół" : "Bed";
             string chamberLabel = pl ? "Komora" : "Chamber";
-            string? chamber = t.ChamberTemperature is { } cc ? cc.ToString("0", CultureInfo.InvariantCulture) + "°" : null;
+            // One WrapPanel row: cells stay on one line on a wide card and wrap on a narrow one, so a
+            // dual-nozzle printer no longer forces a fixed second row.
+            var cells = new List<(string, string, Brush?)>();
             if (dual)
             {
                 var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
                 var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
-                _temps.Children.Add(TempRow(("L", FormatTemp(left.CurrentTemperature, left.TargetTemperature)),
-                                            (pl ? "P" : "R", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature))));
-                _temps.Children.Add(chamber != null
-                    ? TempRow((bedLabel, bed), (chamberLabel, chamber!))
-                    : TempRow((bedLabel, bed)));
+                cells.Add(TempCell("L", left.CurrentTemperature, left.TargetTemperature));
+                cells.Add(TempCell(pl ? "P" : "R", right?.CurrentTemperature, right?.TargetTemperature));
             }
             else
             {
                 var single = nozzles[0];
-                string nozzleLabel = pl ? "Dysza" : "Nozzle";
-                _temps.Children.Add(chamber != null
-                    ? TempRow((nozzleLabel, FormatTemp(single.CurrentTemperature, single.TargetTemperature)), (bedLabel, bed), (chamberLabel, chamber!))
-                    : TempRow((nozzleLabel, FormatTemp(single.CurrentTemperature, single.TargetTemperature)), (bedLabel, bed)));
+                cells.Add(TempCell(pl ? "Dysza" : "Nozzle", single.CurrentTemperature, single.TargetTemperature));
             }
+            cells.Add(TempCell(bedLabel, t.BedTemperature, t.BedTargetTemperature));
+            if (t.ChamberTemperature is { } ch)
+                cells.Add((chamberLabel, ch.ToString("0", CultureInfo.InvariantCulture) + "°", TempColor(ch, null)));
+            _temps.Children.Add(TempRow(cells.ToArray()));
 
             // One physical filament module per row, spanning the full card width. The slots fill that
             // width evenly, so nothing overflows the card even with several AMS units.
@@ -542,16 +542,34 @@ public partial class DashboardWindow : Window
     }
 
     /// <summary>A horizontal row of labelled temperature cells, e.g. "L 245/245°", "Stół 65/65°".</summary>
-    private static Panel TempRow(params (string Label, string Value)[] cells)
+    // Muted heat/cool tints matching macOS; null keeps the default (holding / idle) colour.
+    private static readonly Brush HeatingBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0x8C, 0x86));
+    private static readonly Brush CoolingBrush = new SolidColorBrush(Color.FromRgb(0x8B, 0xA9, 0xC7));
+
+    private static Brush? TempColor(double? current, double? target)
+    {
+        if (current is not { } cur) return null;
+        double t = target ?? 0;
+        if (t > 5 && cur < t - 3) return HeatingBrush;                 // ramping up
+        if (cur > Math.Max(t, 0) + 5 && cur > 30) return CoolingBrush; // above setpoint, still warm
+        return null;
+    }
+
+    private static (string Label, string Value, Brush? Colour) TempCell(string label, double? current, double? target)
+        => (label, FormatTemp(current, target), TempColor(current, target));
+
+    private static Panel TempRow(params (string Label, string Value, Brush? Colour)[] cells)
     {
         // WrapPanel so cells flow onto a second line on narrow cards instead of clipping the last
-        // label (e.g. "Komora") — issue reported on Windows.
+        // label (e.g. "Komora"); on a wide card everything stays on one line — issue reported on Windows.
         var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-        foreach (var (label, value) in cells)
+        foreach (var (label, value, colour) in cells)
         {
             var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 2) };
             cell.Children.Add(new TextBlock { Text = label + " ", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Muted() });
-            cell.Children.Add(new TextBlock { Text = value, FontSize = 11 });
+            var valueBlock = new TextBlock { Text = value, FontSize = 11 };
+            if (colour is { }) valueBlock.Foreground = colour;
+            cell.Children.Add(valueBlock);
             row.Children.Add(cell);
         }
         return row;
@@ -638,8 +656,27 @@ public partial class DashboardWindow : Window
             Margin = new Thickness(0, 3, 0, 0),
             Foreground = slot.IsActive ? new SolidColorBrush(Colors.White) : Muted()
         };
+        // Low-filament marker (red corner dot) — only on real AMS/CFS slots; the external spool reports
+        // remain=0 as "unknown", so it never gets a false low warning (matches macOS).
+        FrameworkElement swatchElement = swatch;
+        if (present && !external && (slot.RemainingPercent ?? 100) <= 15)
+        {
+            var overlay = new Grid();
+            overlay.Children.Add(swatch);
+            overlay.Children.Add(new Ellipse
+            {
+                Width = 7, Height = 7,
+                Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x3B, 0x30)),
+                Stroke = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)),
+                StrokeThickness = 1,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 3, 6, 0)
+            });
+            swatchElement = overlay;
+        }
         var panel = new StackPanel();
-        panel.Children.Add(swatch);
+        panel.Children.Add(swatchElement);
         panel.Children.Add(label);
         return panel;
     }
