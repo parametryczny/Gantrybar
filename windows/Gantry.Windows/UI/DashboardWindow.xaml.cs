@@ -254,7 +254,6 @@ public partial class DashboardWindow : Window
         private readonly DashboardWindow _owner;
         private Point _dragStart;
         private readonly TextBlock _name, _pillText, _job, _percent, _eta, _layers, _message;
-        private readonly Border _pill;
         private readonly ProgressBar _bar;
         // Temperature rows (nozzle(s)/bed/chamber) and the filament dock are rebuilt per update.
         private readonly StackPanel _temps;
@@ -289,11 +288,25 @@ public partial class DashboardWindow : Window
             _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 14, TextTrimming = TextTrimming.CharacterEllipsis };
             Grid.SetColumn(_name, 1);
             header.Children.Add(_name);
-            _pillText = new TextBlock { FontSize = 10, FontWeight = FontWeights.SemiBold };
-            _pill = new Border { CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 2, 6, 2), VerticalAlignment = VerticalAlignment.Center, Child = _pillText };
-            Grid.SetColumn(_pill, 2);
-            header.Children.Add(_pill);
             stack.Children.Add(header);
+
+            // Status line (macOS layout): state text on the left, time + layers on the right.
+            var statusLine = new Grid { Margin = new Thickness(0, 2, 0, 0) };
+            statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            _pillText = new TextBlock { FontSize = 11, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(_pillText, 0);
+            statusLine.Children.Add(_pillText);
+            var meta = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            _eta = new TextBlock { FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+            _layers = new TextBlock { FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+            meta.Children.Add(new TextBlock { Text = "⏱ ", FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
+            meta.Children.Add(_eta);
+            meta.Children.Add(new TextBlock { Text = "   ⧉ ", FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
+            meta.Children.Add(_layers);
+            Grid.SetColumn(meta, 1);
+            statusLine.Children.Add(meta);
+            stack.Children.Add(statusLine);
 
             _job = new TextBlock { Foreground = Muted(), FontSize = 11, Margin = new Thickness(0, 4, 0, 6), TextTrimming = TextTrimming.CharacterEllipsis };
             stack.Children.Add(_job);
@@ -308,9 +321,6 @@ public partial class DashboardWindow : Window
             progressRow.Children.Add(_percent);
             stack.Children.Add(progressRow);
 
-            var (etaRow, etaValue, layersValue) = InfoRow("⏱", "▤");
-            _eta = etaValue; _layers = layersValue;
-            stack.Children.Add(etaRow);
             _temps = new StackPanel();
             stack.Children.Add(_temps);
 
@@ -355,7 +365,6 @@ public partial class DashboardWindow : Window
         {
             _name.Text = printer.Name;
             var accent = ParseHex(t.State.AccentHex() + "FF");
-            _pill.Background = new SolidColorBrush(Color.FromArgb(0x33, accent.R, accent.G, accent.B));
             _pillText.Text = t.State.Label(pl);
             _pillText.Foreground = new SolidColorBrush(accent);
             _job.Text = string.IsNullOrEmpty(t.JobName) ? AppSettings.Text("Brak aktywnego zadania", "No active job") : t.JobName!;
@@ -393,14 +402,15 @@ public partial class DashboardWindow : Window
                 cells.Add((chamberLabel, ch.ToString("0", CultureInfo.InvariantCulture) + "°", TempColor(ch, null)));
             _temps.Children.Add(TempRow(cells.ToArray()));
 
-            // One physical filament module per row, spanning the full card width. The slots fill that
-            // width evenly, so nothing overflows the card even with several AMS units.
+            // Filament modules laid out in rows of up to two, side by side (macOS layout): an AMS is
+            // wide and an EXT stays narrow, sized by slot count with the external counting for less.
             _ams.Children.Clear();
             var groups = t.FilamentGroups;
             if (groups.Count > 0)
             {
                 _ams.Visibility = Visibility.Visible;
-                foreach (var group in groups) _ams.Children.Add(GroupBlock(group));
+                for (int i = 0; i < groups.Count; i += 2)
+                    _ams.Children.Add(FilamentRow(groups.Skip(i).Take(2).ToList()));
             }
             else _ams.Visibility = Visibility.Collapsed;
 
@@ -577,6 +587,33 @@ public partial class DashboardWindow : Window
 
     /// <summary>A physical filament module: tonal block with a name + per-module humidity/temperature
     /// header and its slots, so an AMS, AMS HT, CFS or EXT reads as one distinct unit.</summary>
+    /// <summary>Lay up to two filament modules side by side, like the macOS dock: each column's width
+    /// is proportional to its slot count, with an external spool counting for half so an AMS stays the
+    /// wider, primary module. A lone external is a compact tile; a lone AMS fills the width.</summary>
+    private static UIElement FilamentRow(List<FilamentGroup> rowGroups)
+    {
+        static double Weight(FilamentGroup g) => Math.Max(1, g.DeclaredCapacity) * (g.IsExternal ? 0.5 : 1.0);
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        if (rowGroups.Count == 1)
+        {
+            var only = rowGroups[0];
+            var block = GroupBlock(only);
+            if (only.IsExternal)
+            {
+                block.HorizontalAlignment = HorizontalAlignment.Left;
+                block.Width = 150;   // lone external stays compact instead of ballooning full width
+            }
+            grid.Children.Add(block);
+            return grid;
+        }
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[0]), GridUnitType.Star), MinWidth = rowGroups[0].IsExternal ? 78 : 0 });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[1]), GridUnitType.Star), MinWidth = rowGroups[1].IsExternal ? 78 : 0 });
+        var b0 = GroupBlock(rowGroups[0]); Grid.SetColumn(b0, 0); grid.Children.Add(b0);
+        var b1 = GroupBlock(rowGroups[1]); Grid.SetColumn(b1, 2); grid.Children.Add(b1);
+        return grid;
+    }
+
     private static Border GroupBlock(FilamentGroup group)
     {
         var inner = new StackPanel();
@@ -640,8 +677,10 @@ public partial class DashboardWindow : Window
         var swatch = new Border
         {
             Background = new SolidColorBrush(color),
-            CornerRadius = new CornerRadius(7),
-            Height = 40,
+            CornerRadius = new CornerRadius(6),
+            Height = 34,
+            MaxWidth = 54,                    // keep chips tidy; a lone/EXT swatch never balloons wide
+            HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(3, 0, 3, 0),
             BorderThickness = new Thickness(slot.IsActive ? 2 : 0.5),
             BorderBrush = new SolidColorBrush(slot.IsActive ? Colors.White : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
@@ -661,7 +700,7 @@ public partial class DashboardWindow : Window
         FrameworkElement swatchElement = swatch;
         if (present && !external && (slot.RemainingPercent ?? 100) <= 15)
         {
-            var overlay = new Grid();
+            var overlay = new Grid { HorizontalAlignment = HorizontalAlignment.Center };
             overlay.Children.Add(swatch);
             overlay.Children.Add(new Ellipse
             {
