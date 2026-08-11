@@ -102,7 +102,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
             receiveNext()
         case .failed(let error):
             connectTimeout?.cancel()
-            reportDisconnected(certificateMismatch ? certificateMismatchMessage : error.localizedDescription)
+            reportDisconnected(certificateMismatch ? certificateMismatchMessage : Self.friendlyMessage(for: error))
         case .waiting(let error):
             connectTimeout?.cancel()
             if connection?.currentPath?.unsatisfiedReason == .localNetworkDenied {
@@ -110,7 +110,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
                 disconnectReported = true
                 onEvent(.localNetworkDenied)
             } else {
-                reportDisconnected(certificateMismatch ? certificateMismatchMessage : "Brak połączenia: \(error.localizedDescription)")
+                reportDisconnected(certificateMismatch ? certificateMismatchMessage : Self.friendlyMessage(for: error))
             }
             connection?.cancel()
         case .cancelled:
@@ -198,6 +198,23 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
 
     private var certificateMismatchMessage: String {
         "Certyfikat drukarki zmienił się. Połączenie zablokowano; sprawdź sieć, a następnie usuń i dodaj drukarkę ponownie."
+    }
+
+    // Turns a raw NWError (e.g. "Network.NWError error 61") into a message a person can act on.
+    private static func friendlyMessage(for error: NWError) -> String {
+        if case let .posix(code) = error {
+            switch code {
+            case .ECONNREFUSED:
+                return "Drukarka odrzuca połączenie — sprawdź, czy jest w trybie LAN i czy kod dostępu jest poprawny"
+            case .ETIMEDOUT, .EHOSTDOWN, .EHOSTUNREACH, .ENETUNREACH, .ENETDOWN:
+                return "Offline — sprawdź, czy drukarka jest włączona i w tej samej sieci"
+            case .ECONNRESET, .ECONNABORTED, .ENOTCONN, .EPIPE:
+                return "Połączenie przerwane — ponawiam próbę"
+            default:
+                break
+            }
+        }
+        return "Brak połączenia — sprawdź, czy drukarka jest włączona"
     }
 
 }

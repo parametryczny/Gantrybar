@@ -56,11 +56,29 @@ enum BambuStatusParser {
         if let hms = report["hms"] as? [[String: Any]] {
             result.hmsCodes = hms.compactMap(hmsCode)
         }
-        if let ams = report["ams"] as? [String: Any] {
+        // External spools live in different places across firmwares:
+        //  • older models: a single `vt_tray` dict, inside `print.ams` or at the top level;
+        //  • H2D family (e.g. printers with AMS HT): a `print.vir_slot` list, one entry per
+        //    external feeder/nozzle, holding the same tray_type/tray_color fields.
+        // Gather them all and dedupe by tray id (X1 reports the same spool as both vt_tray and
+        // vir_slot) so an externally-loaded spool always shows next to the AMS/AMS HT.
+        let amsObject = report["ams"] as? [String: Any]
+        var externalTrays: [[String: Any]] = []
+        var seenExternalIDs = Set<String>()
+        func addExternal(_ dict: [String: Any]?) {
+            guard let dict else { return }
+            let id = string(dict["id"]) ?? integer(dict["id"]).map(String.init) ?? ""
+            if !id.isEmpty, !seenExternalIDs.insert(id).inserted { return }
+            externalTrays.append(dict)
+        }
+        for slot in (report["vir_slot"] as? [[String: Any]]) ?? [] { addExternal(slot) }
+        addExternal((amsObject?["vt_tray"] as? [String: Any]) ?? (report["vt_tray"] as? [String: Any]))
+        if amsObject != nil || !externalTrays.isEmpty {
+            let ams = amsObject ?? [:]
             // Partial status updates during a print often carry only `tray_now` without the tray
             // list. Rebuilding from that alone would blank the modules and drop the active ring, so
             // parseAMSGroups keeps the last known groups and preserves the active slot.
-            if let groups = parseAMSGroups(ams, previous: result.filamentGroups) {
+            if let groups = parseAMSGroups(ams, externalTrays: externalTrays, previous: result.filamentGroups) {
                 result.filamentGroups = groups
             }
             // Flat compatibility view for notifications / menu bar, plus the legacy humidity/temp
@@ -150,7 +168,7 @@ enum BambuStatusParser {
 
     /// Build one `FilamentGroup` per physical unit (`ams.ams[]`) plus an `EXT` group for `vt_tray`.
     /// Returns `nil` for a pure-partial report so the caller keeps its previous groups untouched.
-    private static func parseAMSGroups(_ ams: [String: Any], previous: [FilamentGroup]) -> [FilamentGroup]? {
+    private static func parseAMSGroups(_ ams: [String: Any], externalTrays: [[String: Any]], previous: [FilamentGroup]) -> [FilamentGroup]? {
         let hasTrayNow = ams["tray_now"] != nil
         let activeRaw = string(ams["tray_now"]) ?? integer(ams["tray_now"]).map(String.init) ?? ""
         // Only trust `tray_now` as authoritative when it names a real slot. Some reports carry the
@@ -191,43 +209,52 @@ enum BambuStatusParser {
                         isActive: resolveActive(id: slotID, matches: matches)
                     ))
                 }
+                // Mid-print reports often omit the unit's humidity/temperature. Keep the last known
+                // values (like the active slot) so the AMS HT header doesn't blank out during a job.
+                let previousUnit = previous.first { $0.id == "ams-\(unitID)" }
                 groups.append(FilamentGroup(
                     id: "ams-\(unitID)",
                     sourceType: isSingle ? .amsHT : .ams,
                     displayName: unitID == "128" ? "AMS HT" : "AMS \(letter)",
                     declaredCapacity: capacity,
-                    humidityPercent: integer(unit["humidity_raw"]) ?? integer(unit["humidity"]),
-                    temperatureCelsius: number(unit["temp"]),
+                    humidityPercent: integer(unit["humidity_raw"]) ?? integer(unit["humidity"]) ?? previousUnit?.humidityPercent,
+                    temperatureCelsius: number(unit["temp"]) ?? previousUnit?.temperatureCelsius,
                     isExternal: false,
                     slots: slots
                 ))
             }
         }
 
-        if let external = ams["vt_tray"] as? [String: Any] {
+        let multipleExternals = externalTrays.count > 1
+        for (externalIndex, external) in externalTrays.enumerated() {
             let rawMaterial = string(external["tray_type"]) ?? string(external["tray_sub_brands"])
-            if let material = rawMaterial, !material.isEmpty {
-                let trayID = string(external["id"]) ?? "254"
-                let slotID = "external-\(trayID)"
-                let matches = activeRaw == trayID || activeRaw == "254" || activeRaw == "255"
-                groups.append(FilamentGroup(
+            let material = (rawMaterial?.isEmpty == false) ? rawMaterial : nil
+            let trayID = string(external["id"]) ?? integer(external["id"]).map(String.init) ?? "254"
+            let slotID = "external-\(trayID)"
+            let matches = activeRaw == trayID || activeRaw == "254" || activeRaw == "255"
+            // Show the external module when a spool is loaded (has a material) OR when the printer
+            // is actively feeding from it, even if this partial report hasn't filled in the type yet.
+            // A truly idle/absent external tray (no material, not active) stays hidden to avoid clutter.
+            guard material != nil || (activeAuthoritative && matches) else { continue }
+            // A printer with two external feeders (H2D dual nozzle) numbers them so they stay distinct.
+            let label = multipleExternals ? "EXT \(externalIndex + 1)" : "EXT"
+            groups.append(FilamentGroup(
+                id: slotID,
+                sourceType: .external,
+                displayName: label,
+                declaredCapacity: 1,
+                humidityPercent: nil,
+                temperatureCelsius: nil,
+                isExternal: true,
+                slots: [FilamentSlot(
                     id: slotID,
-                    sourceType: .external,
-                    displayName: "EXT",
-                    declaredCapacity: 1,
-                    humidityPercent: nil,
-                    temperatureCelsius: nil,
-                    isExternal: true,
-                    slots: [FilamentSlot(
-                        id: slotID,
-                        label: "EXT",
-                        material: material,
-                        colorHex: string(external["tray_color"]) ?? "E8E8E8FF",
-                        remainingPercent: integer(external["remain"]),
-                        isActive: resolveActive(id: slotID, matches: matches)
-                    )]
-                ))
-            }
+                    label: label,
+                    material: material,
+                    colorHex: material != nil ? (string(external["tray_color"]) ?? "E8E8E8FF") : nil,
+                    remainingPercent: material != nil ? integer(external["remain"]) : nil,
+                    isActive: resolveActive(id: slotID, matches: matches)
+                )]
+            ))
         }
 
         // Pure-partial report (no unit list, no external): keep the previously known modules so the
