@@ -188,6 +188,16 @@ public partial class DashboardWindow : Window
             _views.Clear();
             foreach (var kv in live) _views[kv.Key] = kv.Value;
             _renderedSerials = serials; _renderedCompact = compact;
+
+            // Two-column expanded grid: a lone last card spans the full width (like the macOS dock).
+            if (!compact)
+            {
+                var roots = _store.Printers
+                    .Select(p => live[p.Serial].Root as FrameworkElement)
+                    .Where(r => r is { }).Select(r => r!).ToList();
+                for (int i = 0; i < roots.Count; i++)
+                    roots[i].Width = (i == roots.Count - 1 && roots.Count % 2 == 1) ? 594 : 290;
+            }
         }
 
         foreach (var printer in _store.Printers)
@@ -259,7 +269,7 @@ public partial class DashboardWindow : Window
         private readonly StackPanel _temps;
         private readonly StackPanel _ams;
 
-        public PrinterCard(DashboardWindow owner, SavedPrinter printer, double width = 232)
+        public PrinterCard(DashboardWindow owner, SavedPrinter printer, double width = 290)
         {
             _owner = owner;
             Serial = printer.Serial;
@@ -285,9 +295,15 @@ public partial class DashboardWindow : Window
                 DragDrop.DoDragDrop(Root, Serial, DragDropEffects.Move);
             };
             header.Children.Add(grip);
-            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 14, TextTrimming = TextTrimming.CharacterEllipsis };
+            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 14, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_name, 1);
             header.Children.Add(_name);
+            // "…" menu in the header (macOS layout) instead of a separate row at the bottom — saves height.
+            var more = new Button { Content = "⋯", FontSize = 15, Width = 30, Height = 24, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Muted() };
+            var menu = owner.BuildCardMenu(printer.Serial);
+            more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
+            Grid.SetColumn(more, 2);
+            header.Children.Add(more);
             stack.Children.Add(header);
 
             // Status line (macOS layout): state text on the left, time + layers on the right.
@@ -329,11 +345,6 @@ public partial class DashboardWindow : Window
 
             _message = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
             stack.Children.Add(_message);
-
-            var more = new Button { Content = "⋯", FontSize = 16, Width = 34, Height = 26, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
-            var menu = owner.BuildCardMenu(printer.Serial);
-            more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
-            stack.Children.Add(more);
 
             Root = new Border
             {
