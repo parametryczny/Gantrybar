@@ -144,20 +144,29 @@ class PrinterCard(Gtk.Frame):
         self.get_style_context().add_class("card")
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.add(self.box)
+        # Header: name + drag handle (chevrons, like macOS) + menu. The whole card is the drag source.
         top = Gtk.Box(spacing=8)
         self.name = Gtk.Label(label=printer.name, xalign=0)
         self.name.get_style_context().add_class("printer-name")
-        self.kind = Gtk.Label(label={PrinterKind.BAMBU: "Bambu", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa"}[printer.kind])
-        self.kind.get_style_context().add_class("meta")
-        self.status = Gtk.Label(xalign=1)
-        self.status.get_style_context().add_class("status")
+        drag = Gtk.Label(label="⌄⌃")
+        drag.get_style_context().add_class("meta")
+        drag.set_tooltip_text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek"
+                              if self.app.language == "pl" else "Drag up/down to reorder printers")
         menu = Gtk.Button(label="•••")
         menu.connect("clicked", self._show_menu)
         top.pack_start(self.name, True, True, 0)
-        top.pack_start(self.kind, False, False, 0)
-        top.pack_start(self.status, False, False, 0)
+        top.pack_start(drag, False, False, 0)
         top.pack_start(menu, False, False, 0)
         self.box.pack_start(top, False, False, 0)
+        # Status line carries the state on the left and time + layers on the right (macOS layout).
+        self.status_row = Gtk.Box(spacing=8)
+        self.status = Gtk.Label(xalign=0)
+        self.status.get_style_context().add_class("status")
+        self.progress_meta = Gtk.Label(xalign=1)
+        self.progress_meta.get_style_context().add_class("meta")
+        self.status_row.pack_start(self.status, True, True, 0)
+        self.status_row.pack_start(self.progress_meta, False, False, 0)
+        self.box.pack_start(self.status_row, False, False, 0)
         self.job = Gtk.Label(label="—", xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.job.get_style_context().add_class("job")
         self.box.pack_start(self.job, False, False, 0)
@@ -167,9 +176,10 @@ class PrinterCard(Gtk.Frame):
         progress_row.pack_start(self.progress, True, True, 0)
         progress_row.pack_start(self.percent, False, False, 0)
         self.box.pack_start(progress_row, False, False, 0)
-        self.meta = Gtk.Label(xalign=0)
-        self.meta.get_style_context().add_class("meta")
-        self.box.pack_start(self.meta, False, False, 0)
+        # Temperatures on their own row, coloured by activity (heating red / cooling blue).
+        self.temps = Gtk.Label(xalign=0)
+        self.temps.get_style_context().add_class("meta")
+        self.box.pack_start(self.temps, False, False, 0)
         self.ams = Gtk.Box(spacing=6)
         self.box.pack_start(self.ams, False, False, 0)
         target = Gtk.TargetEntry.new("application/x-gantry-printer", Gtk.TargetFlags.SAME_APP, 0)
@@ -221,7 +231,7 @@ class PrinterCard(Gtk.Frame):
 
     def set_compact(self, compact: bool, expanded: bool = False) -> None:
         hidden = compact and not expanded
-        for widget in (self.job, self.progress.get_parent(), self.meta, self.ams):
+        for widget in (self.job, self.progress.get_parent(), self.temps, self.ams):
             widget.set_no_show_all(hidden)
             widget.set_visible(not hidden)
         if compact:
@@ -259,29 +269,44 @@ class PrinterCard(Gtk.Frame):
         self.percent.set_text(f"{telemetry.progress}%")
         eta = "—" if telemetry.remaining_minutes is None else f"{telemetry.remaining_minutes // 60}h {telemetry.remaining_minutes % 60}m"
         layers = "—" if telemetry.current_layer is None else f"{telemetry.current_layer}/{telemetry.total_layers or '—'}"
+        self.progress_meta.set_text(f"⏱ {eta}    ⧉ {layers}")
+
+        pl = self.app.language == "pl"
+
         def fmt(cur: float | None, tgt: float | None) -> str:
             if cur is None:
                 return "—"
             return f"{cur:.0f}/{tgt:.0f}°" if tgt else f"{cur:.0f}°"
 
+        def temp_span(label: str, cur: float | None, tgt: float | None) -> str:
+            text = GLib.markup_escape_text(fmt(cur, tgt))
+            colour = None
+            if cur is not None:
+                t = tgt or 0
+                if t > 5 and cur < t - 3:
+                    colour = "#d18c86"                      # heating — muted red
+                elif cur > max(t, 0) + 5 and cur > 30:
+                    colour = "#8ba9c7"                      # cooling — muted blue
+            value = f"<span foreground='{colour}'>{text}</span>" if colour else text
+            return f"{GLib.markup_escape_text(label)} <b>{value}</b>"
+
         # Nozzle(s) with explicit L/P (pl) or L/R (en) for dual-nozzle printers, plus chamber when real.
         nozzles = telemetry.nozzles
         dual = any(n.position == "right" for n in nozzles)
-        parts = [f"◷ {eta}", f"▤ {layers}"]
+        parts: list[str] = []
         if dual:
             left = next((n for n in nozzles if n.position == "left"), nozzles[0])
             right = next((n for n in nozzles if n.position == "right"), None)
-            right_label = "P" if self.app.language == "pl" else "R"
-            parts.append(f"L {fmt(left.current, left.target)}")
-            parts.append(f"{right_label} {fmt(right.current, right.target) if right else '—'}")
+            parts.append(temp_span("L", left.current, left.target))
+            parts.append(temp_span("P" if pl else "R", right.current if right else None, right.target if right else None))
         else:
             cur = nozzles[0].current if nozzles else telemetry.nozzle
             tgt = nozzles[0].target if nozzles else telemetry.nozzle_target
-            parts.append(f"♨ {fmt(cur, tgt)}")
-        parts.append(f"▣ {fmt(telemetry.bed, telemetry.bed_target)}")
+            parts.append(temp_span("Dysza" if pl else "Nozzle", cur, tgt))
+        parts.append(temp_span("Stół" if pl else "Bed", telemetry.bed, telemetry.bed_target))
         if telemetry.chamber is not None:
-            parts.append(f"⌂ {telemetry.chamber:.0f}°")
-        self.meta.set_text("    ".join(parts))
+            parts.append(temp_span("Komora" if pl else "Chamber", telemetry.chamber, None))
+        self.temps.set_markup("      ".join(parts))
 
         # Physical filament modules as side-by-side groups (name + per-module humidity/temp, then slots).
         for child in self.ams.get_children():
@@ -302,7 +327,7 @@ class PrinterCard(Gtk.Frame):
             for slot in group.slots:
                 sbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
                 swatch = Gtk.Label(label="")
-                swatch.set_size_request(28 if not group.external else 40, 30)
+                swatch.set_size_request(44, 30)
                 ctx = swatch.get_style_context()
                 ctx.add_class("ams")
                 if slot.active:
@@ -318,10 +343,34 @@ class PrinterCard(Gtk.Frame):
                     ctx.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
                 except Exception:
                     pass
+                # Low-filament marker (red corner dot) — only on real AMS/CFS slots; the external spool
+                # reports remain=0 as "unknown", so it never gets a false low warning.
+                low = present and not group.external and (slot.remaining if slot.remaining is not None else 100) <= 15
+                if low:
+                    overlay = Gtk.Overlay()
+                    overlay.add(swatch)
+                    dot = Gtk.Label(label="")
+                    dot.set_size_request(7, 7)
+                    dot.set_halign(Gtk.Align.END)
+                    dot.set_valign(Gtk.Align.START)
+                    dot.set_margin_top(3)
+                    dot.set_margin_end(3)
+                    dctx = dot.get_style_context()
+                    dctx.add_class("lowdot")
+                    try:
+                        dp = Gtk.CssProvider()
+                        dp.load_from_data(b".lowdot { background-color: #ff3b30; border-radius: 4px; border: 1px solid #202020; }")
+                        dctx.add_provider(dp, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+                    except Exception:
+                        pass
+                    overlay.add_overlay(dot)
+                    swatch_widget: Gtk.Widget = overlay
+                else:
+                    swatch_widget = swatch
                 caption = Gtk.Label(xalign=0.5)
                 caption.get_style_context().add_class("meta")
                 caption.set_markup(f"<b>{GLib.markup_escape_text(slot.label)}</b>" if slot.active else GLib.markup_escape_text(slot.label))
-                sbox.pack_start(swatch, False, False, 0)
+                sbox.pack_start(swatch_widget, False, False, 0)
                 sbox.pack_start(caption, False, False, 0)
                 srow.pack_start(sbox, False, False, 0)
             gbox.pack_start(srow, False, False, 0)
@@ -633,6 +682,11 @@ class Gantry:
         legend_menu = Gtk.Menu()
         for label in (("Niebieski — drukowanie", "Blue — printing"), ("Zielony — zakończono", "Green — finished"),
                       ("Czerwony — błąd", "Red — error"), ("Szary — offline / bezczynna", "Gray — offline / idle")):
+            item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
+        legend_menu.append(Gtk.SeparatorMenuItem())
+        slot_header = Gtk.MenuItem(label="Sloty filamentu:" if self.language == "pl" else "Filament slots:")
+        slot_header.set_sensitive(False); legend_menu.append(slot_header)
+        for label in (("Biały pierścień — aktywny slot", "White ring — active slot"),):
             item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
         legend.set_submenu(legend_menu); menu.append(legend)
         menu.append(Gtk.SeparatorMenuItem())
