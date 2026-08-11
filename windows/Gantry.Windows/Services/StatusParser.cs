@@ -91,11 +91,29 @@ public static class StatusParser
             result.HmsCodes = codes;
         }
 
-        if (report.TryGetProperty("ams", out var ams) && ams.ValueKind == JsonValueKind.Object)
+        // External spools live in different places: older firmwares use a single vt_tray dict (inside
+        // print.ams or at the top level); the H2D family (AMS HT models) uses a print.vir_slot list.
+        JsonElement? amsObject = report.TryGetProperty("ams", out var amsEl) && amsEl.ValueKind == JsonValueKind.Object
+            ? amsEl : (JsonElement?)null;
+        var externalTrays = new List<JsonElement>();
+        var seenExternalIds = new HashSet<string>();
+        void AddExternal(JsonElement candidate)
+        {
+            if (candidate.ValueKind != JsonValueKind.Object) return;
+            string extId = Str(candidate, "id") ?? Int(candidate, "id")?.ToString() ?? "";
+            if (extId.Length > 0 && !seenExternalIds.Add(extId)) return;
+            externalTrays.Add(candidate);
+        }
+        if (report.TryGetProperty("vir_slot", out var vir) && vir.ValueKind == JsonValueKind.Array)
+            foreach (var slot in vir.EnumerateArray()) AddExternal(slot);
+        if (amsObject is { } aObj && aObj.TryGetProperty("vt_tray", out var vtInner)) AddExternal(vtInner);
+        else if (report.TryGetProperty("vt_tray", out var vtTop)) AddExternal(vtTop);
+
+        if (amsObject is { } || externalTrays.Count > 0)
         {
             // A partial report often carries only tray_now without the tray list. ParseAmsGroups
             // keeps the last known groups and preserves the active slot instead of blanking them.
-            var groups = ParseAmsGroups(ams, result.FilamentGroups);
+            var groups = ParseAmsGroups(amsObject, externalTrays, result.FilamentGroups);
             if (groups is { }) result.FilamentGroups = groups;
             // Flat compatibility view + legacy humidity/temp for notifications / the tray.
             var flat = result.FilamentGroups.SelectMany(g => g.LegacyAmsSlots()).ToList();
@@ -154,12 +172,15 @@ public static class StatusParser
         return value.Normalize(NormalizationForm.FormC);
     }
 
-    /// <summary>Build one FilamentGroup per physical unit (ams.ams[]) plus an EXT group for vt_tray.
-    /// Returns null for a pure-partial report so the caller keeps its previous groups untouched.</summary>
-    private static List<FilamentGroup>? ParseAmsGroups(JsonElement ams, List<FilamentGroup> previous)
+    /// <summary>Build one FilamentGroup per physical unit (ams.ams[]) plus EXT groups for the external
+    /// spools (vt_tray / vir_slot, gathered by the caller). Returns null for a pure-partial report so
+    /// the caller keeps its previous groups untouched.</summary>
+    private static List<FilamentGroup>? ParseAmsGroups(JsonElement? amsNullable, List<JsonElement> externalTrays, List<FilamentGroup> previous)
     {
-        bool hasTrayNow = ams.TryGetProperty("tray_now", out _);
-        string activeRaw = Str(ams, "tray_now") ?? Int(ams, "tray_now")?.ToString() ?? "";
+        JsonElement ams = amsNullable ?? default;
+        bool hasAms = amsNullable is { } && ams.ValueKind == JsonValueKind.Object;
+        bool hasTrayNow = hasAms && ams.TryGetProperty("tray_now", out _);
+        string activeRaw = hasAms ? (Str(ams, "tray_now") ?? Int(ams, "tray_now")?.ToString() ?? "") : "";
         // Only trust tray_now when it names a real slot; otherwise fall back to the previously active
         // slot so a report that carries the tray list without tray_now doesn't clear the ring.
         bool activeAuthoritative = hasTrayNow && activeRaw.Length > 0 && activeRaw != "255";
@@ -168,7 +189,7 @@ public static class StatusParser
 
         var groups = new List<FilamentGroup>();
 
-        if (ams.TryGetProperty("ams", out var units) && units.ValueKind == JsonValueKind.Array && units.GetArrayLength() > 0)
+        if (hasAms && ams.TryGetProperty("ams", out var units) && units.ValueKind == JsonValueKind.Array && units.GetArrayLength() > 0)
         {
             int unitIndex = 0;
             foreach (var unit in units.EnumerateArray())
@@ -202,14 +223,16 @@ public static class StatusParser
                         IsActive = ResolveActive(slotId, matches)
                     });
                 }
+                // Keep the last known humidity/temperature when a mid-print report omits them.
+                var previousUnit = previous.FirstOrDefault(g => g.Id == $"ams-{unitId}");
                 groups.Add(new FilamentGroup
                 {
                     Id = $"ams-{unitId}",
                     SourceType = isSingle ? FilamentSourceType.AmsHT : FilamentSourceType.Ams,
                     DisplayName = unitId == "128" ? "AMS HT" : $"AMS {letter}",
                     DeclaredCapacity = capacity,
-                    HumidityPercent = Int(unit, "humidity_raw") ?? Int(unit, "humidity"),
-                    TemperatureCelsius = Num(unit, "temp"),
+                    HumidityPercent = Int(unit, "humidity_raw") ?? Int(unit, "humidity") ?? previousUnit?.HumidityPercent,
+                    TemperatureCelsius = Num(unit, "temp") ?? previousUnit?.TemperatureCelsius,
                     IsExternal = false,
                     Slots = slots
                 });
@@ -217,37 +240,40 @@ public static class StatusParser
             }
         }
 
-        if (ams.TryGetProperty("vt_tray", out var external) && external.ValueKind == JsonValueKind.Object)
+        bool multipleExternals = externalTrays.Count > 1;
+        for (int extIndex = 0; extIndex < externalTrays.Count; extIndex++)
         {
+            var external = externalTrays[extIndex];
             string? rawMaterial = Str(external, "tray_type") ?? Str(external, "tray_sub_brands");
-            if (!string.IsNullOrEmpty(rawMaterial))
+            string? material = string.IsNullOrEmpty(rawMaterial) ? null : rawMaterial;
+            string trayId = Str(external, "id") ?? Int(external, "id")?.ToString() ?? "254";
+            string slotId = $"external-{trayId}";
+            bool matches = activeRaw == trayId || activeRaw == "254" || activeRaw == "255";
+            // Show when a spool is loaded, or when actively fed even if this partial report lacks the type.
+            if (material == null && !(activeAuthoritative && matches)) continue;
+            string label = multipleExternals ? $"EXT {extIndex + 1}" : "EXT";
+            groups.Add(new FilamentGroup
             {
-                string trayId = Str(external, "id") ?? "254";
-                string slotId = $"external-{trayId}";
-                bool matches = activeRaw == trayId || activeRaw == "254" || activeRaw == "255";
-                groups.Add(new FilamentGroup
+                Id = slotId,
+                SourceType = FilamentSourceType.External,
+                DisplayName = label,
+                DeclaredCapacity = 1,
+                HumidityPercent = null,
+                TemperatureCelsius = null,
+                IsExternal = true,
+                Slots = new List<FilamentSlot>
                 {
-                    Id = slotId,
-                    SourceType = FilamentSourceType.External,
-                    DisplayName = "EXT",
-                    DeclaredCapacity = 1,
-                    HumidityPercent = null,
-                    TemperatureCelsius = null,
-                    IsExternal = true,
-                    Slots = new List<FilamentSlot>
+                    new()
                     {
-                        new()
-                        {
-                            Id = slotId,
-                            Label = "EXT",
-                            Material = rawMaterial,
-                            ColorHex = Str(external, "tray_color") ?? "E8E8E8FF",
-                            RemainingPercent = Int(external, "remain"),
-                            IsActive = ResolveActive(slotId, matches)
-                        }
+                        Id = slotId,
+                        Label = label,
+                        Material = material,
+                        ColorHex = material != null ? (Str(external, "tray_color") ?? "E8E8E8FF") : null,
+                        RemainingPercent = material != null ? Int(external, "remain") : null,
+                        IsActive = ResolveActive(slotId, matches)
                     }
-                });
-            }
+                }
+            });
         }
 
         // Pure-partial report (no unit list, no external): keep the previously known modules.

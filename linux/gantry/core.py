@@ -174,9 +174,11 @@ def _state(value: Any) -> PrinterState:
     return PrinterState.IDLE
 
 
-def _parse_ams_groups(value: dict[str, Any], previous: list[FilamentGroup]) -> list[FilamentGroup] | None:
-    """One FilamentGroup per physical unit (ams.ams[]) plus an EXT group for vt_tray. Returns None
-    for a pure-partial report so the caller keeps its previous groups untouched."""
+def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]],
+                      previous: list[FilamentGroup]) -> list[FilamentGroup] | None:
+    """One FilamentGroup per physical unit (ams.ams[]) plus EXT groups for the external spools
+    (vt_tray / vir_slot, gathered by the caller). Returns None for a pure-partial report so the
+    caller keeps its previous groups untouched."""
     has_tray_now = "tray_now" in value
     active_raw = str(value.get("tray_now", ""))
     # Only trust tray_now when it names a real slot; otherwise fall back to the previously active slot
@@ -214,37 +216,49 @@ def _parse_ams_groups(value: dict[str, Any], previous: list[FilamentGroup]) -> l
                 remaining=_integer(tray.get("remain")) if material else None,
                 active=resolve_active(slot_id, matches),
             ))
+        # Keep the last known humidity/temperature when a mid-print report omits them.
+        previous_unit = next((g for g in previous if g.group_id == f"ams-{unit_id}"), None)
+        humidity = _integer(unit.get("humidity_raw", unit.get("humidity")))
+        if humidity is None and previous_unit is not None:
+            humidity = previous_unit.humidity
+        temperature = _number(unit.get("temp"))
+        if temperature is None and previous_unit is not None:
+            temperature = previous_unit.temperature
         groups.append(FilamentGroup(
             group_id=f"ams-{unit_id}",
             source_type="amsHT" if is_single else "ams",
             display_name="AMS HT" if unit_id == "128" else f"AMS {letter}",
             declared_capacity=capacity,
             external=False,
-            humidity=_integer(unit.get("humidity_raw", unit.get("humidity"))),
-            temperature=_number(unit.get("temp")),
+            humidity=humidity,
+            temperature=temperature,
             slots=slots,
         ))
 
-    external = value.get("vt_tray")
-    if isinstance(external, dict):
+    multiple_externals = len(external_trays) > 1
+    for ext_index, external in enumerate(external_trays):
         raw_material = external.get("tray_type") or external.get("tray_sub_brands")
-        if raw_material:
-            tray_id = str(external.get("id", "254"))
-            slot_id = f"external-{tray_id}"
-            matches = active_raw in {tray_id, "254", "255"}
-            groups.append(FilamentGroup(
-                group_id=slot_id,
-                source_type="external",
-                display_name="EXT",
-                declared_capacity=1,
-                external=True,
-                slots=[FilamentSlot(
-                    slot_id=slot_id, label="EXT", material=str(raw_material),
-                    color=str(external.get("tray_color") or "E8E8E8FF"),
-                    remaining=_integer(external.get("remain")),
-                    active=resolve_active(slot_id, matches),
-                )],
-            ))
+        material = str(raw_material) if raw_material else None
+        tray_id = str(external.get("id", "254"))
+        slot_id = f"external-{tray_id}"
+        matches = active_raw in {tray_id, "254", "255"}
+        # Show when a spool is loaded, or when actively fed even if this partial report lacks the type.
+        if material is None and not (active_authoritative and matches):
+            continue
+        label = f"EXT {ext_index + 1}" if multiple_externals else "EXT"
+        groups.append(FilamentGroup(
+            group_id=slot_id,
+            source_type="external",
+            display_name=label,
+            declared_capacity=1,
+            external=True,
+            slots=[FilamentSlot(
+                slot_id=slot_id, label=label, material=material,
+                color=(str(external.get("tray_color") or "E8E8E8FF")) if material else None,
+                remaining=_integer(external.get("remain")) if material else None,
+                active=resolve_active(slot_id, matches),
+            )],
+        ))
 
     # Pure-partial report (no unit list, no external): keep the previously known modules.
     if not groups:
@@ -328,8 +342,29 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
             if code is not None:
                 codes.append(f"{attr:08X}{code:08X}")
         result.hms_codes = codes
-    if isinstance(report.get("ams"), dict):
-        groups = _parse_ams_groups(report["ams"], result.filament_groups)
+    # External spools live in different places: older firmwares use a single vt_tray dict (inside
+    # print.ams or at the top level); the H2D family (AMS HT models) uses a print.vir_slot list.
+    ams_obj = report.get("ams") if isinstance(report.get("ams"), dict) else None
+    external_trays: list[dict[str, Any]] = []
+    seen_ext_ids: set[str] = set()
+
+    def _add_external(candidate: Any) -> None:
+        if not isinstance(candidate, dict):
+            return
+        ext_id = str(candidate.get("id", ""))
+        if ext_id:
+            if ext_id in seen_ext_ids:
+                return
+            seen_ext_ids.add(ext_id)
+        external_trays.append(candidate)
+
+    if isinstance(report.get("vir_slot"), list):
+        for slot in report["vir_slot"]:
+            _add_external(slot)
+    _add_external((ams_obj or {}).get("vt_tray") or report.get("vt_tray"))
+
+    if ams_obj is not None or external_trays:
+        groups = _parse_ams_groups(ams_obj or {}, external_trays, result.filament_groups)
         if groups is not None:
             result.filament_groups = groups
         # Flat compatibility view + legacy humidity/temp for compact rows / notifications.

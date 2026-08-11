@@ -36,6 +36,25 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(value.ams_slots), 4)
         self.assertTrue(value.ams_slots[0].active)
 
+    def test_external_from_vir_slot_and_humidity_carry_over(self):
+        # H2D family (AMS HT models) reports the external spool in a top-level vir_slot list.
+        full = {"print": {"ams": {"tray_now": "255", "ams": [{"id": "128", "humidity": 2,
+                "temp": 34.4, "tray": [{"id": "0"}]}]},
+                "vir_slot": [{"id": "255", "tray_type": "PETG", "tray_color": "161616FF", "remain": 0}]}}
+        value = parse_telemetry(json.dumps(full))
+        groups = {g.display_name: g for g in value.filament_groups}
+        self.assertIn("AMS HT", groups)
+        self.assertIn("EXT", groups)
+        self.assertTrue(groups["EXT"].external)
+        self.assertEqual(groups["EXT"].slots[0].material, "PETG")
+        self.assertEqual(groups["AMS HT"].humidity, 2)
+        # A partial follow-up without humidity/temp keeps the last known values.
+        partial = {"print": {"ams": {"ams": [{"id": "128", "tray": [{"id": "0"}]}]}}}
+        value = parse_telemetry(json.dumps(partial), previous=value)
+        ht = next(g for g in value.filament_groups if g.display_name == "AMS HT")
+        self.assertEqual(ht.humidity, 2)
+        self.assertAlmostEqual(ht.temperature or 0, 34.4, places=1)
+
     def test_legacy_chamber_and_hms_are_kept_with_device_payload(self):
         payload = {"print": {"device": {}, "chamber_temper": 37.5,
                               "hms": [{"attr": 1, "code": 2}], "print_error": "FF"}}
