@@ -11,6 +11,8 @@ final class SettingsWindowController: NSWindowController {
     private let appearanceLabel = NSTextField(labelWithString: "")
     private let languageControl = NSSegmentedControl(labels: ["PL", "EN"], trackingMode: .selectOne, target: nil, action: nil)
     private let themeControl = NSSegmentedControl(labels: ["LIGHT", "DARK"], trackingMode: .selectOne, target: nil, action: nil)
+    private let transparencyLabel = NSTextField(labelWithString: "")
+    private let transparencyControl = NSSegmentedControl(labels: ["1", "2", "3"], trackingMode: .selectOne, target: nil, action: nil)
     private let launchSwitch = NSSwitch()
     private let launchLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
@@ -83,6 +85,11 @@ final class SettingsWindowController: NSWindowController {
         themeControl.setWidth(82, forSegment: 0)
         themeControl.setWidth(82, forSegment: 1)
 
+        transparencyControl.target = self
+        transparencyControl.action = #selector(transparencyChanged)
+        transparencyControl.segmentStyle = .rounded
+        for i in 0..<3 { transparencyControl.setWidth(72, forSegment: i) }
+
         launchSwitch.target = self
         launchSwitch.action = #selector(launchAtLoginChanged)
         let launchRow = NSStackView(views: [launchLabel, NSView(), launchSwitch])
@@ -91,10 +98,12 @@ final class SettingsWindowController: NSWindowController {
 
         let form = NSGridView(views: [
             [languageLabel, languageControl],
-            [appearanceLabel, themeControl]
+            [appearanceLabel, themeControl],
+            [transparencyLabel, transparencyControl]
         ])
         languageLabel.textColor = .secondaryLabelColor
         appearanceLabel.textColor = .secondaryLabelColor
+        transparencyLabel.textColor = .secondaryLabelColor
         form.rowSpacing = 12
         form.columnSpacing = 14
         form.column(at: 0).xPlacement = .trailing
@@ -204,6 +213,15 @@ final class SettingsWindowController: NSWindowController {
         themeControl.setLabel(settings.text("JASNY", "LIGHT"), forSegment: 0)
         themeControl.setLabel(settings.text("CIEMNY", "DARK"), forSegment: 1)
         themeControl.selectedSegment = settings.theme == .light ? 0 : 1
+        transparencyLabel.stringValue = settings.text("Przezroczystość:", "Transparency:")
+        transparencyControl.setLabel(settings.text("NISKA", "LOW"), forSegment: 0)
+        transparencyControl.setLabel(settings.text("ŚREDNIA", "MEDIUM"), forSegment: 1)
+        transparencyControl.setLabel(settings.text("WYSOKA", "HIGH"), forSegment: 2)
+        switch settings.panelTransparency {
+        case .low: transparencyControl.selectedSegment = 0
+        case .medium: transparencyControl.selectedSegment = 1
+        case .high: transparencyControl.selectedSegment = 2
+        }
         launchLabel.stringValue = settings.text("Uruchamiaj przy logowaniu", "Launch at login")
         launchSwitch.state = LaunchAtLoginManager.isEnabled ? .on : .off
         notificationsLabel.stringValue = settings.text("Powiadomienia:", "Notifications:")
@@ -257,6 +275,10 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func themeChanged() {
         AppSettings.shared.theme = themeControl.selectedSegment == 0 ? .light : .dark
+    }
+
+    @objc private func transparencyChanged() {
+        AppSettings.shared.panelTransparency = [.low, .medium, .high][transparencyControl.selectedSegment]
     }
 
     @objc private func launchAtLoginChanged() {

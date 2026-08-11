@@ -64,7 +64,9 @@ final class PrinterDashboardViewController: NSViewController {
 
     override func loadView() {
         let background = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 480, height: 650))
-        background.material = .popover
+        // Panel translucency is user-configurable in Settings (Panel transparency); more transparent
+        // materials let more of the desktop show through.
+        background.material = AppSettings.shared.panelTransparency.material
         background.blendingMode = .behindWindow
         background.state = .active
         background.wantsLayer = true
@@ -181,7 +183,9 @@ final class PrinterDashboardViewController: NSViewController {
         // Full view fits up to 8 printers; above 8 default to compact. A manual toggle overrides.
         let useCompactMode = supportsCompactMode && (compactModeChosen ? prefersCompactMode : store.printers.count > 8)
         let expandedColumnCount = !useCompactMode && store.printers.count >= 9 ? 3 : 2
-        let panelWidth: CGFloat = expandedColumnCount == 3 ? 720 : 480
+        // Wide enough that a two-column card fits an AMS/AMS HT name + humidity + temperature beside a
+        // compact EXT without truncating (a 224 px card was too tight; ~254 px clears it).
+        let panelWidth: CGFloat = expandedColumnCount == 3 ? 810 : 540
         // The popover size is reported once at the end of render() from the cards' real measured
         // height — reporting an estimate here too made the popover oscillate between the two values.
         compactButton.isHidden = !supportsCompactMode
@@ -236,6 +240,7 @@ final class PrinterDashboardViewController: NSViewController {
                         onSelect: { [weak self] in self?.toggleCompactExpansion(printer.serial) }
                     )
                     compactRowsBySerial[printer.serial] = row
+                    row.setLayoutWidth(contentWidth)
                     cardsStack.addArrangedSubview(row)
                     if expandedCompactSerials.contains(printer.serial) {
                         let card = expandedCardsBySerial[printer.serial] ?? makeCard(for: printer)
@@ -292,11 +297,17 @@ final class PrinterDashboardViewController: NSViewController {
         view.layoutSubtreeIfNeeded()
         let measuredContent = cardsStack.fittingSize.height
         if measuredContent > 1 {
-            let chromeAndInsets: CGFloat = 12 + 36 + 6 + 8 + 12
-            let size = NSSize(width: panelWidth, height: min(900, chromeAndInsets + measuredContent))
+            // header(12+36) + gap(6) + scroll bottom inset(8), plus a 4 px hairline so rounding never
+            // leaves a scrollbar — but no more, so the panel hugs its content instead of padding it.
+            let chromeAndInsets: CGFloat = 12 + 36 + 6 + 8 + 4
+            let size = NSSize(width: panelWidth, height: min(1000, chromeAndInsets + measuredContent))
             if abs(size.width - lastReportedContentSize.width) > 0.5
                 || abs(size.height - lastReportedContentSize.height) > 0.5 {
                 lastReportedContentSize = size
+                // Setting the content controller's preferredContentSize is what actually makes a
+                // shown NSPopover resize (assigning popover.contentSize after presentation doesn't
+                // shrink it — that left the panel stuck at its initial height with empty space).
+                preferredContentSize = size
                 onPreferredContentSize(size)
             }
         }
@@ -453,6 +464,14 @@ private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
     private var dragHandle: PrinterDragHandle?
     private let onMove: (_ sourceSerial: String, _ targetSerial: String, _ insertAfter: Bool) -> Void
     private let onSelect: (() -> Void)?
+    private var layoutWidthConstraint: NSLayoutConstraint?
+
+    /// Match the collapsed row to the current panel content width so it lines up with an expanded card.
+    func setLayoutWidth(_ width: CGFloat) {
+        layoutWidthConstraint?.isActive = false
+        layoutWidthConstraint = widthAnchor.constraint(equalToConstant: width)
+        layoutWidthConstraint?.isActive = true
+    }
 
     init(
         printer: SavedPrinter,
@@ -469,7 +488,8 @@ private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
         tintColor = .clear
         registerForDraggedTypes([printerCardPasteboardType])
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(rowClicked)))
-        widthAnchor.constraint(equalToConstant: 456).isActive = true
+        layoutWidthConstraint = widthAnchor.constraint(equalToConstant: 456)
+        layoutWidthConstraint?.isActive = true
         heightAnchor.constraint(equalToConstant: 31).isActive = true
 
         let rowContent = NSView()
@@ -629,7 +649,7 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
     private let manufacturerLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
     private let stateDot = NSImageView()
-    private let jobLabel = NSTextField(labelWithString: "")
+    private let jobLabel = MarqueeLabel()
     private let progress = BrutalistProgressView()
     private let percentLabel = NSTextField(labelWithString: "0%")
     private let etaMetric = CompactMetricView(symbol: "clock", tooltip: "ETA")
@@ -646,7 +666,9 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
     private var layoutWidthConstraint: NSLayoutConstraint?
     private var dragHandle: PrinterDragHandle?
     private var renderedGroups: [FilamentGroup] = []
-    private var lastDualNozzle: Bool?
+    private var lastMetricsKey: String?
+    private var lastDual = false
+    private var currentLayoutWidth: CGFloat = 456
     private var displayedRemainingMinutes: Int?
     private var etaUpdatedAt: Date?
     private var lastJobName: String?
@@ -741,8 +763,7 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
 
         jobLabel.font = .systemFont(ofSize: 10, weight: .regular)
         jobLabel.textColor = .secondaryLabelColor
-        jobLabel.lineBreakMode = .byTruncatingMiddle
-        progress.heightAnchor.constraint(equalToConstant: 13).isActive = true
+        progress.heightAnchor.constraint(equalToConstant: 11).isActive = true
         percentLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .bold)
         percentLabel.alignment = .right
         percentLabel.widthAnchor.constraint(equalToConstant: 34).isActive = true
@@ -751,10 +772,15 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         progressRow.alignment = .centerY
         progressRow.spacing = 6
 
-        let metricsTop = NSStackView(views: [etaMetric, layerMetric, NSView()])
-        metricsTop.orientation = .horizontal
-        metricsTop.alignment = .centerY
-        metricsTop.spacing = 10
+        // Time remaining + layer count ride on the status line ("Drukowanie … ⏱ 33m ⧉ 35/75"),
+        // reclaiming a whole row of card height so more printers fit before the panel scrolls.
+        statusLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let statusSpacer = NSView()
+        statusSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let statusRow = NSStackView(views: [statusLabel, statusSpacer, etaMetric, layerMetric])
+        statusRow.orientation = .horizontal
+        statusRow.alignment = .centerY
+        statusRow.spacing = 10
         // First temperature row: single nozzle → [Dysza, Stół, Komora?]; dual nozzle → [L, P].
         nozzleRow.orientation = .horizontal
         nozzleRow.alignment = .centerY
@@ -766,10 +792,11 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         filamentDock.setContentHuggingPriority(.defaultLow, for: .horizontal)
         filamentDock.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let stack = NSStackView(views: [header, statusLabel, jobLabel, progressRow, metricsTop, nozzleRow, envRow, filamentDock])
+        let stack = NSStackView(views: [header, statusRow, jobLabel, progressRow, nozzleRow, envRow, filamentDock])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 5
+        // Tighter vertical rhythm so more cards fit before the panel scrolls.
+        stack.spacing = 2
 
         let content = cardContent
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -782,10 +809,9 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
             stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 7),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -7),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            statusLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            statusRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             progressRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            metricsTop.widthAnchor.constraint(equalTo: stack.widthAnchor),
             nozzleRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             envRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             filamentDock.widthAnchor.constraint(equalTo: stack.widthAnchor)
@@ -807,6 +833,10 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         layoutWidthConstraint?.isActive = false
         layoutWidthConstraint = widthAnchor.constraint(equalToConstant: width)
         layoutWidthConstraint?.isActive = true
+        // A wider card can collapse a dual-nozzle printer's two temperature rows into one, so
+        // re-evaluate the layout whenever the width changes.
+        currentLayoutWidth = width
+        configureMetricsLayout(dual: lastDual, settings: AppSettings.shared)
     }
 
     private func beginCardDrag(with event: NSEvent) {
@@ -871,9 +901,10 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
 
     func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings) {
         nameLabel.stringValue = printer.name
-        let manufacturer = printer.model.trimmingCharacters(in: .whitespaces)
-        manufacturerLabel.stringValue = manufacturer.isEmpty ? "" : "· \(manufacturer)"
-        manufacturerLabel.isHidden = manufacturer.isEmpty
+        // The `model` field is filled only by network discovery (e.g. the Bambu SSDP "BL-P001" code),
+        // never by the user, and reads as meaningless noise next to their own printer name — hide it.
+        manufacturerLabel.stringValue = ""
+        manufacturerLabel.isHidden = true
         let dataAge = telemetry.lastUpdated.map { max(0, Date().timeIntervalSince($0)) }
         let stale = dataAge.map { $0 > 90 } ?? false
         let baseStatus = message ?? settings.activityLabel(stage: telemetry.currentStage, state: telemetry.state)
@@ -941,17 +972,21 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
 
         let bed = temperature(telemetry.bedTemperature, telemetry.bedTargetTemperature)
         let chamber = telemetry.chamberTemperature.map { "\(Int($0.rounded()))°" }
+        bedMetric.valueColor = tempColor(telemetry.bedTemperature, telemetry.bedTargetTemperature)
         if dual {
             let left = nozzles.first { $0.position == .left } ?? nozzles.first
             let right = nozzles.first { $0.position == .right }
             leftNozzleMetric.value = temperature(left?.currentTemperature, left?.targetTemperature)
+            leftNozzleMetric.valueColor = tempColor(left?.currentTemperature, left?.targetTemperature)
             rightNozzleMetric.value = temperature(right?.currentTemperature, right?.targetTemperature)
+            rightNozzleMetric.valueColor = tempColor(right?.currentTemperature, right?.targetTemperature)
             bedMetric.value = bed
             chamberMetric.value = chamber ?? ""
             chamberMetric.isHidden = chamber == nil
         } else {
             let single = nozzles.first
             leftNozzleMetric.value = temperature(single?.currentTemperature, single?.targetTemperature)
+            leftNozzleMetric.valueColor = tempColor(single?.currentTemperature, single?.targetTemperature)
             bedMetric.value = bed
             chamberMetric.value = chamber ?? ""
             chamberMetric.isHidden = chamber == nil
@@ -978,12 +1013,21 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         rightNozzleMetric.label = settings.text("P", "R")
         bedMetric.label = settings.text("Stół", "Bed")
         chamberMetric.label = settings.text("Komora", "Chamber")
-        guard lastDualNozzle != dual else { return }
-        lastDualNozzle = dual
-        if dual {
+        lastDual = dual
+        // Dual nozzle needs two rows in a narrow column, but a wide (full-width) card fits all four
+        // temperatures on a single line — no reason to spend a second row when there's room.
+        let singleRow = !dual || currentLayoutWidth >= 360
+        let key = "\(dual)-\(singleRow)"
+        guard lastMetricsKey != key else { return }
+        lastMetricsKey = key
+        if dual && !singleRow {
             setRow(nozzleRow, [leftNozzleMetric, rightNozzleMetric])
             setRow(envRow, [bedMetric, chamberMetric])
             envRow.isHidden = false
+        } else if dual {
+            setRow(nozzleRow, [leftNozzleMetric, rightNozzleMetric, bedMetric, chamberMetric])
+            setRow(envRow, [])
+            envRow.isHidden = true
         } else {
             setRow(nozzleRow, [leftNozzleMetric, bedMetric, chamberMetric])
             setRow(envRow, [])
@@ -1099,6 +1143,20 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         if let target, target > 0 { return "\(Int(current.rounded()))/\(Int(target.rounded()))°" }
         return "\(Int(current.rounded()))°"
     }
+
+    // Muted, desaturated hints — a whisper of warm/cool, not a bright signal that fights the UI.
+    private static let heatingColor = NSColor(calibratedRed: 0.82, green: 0.55, blue: 0.51, alpha: 1)
+    private static let coolingColor = NSColor(calibratedRed: 0.55, green: 0.66, blue: 0.78, alpha: 1)
+
+    /// Tints a temperature by what it's doing: warming toward a setpoint reads red, cooling down from
+    /// one reads blue, and holding at (or near) the setpoint stays the neutral default.
+    private func tempColor(_ current: Double?, _ target: Double?) -> NSColor {
+        guard let current else { return .secondaryLabelColor }
+        let target = target ?? 0
+        if target > 5, current < target - 3 { return Self.heatingColor }        // ramping up
+        if current > max(target, 0) + 5, current > 30 { return Self.coolingColor } // above setpoint, still warm
+        return .secondaryLabelColor                                              // at temperature / idle
+    }
 }
 
 @MainActor
@@ -1109,9 +1167,10 @@ private final class PrinterDragHandle: NSImageView {
     init(onDrag: @escaping (NSEvent) -> Void) {
         self.onDrag = onDrag
         super.init(frame: .zero)
-        image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Move printer")
-        contentTintColor = .tertiaryLabelColor
-        toolTip = AppSettings.shared.text("Przeciągnij, aby zmienić kolejność", "Drag to reorder")
+        image = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: "Move printer")
+        contentTintColor = .secondaryLabelColor
+        toolTip = AppSettings.shared.text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek",
+                                          "Drag up/down to reorder printers")
         widthAnchor.constraint(equalToConstant: 17).isActive = true
         heightAnchor.constraint(equalToConstant: 18).isActive = true
     }
@@ -1276,6 +1335,89 @@ private final class BrutalistProgressView: NSView {
     }
 }
 
+/// A one-line label that stays put (clipped) at rest, but when the pointer hovers over it and the
+/// text is wider than the view, gently scrolls back and forth so a long job name can be read in full
+/// without the card having to grow taller.
+@MainActor
+private final class MarqueeLabel: NSView {
+    private let text = NSTextField(labelWithString: "")
+    private var leading: NSLayoutConstraint!
+    private var timer: Timer?
+    private var offset: CGFloat = 0
+    private var direction: CGFloat = -1
+    private var pause = 0
+
+    var stringValue: String {
+        get { text.stringValue }
+        set { text.stringValue = newValue; resetScroll() }
+    }
+    var font: NSFont? {
+        get { text.font }
+        set { text.font = newValue }
+    }
+    var textColor: NSColor? {
+        get { text.textColor }
+        set { text.textColor = newValue }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        text.translatesAutoresizingMaskIntoConstraints = false
+        text.lineBreakMode = .byClipping
+        text.maximumNumberOfLines = 1
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        text.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        addSubview(text)
+        leading = text.leadingAnchor.constraint(equalTo: leadingAnchor)
+        NSLayoutConstraint.activate([
+            leading,
+            text.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalTo: text.heightAnchor)
+        ])
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    private var overflow: CGFloat { max(0, text.fittingSize.width - bounds.width) }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { startScroll() }
+    override func mouseExited(with event: NSEvent) { resetScroll() }
+    // Never leave a timer running against a card that scrolled out of the popover.
+    override func viewDidMoveToWindow() { if window == nil { resetScroll() } }
+
+    private func startScroll() {
+        guard timer == nil, overflow > 4 else { return }
+        pause = 18
+        let t = Timer(timeInterval: 1.0 / 60.0, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    @objc private func tick() {
+        if pause > 0 { pause -= 1; return }
+        let limit = overflow
+        offset += direction * 0.7
+        if offset <= -limit { offset = -limit; direction = 1; pause = 22 }
+        else if offset >= 0 { offset = 0; direction = -1; pause = 22 }
+        leading.constant = offset
+    }
+
+    private func resetScroll() {
+        timer?.invalidate(); timer = nil
+        offset = 0; direction = -1; pause = 0; leading.constant = 0
+    }
+}
+
 /// A metric shown as a small text label plus a monospaced value, e.g. `L 245/245°`, `Stół 65/65°`.
 @MainActor
 private final class LabeledMetricView: NSView {
@@ -1283,6 +1425,7 @@ private final class LabeledMetricView: NSView {
     private let valueField = NSTextField(labelWithString: "—")
     var label: String { get { labelField.stringValue } set { labelField.stringValue = newValue } }
     var value: String { get { valueField.stringValue } set { valueField.stringValue = newValue } }
+    var valueColor: NSColor { get { valueField.textColor ?? .secondaryLabelColor } set { valueField.textColor = newValue } }
 
     init() {
         super.init(frame: .zero)
@@ -1323,7 +1466,7 @@ private final class FilamentSlotView: NSView {
 
         let swatch = NSView()
         swatch.wantsLayer = true
-        swatch.layer?.cornerRadius = 7
+        swatch.layer?.cornerRadius = 6
         swatch.layer?.backgroundColor = color.cgColor
         if slot.isActive {
             swatch.layer?.borderColor = NSColor.white.cgColor
@@ -1336,7 +1479,13 @@ private final class FilamentSlotView: NSView {
             swatch.layer?.borderWidth = 0.5
         }
         swatch.translatesAutoresizingMaskIntoConstraints = false
-        swatch.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        swatch.heightAnchor.constraint(equalToConstant: 27).isActive = true
+        // Keep swatches compact and readable: don't let a slot stretch wider than a tidy chip,
+        // so a 4-slot AMS reads as neat squares instead of big blocks. The fill-width constraint
+        // below is lowered in priority so this cap wins and the chip stays centered in its cell.
+        let maxWidth = swatch.widthAnchor.constraint(lessThanOrEqualToConstant: 50)
+        maxWidth.priority = .required
+        maxWidth.isActive = true
 
         // Label sits UNDER the swatch (mockup style), not inside it.
         let title = NSTextField(labelWithString: slot.label)
@@ -1356,10 +1505,12 @@ private final class FilamentSlotView: NSView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            swatch.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            swatch.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 1, constant: 0).withPriority(.defaultLow)
         ])
 
-        if present, (slot.remainingPercent ?? 100) <= 15 {
+        // External spools report remain=0 as "unknown" (Bambu doesn't gauge them), so a low-filament
+        // dot there is a false alarm — only warn for real AMS/CFS slots.
+        if present, !isExternal, (slot.remainingPercent ?? 100) <= 15 {
             let warning = NSView()
             warning.wantsLayer = true
             warning.layer?.backgroundColor = NSColor.systemRed.cgColor
@@ -1387,31 +1538,39 @@ private final class FilamentGroupView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 10
-        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.045).cgColor
-        layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
+        // Minimal: a soft fill groups the module without a boxed-in border competing for attention.
+        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.05).cgColor
         // Fill the width the dock allots (proportional to slot count), never hug.
         setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let name = NSTextField(labelWithString: group.displayName)
         name.font = .systemFont(ofSize: 11, weight: .semibold)
         name.textColor = .labelColor
+        name.lineBreakMode = .byTruncatingTail
+        // In a narrow card the header can't fit the name plus both metrics. Humidity/temperature are
+        // the data worth keeping, so let the name shrink first (metrics resist compression, below).
         name.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
         // Per-module humidity (droplet) and temperature (thermometer) as small icon + value clusters.
-        var headerViews: [NSView] = [name, NSView()]
+        // The spacer between name and metrics must collapse before the name is compressed, so a tight
+        // header never shows a truncated "AMS…" while a gap sits unused next to it.
+        let headerSpacer = NSView()
+        headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        headerSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        var headerViews: [NSView] = [name, headerSpacer]
         if let humidity = group.humidityPercent {
             let text = humidity <= 5 ? "\(humidity)/5" : "\(humidity)%"
+            // Quiet but still legible over a translucent panel; only a genuinely damp module goes orange.
             headerViews.append(Self.metric(symbol: "drop.fill", text: text,
                                             tint: Self.isHumidityHigh(group.humidityPercent) ? .systemOrange : .tertiaryLabelColor))
         }
         if let temp = group.temperatureCelsius {
-            headerViews.append(Self.metric(symbol: "thermometer.medium", text: "\(Int(temp.rounded()))°C", tint: .tertiaryLabelColor))
+            headerViews.append(Self.metric(symbol: "thermometer.medium", text: "\(Int(temp.rounded()))°", tint: .tertiaryLabelColor))
         }
         let header = NSStackView(views: headerViews)
         header.orientation = .horizontal
         header.alignment = .centerY
-        header.spacing = 8
+        header.spacing = 6
 
         let slots = NSStackView(views: group.slots.map { FilamentSlotView(slot: $0, isExternal: group.isExternal) })
         slots.orientation = .horizontal
@@ -1422,14 +1581,14 @@ private final class FilamentGroupView: NSView {
         let stack = NSStackView(views: [header, slots])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 8
+        stack.spacing = 5
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 11),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -11),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -11),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor),
             slots.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
@@ -1438,11 +1597,14 @@ private final class FilamentGroupView: NSView {
 
     private static func metric(symbol: String, text: String, tint: NSColor) -> NSView {
         let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
-        image.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .regular)
+        image.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 8, weight: .regular)
         image.contentTintColor = tint
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 10, weight: .medium)
+        label.font = .systemFont(ofSize: 9, weight: .medium)
         label.textColor = tint
+        // The metric value must survive a tight header intact — the module name yields space first.
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        image.setContentCompressionResistancePriority(.required, for: .horizontal)
         let cluster = NSStackView(views: [image, label])
         cluster.orientation = .horizontal
         cluster.alignment = .centerY
@@ -1493,11 +1655,32 @@ private final class FilamentDockView: NSView {
             row.spacing = 8
             column.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
-            // Second module's width is proportional to its slot count vs the first (AMS wide, EXT narrow).
+            // An external module holds a single spool; never let it get crushed below the width its
+            // "EXT" header + swatch need, even in a narrow two-column card.
+            for (view, group) in zip(views, rowGroups) where group.isExternal {
+                view.widthAnchor.constraint(greaterThanOrEqualToConstant: 58).isActive = true
+            }
+            // Second module's width is proportional to its slot count vs the first (AMS wide, EXT
+            // narrow) — but only as a preference, so the external minimum above always wins.
+            // An external module counts for less than a real AMS slot, so even AMS HT (1 slot) beside
+            // EXT (1 slot) stays the wider, primary module instead of splitting the row in half.
             if views.count == 2 {
-                let w0 = CGFloat(max(1, rowGroups[0].declaredCapacity))
-                let w1 = CGFloat(max(1, rowGroups[1].declaredCapacity))
-                views[1].widthAnchor.constraint(equalTo: views[0].widthAnchor, multiplier: w1 / w0).isActive = true
+                func weight(_ g: FilamentGroup) -> CGFloat {
+                    CGFloat(max(1, g.declaredCapacity)) * (g.isExternal ? 0.5 : 1)
+                }
+                let proportional = views[1].widthAnchor.constraint(equalTo: views[0].widthAnchor, multiplier: weight(rowGroups[1]) / weight(rowGroups[0]))
+                proportional.priority = .defaultHigh
+                proportional.isActive = true
+            } else if let only = views.first, rowGroups[0].isExternal {
+                // A lone external (printer with no AMS, e.g. A1 mini) shouldn't balloon across the
+                // whole card — keep it a compact tile on the left and let a spacer take the slack.
+                let spacer = NSView()
+                spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                row.addArrangedSubview(spacer)
+                let compact = only.widthAnchor.constraint(equalToConstant: 132)
+                compact.priority = .defaultHigh
+                compact.isActive = true
             }
         }
     }
@@ -1537,3 +1720,11 @@ private extension NSColor {
         return luminance > 0.58 ? .black : .white
     }
 }
+
+private extension NSLayoutConstraint {
+    func withPriority(_ priority: NSLayoutConstraint.Priority) -> NSLayoutConstraint {
+        self.priority = priority
+        return self
+    }
+}
+

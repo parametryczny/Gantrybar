@@ -29,7 +29,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 self.popover.contentSize = size
             }
         )
-        popover.contentSize = NSSize(width: 480, height: 650)
+        popover.contentSize = NSSize(width: 540, height: 650)
         popover.contentViewController = dashboard
         popover.behavior = .transient
         popover.animates = true
@@ -53,6 +53,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             DispatchQueue.main.async {
                 self?.popover.appearance = AppSettings.shared.appearance
                 self?.popover.contentViewController?.view.appearance = AppSettings.shared.appearance
+                (self?.popover.contentViewController?.view as? NSVisualEffectView)?.material = AppSettings.shared.panelTransparency.material
                 self?.updateStatusItem()
                 self?.updateProgressItems()
             }
@@ -227,7 +228,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Expandable colour legend explaining what each status colour on the cards means. Emoji dots keep
     /// the colours crisp inside the submenu without custom drawing.
     private func colourLegendMenu(settings: AppSettings) -> NSMenu {
-        let entries: [(String, String)] = [
+        let statusEntries: [(String, String)] = [
             ("🔵", settings.text("Drukuje (świeże dane)", "Printing (live data)")),
             ("🟢", settings.text("Gotowe / zakończone", "Ready / finished")),
             ("🟠", settings.text("Uwaga: nieświeże dane, pauza lub wilgotność AMS",
@@ -235,13 +236,26 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             ("🔴", settings.text("Błąd drukarki", "Printer error")),
             ("⚪", settings.text("Offline / brak / neutralna informacja", "Offline / none / neutral")),
         ]
+        // Slot markers explain the small cues drawn on the filament swatches themselves.
+        let slotEntries: [(String, String)] = [
+            ("⭕", settings.text("Slot AMS z białym pierścieniem — aktywny (drukuje z niego)",
+                                 "AMS slot with a white ring — active (printing from it)")),
+            ("🔴", settings.text("Czerwona kropka na slocie — mało filamentu (≤15%)",
+                                 "Red dot on a slot — low filament (≤15%)")),
+        ]
         let submenu = NSMenu()
         submenu.autoenablesItems = false
-        for (dot, text) in entries {
+        func addEntry(_ dot: String, _ text: String) {
             let item = NSMenuItem(title: "\(dot)  \(text)", action: nil, keyEquivalent: "")
             item.isEnabled = true   // no action; kept enabled so the emoji dot stays full-colour
             submenu.addItem(item)
         }
+        for (dot, text) in statusEntries { addEntry(dot, text) }
+        submenu.addItem(.separator())
+        let header = NSMenuItem(title: settings.text("Sloty filamentu:", "Filament slots:"), action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        submenu.addItem(header)
+        for (dot, text) in slotEntries { addEntry(dot, text) }
         return submenu
     }
 

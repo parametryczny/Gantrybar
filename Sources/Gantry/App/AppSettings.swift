@@ -11,6 +11,21 @@ enum AppTheme: String, CaseIterable {
     case dark
 }
 
+/// How much of the desktop shows through the panel background.
+enum PanelTransparency: String, CaseIterable {
+    case low     // most opaque — the original popover look
+    case medium
+    case high    // most see-through
+
+    var material: NSVisualEffectView.Material {
+        switch self {
+        case .low: .popover
+        case .medium: .hudWindow
+        case .high: .underWindowBackground
+        }
+    }
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
@@ -24,6 +39,10 @@ final class AppSettings: ObservableObject {
             defaults.set(theme.rawValue, forKey: "app-theme")
             applyTheme()
         }
+    }
+
+    @Published var panelTransparency: PanelTransparency {
+        didSet { defaults.set(panelTransparency.rawValue, forKey: "panel-transparency") }
     }
 
     @Published var notifyFinished: Bool { didSet { defaults.set(notifyFinished, forKey: "notify-finished") } }
@@ -55,6 +74,7 @@ final class AppSettings: ObservableObject {
         defaults.set(resolvedLanguage.rawValue, forKey: "app-language")
         language = resolvedLanguage
         theme = AppTheme(rawValue: defaults.string(forKey: "app-theme") ?? "dark") ?? .dark
+        panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true
         notifyPaused = defaults.object(forKey: "notify-paused") as? Bool ?? true
