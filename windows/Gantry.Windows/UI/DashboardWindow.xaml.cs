@@ -679,8 +679,7 @@ public partial class DashboardWindow : Window
             Background = new SolidColorBrush(color),
             CornerRadius = new CornerRadius(6),
             Height = 34,
-            MaxWidth = 54,                    // keep chips tidy; a lone/EXT swatch never balloons wide
-            HorizontalAlignment = HorizontalAlignment.Center,
+            MinWidth = 26,                    // never collapse to a sliver; fills its (narrow for EXT) column
             Margin = new Thickness(3, 0, 3, 0),
             BorderThickness = new Thickness(slot.IsActive ? 2 : 0.5),
             BorderBrush = new SolidColorBrush(slot.IsActive ? Colors.White : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
@@ -700,7 +699,7 @@ public partial class DashboardWindow : Window
         FrameworkElement swatchElement = swatch;
         if (present && !external && (slot.RemainingPercent ?? 100) <= 15)
         {
-            var overlay = new Grid { HorizontalAlignment = HorizontalAlignment.Center };
+            var overlay = new Grid();
             overlay.Children.Add(swatch);
             overlay.Children.Add(new Ellipse
             {
