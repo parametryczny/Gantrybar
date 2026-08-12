@@ -295,7 +295,7 @@ public partial class DashboardWindow : Window
                 DragDrop.DoDragDrop(Root, Serial, DragDropEffects.Move);
             };
             header.Children.Add(grip);
-            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 14, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_name, 1);
             header.Children.Add(_name);
             // "…" menu in the header (macOS layout) instead of a separate row at the bottom — saves height.
@@ -307,32 +307,32 @@ public partial class DashboardWindow : Window
             stack.Children.Add(header);
 
             // Status line (macOS layout): state text on the left, time + layers on the right.
-            var statusLine = new Grid { Margin = new Thickness(0, 2, 0, 0) };
+            var statusLine = new Grid { Margin = new Thickness(0, 1, 0, 0) };
             statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _pillText = new TextBlock { FontSize = 11, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            _pillText = new TextBlock { FontSize = 10, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_pillText, 0);
             statusLine.Children.Add(_pillText);
             var meta = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            _eta = new TextBlock { FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
-            _layers = new TextBlock { FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
-            meta.Children.Add(new TextBlock { Text = "⏱ ", FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
+            _eta = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+            _layers = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+            meta.Children.Add(new TextBlock { Text = "⏱ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
             meta.Children.Add(_eta);
-            meta.Children.Add(new TextBlock { Text = "   ⧉ ", FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
+            meta.Children.Add(new TextBlock { Text = "   ⧉ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
             meta.Children.Add(_layers);
             Grid.SetColumn(meta, 1);
             statusLine.Children.Add(meta);
             stack.Children.Add(statusLine);
 
-            _job = new TextBlock { Foreground = Muted(), FontSize = 11, Margin = new Thickness(0, 4, 0, 6), TextTrimming = TextTrimming.CharacterEllipsis };
+            _job = new TextBlock { Foreground = Muted(), FontSize = 10, Margin = new Thickness(0, 2, 0, 3), TextTrimming = TextTrimming.CharacterEllipsis };
             stack.Children.Add(_job);
 
-            var progressRow = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            var progressRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
             progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 6, Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)), BorderThickness = new Thickness(0) };
+            _bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 5, Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)), BorderThickness = new Thickness(0) };
             progressRow.Children.Add(_bar);
-            _percent = new TextBlock { FontSize = 11, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            _percent = new TextBlock { FontSize = 10, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_percent, 1);
             progressRow.Children.Add(_percent);
             stack.Children.Add(progressRow);
@@ -340,7 +340,7 @@ public partial class DashboardWindow : Window
             _temps = new StackPanel();
             stack.Children.Add(_temps);
 
-            _ams = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+            _ams = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
             stack.Children.Add(_ams);
 
             _message = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
@@ -352,8 +352,8 @@ public partial class DashboardWindow : Window
                 CornerRadius = new CornerRadius(14),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
                 BorderThickness = new Thickness(1),
-                Padding = new Thickness(13),
-                Margin = new Thickness(7),
+                Padding = new Thickness(10),
+                Margin = new Thickness(6),
                 Width = width,
                 Child = stack
             };
@@ -583,12 +583,12 @@ public partial class DashboardWindow : Window
     {
         // WrapPanel so cells flow onto a second line on narrow cards instead of clipping the last
         // label (e.g. "Komora"); on a wide card everything stays on one line — issue reported on Windows.
-        var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 0) };
         foreach (var (label, value, colour) in cells)
         {
-            var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 2) };
-            cell.Children.Add(new TextBlock { Text = label + " ", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Muted() });
-            var valueBlock = new TextBlock { Text = value, FontSize = 11 };
+            var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 10, 1) };
+            cell.Children.Add(new TextBlock { Text = label + " ", FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = Muted() });
+            var valueBlock = new TextBlock { Text = value, FontSize = 10 };
             if (colour is { }) valueBlock.Foreground = colour;
             cell.Children.Add(valueBlock);
             row.Children.Add(cell);
@@ -634,7 +634,7 @@ public partial class DashboardWindow : Window
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var name = new TextBlock { Text = group.DisplayName, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Colors.White), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        var name = new TextBlock { Text = group.DisplayName, FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Colors.White), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         Grid.SetColumn(name, 0); header.Children.Add(name);
         var envPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         if (group.HumidityPercent is { } h)
@@ -653,7 +653,7 @@ public partial class DashboardWindow : Window
         {
             Rows = 1,
             Columns = Math.Max(1, group.Slots.Count),
-            Margin = new Thickness(0, 8, 0, 0)
+            Margin = new Thickness(0, 5, 0, 0)
         };
         foreach (var slot in group.Slots) slotGrid.Children.Add(SlotChip(slot, group.IsExternal));
         inner.Children.Add(slotGrid);
@@ -664,8 +664,8 @@ public partial class DashboardWindow : Window
             Background = new SolidColorBrush(Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(11, 10, 11, 11),
-            Margin = new Thickness(0, 0, 0, 6),
+            Padding = new Thickness(9, 7, 9, 8),
+            Margin = new Thickness(0, 0, 0, 5),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = inner
         };
@@ -689,8 +689,8 @@ public partial class DashboardWindow : Window
         {
             Background = new SolidColorBrush(color),
             CornerRadius = new CornerRadius(6),
-            Height = 34,
-            MinWidth = 26,                    // never collapse to a sliver; fills its (narrow for EXT) column
+            Height = 28,
+            MinWidth = 24,                    // never collapse to a sliver; fills its (narrow for EXT) column
             Margin = new Thickness(3, 0, 3, 0),
             BorderThickness = new Thickness(slot.IsActive ? 2 : 0.5),
             BorderBrush = new SolidColorBrush(slot.IsActive ? Colors.White : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
