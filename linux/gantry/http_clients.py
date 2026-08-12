@@ -81,6 +81,11 @@ def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry |
     telemetry.total_layers = _integer(info.get("total_layer")) or telemetry.total_layers
     display = status.get("display_status") if isinstance(status.get("display_status"), dict) else {}
     virtual = status.get("virtual_sdcard") if isinstance(status.get("virtual_sdcard"), dict) else {}
+    # Creality K1/K1Max leave print_stats.info.*_layer null and expose layers on virtual_sdcard instead.
+    if telemetry.current_layer is None:
+        telemetry.current_layer = _integer(virtual.get("layer"))
+    if telemetry.total_layers is None:
+        telemetry.total_layers = _integer(virtual.get("layer_count"))
     progress = _number(display.get("progress"))
     if progress is None:
         progress = _number(virtual.get("progress"))

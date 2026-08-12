@@ -31,6 +31,13 @@ public static class MoonrakerStatusParser
             }
         }
 
+        // Creality K1/K1Max leave print_stats.info.*_layer null and expose layers on virtual_sdcard.
+        if (Obj(status, "virtual_sdcard", out var vsd))
+        {
+            if (t.CurrentLayer is null && Int(vsd, "layer") is { } vl) t.CurrentLayer = vl;
+            if (t.TotalLayers is null && Int(vsd, "layer_count") is { } vc) t.TotalLayers = vc;
+        }
+
         double? progress = null;
         if (Obj(status, "display_status", out var ds)) progress = Num(ds, "progress");
         if (progress is null && Obj(status, "virtual_sdcard", out var vs)) progress = Num(vs, "progress");

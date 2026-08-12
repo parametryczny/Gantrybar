@@ -122,6 +122,17 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(moonraker.filament_groups[0].declared_capacity, 2)
         self.assertEqual([s.label for s in moonraker.filament_groups[0].slots], ["T0", "T1"])
         self.assertTrue(moonraker.filament_groups[0].slots[1].active)
+
+    def test_moonraker_creality_layer_fallback(self):
+        # Creality K1/K1Max report null layers in print_stats.info; layers live on virtual_sdcard.
+        k1 = parse_moonraker({"result": {"status": {
+            "print_stats": {"state": "printing", "filename": "3DBenchy.gcode",
+                            "info": {"current_layer": None, "total_layer": None}},
+            "virtual_sdcard": {"progress": 0.1164, "layer": 14, "layer_count": 192},
+            "display_status": {"progress": 0.1164},
+        }}})
+        self.assertEqual(k1.current_layer, 14)
+        self.assertEqual(k1.total_layers, 192)
         prusa = parse_prusalink(
             {"printer": {"state": "PRINTING", "temp_nozzle": 214, "target_nozzle": 215,
                          "temp_bed": 59, "target_bed": 60},

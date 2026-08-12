@@ -22,6 +22,12 @@ enum MoonrakerStatusParser {
             }
         }
 
+        // Creality K1/K1Max leave print_stats.info.*_layer null and expose layers on virtual_sdcard.
+        if let vsd = status["virtual_sdcard"] as? [String: Any] {
+            if telemetry.currentLayer == nil, let layer = integer(vsd["layer"]) { telemetry.currentLayer = layer }
+            if telemetry.totalLayers == nil, let count = integer(vsd["layer_count"]) { telemetry.totalLayers = count }
+        }
+
         // Progress: display_status is the slicer/M73 value; fall back to sd position.
         let progress = number((status["display_status"] as? [String: Any])?["progress"])
             ?? number((status["virtual_sdcard"] as? [String: Any])?["progress"])
