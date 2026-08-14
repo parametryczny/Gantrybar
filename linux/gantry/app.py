@@ -117,7 +117,7 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .header { padding: 12px 16px 8px; }
 .title { font-size: 18px; font-weight: 700; }
 .subtitle { color: %(secondary)s; font-size: 11px; }
-.card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.07); border-radius: 14px; padding: 11px; }
+.card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.05); border-radius: 14px; padding: 11px; }
 .printer-icon { font-size: 13px; margin-right: 1px; }
 .card.finished { background: #1e382d; border-color: #397b5a; }
 .card.error { background: #3b2428; border-color: #d64b55; }
@@ -127,11 +127,11 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .status { color: #0a9fff; font-weight: 700; font-size: 11px; }
 .status.finished { color: #35d46a; }
 .status.error { color: #ff5360; }
-.ams { border-radius: 6px; border: 1px solid alpha(#ffffff, 0.12); }
+.ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
-.ams-group { background: alpha(#ffffff, 0.05); border-radius: 10px; padding: 7px 9px; }
+.ams-group { background: alpha(#ffffff, 0.05); border-radius: 12px; padding: 9px 11px; }
 button { border-radius: 10px; padding: 7px 12px; }
-button.cardmenu { background: none; border: none; box-shadow: none; padding: 0 6px; min-height: 0; color: %(secondary)s; font-size: 17px; }
+button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
 progressbar progress { border-radius: 5px; background: #0a9fff; }
@@ -332,7 +332,7 @@ class PrinterCard(Gtk.Frame):
             for slot in group.slots:
                 sbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
                 swatch = Gtk.Label(label="")
-                swatch.set_size_request(46, 28)
+                swatch.set_size_request(56, 38)
                 ctx = swatch.get_style_context()
                 ctx.add_class("ams")
                 if slot.active:
