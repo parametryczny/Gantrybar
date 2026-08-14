@@ -26,6 +26,7 @@ public partial class SettingsWindow : Window
             TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
+        SpoolbaseCheckBox.Click += (_, _) => AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;
         PrintFinishedCheckBox.Click += (_, _) => AppSettings.NotifyPrintFinished = PrintFinishedCheckBox.IsChecked == true;
         PrinterErrorCheckBox.Click += (_, _) => AppSettings.NotifyPrinterError = PrinterErrorCheckBox.IsChecked == true;
         PrintPausedCheckBox.Click += (_, _) => AppSettings.NotifyPrintPaused = PrintPausedCheckBox.IsChecked == true;
@@ -69,6 +70,7 @@ public partial class SettingsWindow : Window
         TransparencyLabel.Text = AppSettings.Text("Przezroczystość", "Transparency");
         TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
+        SpoolbaseCheckBox.Content = AppSettings.Text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock");
 
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
         PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished");
@@ -97,6 +99,7 @@ public partial class SettingsWindow : Window
     private void LoadSettings()
     {
         StartupCheckBox.IsChecked = LaunchAtLogin.IsEnabled;
+        SpoolbaseCheckBox.IsChecked = AppSettings.SpoolbaseEnabled;
         PrintFinishedCheckBox.IsChecked = AppSettings.NotifyPrintFinished;
         PrinterErrorCheckBox.IsChecked = AppSettings.NotifyPrinterError;
         PrintPausedCheckBox.IsChecked = AppSettings.NotifyPrintPaused;

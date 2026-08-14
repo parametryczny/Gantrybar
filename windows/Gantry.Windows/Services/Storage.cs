@@ -159,6 +159,13 @@ public static class AppSettings
         set => Defaults.SetBool("dashboard-compact-mode-set", value);
     }
 
+    // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
+    public static bool SpoolbaseEnabled
+    {
+        get => Defaults.GetBool("spoolbase-enabled", true);
+        set => Defaults.SetBool("spoolbase-enabled", value);
+    }
+
     public static bool NotifyPrintFinished
     {
         get => Defaults.GetBool("notifications-print-finished", true);

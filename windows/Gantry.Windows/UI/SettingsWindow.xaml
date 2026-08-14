@@ -92,6 +92,7 @@
                         <Button Grid.Column="1" x:Name="TransparencyButton" MinWidth="96"/>
                     </Grid>
                     <CheckBox x:Name="StartupCheckBox" Margin="0,10,0,4"/>
+                    <CheckBox x:Name="SpoolbaseCheckBox" Margin="0,7,0,4"/>
                 </StackPanel>
             </Border>
 

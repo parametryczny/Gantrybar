@@ -17,6 +17,7 @@ public sealed class TrayIcon : IDisposable
     private readonly Dictionary<string, NotifyIcon> _progressIcons = new();
     private DashboardWindow? _dashboard;
     private SettingsWindow? _settings;
+    private SpoolbaseWindow? _spoolbase;
 
     public TrayIcon(PrinterStore store)
     {
@@ -84,6 +85,13 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Szukaj drukarek…", "Scan for printers…"), null, (_, _) => { ShowDashboard(); _store.Scan(); }));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Dodaj drukarkę…", "Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Połącz ponownie", "Reconnect all"), null, (_, _) => _store.ReconnectAll()));
+
+        if (AppSettings.SpoolbaseEnabled)
+        {
+            menu.Items.Add(new ToolStripMenuItem(
+                AppSettings.Text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock"),
+                null, (_, _) => ToggleSpoolbase()));
+        }
         menu.Items.Add(new ToolStripSeparator());
 
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Ustawienia…", "Settings…"), null, (_, _) => ShowSettings()));
@@ -180,12 +188,22 @@ public sealed class TrayIcon : IDisposable
     // Menu items always show it.
     private void ShowDashboard() => EnsureDashboard().ShowPopover();
 
+    private void ToggleSpoolbase()
+    {
+        if (_spoolbase is null)
+        {
+            _spoolbase = new SpoolbaseWindow();
+            _spoolbase.Closed += (_, _) => _spoolbase = null;
+        }
+        _spoolbase.TogglePopover();
+    }
+
     private void ShowSettings()
     {
         if (_settings is null)
         {
             _settings = new SettingsWindow();
-            _settings.Closed += (_, _) => _settings = null;
+            _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); };
         }
         _settings.Show();
         _settings.Activate();

@@ -137,6 +137,19 @@ button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: no
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
 progressbar progress { border-radius: 5px; background: #0a9fff; }
+.sb-tile { border-radius: 11px; padding: 6px 8px; }
+.sb-tile:hover { background: alpha(#ffffff, 0.08); }
+.sb-color { font-size: 11px; font-weight: 600; }
+.sb-product { font-size: 8px; color: %(secondary)s; }
+.sb-type { font-size: 13px; font-weight: 600; }
+.sb-count { font-size: 10px; color: %(secondary)s; }
+.sb-badge { border-radius: 8px; padding: 1px 7px; font-size: 10px; font-weight: 600; }
+.sb-badge.zero { background: alpha(#9a9a9e, 0.18); color: %(secondary)s; }
+.sb-badge.red { background: alpha(#ff453a, 0.20); color: #ff6a5f; }
+.sb-badge.blue { background: alpha(#0a84ff, 0.20); color: #4aa8ff; }
+.sb-badge.green { background: alpha(#30d158, 0.20); color: #4ae37a; }
+.sb-swatch { border-radius: 15px; border: 1px solid alpha(#ffffff, 0.25); }
+.sb-empty { color: %(secondary)s; font-size: 12px; font-weight: 600; }
 """ % {"background": background, "foreground": foreground, "card": card, "border": border,
          "secondary": secondary, "trough": trough, "job": job, "walpha": window_alpha}).encode()
 
@@ -649,6 +662,9 @@ class SettingsDialog(Gtk.Dialog):
                               (_transparency_label, self.transparency)):
             box.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0); box.pack_start(widget, False, False, 0)
         self.autostart = Gtk.CheckButton(label=app.text["autostart"]); self.autostart.set_active(autostart_enabled()); box.pack_start(self.autostart, False, False, 0)
+        self.spoolbase = Gtk.CheckButton(label="Spoolbase — magazyn filamentów" if app.language == "pl" else "Spoolbase — filament stock")
+        self.spoolbase.set_active(bool(app.config.data.get("spoolbase_enabled", True)))
+        box.pack_start(self.spoolbase, False, False, 0)
         box.pack_start(Gtk.Label(label=app.text["notifications"], xalign=0), False, False, 0)
         self.notices: dict[str, Gtk.CheckButton] = {}
         for key, config_key in (("finished_notice", "notify_finished"), ("error_notice", "notify_error"),
@@ -678,6 +694,7 @@ class SettingsDialog(Gtk.Dialog):
                                     quiet_hours_start=self.quiet_start.get_text().strip(),
                                     quiet_hours_end=self.quiet_end.get_text().strip())
         for key, widget in self.notices.items(): self.app.config.data[key] = widget.get_active()
+        self.app.config.data["spoolbase_enabled"] = self.spoolbase.get_active()
         self.app.config.save(); set_autostart(self.autostart.get_active()); return True
 
 
@@ -715,6 +732,9 @@ class Gantry:
         for label, callback in ((panel_label, lambda *_: self.toggle_panel()), (self.text["scan"], lambda *_: self.scan_and_import()),
                                 (self.text["add"], lambda *_: self.open_printer_dialog())):
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
+        if bool(self.config.data.get("spoolbase_enabled", True)):
+            spoolbase_label = "Spoolbase — magazyn filamentów" if self.language == "pl" else "Spoolbase — filament stock"
+            item = Gtk.MenuItem(label=spoolbase_label); item.connect("activate", lambda *_: self.toggle_spoolbase()); menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
         quiet = Gtk.CheckMenuItem(label=self.text["quiet"]); quiet.set_active(bool(self.config.data.get("quiet_hours_enabled", True)))
         quiet.connect("toggled", lambda item: self._toggle_quiet(item.get_active())); menu.append(quiet)
@@ -742,6 +762,17 @@ class Gantry:
 
     def _toggle_quiet(self, enabled: bool) -> None:
         self.config.data["quiet_hours_enabled"] = enabled; self.config.save()
+
+    def toggle_spoolbase(self) -> None:
+        window = getattr(self, "spoolbase_window", None)
+        if window is None:
+            from .spoolbase import SpoolbaseWindow
+            window = SpoolbaseWindow(self)
+            self.spoolbase_window = window
+        if window.get_visible():
+            window.hide()
+        else:
+            window.present_panel()
 
     def show(self) -> None:
         self.window.show_all()

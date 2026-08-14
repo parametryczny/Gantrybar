@@ -46,6 +46,7 @@ DEFAULTS: dict[str, Any] = {
     "quiet_hours_enabled": True,
     "quiet_hours_start": "22:00",
     "quiet_hours_end": "07:00",
+    "spoolbase_enabled": True,
     "printers": [],
     "certificate_pins": {},
 }

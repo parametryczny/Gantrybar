@@ -21,6 +21,13 @@
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
 
+  <!-- Bundled Spoolbase filament catalog, copied next to the exe (Assets/). -->
+  <ItemGroup>
+    <Content Include="Assets\filament-catalog.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- WPF + WinForms both add implicit global usings; drop the WinForms ones so WPF types
        (Application, Color, Button) are unambiguous. TrayIcon.cs imports them explicitly. -->
   <ItemGroup>
