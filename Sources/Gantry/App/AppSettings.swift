@@ -54,6 +54,9 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(panelTransparency.rawValue, forKey: "panel-transparency") }
     }
 
+    /// Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
+    @Published var spoolbaseEnabled: Bool { didSet { defaults.set(spoolbaseEnabled, forKey: "spoolbase-enabled") } }
+
     @Published var notifyFinished: Bool { didSet { defaults.set(notifyFinished, forKey: "notify-finished") } }
     @Published var notifyError: Bool { didSet { defaults.set(notifyError, forKey: "notify-error") } }
     @Published var notifyPaused: Bool { didSet { defaults.set(notifyPaused, forKey: "notify-paused") } }
@@ -84,6 +87,7 @@ final class AppSettings: ObservableObject {
         language = resolvedLanguage
         theme = AppTheme(rawValue: defaults.string(forKey: "app-theme") ?? "dark") ?? .dark
         panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
+        spoolbaseEnabled = defaults.object(forKey: "spoolbase-enabled") as? Bool ?? true
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true
         notifyPaused = defaults.object(forKey: "notify-paused") as? Bool ?? true

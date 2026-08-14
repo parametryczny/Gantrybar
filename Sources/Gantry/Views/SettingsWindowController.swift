@@ -15,6 +15,8 @@ final class SettingsWindowController: NSWindowController {
     private let transparencyControl = NSSegmentedControl(labels: ["1", "2", "3"], trackingMode: .selectOne, target: nil, action: nil)
     private let launchSwitch = NSSwitch()
     private let launchLabel = NSTextField(labelWithString: "")
+    private let spoolbaseSwitch = NSSwitch()
+    private let spoolbaseLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
     private let supportButton = NSButton()
     private let supportSubtitle = NSTextField(wrappingLabelWithString: "")
@@ -96,6 +98,12 @@ final class SettingsWindowController: NSWindowController {
         launchRow.orientation = .horizontal
         launchRow.alignment = .centerY
 
+        spoolbaseSwitch.target = self
+        spoolbaseSwitch.action = #selector(spoolbaseToggled)
+        let spoolbaseRow = NSStackView(views: [spoolbaseLabel, NSView(), spoolbaseSwitch])
+        spoolbaseRow.orientation = .horizontal
+        spoolbaseRow.alignment = .centerY
+
         let form = NSGridView(views: [
             [languageLabel, languageControl],
             [appearanceLabel, themeControl],
@@ -175,7 +183,7 @@ final class SettingsWindowController: NSWindowController {
         quietRow.spacing = 6
         notificationsStack.addArrangedSubview(quietRow)
 
-        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, notificationsStack, separator, updateRow, actionRow, supportStack])
+        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, spoolbaseRow, notificationsStack, separator, updateRow, actionRow, supportStack])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -189,6 +197,7 @@ final class SettingsWindowController: NSWindowController {
             profileRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             form.widthAnchor.constraint(equalTo: stack.widthAnchor),
             launchRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            spoolbaseRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             notificationsStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
             updateRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -224,6 +233,8 @@ final class SettingsWindowController: NSWindowController {
         }
         launchLabel.stringValue = settings.text("Uruchamiaj przy logowaniu", "Launch at login")
         launchSwitch.state = LaunchAtLoginManager.isEnabled ? .on : .off
+        spoolbaseLabel.stringValue = settings.text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock")
+        spoolbaseSwitch.state = settings.spoolbaseEnabled ? .on : .off
         notificationsLabel.stringValue = settings.text("Powiadomienia:", "Notifications:")
         notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished")
         notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error")
@@ -288,6 +299,10 @@ final class SettingsWindowController: NSWindowController {
             launchSwitch.state = LaunchAtLoginManager.isEnabled ? .on : .off
             NotificationService.post(title: "Gantry", body: error.localizedDescription)
         }
+    }
+
+    @objc private func spoolbaseToggled() {
+        AppSettings.shared.spoolbaseEnabled = spoolbaseSwitch.state == .on
     }
 
     @objc private func notificationToggled() {
