@@ -1,0 +1,24 @@
+name: Linux preview render
+
+on:
+  push:
+    paths:
+      - "linux/**"
+      - ".github/workflows/linux-preview.yml"
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install GTK
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-3.0 xvfb fonts-dejavu-core
+      - name: Render dashboard preview
+        run: xvfb-run -a env PYTHONPATH=linux python3 linux/scripts/render_preview.py linux-preview.png
+      - name: Upload preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-preview
+          path: linux-preview.png
