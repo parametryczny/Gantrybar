@@ -145,6 +145,14 @@ public static class AppSettings
         set => Defaults.SetBool("dashboard-compact-mode", value);
     }
 
+    // Panel background transparency: 0 = low (most opaque), 1 = medium, 2 = high (most see-through).
+    // Affects only the panel backdrop, not the cards.
+    public static int PanelTransparency
+    {
+        get => Math.Clamp(Defaults.GetInt("panel-transparency", 1), 0, 2);
+        set => Defaults.SetInt("panel-transparency", Math.Clamp(value, 0, 2));
+    }
+
     public static bool CompactModeChosen
     {
         get => Defaults.GetBool("dashboard-compact-mode-set");

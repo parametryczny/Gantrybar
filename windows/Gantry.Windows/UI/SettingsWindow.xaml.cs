@@ -20,6 +20,11 @@ public partial class SettingsWindow : Window
             AppSettings.Polish = !AppSettings.Polish;
             ApplyLanguage();
         };
+        TransparencyButton.Click += (_, _) =>
+        {
+            AppSettings.PanelTransparency = (AppSettings.PanelTransparency + 1) % 3;
+            TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
+        };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
         PrintFinishedCheckBox.Click += (_, _) => AppSettings.NotifyPrintFinished = PrintFinishedCheckBox.IsChecked == true;
         PrinterErrorCheckBox.Click += (_, _) => AppSettings.NotifyPrinterError = PrinterErrorCheckBox.IsChecked == true;
@@ -61,6 +66,8 @@ public partial class SettingsWindow : Window
         GeneralHeading.Text = AppSettings.Text("OGÓLNE", "GENERAL");
         LanguageLabel.Text = AppSettings.Text("Język", "Language");
         LanguageButton.Content = AppSettings.Polish ? "Polski" : "English";
+        TransparencyLabel.Text = AppSettings.Text("Przezroczystość", "Transparency");
+        TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
 
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
@@ -79,6 +86,13 @@ public partial class SettingsWindow : Window
 
         CloseButton.Content = AppSettings.Text("Zamknij", "Close");
     }
+
+    private static string TransparencyName(int level) => level switch
+    {
+        0 => AppSettings.Text("Niska", "Low"),
+        2 => AppSettings.Text("Wysoka", "High"),
+        _ => AppSettings.Text("Średnia", "Medium"),
+    };
 
     private void LoadSettings()
     {

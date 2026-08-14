@@ -83,6 +83,14 @@
                         <TextBlock x:Name="LanguageLabel" VerticalAlignment="Center" FontSize="13"/>
                         <Button Grid.Column="1" x:Name="LanguageButton" MinWidth="96"/>
                     </Grid>
+                    <Grid Margin="0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="TransparencyLabel" VerticalAlignment="Center" FontSize="13"/>
+                        <Button Grid.Column="1" x:Name="TransparencyButton" MinWidth="96"/>
+                    </Grid>
                     <CheckBox x:Name="StartupCheckBox" Margin="0,10,0,4"/>
                 </StackPanel>
             </Border>

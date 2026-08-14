@@ -94,6 +94,7 @@ public partial class DashboardWindow : Window
         var area = SystemParameters.WorkArea;
         Left = area.Right - Width - 8;
         Top = area.Bottom - Height - 8;
+        ApplyPanelTransparency();   // pick up any change made in Settings while the panel was hidden
         Show();
         Activate();
         FitHeightToContent();   // size to content now that it's visible
@@ -106,14 +107,26 @@ public partial class DashboardWindow : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
-        int dark = 1, round = 2, acrylic = 3;  // dark mode, rounded corners, acrylic backdrop
+        int dark = 1, round = 2;
         try
         {
             DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));    // DWMWA_USE_IMMERSIVE_DARK_MODE
             DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));   // DWMWA_WINDOW_CORNER_PREFERENCE
-            DwmSetWindowAttribute(hwnd, 38, ref acrylic, sizeof(int)); // DWMWA_SYSTEMBACKDROP_TYPE
         }
         catch { /* older Windows without these attributes — plain window is fine */ }
+        ApplyPanelTransparency();
+    }
+
+    /// <summary>Applies the Panel-transparency setting to the BACKDROP only (the panel body alpha and
+    /// the DWM backdrop type) — the cards keep their own opaque background, so text stays readable.</summary>
+    public void ApplyPanelTransparency()
+    {
+        byte alpha = AppSettings.PanelTransparency switch { 0 => 0xE6, 2 => 0x80, _ => 0xB3 };
+        PanelBody.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x24, 0x24, 0x26));
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        int backdrop = AppSettings.PanelTransparency == 0 ? 2 : 3; // low → Mica (subtle), else Acrylic
+        try { DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int)); } catch { }
     }
 
     // Cards (and their cached "…" menus) are built in the target language, so recreate them all on
@@ -148,6 +161,8 @@ public partial class DashboardWindow : Window
     private void Rebuild()
     {
         bool pl = AppSettings.Polish;
+        FooterText.Text = AppSettings.Text("Drukuj spokojnie — wszystko pod kontrolą",
+                                           "Print in peace — everything under control");
         StatusLine.Text = _store.IsScanning
             ? AppSettings.Text("Skanowanie…", "Scanning…")
             : (_store.GlobalMessage ?? AppSettings.Text($"{_store.Printers.Count} drukarek • {_store.ActivePrintCount} drukuje",

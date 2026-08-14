@@ -39,8 +39,9 @@
         </Style>
     </Window.Resources>
 
-    <!-- Rounded, translucent panel body; the acrylic/mica backdrop (set via DWM) shows through. -->
-    <Border CornerRadius="12" Background="#B3242426" SnapsToDevicePixels="True">
+    <!-- Rounded, translucent panel body; the acrylic/mica backdrop (set via DWM) shows through.
+         PanelBody.Background alpha is set from the Panel-transparency setting (backdrop only). -->
+    <Border x:Name="PanelBody" CornerRadius="12" Background="#B3242426" SnapsToDevicePixels="True">
         <Grid>
             <DockPanel Margin="2">
                 <Grid DockPanel.Dock="Top" Margin="16,14,12,8">
@@ -58,6 +59,8 @@
                         <Button x:Name="AddButton" Content="+" Width="32" Height="30" Margin="4,0" FontSize="17" ToolTip="Add printer"/>
                     </StackPanel>
                 </Grid>
+                <TextBlock x:Name="FooterText" DockPanel.Dock="Bottom" HorizontalAlignment="Center"
+                           FontSize="10" Foreground="#8A8A8E" Margin="0,4,0,6"/>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="9,2,9,10">
                     <WrapPanel x:Name="CardsPanel" Orientation="Horizontal"/>
                 </ScrollViewer>
