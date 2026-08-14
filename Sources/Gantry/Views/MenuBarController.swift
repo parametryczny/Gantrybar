@@ -12,6 +12,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var outsideClickMonitor: Any?
     private var addWindow: AddPrinterWindowController?
     private var settingsWindow: SettingsWindowController?
+    private let spoolbase = SpoolbaseController()
     private var notificationObserver: Any?
     private var updateNotificationObserver: Any?
 
@@ -159,6 +160,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         menu.addItem(row(icon: "printer.fill", tint: Self.accentTint,
                          title: settings.text("Pokaż drukarki", "Show printers")) { [weak self] in
             self?.showPopoverFromMenu()
+        })
+
+        menu.addItem(row(icon: "shippingbox.fill",
+                         title: settings.text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock")) { [weak self] in
+            self?.spoolbase.show()
         })
 
         menu.addItem(.separator())

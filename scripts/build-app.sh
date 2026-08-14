@@ -36,6 +36,8 @@ cp ".build/debug/Gantry" "$APP_PATH/Contents/MacOS/Gantry"
 chmod +x "$APP_PATH/Contents/MacOS/Gantry"
 cp "Resources/Info.plist" "$APP_PATH/Contents/Info.plist"
 cp "Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+# Embedded Spoolbase filament catalog (loaded via Bundle.main at runtime).
+cp "Resources/filament-catalog.json" "$APP_PATH/Contents/Resources/filament-catalog.json"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP_PATH/Contents/Info.plist"
