@@ -34,6 +34,7 @@ def _migrate_legacy_config() -> None:
 DEFAULTS: dict[str, Any] = {
     "language": "pl",
     "theme": "dark",
+    "panel_transparency": "low",
     "collapsed": False,
     "scan_targets": "",
     "notify_finished": True,

@@ -104,14 +104,16 @@ def quiet_hours_active(config: Config, now: datetime | None = None) -> bool:
     end = str(config.data.get("quiet_hours_end", "07:00"))
     return start <= current < end if start < end else current >= start or current < end
 
-def css_for(theme: str) -> bytes:
+def css_for(theme: str, window_alpha: float = 1.0) -> bytes:
     if theme == "light":
         colors = ("#f2f2f7", "#1c1c1e", "#ffffff", "#d1d1d6", "#636366", "#f2f2f7", "#c7c7cc")
     else:
         colors = ("#18181a", "#f5f5f7", "#29292c", "#404044", "#a1a1a6", "#4a4a4e", "#b8b8bd")
     background, foreground, card, border, secondary, trough, job = colors
+    # Only the window backdrop gets the transparency; cards keep their solid background so their
+    # text stays readable at every level (matches the macOS/Windows behaviour).
     return ("""
-window { background: %(background)s; color: %(foreground)s; }
+window { background: alpha(%(background)s, %(walpha).2f); color: %(foreground)s; }
 window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .popover-window .header { padding: 12px 16px 8px; }
 .header { padding: 12px 16px 8px; }
@@ -136,7 +138,7 @@ entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
 progressbar progress { border-radius: 5px; background: #0a9fff; }
 """ % {"background": background, "foreground": foreground, "card": card, "border": border,
-         "secondary": secondary, "trough": trough, "job": job}).encode()
+         "secondary": secondary, "trough": trough, "job": job, "walpha": window_alpha}).encode()
 
 
 class PrinterCard(Gtk.Frame):
@@ -393,6 +395,11 @@ class Dashboard(Gtk.Window):
         self.app = app
         self._just_shown = False
         self._suppress_hide = False
+        # Use an RGBA visual (before realize) so a translucent panel background can show the desktop
+        # when the transparency setting is medium/high. Harmless when the background is opaque.
+        _rgba = self.get_screen().get_rgba_visual()
+        if _rgba is not None:
+            self.set_visual(_rgba)
         # With a system tray, behave like the macOS menu-bar popover: a borderless panel with no
         # taskbar entry that drops near the tray and closes when you click elsewhere. Without a tray
         # (no AppIndicator) fall back to a normal titled window so it stays reachable.
@@ -631,7 +638,15 @@ class SettingsDialog(Gtk.Dialog):
         box = self.get_content_area(); box.set_spacing(12); box.set_border_width(20)
         self.language = Gtk.ComboBoxText(); self.language.append("pl", "Polski"); self.language.append("en", "English"); self.language.set_active_id(app.language)
         self.theme = Gtk.ComboBoxText(); self.theme.append("dark", app.text["dark"]); self.theme.append("light", app.text["light"]); self.theme.set_active_id(str(app.config.data.get("theme", "dark")))
-        for label, widget in ((app.text["language"], self.language), (app.text["theme"], self.theme)):
+        _pl = app.language == "pl"
+        self.transparency = Gtk.ComboBoxText()
+        self.transparency.append("low", "Niska" if _pl else "Low")
+        self.transparency.append("medium", "Średnia" if _pl else "Medium")
+        self.transparency.append("high", "Wysoka" if _pl else "High")
+        self.transparency.set_active_id(str(app.config.data.get("panel_transparency", "low")))
+        _transparency_label = "Przezroczystość" if _pl else "Transparency"
+        for label, widget in ((app.text["language"], self.language), (app.text["theme"], self.theme),
+                              (_transparency_label, self.transparency)):
             box.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0); box.pack_start(widget, False, False, 0)
         self.autostart = Gtk.CheckButton(label=app.text["autostart"]); self.autostart.set_active(autostart_enabled()); box.pack_start(self.autostart, False, False, 0)
         box.pack_start(Gtk.Label(label=app.text["notifications"], xalign=0), False, False, 0)
@@ -657,7 +672,8 @@ class SettingsDialog(Gtk.Dialog):
             datetime.strptime(self.quiet_end.get_text().strip(), "%H:%M")
         except ValueError:
             return False
-        self.app.config.data.update(language=self.language.get_active_id(), theme=self.theme.get_active_id())
+        self.app.config.data.update(language=self.language.get_active_id(), theme=self.theme.get_active_id(),
+                                    panel_transparency=self.transparency.get_active_id() or "low")
         self.app.config.data.update(quiet_hours_enabled=self.quiet.get_active(),
                                     quiet_hours_start=self.quiet_start.get_text().strip(),
                                     quiet_hours_end=self.quiet_end.get_text().strip())
@@ -681,7 +697,15 @@ class Gantry:
 
     def apply_theme(self) -> None:
         settings = Gtk.Settings.get_default(); settings.set_property("gtk-application-prefer-dark-theme", self.config.data.get("theme") == "dark")
-        provider = Gtk.CssProvider(); provider.load_from_data(css_for(str(self.config.data.get("theme", "dark")))); Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        alpha = {"low": 1.0, "medium": 0.9, "high": 0.72}.get(str(self.config.data.get("panel_transparency", "low")), 1.0)
+        # Give the panel window an RGBA visual so the translucent backdrop shows the desktop through
+        # (needs a running compositor; falls back to opaque otherwise). Cards stay solid.
+        window = getattr(self, "window", None)
+        if window is not None and alpha < 1.0:
+            rgba = window.get_screen().get_rgba_visual()
+            if rgba is not None:
+                window.set_visual(rgba)
+        provider = Gtk.CssProvider(); provider.load_from_data(css_for(str(self.config.data.get("theme", "dark")), alpha)); Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
     def _tray(self) -> None:
         if getattr(self, "indicator", None) is not None:
