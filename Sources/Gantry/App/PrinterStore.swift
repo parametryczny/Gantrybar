@@ -26,6 +26,7 @@ final class PrinterStore: ObservableObject {
     init() {
         AccessCodeStore.migrateLegacyPlaintextCodes()
         printers = persistence.load()
+        migratePlaintextApiKeys()
         for printer in printers { telemetry[printer.serial] = PrinterTelemetry() }
         Task { @MainActor [weak self] in
             self?.refreshPrinterNames()
@@ -96,6 +97,9 @@ final class PrinterStore: ObservableObject {
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "klipper-\(cleanHost)"
+        // The API key is a secret: keep it out of the plaintext config and in the secure store
+        // (Keychain), keyed by serial — the same place Bambu access codes live.
+        storeSecret(apiKey, for: identifier)
         let printer = SavedPrinter(
             serial: identifier,
             name: cleanName.isEmpty ? "Klipper \(cleanHost)" : cleanName,
@@ -103,7 +107,7 @@ final class PrinterStore: ObservableObject {
             host: cleanHost,
             kind: .klipper,
             port: port,
-            apiKey: (apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            apiKey: nil
         )
         if let index = printers.firstIndex(where: { $0.serial == identifier }) {
             printers[index] = printer
@@ -122,6 +126,8 @@ final class PrinterStore: ObservableObject {
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "prusa-\(cleanHost)"
+        // Keep the PrusaLink API key in the secure store (Keychain), not the plaintext config.
+        storeSecret(apiKey, for: identifier)
         let printer = SavedPrinter(
             serial: identifier,
             name: cleanName.isEmpty ? "Prusa \(cleanHost)" : cleanName,
@@ -129,7 +135,7 @@ final class PrinterStore: ObservableObject {
             host: cleanHost,
             kind: .prusa,
             port: port,
-            apiKey: (apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+            apiKey: nil
         )
         if let index = printers.firstIndex(where: { $0.serial == identifier }) {
             printers[index] = printer
@@ -232,9 +238,9 @@ final class PrinterStore: ObservableObject {
         let client: PrinterConnection
         switch printer.kind {
         case .klipper:
-            client = MoonrakerClient(printer: printer, onEvent: handler)
+            client = MoonrakerClient(printer: hydratedWithSecret(printer), onEvent: handler)
         case .prusa:
-            client = PrusaLinkClient(printer: printer, onEvent: handler)
+            client = PrusaLinkClient(printer: hydratedWithSecret(printer), onEvent: handler)
         case .bambu:
             let code: String
             if let sessionCode = sessionCodes[printer.serial] {
@@ -286,6 +292,40 @@ final class PrinterStore: ObservableObject {
             telemetry[serial] = clearedCompletedJob(current)
             connectionMessages[serial] = nil
         }
+    }
+
+    /// Saves an HTTP printer's API key to the secure store (or clears it), keyed by serial.
+    private func storeSecret(_ apiKey: String?, for serial: String) {
+        let key = (apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        if let key {
+            try? AccessCodeStore.save(accessCode: key, for: serial)
+        } else {
+            AccessCodeStore.delete(for: serial)
+        }
+    }
+
+    /// Fills in a Klipper/Prusa printer's API key from the secure store just before connecting, so
+    /// the key never has to live on the persisted config.
+    private func hydratedWithSecret(_ printer: SavedPrinter) -> SavedPrinter {
+        guard printer.apiKey == nil, let key = AccessCodeStore.accessCode(for: printer.serial) else { return printer }
+        var copy = printer
+        copy.apiKey = key
+        return copy
+    }
+
+    /// One-time move of any plaintext Klipper/Prusa API keys from an older config into the secure
+    /// store, then strip them from the persisted config.
+    private func migratePlaintextApiKeys() {
+        var changed = false
+        for index in printers.indices {
+            let printer = printers[index]
+            guard printer.kind == .klipper || printer.kind == .prusa,
+                  let key = printer.apiKey, !key.isEmpty else { continue }
+            try? AccessCodeStore.save(accessCode: key, for: printer.serial)
+            printers[index].apiKey = nil
+            changed = true
+        }
+        if changed { persistence.save(printers) }
     }
 
     private func upsert(_ printer: SavedPrinter, accessCode: String) throws {

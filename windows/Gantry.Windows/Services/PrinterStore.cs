@@ -34,7 +34,46 @@ public sealed class PrinterStore
     {
         _post = post;
         Printers = SavedPrinterStore.Load();
+        MigratePlaintextApiKeys();
         foreach (var printer in Printers) Telemetry[printer.Serial] = new PrinterTelemetry();
+    }
+
+    /// <summary>Saves an HTTP printer's API key to DPAPI (or clears it), keyed by serial.</summary>
+    private static void StoreSecret(string? apiKey, string serial)
+    {
+        var key = apiKey?.Trim();
+        if (string.IsNullOrEmpty(key)) AccessCodeStore.Delete(serial);
+        else AccessCodeStore.Save(key, serial);
+    }
+
+    /// <summary>Fills in a Klipper/Prusa API key from DPAPI just before connecting, so the key
+    /// never has to live on the persisted config.</summary>
+    private static SavedPrinter HydratedWithSecret(SavedPrinter printer)
+    {
+        if (!string.IsNullOrEmpty(printer.ApiKey)) return printer;
+        var key = AccessCodeStore.AccessCode(printer.Serial);
+        if (string.IsNullOrEmpty(key)) return printer;
+        return new SavedPrinter
+        {
+            Serial = printer.Serial, Name = printer.Name, Model = printer.Model, Host = printer.Host,
+            Kind = printer.Kind, Port = printer.Port, ApiKey = key
+        };
+    }
+
+    /// <summary>One-time move of plaintext Klipper/Prusa API keys from an older config into DPAPI,
+    /// then strip them from the persisted config.</summary>
+    private void MigratePlaintextApiKeys()
+    {
+        var changed = false;
+        foreach (var printer in Printers)
+        {
+            if (printer.Kind is not (PrinterKind.Klipper or PrinterKind.Prusa)) continue;
+            if (string.IsNullOrEmpty(printer.ApiKey)) continue;
+            AccessCodeStore.Save(printer.ApiKey!, printer.Serial);
+            printer.ApiKey = null;
+            changed = true;
+        }
+        if (changed) SavedPrinterStore.Save(Printers);
     }
 
     public int ActivePrintCount => Telemetry.Values.Count(t => t.State == PrinterState.Printing);
@@ -146,7 +185,9 @@ public sealed class PrinterStore
         if (cleanHost.Length == 0)
             throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
         var cleanName = name.Trim();
-        var cleanKey = apiKey?.Trim();
+        // The API key is a secret: keep it out of the plaintext config and in DPAPI, keyed by serial
+        // — the same place Bambu access codes live.
+        StoreSecret(apiKey, $"klipper-{cleanHost}");
         var printer = new SavedPrinter
         {
             Serial = $"klipper-{cleanHost}",
@@ -155,7 +196,7 @@ public sealed class PrinterStore
             Host = cleanHost,
             Kind = PrinterKind.Klipper,
             Port = port,
-            ApiKey = string.IsNullOrEmpty(cleanKey) ? null : cleanKey
+            ApiKey = null
         };
 
         var index = Printers.FindIndex(p => p.Serial == printer.Serial);
@@ -172,7 +213,8 @@ public sealed class PrinterStore
         if (cleanHost.Length == 0)
             throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
         var cleanName = name.Trim();
-        var cleanKey = apiKey?.Trim();
+        // Keep the PrusaLink API key in DPAPI, not the plaintext config.
+        StoreSecret(apiKey, $"prusa-{cleanHost}");
         var printer = new SavedPrinter
         {
             Serial = $"prusa-{cleanHost}",
@@ -181,7 +223,7 @@ public sealed class PrinterStore
             Host = cleanHost,
             Kind = PrinterKind.Prusa,
             Port = port,
-            ApiKey = string.IsNullOrEmpty(cleanKey) ? null : cleanKey
+            ApiKey = null
         };
 
         var index = Printers.FindIndex(p => p.Serial == printer.Serial);
@@ -297,7 +339,7 @@ public sealed class PrinterStore
 
         if (printer.Kind == PrinterKind.Klipper)
         {
-            var moonraker = new MoonrakerClient(printer, evt => _post(() => Handle(evt, printer.Serial)));
+            var moonraker = new MoonrakerClient(HydratedWithSecret(printer), evt => _post(() => Handle(evt, printer.Serial)));
             _clients[printer.Serial] = moonraker;
             moonraker.Start();
             RaiseUpdated();
@@ -305,7 +347,7 @@ public sealed class PrinterStore
         }
         if (printer.Kind == PrinterKind.Prusa)
         {
-            var prusa = new PrusaLinkClient(printer, evt => _post(() => Handle(evt, printer.Serial)));
+            var prusa = new PrusaLinkClient(HydratedWithSecret(printer), evt => _post(() => Handle(evt, printer.Serial)));
             _clients[printer.Serial] = prusa;
             prusa.Start();
             RaiseUpdated();

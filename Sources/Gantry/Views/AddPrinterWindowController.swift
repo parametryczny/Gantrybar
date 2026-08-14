@@ -490,7 +490,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         statusLabel.textColor = .systemRed
         portField.stringValue = printer.port.map(String.init) ?? ""   // Bambu too (tunnel port)
         if printer.kind != .bambu {
-            apiKeyField.stringValue = printer.apiKey ?? ""
+            // The key now lives in the secure store (Keychain), not the config — prefill from there
+            // so editing keeps it. A legacy config may still carry it inline; prefer that if present.
+            apiKeyField.stringValue = printer.apiKey ?? AccessCodeStore.accessCode(for: printer.serial) ?? ""
         } else {
             serialField.stringValue = printer.serial
             codeField.stringValue = ""

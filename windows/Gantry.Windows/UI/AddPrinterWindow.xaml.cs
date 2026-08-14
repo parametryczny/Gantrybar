@@ -37,7 +37,9 @@ public partial class AddPrinterWindow : Window
             {
                 if (editing.Kind == PrinterKind.Klipper) KlipperRadio.IsChecked = true;
                 else PrusaRadio.IsChecked = true;
-                ApiKeyBox.Text = editing.ApiKey ?? "";
+                // The key now lives in DPAPI, not the config — prefill from there so editing keeps
+                // it. A legacy config may still carry it inline; prefer that if present.
+                ApiKeyBox.Text = editing.ApiKey ?? AccessCodeStore.AccessCode(editing.Serial) ?? "";
             }
             // The tray-pin checkbox is offered only when editing a saved printer (its serial is known).
             ProgressCheck.Visibility = Visibility.Visible;
