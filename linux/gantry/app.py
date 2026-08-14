@@ -117,7 +117,8 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .header { padding: 12px 16px 8px; }
 .title { font-size: 18px; font-weight: 700; }
 .subtitle { color: %(secondary)s; font-size: 11px; }
-.card { background: %(card)s; border: 1px solid %(border)s; border-radius: 14px; padding: 11px; }
+.card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.07); border-radius: 14px; padding: 11px; }
+.printer-icon { font-size: 13px; margin-right: 1px; }
 .card.finished { background: #1e382d; border-color: #397b5a; }
 .card.error { background: #3b2428; border-color: #d64b55; }
 .printer-name { font-size: 14px; font-weight: 700; }
@@ -146,9 +147,12 @@ class PrinterCard(Gtk.Frame):
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         self.add(self.box)
         # Header: name + drag handle (chevrons, like macOS) + menu. The whole card is the drag source.
-        top = Gtk.Box(spacing=8)
+        top = Gtk.Box(spacing=6)
+        icon = Gtk.Label(label="🖨")
+        icon.get_style_context().add_class("printer-icon")
         self.name = Gtk.Label(label=printer.name, xalign=0)
         self.name.get_style_context().add_class("printer-name")
+        top.pack_start(icon, False, False, 0)
         drag = Gtk.Label(label="↕")
         drag.get_style_context().add_class("meta")
         drag.set_tooltip_text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek"
