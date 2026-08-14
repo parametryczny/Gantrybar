@@ -164,7 +164,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         menu.addItem(row(icon: "shippingbox.fill",
                          title: settings.text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock")) { [weak self] in
-            self?.spoolbase.show()
+            guard let button = self?.statusItem.button else { return }
+            self?.spoolbase.toggle(from: button)
         })
 
         menu.addItem(.separator())

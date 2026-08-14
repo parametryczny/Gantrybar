@@ -1,39 +1,42 @@
 import AppKit
 
 /// Hosts the embedded Spoolbase filament-stock UI inside Gantry — one app, no separate process.
-/// Opened from the tray menu ("Spoolbase — magazyn filamentów"); its data lives in the same
-/// ~/Library/Application Support/Spoolbase store the standalone app used, so existing stock carries over.
+/// Shown as a popover anchored to the menu-bar (tray) icon, just like the Gantry dashboard, rather
+/// than a floating window. Its data lives in the same ~/Library/Application Support/Spoolbase store
+/// the standalone app used, so existing stock carries over.
 @MainActor
 final class SpoolbaseController {
     private let store = FilamentStore()
-    private var window: NSWindow?
+    private let popover = NSPopover()
+    private var built = false
 
-    func show() {
-        if let window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+    /// Toggles the Spoolbase popover under the tray icon.
+    func toggle(from button: NSStatusBarButton) {
+        if popover.isShown {
+            popover.performClose(nil)
             return
         }
+        build()
+        popover.appearance = AppSettings.shared.appearance
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+    }
 
-        let controller = MinimalFilamentPopoverViewController(
+    private func build() {
+        guard !built else { return }
+        built = true
+        popover.behavior = .transient
+        popover.animates = false
+        popover.contentSize = NSSize(width: 500, height: 640)
+        popover.contentViewController = MinimalFilamentPopoverViewController(
             store: store,
-            onClose: { [weak self] in self?.window?.performClose(nil) },
-            onAuxiliaryState: { _ in }   // no popover to keep open — the window stays put on its own
+            onClose: { [weak self] in self?.popover.performClose(nil) },
+            // Keep the popover open while one of Spoolbase's own sub-windows (catalog / editor /
+            // limits) is on screen, then return to dismiss-on-click-away.
+            onAuxiliaryState: { [weak self] isOpen in
+                self?.popover.behavior = isOpen ? .applicationDefined : .transient
+            }
         )
-
-        let window = NSWindow(contentViewController: controller)
-        window.title = "Spoolbase"
-        window.titleVisibility = .hidden   // the content has its own "Spoolbase" heading; don't overlap it
-        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 500, height: 640))
-        window.center()
-        window.appearance = AppSettings.shared.appearance
-        self.window = window
-
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        _ = popover.contentViewController?.view   // warm the view up front
     }
 }
