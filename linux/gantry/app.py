@@ -113,22 +113,22 @@ def css_for(theme: str) -> bytes:
     return ("""
 window { background: %(background)s; color: %(foreground)s; }
 window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
-.popover-window .header { padding: 14px 18px 10px; }
-.header { padding: 20px 24px 14px; }
-.title { font-size: 25px; font-weight: 700; }
-.subtitle { color: %(secondary)s; font-size: 13px; }
-.card { background: %(card)s; border: 1px solid %(border)s; border-radius: 18px; padding: 18px; }
+.popover-window .header { padding: 12px 16px 8px; }
+.header { padding: 12px 16px 8px; }
+.title { font-size: 18px; font-weight: 700; }
+.subtitle { color: %(secondary)s; font-size: 11px; }
+.card { background: %(card)s; border: 1px solid %(border)s; border-radius: 14px; padding: 11px; }
 .card.finished { background: #1e382d; border-color: #397b5a; }
 .card.error { background: #3b2428; border-color: #d64b55; }
-.printer-name { font-size: 20px; font-weight: 700; }
-.job { color: %(job)s; font-weight: 600; }
-.meta { color: %(secondary)s; font-size: 13px; }
-.status { color: #0a9fff; font-weight: 700; }
+.printer-name { font-size: 14px; font-weight: 700; }
+.job { color: %(job)s; font-weight: 400; font-size: 11px; }
+.meta { color: %(secondary)s; font-size: 11px; }
+.status { color: #0a9fff; font-weight: 700; font-size: 11px; }
 .status.finished { color: #35d46a; }
 .status.error { color: #ff5360; }
 .ams { border-radius: 6px; border: 1px solid alpha(#ffffff, 0.12); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
-.ams-group { background: alpha(#ffffff, 0.05); border: 1px solid alpha(#ffffff, 0.10); border-radius: 10px; padding: 8px 10px; }
+.ams-group { background: alpha(#ffffff, 0.05); border-radius: 10px; padding: 7px 9px; }
 button { border-radius: 10px; padding: 7px 12px; }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
@@ -142,7 +142,7 @@ class PrinterCard(Gtk.Frame):
         super().__init__()
         self.app, self.printer = app, printer
         self.get_style_context().add_class("card")
-        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         self.add(self.box)
         # Header: name + drag handle (chevrons, like macOS) + menu. The whole card is the drag source.
         top = Gtk.Box(spacing=8)
@@ -327,7 +327,7 @@ class PrinterCard(Gtk.Frame):
             for slot in group.slots:
                 sbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
                 swatch = Gtk.Label(label="")
-                swatch.set_size_request(44, 30)
+                swatch.set_size_request(46, 28)
                 ctx = swatch.get_style_context()
                 ctx.add_class("ams")
                 if slot.active:
@@ -389,7 +389,7 @@ class Dashboard(Gtk.Window):
         # (no AppIndicator) fall back to a normal titled window so it stays reachable.
         self.tray_mode = AppIndicator is not None
         if self.tray_mode:
-            self.set_default_size(760, 600)
+            self.set_default_size(560, 640)
             self.set_decorated(False)
             self.set_skip_taskbar_hint(True)
             self.set_skip_pager_hint(True)
@@ -403,7 +403,7 @@ class Dashboard(Gtk.Window):
             self.connect("focus-out-event", self._on_focus_out)
         else:
             self.set_title("Gantry")
-            self.set_default_size(920, 720)
+            self.set_default_size(600, 720)
             self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("delete-event", self._hide)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -421,8 +421,15 @@ class Dashboard(Gtk.Window):
         header.pack_start(self.collapse, False, False, 0); header.pack_start(refresh, False, False, 0); header.pack_start(add, False, False, 0)
         root.pack_start(header, False, False, 0)
         scroll = Gtk.ScrolledWindow(); scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.grid = Gtk.Grid(column_spacing=16, row_spacing=16, margin=22)
+        self.grid = Gtk.Grid(column_spacing=10, row_spacing=10, margin=12)
         scroll.add(self.grid); root.pack_start(scroll, True, True, 0)
+        # Light, unobtrusive tagline under the cards (matches the macOS panel).
+        footer = Gtk.Label(
+            label=("Drukuj spokojnie — wszystko pod kontrolą" if app.language == "pl"
+                   else "Print in peace — everything under control"))
+        footer.get_style_context().add_class("subtitle")
+        footer.set_margin_top(2); footer.set_margin_bottom(8)
+        root.pack_start(footer, False, False, 0)
 
     def _hide(self, *_args: object) -> bool:
         self.hide(); return True
