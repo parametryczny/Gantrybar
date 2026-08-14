@@ -321,9 +321,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     private func applyPanelStyle() {
-        let level = AppSettings.shared.panelTransparency
-        (popover.contentViewController?.view as? NSVisualEffectView)?.material = level.material
-        popover.contentViewController?.view.window?.alphaValue = level.windowAlpha
+        (popover.contentViewController as? PrinterDashboardViewController)?.applyPanelTransparency()
     }
 
     private func showAddPrinter() {

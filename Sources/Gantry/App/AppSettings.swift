@@ -25,11 +25,12 @@ enum PanelTransparency: String, CaseIterable {
     }
 
     // `.underWindowBackground` renders opaque inside a popover, so "high" reuses the working glass
-    // material and additionally drops the panel's window alpha for a genuinely more see-through look.
-    var windowAlpha: CGFloat {
+    // material and additionally drops the alpha of the BACKDROP (not the whole window, which would
+    // fade the cards too) for a genuinely more see-through panel behind the still-solid cards.
+    var backgroundAlpha: CGFloat {
         switch self {
         case .low, .medium: 1.0
-        case .high: 0.82
+        case .high: 0.7
         }
     }
 }

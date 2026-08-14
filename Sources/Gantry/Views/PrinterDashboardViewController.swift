@@ -19,6 +19,9 @@ final class PrinterDashboardViewController: NSViewController {
     private let cardsStack = NSStackView()
     private let summaryLabel = NSTextField(labelWithString: "")
     private let footerLabel = NSTextField(labelWithString: "")
+    // The translucent panel backdrop sits BEHIND the cards (not as the root view) so its transparency
+    // can change without fading the cards on top of it.
+    private let backgroundEffectView = NSVisualEffectView()
     private let resetButton = NSButton()
     private let compactButton = NSButton()
     private var subscription: AnyCancellable?
@@ -64,14 +67,19 @@ final class PrinterDashboardViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let background = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 480, height: 650))
-        // Panel translucency is user-configurable in Settings (Panel transparency); more transparent
-        // materials let more of the desktop show through.
-        background.material = AppSettings.shared.panelTransparency.material
-        background.blendingMode = .behindWindow
-        background.state = .active
-        background.wantsLayer = true
-        view = background
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 650))
+        root.wantsLayer = true
+        // The vibrancy backdrop fills the panel behind everything; its material/alpha come from the
+        // Panel-transparency setting. Because it's a sibling behind the cards (not the root), lowering
+        // its alpha lets more desktop show through the gaps WITHOUT fading the cards themselves.
+        backgroundEffectView.frame = root.bounds
+        backgroundEffectView.autoresizingMask = [.width, .height]
+        backgroundEffectView.blendingMode = .behindWindow
+        backgroundEffectView.state = .active
+        backgroundEffectView.wantsLayer = true
+        root.addSubview(backgroundEffectView)
+        view = root
+        applyPanelTransparency()
 
         summaryLabel.font = .systemFont(ofSize: 11, weight: .regular)
         summaryLabel.textColor = .secondaryLabelColor
@@ -351,6 +359,14 @@ final class PrinterDashboardViewController: NSViewController {
         view.layer?.backgroundColor = NSColor.clear.cgColor
         refreshLocalization()
         refreshDashboard()
+    }
+
+    /// Applies the Panel-transparency setting to the backdrop only (material + its own alpha), leaving
+    /// the cards untouched so they stay readable at every level.
+    func applyPanelTransparency() {
+        let level = AppSettings.shared.panelTransparency
+        backgroundEffectView.material = level.material
+        backgroundEffectView.alphaValue = level.backgroundAlpha
     }
 
     private func refreshLocalization() {
