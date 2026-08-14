@@ -130,6 +130,7 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
 .ams-group { background: alpha(#ffffff, 0.05); border-radius: 10px; padding: 7px 9px; }
 button { border-radius: 10px; padding: 7px 12px; }
+button.cardmenu { background: none; border: none; box-shadow: none; padding: 0 6px; min-height: 0; color: %(secondary)s; font-size: 17px; }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
 progressbar progress { border-radius: 5px; background: #0a9fff; }
@@ -148,11 +149,11 @@ class PrinterCard(Gtk.Frame):
         top = Gtk.Box(spacing=8)
         self.name = Gtk.Label(label=printer.name, xalign=0)
         self.name.get_style_context().add_class("printer-name")
-        drag = Gtk.Label(label="⌄⌃")
+        drag = Gtk.Label(label="↕")
         drag.get_style_context().add_class("meta")
         drag.set_tooltip_text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek"
                               if self.app.language == "pl" else "Drag up/down to reorder printers")
-        menu = Gtk.Button(label="•••")
+        menu = Gtk.Button(label="⋯"); menu.set_relief(Gtk.ReliefStyle.NONE); menu.get_style_context().add_class("cardmenu")
         menu.connect("clicked", self._show_menu)
         top.pack_start(self.name, True, True, 0)
         top.pack_start(drag, False, False, 0)
@@ -269,7 +270,7 @@ class PrinterCard(Gtk.Frame):
         self.percent.set_text(f"{telemetry.progress}%")
         eta = "—" if telemetry.remaining_minutes is None else f"{telemetry.remaining_minutes // 60}h {telemetry.remaining_minutes % 60}m"
         layers = "—" if telemetry.current_layer is None else f"{telemetry.current_layer}/{telemetry.total_layers or '—'}"
-        self.progress_meta.set_text(f"⏱ {eta}    ⧉ {layers}")
+        self.progress_meta.set_text(f"◷ {eta}   ▤ {layers}")
 
         pl = self.app.language == "pl"
 

@@ -14,7 +14,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Install GTK
-        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-3.0 xvfb fonts-dejavu-core
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-3.0 xvfb fonts-noto-core fonts-dejavu-core
       - name: Render dashboard preview
         run: xvfb-run -a env PYTHONPATH=linux python3 linux/scripts/render_preview.py linux-preview.png
       - name: Upload preview
