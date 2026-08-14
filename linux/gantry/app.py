@@ -142,6 +142,10 @@ progressbar progress { border-radius: 5px; background: #0a9fff; }
 class PrinterCard(Gtk.Frame):
     def __init__(self, app: "Gantry", printer: Printer) -> None:
         super().__init__()
+        # A GtkFrame draws its own etched, square border by default — kill it so only the rounded
+        # CSS card border shows (otherwise a hard white rectangle boxes every card).
+        self.set_shadow_type(Gtk.ShadowType.NONE)
+        self.set_label(None)
         self.app, self.printer = app, printer
         self.get_style_context().add_class("card")
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
