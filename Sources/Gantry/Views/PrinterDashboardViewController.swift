@@ -18,6 +18,7 @@ final class PrinterDashboardViewController: NSViewController {
     private let onPreferredContentSize: (NSSize) -> Void
     private let cardsStack = NSStackView()
     private let summaryLabel = NSTextField(labelWithString: "")
+    private let footerLabel = NSTextField(labelWithString: "")
     private let resetButton = NSButton()
     private let compactButton = NSButton()
     private var subscription: AnyCancellable?
@@ -122,10 +123,17 @@ final class PrinterDashboardViewController: NSViewController {
         scroll.autohidesScrollers = true
         scroll.documentView = document
 
+        // A light, unobtrusive tagline under the cards.
+        footerLabel.font = .systemFont(ofSize: 10, weight: .regular)
+        footerLabel.textColor = .tertiaryLabelColor
+        footerLabel.alignment = .center
+        footerLabel.translatesAutoresizingMaskIntoConstraints = false
+
         header.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(header)
         view.addSubview(scroll)
+        view.addSubview(footerLabel)
         NSLayoutConstraint.activate([
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
@@ -134,7 +142,10 @@ final class PrinterDashboardViewController: NSViewController {
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6),
-            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+            scroll.bottomAnchor.constraint(equalTo: footerLabel.topAnchor, constant: -6),
+            footerLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
+            footerLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            footerLabel.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
             document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
             cardsStack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
             cardsStack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
@@ -297,9 +308,9 @@ final class PrinterDashboardViewController: NSViewController {
         view.layoutSubtreeIfNeeded()
         let measuredContent = cardsStack.fittingSize.height
         if measuredContent > 1 {
-            // header(12+36) + gap(6) + scroll bottom inset(8), plus a 4 px hairline so rounding never
-            // leaves a scrollbar — but no more, so the panel hugs its content instead of padding it.
-            let chromeAndInsets: CGFloat = 12 + 36 + 6 + 8 + 4
+            // header(12+36) + gap(6) + footer block(scroll→footer 6 + footer 14 + bottom 8), plus a
+            // 4 px hairline so rounding never leaves a scrollbar — otherwise the panel hugs its content.
+            let chromeAndInsets: CGFloat = 12 + 36 + 6 + 6 + 14 + 8 + 4
             let size = NSSize(width: panelWidth, height: min(1000, chromeAndInsets + measuredContent))
             if abs(size.width - lastReportedContentSize.width) > 0.5
                 || abs(size.height - lastReportedContentSize.height) > 0.5 {
@@ -344,6 +355,8 @@ final class PrinterDashboardViewController: NSViewController {
 
     private func refreshLocalization() {
         let settings = AppSettings.shared
+        footerLabel.stringValue = settings.text("Drukuj spokojnie — wszystko pod kontrolą",
+                                                "Print in peace — everything under control")
         resetButton.title = settings.text("Wyczyść", "Clear")
         resetButton.toolTip = settings.text(
             "Usuń zakończone zadania i stare nazwy plików",

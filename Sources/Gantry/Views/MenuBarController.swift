@@ -53,7 +53,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             DispatchQueue.main.async {
                 self?.popover.appearance = AppSettings.shared.appearance
                 self?.popover.contentViewController?.view.appearance = AppSettings.shared.appearance
-                (self?.popover.contentViewController?.view as? NSVisualEffectView)?.material = AppSettings.shared.panelTransparency.material
+                self?.applyPanelStyle()
                 self?.updateStatusItem()
                 self?.updateProgressItems()
             }
@@ -312,6 +312,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         removeOutsideClickMonitor()
+    }
+
+    // Applied on every show (and on settings change): the vibrancy material plus, for "high", a lower
+    // window alpha so the panel is genuinely more see-through than the plain glass material allows.
+    func popoverDidShow(_ notification: Notification) {
+        applyPanelStyle()
+    }
+
+    private func applyPanelStyle() {
+        let level = AppSettings.shared.panelTransparency
+        (popover.contentViewController?.view as? NSVisualEffectView)?.material = level.material
+        popover.contentViewController?.view.window?.alphaValue = level.windowAlpha
     }
 
     private func showAddPrinter() {

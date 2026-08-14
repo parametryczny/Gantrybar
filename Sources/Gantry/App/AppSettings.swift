@@ -20,8 +20,16 @@ enum PanelTransparency: String, CaseIterable {
     var material: NSVisualEffectView.Material {
         switch self {
         case .low: .popover
-        case .medium: .hudWindow
-        case .high: .underWindowBackground
+        case .medium, .high: .hudWindow
+        }
+    }
+
+    // `.underWindowBackground` renders opaque inside a popover, so "high" reuses the working glass
+    // material and additionally drops the panel's window alpha for a genuinely more see-through look.
+    var windowAlpha: CGFloat {
+        switch self {
+        case .low, .medium: 1.0
+        case .high: 0.82
         }
     }
 }
