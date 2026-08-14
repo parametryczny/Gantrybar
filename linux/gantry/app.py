@@ -118,7 +118,7 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .title { font-size: 18px; font-weight: 700; }
 .subtitle { color: %(secondary)s; font-size: 11px; }
 .card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.05); border-radius: 14px; padding: 11px; }
-.printer-icon { font-size: 13px; margin-right: 1px; }
+.printer-icon { color: #0a9fff; margin-right: 2px; }
 .card.finished { background: #1e382d; border-color: #397b5a; }
 .card.error { background: #3b2428; border-color: #d64b55; }
 .printer-name { font-size: 14px; font-weight: 700; }
@@ -129,7 +129,7 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .status.error { color: #ff5360; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
-.ams-group { background: alpha(#ffffff, 0.05); border-radius: 12px; padding: 9px 11px; }
+.ams-group { background: alpha(#ffffff, 0.07); border-radius: 12px; padding: 9px 11px; }
 button { border-radius: 10px; padding: 7px 12px; }
 button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
 entry { padding: 8px; border-radius: 8px; }
@@ -152,12 +152,12 @@ class PrinterCard(Gtk.Frame):
         self.add(self.box)
         # Header: name + drag handle (chevrons, like macOS) + menu. The whole card is the drag source.
         top = Gtk.Box(spacing=6)
-        icon = Gtk.Label(label="🖨")
+        icon = Gtk.Image.new_from_icon_name("printer-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         icon.get_style_context().add_class("printer-icon")
         self.name = Gtk.Label(label=printer.name, xalign=0)
         self.name.get_style_context().add_class("printer-name")
         top.pack_start(icon, False, False, 0)
-        drag = Gtk.Label(label="↕")
+        drag = Gtk.Label(label="⌄⌃")
         drag.get_style_context().add_class("meta")
         drag.set_tooltip_text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek"
                               if self.app.language == "pl" else "Drag up/down to reorder printers")
