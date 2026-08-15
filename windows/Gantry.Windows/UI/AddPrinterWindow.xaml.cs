@@ -36,6 +36,7 @@ public partial class AddPrinterWindow : Window
             if (editing.Kind != PrinterKind.Bambu)
             {
                 if (editing.Kind == PrinterKind.Klipper) KlipperRadio.IsChecked = true;
+                else if (editing.Kind == PrinterKind.Snapmaker) SnapmakerRadio.IsChecked = true;
                 else PrusaRadio.IsChecked = true;
                 // The key now lives in DPAPI, not the config — prefill from there so editing keeps
                 // it. A legacy config may still carry it inline; prefer that if present.
@@ -49,6 +50,7 @@ public partial class AddPrinterWindow : Window
         BambuRadio.Checked += (_, _) => ApplyKind();
         KlipperRadio.Checked += (_, _) => ApplyKind();
         PrusaRadio.Checked += (_, _) => ApplyKind();
+        SnapmakerRadio.Checked += (_, _) => ApplyKind();
         ScanButton.Click += (_, _) => _store.Scan();
         ImportButton.Click += (_, _) => ImportFromStudio();
         // Reading the slicer config is opt-in: it holds access codes, so gate the button on consent.
@@ -90,6 +92,10 @@ public partial class AddPrinterWindow : Window
         BambuRadio.Content = AppSettings.Text("Bambu Lab", "Bambu Lab");
         KlipperRadio.Content = AppSettings.Text("Klipper (Moonraker)", "Klipper (Moonraker)");
         PrusaRadio.Content = AppSettings.Text("Prusa (PrusaLink)", "Prusa (PrusaLink)");
+        SnapmakerRadio.Content = AppSettings.Text("Snapmaker", "Snapmaker");
+        SnapmakerHint.Text = AppSettings.Text(
+            "Snapmaker 2.0 / Artisan (HTTP, port 8080). Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
+            "Snapmaker 2.0 / Artisan (HTTP, port 8080). After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle.");
         ApiKeyLabel.Text = AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
         CancelButton.Content = AppSettings.Text("Anuluj", "Cancel");
         SaveButton.Content = _editing is null ? AppSettings.Text("Dodaj", "Add") : AppSettings.Text("Zapisz", "Save");
@@ -99,8 +105,9 @@ public partial class AddPrinterWindow : Window
 
     private bool IsKlipper => KlipperRadio.IsChecked == true;
     private bool IsPrusa => PrusaRadio.IsChecked == true;
-    // Klipper and Prusa both connect over HTTP with host/port/API key.
-    private bool UsesHostFields => IsKlipper || IsPrusa;
+    private bool IsSnapmaker => SnapmakerRadio.IsChecked == true;
+    // Klipper, Prusa and Snapmaker all connect over HTTP with a host + port.
+    private bool UsesHostFields => IsKlipper || IsPrusa || IsSnapmaker;
 
     /// <summary>Shows only the fields relevant to the selected printer kind. Klipper/Prusa need a
     /// host, optional port and API key; Bambu needs discovery, serial and access code.</summary>
@@ -111,7 +118,9 @@ public partial class AddPrinterWindow : Window
         SerialLabel.Visibility = SerialBox.Visibility = hostBased ? Visibility.Collapsed : Visibility.Visible;
         CodeLabel.Visibility = CodeBox.Visibility = hostBased ? Visibility.Collapsed : Visibility.Visible;
         PortLabel.Visibility = PortBox.Visibility = Visibility.Visible;   // Bambu too (optional — tunnels)
-        ApiKeyLabel.Visibility = ApiKeyBox.Visibility = hostBased ? Visibility.Visible : Visibility.Collapsed;
+        // Snapmaker authorizes via the touchscreen — no API key field.
+        ApiKeyLabel.Visibility = ApiKeyBox.Visibility = (hostBased && !IsSnapmaker) ? Visibility.Visible : Visibility.Collapsed;
+        SnapmakerHintBox.Visibility = IsSnapmaker ? Visibility.Visible : Visibility.Collapsed;
         HostLabel.Text = hostBased
             ? AppSettings.Text("Adres IP / nazwa hosta", "IP address / host name")
             : AppSettings.Text("Adres IP", "IP address");
@@ -119,7 +128,9 @@ public partial class AddPrinterWindow : Window
             ? AppSettings.Text("Port PrusaLink (domyślnie 80)", "PrusaLink port (default 80)")
             : IsKlipper
                 ? AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)")
-                : AppSettings.Text("Port (zwykle 8883 — zmień przy tunelu, np. socat)", "Port (usually 8883 — change for a tunnel, e.g. socat)");
+                : IsSnapmaker
+                    ? AppSettings.Text("Port Snapmaker (domyślnie 8080)", "Snapmaker port (default 8080)")
+                    : AppSettings.Text("Port (zwykle 8883 — zmień przy tunelu, np. socat)", "Port (usually 8883 — change for a tunnel, e.g. socat)");
         ApiKeyLabel.Text = IsPrusa
             ? AppSettings.Text("Klucz API PrusaLink", "PrusaLink API key")
             : AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
@@ -192,6 +203,7 @@ public partial class AddPrinterWindow : Window
                 if (_editing is not null && _editing.Host != HostBox.Text.Trim())
                     _store.Remove(_editing);
                 if (IsPrusa) _store.AddPrusa(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
+                else if (IsSnapmaker) _store.AddSnapmaker(NameBox.Text, HostBox.Text, port);
                 else _store.AddKlipper(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
             }
             else if (_editing is not null)
@@ -203,7 +215,7 @@ public partial class AddPrinterWindow : Window
             if (_editing is not null)
             {
                 var host = HostBox.Text.Trim();
-                var finalSerial = IsPrusa ? $"prusa-{host}" : IsKlipper ? $"klipper-{host}" : SerialBox.Text.Trim();
+                var finalSerial = IsPrusa ? $"prusa-{host}" : IsKlipper ? $"klipper-{host}" : IsSnapmaker ? $"snapmaker-{host}" : SerialBox.Text.Trim();
                 TrayProgressPreference.SetEnabled(ProgressCheck.IsChecked == true, finalSerial);
             }
             Close();

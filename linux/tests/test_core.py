@@ -8,7 +8,7 @@ from gantry.core import PrinterKind, PrinterState, expand_scan_targets, parse_te
 from gantry.csvimport import parse_printer_csv, template_csv
 from gantry.discovery import parse_ssdp
 from gantry.desktop import installed_slicers
-from gantry.http_clients import parse_cfs, parse_moonraker, parse_prusalink
+from gantry.http_clients import parse_cfs, parse_moonraker, parse_prusalink, parse_snapmaker
 from gantry.mqtt import connect_packet, publish_packet, publish_payload, subscribe_packet
 from gantry.webconfig import config_page, pairing_code, validate_printer_form
 
@@ -141,6 +141,17 @@ class CoreTests(unittest.TestCase):
         )
         self.assertEqual(prusa.remaining_minutes, 30)
         self.assertEqual(prusa.job_name, "demo_prusa.gcode")
+        snap = parse_snapmaker({
+            "status": "RUNNING", "nozzleTemperature": 205, "nozzleTargetTemperature": 210,
+            "heatedBedTemperature": 55, "heatedBedTargetTemperature": 60,
+            "progress": 0.42, "remainingTime": 1200, "fileName": "usb/demo_snap.gcode",
+        })
+        self.assertEqual(snap.state, PrinterState.PRINTING)
+        self.assertEqual(snap.nozzle, 205)
+        self.assertEqual(snap.bed_target, 60)
+        self.assertEqual(snap.progress, 42)            # 0…1 fraction scaled to percent
+        self.assertEqual(snap.remaining_minutes, 20)
+        self.assertEqual(snap.job_name, "demo_snap.gcode")
         cfs = parse_cfs({"boxsInfo": {"materialBoxs": [
             {"type": 0, "materials": [{"type": "PLA", "color": "0fa7c0c", "percent": 82, "selected": 1}]},
             {"type": 1, "materials": [{"type": "ABS", "color": "0000ff", "percent": 30}]},

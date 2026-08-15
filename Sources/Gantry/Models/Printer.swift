@@ -139,6 +139,7 @@ enum PrinterKind: String, Codable, Sendable {
     case bambu
     case klipper
     case prusa
+    case snapmaker
 }
 
 struct SavedPrinter: Codable, Identifiable, Hashable, Sendable {

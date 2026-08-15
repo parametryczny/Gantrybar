@@ -228,6 +228,42 @@ def parse_prusalink(status_payload: bytes | str | dict[str, Any],
     return telemetry
 
 
+def parse_snapmaker(status_payload: bytes | str | dict[str, Any],
+                    previous: Telemetry | None = None) -> Telemetry | None:
+    """Parse Snapmaker's local HTTP /api/v1/status (port 8080). Field names follow Luban's HTTP
+    server; everything is read defensively so a missing key leaves the previous value untouched."""
+    try:
+        root = json.loads(status_payload) if isinstance(status_payload, (bytes, str)) else status_payload
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(root, dict):
+        return None
+    telemetry = _copy(previous)
+    state = str(root.get("status") or root.get("printStatus") or "").upper()
+    telemetry.state = {
+        "RUNNING": PrinterState.PRINTING, "PRINTING": PrinterState.PRINTING,
+        "PAUSED": PrinterState.PAUSED, "PAUSING": PrinterState.PAUSED,
+        "STOPPED": PrinterState.FINISHED, "COMPLETED": PrinterState.FINISHED,
+        "FINISHED": PrinterState.FINISHED, "ERROR": PrinterState.ERROR,
+    }.get(state, PrinterState.IDLE)
+    telemetry.nozzle = _number(root.get("nozzleTemperature"))
+    telemetry.nozzle_target = _number(root.get("nozzleTargetTemperature"))
+    telemetry.bed = _number(root.get("heatedBedTemperature"))
+    telemetry.bed_target = _number(root.get("heatedBedTargetTemperature"))
+    progress = _number(root.get("progress"))
+    if progress is not None:
+        # Luban reports a 0…1 fraction; some firmware sends 0…100. Handle both.
+        percent = progress * 100 if progress <= 1.0 else progress
+        telemetry.progress = min(max(round(percent), 0), 100)
+    remaining = _number(root.get("remainingTime"))
+    if remaining and remaining > 0:
+        telemetry.remaining_minutes = round(remaining / 60)
+    name = str(root.get("fileName") or "")
+    if name:
+        telemetry.job_name = name.replace("\\", "/").rsplit("/", 1)[-1]
+    return telemetry
+
+
 class HttpConnection:
     def __init__(self, printer: Printer, api_key: str | None, on_event: EventHandler) -> None:
         self.printer, self.api_key, self.on_event = printer, api_key, on_event
@@ -238,7 +274,8 @@ class HttpConnection:
 
     def start(self) -> None:
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name=f"http-{self.printer.serial}", daemon=True)
+        target = self._run_snapmaker if self.printer.kind == PrinterKind.SNAPMAKER else self._run
+        self._thread = threading.Thread(target=target, name=f"http-{self.printer.serial}", daemon=True)
         self._thread.start()
         if self.printer.kind == PrinterKind.KLIPPER:
             threading.Thread(target=self._run_cfs, name=f"cfs-{self.printer.serial}", daemon=True).start()
@@ -304,6 +341,72 @@ class HttpConnection:
                     delay = min(delay * 1.7, 30.0)
                 continue
             self._stop.wait(2.0)
+
+    def _run_snapmaker(self) -> None:
+        """Snapmaker's stateful HTTP auth: POST /connect for a token, then poll /status which
+        returns 204 until the user taps Allow on the printer's touchscreen, then 200. The token is
+        kept for the connection's life so only one Allow dialog appears; it dies on power cycle."""
+        token: str | None = None
+        delay = 2.0
+        while not self._stop.is_set():
+            try:
+                if token is None:
+                    token = self._snapmaker_connect()
+                if token is None:
+                    self._stop.wait(2.0)
+                    continue
+                data, code = self._snapmaker_status(token)
+                if code == 200:
+                    if b"not connected" in data.lower():
+                        token = None            # stale token — re-handshake
+                    else:
+                        updated = parse_snapmaker(data, self.telemetry)
+                        if updated:
+                            self.telemetry = updated
+                            self.on_event("connected", None)
+                            self.on_event("telemetry", updated)
+                elif code == 204:
+                    pass                        # waiting for Allow on the printer — keep polling
+                elif code in (401, 403):
+                    self.on_event("disconnected", "Połączenie odrzucone na drukarce Snapmaker")
+                    token = None
+                    self._stop.wait(delay)
+                    continue
+                else:
+                    token = None                # re-handshake on anything unexpected
+                delay = 2.0
+            except (OSError, ValueError, urllib.error.URLError) as error:
+                token = None
+                if not self._stop.is_set():
+                    self.on_event("disconnected", str(error))
+                    self._stop.wait(delay)
+                    delay = min(delay * 1.7, 30.0)
+                continue
+            self._stop.wait(2.0)
+
+    def _snapmaker_connect(self) -> str | None:
+        url = f"http://{self.printer.host}:{self.printer.port}/api/v1/connect"
+        request = urllib.request.Request(url, data=b"", method="POST")
+        request.add_header("Content-Type", "application/x-www-form-urlencoded")
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                if response.status != 200:
+                    return None
+                root = json.loads(response.read())
+        except (OSError, ValueError, urllib.error.URLError):
+            return None
+        token = root.get("token") if isinstance(root, dict) else None
+        return token if token else None
+
+    def _snapmaker_status(self, token: str) -> tuple[bytes, int]:
+        url = f"http://{self.printer.host}:{self.printer.port}/api/v1/status?token={token}"
+        request = urllib.request.Request(url)
+        request.add_header("Cache-Control", "no-cache")
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                return response.read(), response.status
+        except urllib.error.HTTPError as error:
+            return error.read(), error.code
 
     def _run_cfs(self) -> None:
         try:

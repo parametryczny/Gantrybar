@@ -507,7 +507,8 @@ class PrinterDialog(Gtk.Dialog):
 
         box.pack_start(Gtk.Label(label=app.text["kind"], xalign=0), False, False, 0)
         self.kind = Gtk.ComboBoxText()
-        for value, label in (("bambu", "Bambu Lab"), ("klipper", "Klipper / Moonraker"), ("prusa", "Prusa / PrusaLink")):
+        for value, label in (("bambu", "Bambu Lab"), ("klipper", "Klipper / Moonraker"),
+                             ("prusa", "Prusa / PrusaLink"), ("snapmaker", "Snapmaker")):
             self.kind.append(value, label)
         self.kind.set_active_id((printer.kind if printer else PrinterKind.BAMBU).value)
         self.kind.connect("changed", lambda _combo: self._apply_kind())
@@ -571,7 +572,10 @@ class PrinterDialog(Gtk.Dialog):
         kind = self.selected_kind
         self.bambu_section.set_visible(kind == PrinterKind.BAMBU)
         self.rows["serial"].set_visible(kind == PrinterKind.BAMBU)
-        defaults = {PrinterKind.BAMBU: 8883, PrinterKind.KLIPPER: 7125, PrinterKind.PRUSA: 80}
+        # Snapmaker authorizes via the printer's touchscreen — no access code / API key field.
+        self.rows["code"].set_visible(kind != PrinterKind.SNAPMAKER)
+        defaults = {PrinterKind.BAMBU: 8883, PrinterKind.KLIPPER: 7125,
+                    PrinterKind.PRUSA: 80, PrinterKind.SNAPMAKER: 8080}
         if not self.printer or self.printer.kind != kind:
             self.fields["port"].set_text(str(defaults[kind]))
         if kind == PrinterKind.BAMBU:
@@ -580,9 +584,17 @@ class PrinterDialog(Gtk.Dialog):
         elif kind == PrinterKind.KLIPPER:
             self.code_label.set_text(self.app.text["api_optional"])
             self.info.set_text("Moonraker • port 7125. Happy Hare MMU i Creality CFS są wykrywane automatycznie.")
-        else:
+        elif kind == PrinterKind.PRUSA:
             self.code_label.set_text("Klucz API PrusaLink")
             self.info.set_text("PrusaLink • port 80 • połączenie lokalne, bez konta Prusy.")
+        else:
+            self.info.set_text(
+                "Snapmaker 2.0 / Artisan • HTTP, port 8080. Po dodaniu NA EKRANIE DRUKARKI pojawi się "
+                "prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym "
+                "wyłączeniu drukarki."
+                if self.app.language == "pl" else
+                "Snapmaker 2.0 / Artisan • HTTP, port 8080. After adding, the PRINTER SCREEN shows a "
+                "permission request — tap “Allow” to authorize. Re-authorize after each power cycle.")
 
     def start_scan(self) -> None:
         if self.selected_kind != PrinterKind.BAMBU: return
@@ -639,7 +651,8 @@ class PrinterDialog(Gtk.Dialog):
         secret_required = kind in {PrinterKind.BAMBU, PrinterKind.PRUSA}
         if not values["name"] or not values["host"] or not serial or not 1 <= port <= 65535 or (secret_required and not values["code"] and not self.printer):
             self.error.set_text(self.app.text["invalid"]); return None
-        model = {PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa"}[kind]
+        model = {PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper",
+                 PrinterKind.PRUSA: "Prusa", PrinterKind.SNAPMAKER: "Snapmaker"}[kind]
         return Printer(serial, values["name"], values["host"], model=model, port=port, kind=kind), values["code"]
 
 

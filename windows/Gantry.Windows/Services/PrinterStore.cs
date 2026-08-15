@@ -207,6 +207,33 @@ public sealed class PrinterStore
         RaiseUpdated();
     }
 
+    public void AddSnapmaker(string name, string host, int? port)
+    {
+        var cleanHost = host.Trim();
+        if (cleanHost.Length == 0)
+            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
+        var cleanName = name.Trim();
+        // No stored secret: Snapmaker authorizes each session via a token confirmed on the printer's
+        // touchscreen, so there is nothing to keep in DPAPI.
+        var printer = new SavedPrinter
+        {
+            Serial = $"snapmaker-{cleanHost}",
+            Name = cleanName.Length == 0 ? $"Snapmaker {cleanHost}" : cleanName,
+            Model = "Snapmaker",
+            Host = cleanHost,
+            Kind = PrinterKind.Snapmaker,
+            Port = port,
+            ApiKey = null
+        };
+
+        var index = Printers.FindIndex(p => p.Serial == printer.Serial);
+        if (index >= 0) Printers[index] = printer; else Printers.Add(printer);
+        Telemetry[printer.Serial] = new PrinterTelemetry();
+        SavedPrinterStore.Save(Printers);
+        Reconnect(printer);
+        RaiseUpdated();
+    }
+
     public void AddPrusa(string name, string host, int? port, string? apiKey)
     {
         var cleanHost = host.Trim();
@@ -342,6 +369,14 @@ public sealed class PrinterStore
             var moonraker = new MoonrakerClient(HydratedWithSecret(printer), evt => _post(() => Handle(evt, printer.Serial)));
             _clients[printer.Serial] = moonraker;
             moonraker.Start();
+            RaiseUpdated();
+            return;
+        }
+        if (printer.Kind == PrinterKind.Snapmaker)
+        {
+            var snapmaker = new SnapmakerClient(printer, evt => _post(() => Handle(evt, printer.Serial)));
+            _clients[printer.Serial] = snapmaker;
+            snapmaker.Start();
             RaiseUpdated();
             return;
         }

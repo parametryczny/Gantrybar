@@ -27,7 +27,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     private let hostLabel = NSTextField(labelWithString: "")
     private let serialLabel = NSTextField(labelWithString: "")
     private let codeLabel = NSTextField(labelWithString: "")
-    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Klipper", "Prusa"], trackingMode: .selectOne, target: nil, action: nil)
+    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Klipper", "Prusa", "Snapmaker"], trackingMode: .selectOne, target: nil, action: nil)
     private let portField = NSTextField()
     private let apiKeyField = NSTextField()
     private let portLabel = NSTextField(labelWithString: "")
@@ -164,6 +164,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         switch typeControl.selectedSegment {
         case 1: return .klipper
         case 2: return .prusa
+        case 3: return .snapmaker
         default: return .bambu
         }
     }
@@ -179,10 +180,15 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         form.row(at: 4).isHidden = hostBased
         form.row(at: 5).isHidden = hostBased
         form.row(at: 6).isHidden = false   // port shown for every kind (optional for Bambu — tunnels)
-        form.row(at: 7).isHidden = !hostBased
+        form.row(at: 7).isHidden = !hostBased || selectedKind == .snapmaker   // Snapmaker: no API key
         subnetSection.isHidden = hostBased   // extra scan targets apply to Bambu discovery only
         let settings = AppSettings.shared
-        portField.placeholderString = selectedKind == .bambu ? "8883" : (selectedKind == .prusa ? "80" : "7125")
+        switch selectedKind {
+        case .bambu: portField.placeholderString = "8883"
+        case .prusa: portField.placeholderString = "80"
+        case .klipper: portField.placeholderString = "7125"
+        case .snapmaker: portField.placeholderString = "8080"
+        }
         switch selectedKind {
         case .klipper:
             infoLabel.stringValue = settings.text(
@@ -192,6 +198,10 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             infoLabel.stringValue = settings.text(
                 "Podaj adres IP drukarki Prusa (PrusaLink, port 80) i klucz API z ustawień PrusaLink. Bez konta Prusy. Działa też przez VPN — wpisz po prostu adres Tailscale.",
                 "Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account. Works over VPN too — just enter the Tailscale IP.")
+        case .snapmaker:
+            infoLabel.stringValue = settings.text(
+                "Podaj adres IP drukarki Snapmaker (HTTP, port 8080). Obsługa: Snapmaker 2.0 i Artisan. Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę na połączenie — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
+                "Enter the Snapmaker printer IP (HTTP, port 8080). Supports Snapmaker 2.0 and Artisan. After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. You'll need to re-authorize after each power cycle.")
         case .bambu:
             infoLabel.stringValue = settings.text(
                 "Wykrywanie przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. Port zwykle 8883 — zmień tylko przy tunelu (np. socat na kilka drukarek). ",
@@ -411,6 +421,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             case .prusa:
                 try store.addPrusa(name: nameField.stringValue, host: host, port: port, apiKey: apiKeyField.stringValue)
                 dropOldEntryIfIdentifierChanged("prusa-\(host)")
+            case .snapmaker:
+                try store.addSnapmaker(name: nameField.stringValue, host: host, port: port)
+                dropOldEntryIfIdentifierChanged("snapmaker-\(host)")
             case .bambu:
                 if let editingSerial {
                     try store.update(
@@ -431,6 +444,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
                 switch selectedKind {
                 case .klipper: finalSerial = "klipper-\(host)"
                 case .prusa: finalSerial = "prusa-\(host)"
+                case .snapmaker: finalSerial = "snapmaker-\(host)"
                 case .bambu: finalSerial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 MenuBarProgressPreference.setEnabled(progressCheck.state == .on, for: finalSerial)
@@ -476,6 +490,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         case .bambu: typeControl.selectedSegment = 0
         case .klipper: typeControl.selectedSegment = 1
         case .prusa: typeControl.selectedSegment = 2
+        case .snapmaker: typeControl.selectedSegment = 3
         }
         typeControl.isHidden = true          // kind is fixed when editing
         progressCheck.isHidden = false

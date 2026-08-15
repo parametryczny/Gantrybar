@@ -177,7 +177,7 @@ public sealed class NozzleTelemetry
     public NozzleTelemetry Clone() => (NozzleTelemetry)MemberwiseClone();
 }
 
-public enum PrinterKind { Bambu, Klipper, Prusa }
+public enum PrinterKind { Bambu, Klipper, Prusa, Snapmaker }
 
 public sealed class SavedPrinter
 {

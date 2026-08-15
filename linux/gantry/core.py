@@ -22,10 +22,11 @@ class PrinterKind(str, Enum):
     BAMBU = "bambu"
     KLIPPER = "klipper"
     PRUSA = "prusa"
+    SNAPMAKER = "snapmaker"
 
     @property
     def default_port(self) -> int:
-        return {self.BAMBU: 8883, self.KLIPPER: 7125, self.PRUSA: 80}[self]
+        return {self.BAMBU: 8883, self.KLIPPER: 7125, self.PRUSA: 80, self.SNAPMAKER: 8080}[self]
 
 
 @dataclass(slots=True)

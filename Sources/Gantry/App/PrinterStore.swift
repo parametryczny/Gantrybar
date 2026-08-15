@@ -147,6 +147,33 @@ final class PrinterStore: ObservableObject {
         reconnect(printer)
     }
 
+    func addSnapmaker(name: String, host: String, port: Int?) throws {
+        let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanHost.isEmpty else {
+            throw ValidationError("Podaj adres IP drukarki Snapmaker.")
+        }
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let identifier = "snapmaker-\(cleanHost)"
+        // No stored secret: Snapmaker authorizes each session via a token confirmed on the
+        // printer's touchscreen, so there is nothing to keep in the Keychain.
+        let printer = SavedPrinter(
+            serial: identifier,
+            name: cleanName.isEmpty ? "Snapmaker \(cleanHost)" : cleanName,
+            model: "Snapmaker",
+            host: cleanHost,
+            kind: .snapmaker,
+            port: port
+        )
+        if let index = printers.firstIndex(where: { $0.serial == identifier }) {
+            printers[index] = printer
+        } else {
+            printers.append(printer)
+        }
+        telemetry[identifier] = PrinterTelemetry()
+        persistence.save(printers)
+        reconnect(printer)
+    }
+
     @discardableResult
     func importFromBambuStudio() throws -> Int {
         let devices = try BambuStudioConfig.devices()
@@ -241,6 +268,8 @@ final class PrinterStore: ObservableObject {
             client = MoonrakerClient(printer: hydratedWithSecret(printer), onEvent: handler)
         case .prusa:
             client = PrusaLinkClient(printer: hydratedWithSecret(printer), onEvent: handler)
+        case .snapmaker:
+            client = SnapmakerClient(printer: printer, onEvent: handler)
         case .bambu:
             let code: String
             if let sessionCode = sessionCodes[printer.serial] {
