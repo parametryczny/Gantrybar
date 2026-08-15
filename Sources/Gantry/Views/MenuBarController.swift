@@ -4,6 +4,7 @@ import Combine
 @MainActor
 final class MenuBarController: NSObject, NSPopoverDelegate {
     private let store: PrinterStore
+    private static let statusAutosaveName = "GantryStatusItem"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var progressItems: [String: NSStatusItem] = [:]
     private let popover = NSPopover()
@@ -19,6 +20,17 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     init(store: PrinterStore) {
         self.store = store
         super.init()
+
+        // Give the menu-bar item a stable identity so macOS remembers where the user ⌘-drags it —
+        // and keeps that spot across relaunches and reinstalls. Without this, every launch places it
+        // at the far-left of the status area. On a first-ever launch (no saved position) seed a
+        // right-leaning default so it lands near the clock instead of the far left; the user can
+        // still ⌘-drag it anywhere and that choice sticks.
+        let positionKey = "NSStatusItem Preferred Position \(Self.statusAutosaveName)"
+        if UserDefaults.standard.object(forKey: positionKey) == nil {
+            UserDefaults.standard.set(88, forKey: positionKey)
+        }
+        statusItem.autosaveName = Self.statusAutosaveName
 
         let dashboard = PrinterDashboardViewController(
             store: store,
