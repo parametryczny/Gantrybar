@@ -297,7 +297,7 @@ public sealed class TrayIcon : IDisposable
                 ? telemetry.Progress : null;
 
             if (_progressHandles.TryGetValue(serial, out var oldHandle)) DestroyIcon(oldHandle);
-            icon.Icon = BuildProgressIcon(percent, out var handle);
+            icon.Icon = BuildProgressIcon(percent, telemetry?.State ?? PrinterState.Offline, out var handle);
             _progressHandles[serial] = handle;
             icon.Text = percent is int p ? $"{name} — {p}%" : name;
         }
@@ -310,7 +310,7 @@ public sealed class TrayIcon : IDisposable
             _store.Telemetry.TryGetValue(serial, out var tel);
             string name = printer?.Name ?? serial;
             int? percent = tel is { State: PrinterState.Printing or PrinterState.Paused } ? tel.Progress : null;
-            SetMainIcon(BuildProgressIcon(percent, out var handle), handle);
+            SetMainIcon(BuildProgressIcon(percent, tel?.State ?? PrinterState.Offline, out var handle), handle);
             _notifyIcon.Text = percent is int p ? $"{name} — {p}%" : name;
         }
         else
@@ -329,20 +329,31 @@ public sealed class TrayIcon : IDisposable
         if (_progressHandles.Remove(serial, out var handle)) DestroyIcon(handle);
     }
 
-    private static Icon BuildProgressIcon(int? percent, out IntPtr handle)
+    // Tray-icon fill by printer state, matching the dashboard dots: blue printing, green ready/done,
+    // orange paused, red error, grey offline.
+    private static Color StatusColor(PrinterState state) => state switch
+    {
+        PrinterState.Printing => Color.FromArgb(235, 10, 132, 255),
+        PrinterState.Finished => Color.FromArgb(235, 52, 199, 89),
+        PrinterState.Idle => Color.FromArgb(235, 52, 199, 89),
+        PrinterState.Paused => Color.FromArgb(235, 255, 159, 10),
+        PrinterState.Error => Color.FromArgb(235, 255, 69, 58),
+        _ => Color.FromArgb(230, 90, 90, 96),
+    };
+
+    private static Icon BuildProgressIcon(int? percent, PrinterState state, out IntPtr handle)
     {
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
-            var fill = percent is null
-                ? Color.FromArgb(230, 90, 90, 96)
-                : Color.FromArgb(235, 10, 132, 255);
-            using var back = new SolidBrush(fill);
+            using var back = new SolidBrush(StatusColor(state));
             using var path = RoundedRect(new Rectangle(1, 1, 30, 30), 7);
             g.FillPath(back, path);
-            string text = percent is int p ? (p >= 100 ? "OK" : p.ToString()) : "–";
+            string text = state == PrinterState.Error ? "!"
+                : percent is int p ? (p >= 100 ? "OK" : p.ToString())
+                : "–";
             using var font = new Font("Segoe UI", text.Length >= 3 ? 11 : 15, FontStyle.Bold, GraphicsUnit.Pixel);
             using var brush = new SolidBrush(Color.FromArgb(255, 245, 245, 247));
             var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
