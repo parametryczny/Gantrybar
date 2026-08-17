@@ -61,9 +61,14 @@ public partial class DashboardWindow : Window
         var above = anchor.TranslatePoint(new Point(anchor.ActualWidth, 0), MenuLayer);
 
         double left = Math.Max(4, below.X - menuWidth);
-        double top = below.Y + 2;
-        if (top + menuHeight > MenuLayer.ActualHeight - 4)   // would be clipped at the bottom → flip up
-            top = Math.Max(4, above.Y - menuHeight - 2);
+        // Prefer opening ABOVE the "…" button: the panel sits at the bottom of the screen, so there's
+        // usually more room upward and the menu doesn't cover the card. Fall back to below only when
+        // up would clip the top; clamp inside the layer either way so it's never cut off.
+        double up = above.Y - menuHeight - 2;
+        double down = below.Y + 2;
+        double top = up >= 4 ? up : down;
+        if (top + menuHeight > MenuLayer.ActualHeight - 4)
+            top = Math.Max(4, MenuLayer.ActualHeight - menuHeight - 4);
         menu.Margin = new Thickness(left, top, 0, 0);
     }
 
@@ -204,14 +209,19 @@ public partial class DashboardWindow : Window
             foreach (var kv in live) _views[kv.Key] = kv.Value;
             _renderedSerials = serials; _renderedCompact = compact;
 
-            // Two-column expanded grid: a lone last card spans the full width (like the macOS dock).
+            // A lone printer (or the compact list) uses a single narrow column so the window isn't
+            // needlessly wide; two or more expanded cards use two columns like the macOS dock.
+            bool singleColumn = compact || _store.Printers.Count <= 1;
+            Width = singleColumn ? 540 : 640;
+
             if (!compact)
             {
                 var roots = _store.Printers
                     .Select(p => live[p.Serial].Root as FrameworkElement)
                     .Where(r => r is { }).Select(r => r!).ToList();
                 for (int i = 0; i < roots.Count; i++)
-                    roots[i].Width = (i == roots.Count - 1 && roots.Count % 2 == 1) ? 594 : 290;
+                    roots[i].Width = singleColumn ? 500
+                        : (i == roots.Count - 1 && roots.Count % 2 == 1) ? 594 : 290;
             }
         }
 
@@ -246,10 +256,14 @@ public partial class DashboardWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (!IsVisible) return;
-            double content = _store.Printers.Count == 0 ? 60 : CardsPanel.DesiredSize.Height;
-            if (content <= 0) return;
+            // Measure the whole panel (header + cards + footer) at the current width to get the exact
+            // height it needs, so the window fits without a scrollbar until it hits the work-area cap.
+            // Measuring DesiredSize (not ActualHeight) avoids the feedback loop that grew the window.
+            PanelBody.Measure(new Size(Width, double.PositiveInfinity));
+            double desired = PanelBody.DesiredSize.Height + 2;   // tiny buffer so Auto never adds a bar
+            if (desired <= 0) return;
             double max = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
-            double target = Math.Min(max, 84 + content);
+            double target = Math.Min(max, desired);
             if (Math.Abs(target - Height) < 1) return;
             Height = target;
             var area = SystemParameters.WorkArea;
