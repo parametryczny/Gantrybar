@@ -166,6 +166,13 @@ public static class AppSettings
         set => Defaults.SetBool("spoolbase-enabled", value);
     }
 
+    // Download and install new releases automatically instead of only notifying about them.
+    public static bool AutoUpdate
+    {
+        get => Defaults.GetBool("auto-update", false);
+        set => Defaults.SetBool("auto-update", value);
+    }
+
     public static bool NotifyPrintFinished
     {
         get => Defaults.GetBool("notifications-print-finished", true);

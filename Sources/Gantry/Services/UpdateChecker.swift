@@ -1,14 +1,17 @@
 import Foundation
 
-/// Periodically asks GitHub whether a newer release exists and, if so, posts one notification per
-/// version. Tapping the notification opens the install flow (see NotificationService routing).
+/// Periodically asks GitHub whether a newer release exists. With auto-update off it posts one
+/// notification per version (tap to install). With auto-update on it downloads, verifies the
+/// signature and installs silently, then the relaunched app confirms it (announceInstalledIfPending).
 @MainActor
 enum UpdateChecker {
     private static let notifiedKey = "update-notified-version"
+    private static let installedPendingKey = "update-installed-pending"
     private static var timer: Timer?
 
     /// Checks shortly after launch and every six hours thereafter.
     static func start() {
+        announceInstalledIfPending()
         Task { await checkOnce() }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
@@ -17,19 +20,49 @@ enum UpdateChecker {
     }
 
     static func checkOnce() async {
-        guard !QuietHours.isActive() else { return }   // don't notify (or mark) during quiet hours
         guard let release = try? await UpdateService.latestRelease(),
               UpdateService.isNewer(release.version, than: UpdateService.currentVersion) else { return }
+        let settings = AppSettings.shared
+
+        if settings.autoUpdate {
+            // Remember the target so the relaunched app can confirm the install; downloadAndInstall
+            // verifies the signature and terminates this process on success.
+            BambuDefaults.shared.set(release.version, forKey: installedPendingKey)
+            do {
+                try await UpdateService.downloadAndInstall(release)
+            } catch {
+                BambuDefaults.shared.removeObject(forKey: installedPendingKey)
+                guard !QuietHours.isActive() else { return }
+                NotificationService.post(
+                    title: settings.text("Aktualizacja nie powiodła się", "Update failed"),
+                    body: error.localizedDescription,
+                    userInfo: ["type": "update"])
+            }
+            return
+        }
+
+        guard !QuietHours.isActive() else { return }   // don't notify (or mark) during quiet hours
         // Only notify once per version so we don't nag on every check.
         guard BambuDefaults.shared.string(forKey: notifiedKey) != release.version else { return }
         BambuDefaults.shared.set(release.version, forKey: notifiedKey)
-
-        let settings = AppSettings.shared
         NotificationService.post(
             title: settings.text("Dostępna aktualizacja Gantry", "Gantry update available"),
             body: settings.text("Wersja \(release.version) jest do pobrania. Kliknij, aby zainstalować.",
                                 "Version \(release.version) is available. Click to install."),
-            userInfo: ["type": "update"]
-        )
+            userInfo: ["type": "update"])
+    }
+
+    /// Called at launch: if the app was just auto-installed, confirm it's done and verified. Only
+    /// fires when the running version matches the one we installed, so a failed swap stays silent.
+    static func announceInstalledIfPending() {
+        guard let pending = BambuDefaults.shared.string(forKey: installedPendingKey) else { return }
+        BambuDefaults.shared.removeObject(forKey: installedPendingKey)
+        guard pending == UpdateService.currentVersion else { return }
+        let settings = AppSettings.shared
+        NotificationService.post(
+            title: settings.text("Zaktualizowano Gantry", "Gantry updated"),
+            body: settings.text("Zainstalowano wersję \(pending). Podpis zweryfikowany — wszystko OK.",
+                                "Installed version \(pending). Signature verified — all good."),
+            userInfo: ["type": "updated"])
     }
 }

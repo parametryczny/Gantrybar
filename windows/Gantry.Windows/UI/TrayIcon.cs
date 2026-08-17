@@ -38,10 +38,27 @@ public sealed class TrayIcon : IDisposable
         };
         RefreshTooltip();
         UpdateProgressIcons();
+        AnnounceInstalledIfPending();
         _ = RunUpdateChecksAsync();
     }
 
     private string? _pendingUpdateUrl;
+
+    /// <summary>If we just auto-installed, confirm it (and whether the hash checked out) on relaunch.</summary>
+    private void AnnounceInstalledIfPending()
+    {
+        try
+        {
+            if (UpdateChecker.TakePendingInstalled() is not { } inst) return;
+            var body = inst.Verified
+                ? AppSettings.Text($"Zainstalowano wersję {inst.Version}. Hash zweryfikowany — wszystko OK.",
+                                   $"Installed version {inst.Version}. Hash verified — all good.")
+                : AppSettings.Text($"Zainstalowano wersję {inst.Version}. Wszystko OK.",
+                                   $"Installed version {inst.Version}. All good.");
+            ShowNotification(AppSettings.Text("Zaktualizowano Gantry", "Gantry updated"), body, null);
+        }
+        catch (Exception ex) { Gantry.App.LogError("UpdateAnnounce", ex); }
+    }
 
     private async Task RunUpdateChecksAsync()
     {
@@ -51,17 +68,32 @@ public sealed class TrayIcon : IDisposable
             {
                 if (!QuietHours.IsActive())
                 {
-                var release = await UpdateChecker.CheckAsync();
-                if (release is not null)
-                {
-                    UpdateChecker.MarkNotified(release.Version);
-                    _pendingUpdateUrl = release.PageUrl;
-                    ShowNotification(
-                        AppSettings.Text("Dostępna aktualizacja Gantry", "Gantry update available"),
-                        AppSettings.Text($"Wersja {release.Version} jest do pobrania. Kliknij, aby otworzyć stronę.",
-                                         $"Version {release.Version} is available. Click to open the page."),
-                        null);
-                }
+                    if (AppSettings.AutoUpdate)
+                    {
+                        var latest = await UpdateChecker.LatestAsync();
+                        if (latest is { IsNewer: true } l && !string.IsNullOrEmpty(l.Release.SetupUrl)
+                            && await UpdateChecker.DownloadAndInstallAsync(l.Release))
+                        {
+                            // The helper will install and relaunch once we exit.
+                            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                                System.Windows.Application.Current.Shutdown());
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        var release = await UpdateChecker.CheckAsync();
+                        if (release is not null)
+                        {
+                            UpdateChecker.MarkNotified(release.Version);
+                            _pendingUpdateUrl = release.PageUrl;
+                            ShowNotification(
+                                AppSettings.Text("Dostępna aktualizacja Gantry", "Gantry update available"),
+                                AppSettings.Text($"Wersja {release.Version} jest do pobrania. Kliknij, aby otworzyć stronę.",
+                                                 $"Version {release.Version} is available. Click to open the page."),
+                                null);
+                        }
+                    }
                 }
             }
             catch (Exception ex) { Gantry.App.LogError("UpdateCheck", ex); }

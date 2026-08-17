@@ -23,6 +23,8 @@ final class SettingsWindowController: NSWindowController {
     private let closeButton = NSButton()
     private let updateButton = NSButton()
     private let updateStatusLabel = NSTextField(labelWithString: "")
+    private let updatesTitleLabel = NSTextField(labelWithString: "")
+    private let autoUpdateCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notificationsLabel = NSTextField(labelWithString: "")
     private let notifyFinishedCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notifyErrorCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
@@ -151,10 +153,36 @@ final class SettingsWindowController: NSWindowController {
         updateStatusLabel.textColor = .secondaryLabelColor
         updateStatusLabel.font = .systemFont(ofSize: 11)
         updateStatusLabel.lineBreakMode = .byTruncatingTail
-        let updateRow = NSStackView(views: [updateButton, NSView(), updateStatusLabel])
-        updateRow.orientation = .horizontal
-        updateRow.alignment = .centerY
-        updateRow.spacing = 8
+        updateStatusLabel.maximumNumberOfLines = 2
+        updatesTitleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        autoUpdateCheck.target = self
+        autoUpdateCheck.action = #selector(autoUpdateToggled)
+
+        // Dedicated "Updates" card: check button + status on one row, the auto-install toggle below.
+        let checkRow = NSStackView(views: [updateButton, NSView(), updateStatusLabel])
+        checkRow.orientation = .horizontal
+        checkRow.alignment = .centerY
+        checkRow.spacing = 8
+        let updatesStack = NSStackView(views: [updatesTitleLabel, checkRow, autoUpdateCheck])
+        updatesStack.orientation = .vertical
+        updatesStack.alignment = .leading
+        updatesStack.spacing = 8
+        updatesStack.translatesAutoresizingMaskIntoConstraints = false
+        updatesStack.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+        let updateRow = NSView()
+        updateRow.wantsLayer = true
+        updateRow.layer?.cornerRadius = 12
+        updateRow.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.05).cgColor
+        updateRow.layer?.borderWidth = 0.5
+        updateRow.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.25).cgColor
+        updateRow.addSubview(updatesStack)
+        NSLayoutConstraint.activate([
+            updatesStack.leadingAnchor.constraint(equalTo: updateRow.leadingAnchor),
+            updatesStack.trailingAnchor.constraint(equalTo: updateRow.trailingAnchor),
+            updatesStack.topAnchor.constraint(equalTo: updateRow.topAnchor),
+            updatesStack.bottomAnchor.constraint(equalTo: updateRow.bottomAnchor),
+            checkRow.widthAnchor.constraint(equalTo: updatesStack.widthAnchor, constant: -28)
+        ])
 
         notificationsLabel.textColor = .secondaryLabelColor
         let notificationChecks = [notifyFinishedCheck, notifyErrorCheck, notifyPausedCheck, notifyLowFilamentCheck, notifyHumidityCheck]
@@ -260,7 +288,11 @@ final class SettingsWindowController: NSWindowController {
             "Dobrą kawką nie pogardzę, a ta wirtualna daje mi kofeinowego kopa do działania nad kolejnymi projektami! 🚀 Jeśli chcesz dorzucić się do mojego kolejnego kubka i wesprzeć moje działania, kliknij „Wesprzyj projekt”.",
             "I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
         closeButton.title = settings.text("Gotowe", "Done")
+        updatesTitleLabel.stringValue = settings.text("Aktualizacje", "Updates")
         updateButton.title = settings.text("Sprawdź aktualizacje", "Check for updates")
+        autoUpdateCheck.title = settings.text("Automatycznie pobieraj i instaluj aktualizacje",
+                                              "Download and install updates automatically")
+        autoUpdateCheck.state = settings.autoUpdate ? .on : .off
     }
 
     @objc private func languageChanged() {
@@ -303,6 +335,10 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func spoolbaseToggled() {
         AppSettings.shared.spoolbaseEnabled = spoolbaseSwitch.state == .on
+    }
+
+    @objc private func autoUpdateToggled() {
+        AppSettings.shared.autoUpdate = autoUpdateCheck.state == .on
     }
 
     @objc private func notificationToggled() {
