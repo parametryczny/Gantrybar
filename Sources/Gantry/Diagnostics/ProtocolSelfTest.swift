@@ -156,16 +156,18 @@ enum ProtocolSelfTest {
 
         // Single nozzle collapses to one entry; dual nozzle keeps L/R and survives a partial report.
         if value.nozzles.map(\.position) != [.single] { failures.append("single nozzle not represented as one entry") }
+        // On the H2D/X2D the LEFT (main) nozzle is id 1 and the RIGHT is id 0, so with id 0 = 245
+        // and id 1 = 42 the left reads 42 and the right reads 245.
         let dualJSON = Data(#"{"print":{"device":{"extruder":{"info":[{"id":0,"temp":16056565},{"id":1,"temp":42}]}}}}"#.utf8)
         guard let dual = BambuStatusParser.telemetry(from: dualJSON) else {
             failures.append("dual-nozzle JSON was not parsed")
             return
         }
-        if dual.nozzles.first(where: { $0.position == .left })?.currentTemperature != 245 { failures.append("wrong left nozzle temperature") }
-        if dual.nozzles.first(where: { $0.position == .right })?.currentTemperature != 42 { failures.append("wrong right nozzle temperature") }
+        if dual.nozzles.first(where: { $0.position == .left })?.currentTemperature != 42 { failures.append("wrong left nozzle temperature") }
+        if dual.nozzles.first(where: { $0.position == .right })?.currentTemperature != 245 { failures.append("wrong right nozzle temperature") }
         let partialNoNozzle = Data(#"{"print":{"mc_percent":10}}"#.utf8)
         let afterNozzle = BambuStatusParser.telemetry(from: partialNoNozzle, previous: dual)
-        if afterNozzle?.nozzles.first(where: { $0.position == .right })?.currentTemperature != 42 {
+        if afterNozzle?.nozzles.first(where: { $0.position == .right })?.currentTemperature != 245 {
             failures.append("second nozzle zeroed on partial report")
         }
 
