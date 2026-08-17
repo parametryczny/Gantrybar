@@ -52,8 +52,10 @@ public partial class DashboardWindow : Window
         MenuLayer.Children.Add(menu);
         MenuLayer.Visibility = Visibility.Visible;
 
-        // Measure the menu synchronously — this is always valid, unlike ActualHeight/DesiredSize read
-        // straight after flipping Visibility (which returned 0 and threw the menu into a corner).
+        // Reset the positioning margin from any previous open BEFORE measuring: WPF's DesiredSize
+        // INCLUDES Margin, so a reused menu still carrying the last Thickness(left, top, …) measured
+        // far too big on the second open and got clamped into a corner. This was the real bug.
+        menu.Margin = new Thickness(0);
         menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double menuHeight = menu.DesiredSize.Height;
         double menuWidth = Math.Max(menu.DesiredSize.Width, 180);
