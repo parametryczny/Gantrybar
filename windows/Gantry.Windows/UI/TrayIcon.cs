@@ -250,14 +250,22 @@ public sealed class TrayIcon : IDisposable
                 _flyoutTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
                 _flyoutTimer.Tick += (_, _) =>
                 {
-                    if (_flyout is { IsVisible: true } && !_flyout.IsMouseOver
-                        && (DateTime.Now - _lastIconHover).TotalMilliseconds > 600)
+                    if (_flyout is not { IsVisible: true }) return;
+                    if (!_flyout.IsMouseOver && (DateTime.Now - _lastIconHover).TotalMilliseconds > 600)
+                    {
                         _flyout.Hide();
+                        return;
+                    }
+                    _flyout.SetItems(PinnedFlyoutItems());   // refresh while open, at timer cadence (no flicker)
                 };
                 _flyoutTimer.Start();
             }
-            _flyout.SetItems(items);
-            if (!_flyout.IsVisible) _flyout.Show();
+            // Only (re)build + show when it isn't already up — rebuilding on every MouseMove flickered.
+            if (!_flyout.IsVisible)
+            {
+                _flyout.SetItems(items);
+                _flyout.Show();
+            }
         }
         catch (Exception ex) { Gantry.App.LogError("TrayFlyout", ex); }
     }
@@ -347,7 +355,8 @@ public sealed class TrayIcon : IDisposable
             if (_progressHandles.TryGetValue(serial, out var oldHandle)) DestroyIcon(oldHandle);
             icon.Icon = BuildProgressIcon(percent, telemetry?.State ?? PrinterState.Offline, out var handle);
             _progressHandles[serial] = handle;
-            icon.Text = percent is int p ? $"{name} — {p}%" : name;
+            _ = name;
+            icon.Text = "";   // the hover flyout replaces the native tooltip (avoids both showing at once)
         }
 
         // Main icon: the first pinned printer's live progress, or the Gantry logo when none are pinned.
@@ -359,11 +368,12 @@ public sealed class TrayIcon : IDisposable
             string name = printer?.Name ?? serial;
             int? percent = tel is { State: PrinterState.Printing or PrinterState.Paused } ? tel.Progress : null;
             SetMainIcon(BuildProgressIcon(percent, tel?.State ?? PrinterState.Offline, out var handle), handle);
-            _notifyIcon.Text = percent is int p ? $"{name} — {p}%" : name;
+            _ = (name, percent);
+            _notifyIcon.Text = "";   // pinned: the hover flyout replaces the native tooltip
         }
         else
         {
-            SetMainIcon(BuildIcon(out var handle), handle);   // back to the Gantry logo; tooltip via RefreshTooltip
+            SetMainIcon(BuildIcon(out var handle), handle);   // Gantry logo; native tooltip via RefreshTooltip
         }
     }
 
