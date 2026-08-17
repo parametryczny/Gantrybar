@@ -51,24 +51,26 @@ public partial class DashboardWindow : Window
         menu.VerticalAlignment = VerticalAlignment.Top;
         MenuLayer.Children.Add(menu);
         MenuLayer.Visibility = Visibility.Visible;
-        // Force a layout pass NOW so MenuLayer.ActualHeight and the menu's DesiredSize are real.
-        // Reading them straight after flipping Visibility gave 0 (layout hadn't run), which pinned
-        // the menu to the top of the window — the "random placement" you saw.
-        MenuLayer.UpdateLayout();
 
-        double layerHeight = MenuLayer.ActualHeight;
-        double menuHeight = menu.DesiredSize.Height > 0 ? menu.DesiredSize.Height : menu.ActualHeight;
+        // Measure the menu synchronously — this is always valid, unlike ActualHeight/DesiredSize read
+        // straight after flipping Visibility (which returned 0 and threw the menu into a corner).
+        menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double menuHeight = menu.DesiredSize.Height;
         double menuWidth = Math.Max(menu.DesiredSize.Width, 180);
+
+        // Vertical bound from the panel root, which is always laid out while the window is shown —
+        // MenuLayer.ActualHeight can still read 0 the frame it becomes visible.
+        double bound = PanelBody.ActualHeight > 1 ? PanelBody.ActualHeight : ActualHeight;
         var below = anchor.TranslatePoint(new Point(anchor.ActualWidth, anchor.ActualHeight), MenuLayer);
         var above = anchor.TranslatePoint(new Point(anchor.ActualWidth, 0), MenuLayer);
 
-        // Right-align the menu under the "…" button; open downward, but flip above the button when
-        // that would run past the bottom. Clamp inside the layer so it's always fully visible.
+        // Right-align the menu under the "…" button; open downward, but flip above it when that would
+        // run past the bottom. Clamp inside the panel so it's always fully visible next to its card.
         double left = Math.Max(4, below.X - menuWidth);
         double top = below.Y + 2;
-        if (top + menuHeight > layerHeight - 4)
+        if (top + menuHeight > bound - 4)
             top = above.Y - menuHeight - 2;
-        top = Math.Max(4, Math.Min(top, layerHeight - menuHeight - 4));
+        top = Math.Max(4, Math.Min(top, bound - menuHeight - 4));
         menu.Margin = new Thickness(left, top, 0, 0);
     }
 
