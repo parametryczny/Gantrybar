@@ -72,9 +72,9 @@ def main(out_path: str) -> None:
 
     defs = [
         (Printer(serial="X1", name="Bambu 3058", host="1.2.3.4", kind=PrinterKind.BAMBU),
-         tel(False, [ams_a, ext_x1], "SPIRO 63 MM", 76, 185)),
+         tel(False, [ams_a, ext_x1], "demo_1", 76, 185)),
         (Printer(serial="P2S", name="P1S", host="1.2.3.4", kind=PrinterKind.BAMBU),
-         tel(False, [ams_ht, ext_p2s], "ADAPTER-PVC110-SPIRO100", 71, 113)),
+         tel(False, [ams_ht, ext_p2s], "demo_2", 71, 113)),
     ]
 
     grid = Gtk.Grid(column_spacing=10, row_spacing=10, margin=12)
