@@ -4,7 +4,7 @@ import Combine
 @MainActor
 final class MenuBarController: NSObject, NSPopoverDelegate {
     private let store: PrinterStore
-    private static let statusAutosaveName = "GantryStatusItem"
+    private static let statusAutosaveName = "GantryStatusItemV2"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var progressItems: [String: NSStatusItem] = [:]
     private let popover = NSPopover()
@@ -83,37 +83,61 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// The status-bar button to anchor menus/popovers to. When printers are pinned the main Gantry
+    /// icon is hidden, so fall back to the first visible pinned indicator.
+    private var anchorButton: NSStatusBarButton? {
+        statusItem.isVisible ? statusItem.button : progressItems.values.first?.button
+    }
+
     func showDashboard() {
-        guard let button = statusItem.button, !popover.isShown else { return }
+        guard let button = anchorButton, !popover.isShown else { return }
         NSApp.activate(ignoringOtherApps: true)
         popover.appearance = AppSettings.shared.appearance
         popover.contentViewController?.view.appearance = AppSettings.shared.appearance
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
-    private func updateStatusItem() {
-        guard let button = statusItem.button else { return }
-        button.title = ""
-        button.image = GantryLogo.statusItemImage(height: 14)
-        button.imagePosition = .imageOnly
-        button.toolTip = store.activePrintCount > 0
-            ? AppSettings.shared.text("Gantry — drukuje: \(store.activePrintCount)", "Gantry — printing: \(store.activePrintCount)")
-            : "Gantry"
+    /// Pinned printers, in the dashboard's order. The first one rides on the MAIN status item (so it
+    /// replaces the Gantry icon in place, near the clock); any others get their own extra items.
+    private func orderedPinned() -> [String] {
+        let valid = store.printers.map(\.serial)
+        MenuBarProgressPreference.prune(keeping: valid)
+        let pinnedSet = Set(MenuBarProgressPreference.serials())
+        return valid.filter(pinnedSet.contains)
     }
 
-    /// Adds/removes/updates one extra status item per printer pinned to the menu bar, showing its
-    /// live progress. Reconciled on every store change so it follows added/removed/renamed printers.
-    private func updateProgressItems() {
-        let validSerials = store.printers.map(\.serial)
-        MenuBarProgressPreference.prune(keeping: validSerials)
-        let pinned = Set(MenuBarProgressPreference.serials()).intersection(validSerials)
+    private func updateStatusItem() {
+        guard let button = statusItem.button else { return }
+        if let first = orderedPinned().first {
+            // The main icon becomes the first pinned printer's live progress — no separate extra icon,
+            // and it keeps the main item's spot next to the clock.
+            let printer = store.printers.first { $0.serial == first }
+            button.image = nil
+            button.imagePosition = .noImage
+            button.title = progressTitle(name: printer?.name ?? first, telemetry: store.telemetry[first])
+            button.toolTip = printer?.name
+        } else {
+            button.title = ""
+            button.image = GantryLogo.statusItemImage(height: 14)
+            button.imagePosition = .imageOnly
+            button.toolTip = store.activePrintCount > 0
+                ? AppSettings.shared.text("Gantry — drukuje: \(store.activePrintCount)", "Gantry — printing: \(store.activePrintCount)")
+                : "Gantry"
+        }
+    }
 
-        for (serial, item) in progressItems where !pinned.contains(serial) {
+    /// One extra status item per pinned printer BEYOND the first (the first rides on the main icon).
+    /// Reconciled on every store change so it follows added/removed/renamed printers.
+    private func updateProgressItems() {
+        let extras = Array(orderedPinned().dropFirst())
+        let extrasSet = Set(extras)
+
+        for (serial, item) in progressItems where !extrasSet.contains(serial) {
             NSStatusBar.system.removeStatusItem(item)
             progressItems[serial] = nil
         }
-        for serial in pinned {
-            let item = progressItems[serial] ?? makeProgressItem()
+        for serial in extras {
+            let item = progressItems[serial] ?? makeProgressItem(serial: serial)
             progressItems[serial] = item
             guard let button = item.button else { continue }
             let printer = store.printers.first { $0.serial == serial }
@@ -122,10 +146,22 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
     }
 
-    private func makeProgressItem() -> NSStatusItem {
+    private func makeProgressItem(serial: String) -> NSStatusItem {
+        // Give each indicator a stable identity + a right-leaning seed position so it lands near the
+        // clock (where the main icon sat), not at the far-left end of the status area. macOS remembers
+        // any later ⌘-drag per autosaveName.
+        let autosave = "GantryProgress-\(serial)"
+        let positionKey = "NSStatusItem Preferred Position \(autosave)"
+        if UserDefaults.standard.object(forKey: positionKey) == nil {
+            UserDefaults.standard.set(88, forKey: positionKey)
+        }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = autosave
         item.button?.target = self
         item.button?.action = #selector(progressItemClicked(_:))
+        // The pinned indicator replaces the main Gantry icon, so it must also expose the app menu on
+        // right-click (Settings, Quit, …), not just open the popover on left-click.
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         return item
     }
 
@@ -138,6 +174,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func progressItemClicked(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            if popover.isShown { closePopover() }
+            showContextMenu(relativeTo: sender)
+            return
+        }
         if popover.isShown { closePopover(); return }
         popover.appearance = AppSettings.shared.appearance
         popover.contentViewController?.view.appearance = AppSettings.shared.appearance
@@ -177,7 +218,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         if settings.spoolbaseEnabled {
             menu.addItem(row(icon: "shippingbox.fill",
                              title: settings.text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock")) { [weak self] in
-                guard let button = self?.statusItem.button else { return }
+                guard let button = self?.anchorButton else { return }
                 self?.spoolbase.toggle(from: button)
             })
         }
@@ -295,7 +336,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
 
     @objc private func showPopoverFromMenu() {
-        guard let button = statusItem.button else { return }
+        guard let button = anchorButton else { return }
         popover.appearance = AppSettings.shared.appearance
         popover.contentViewController?.view.appearance = AppSettings.shared.appearance
         NSApp.activate(ignoringOtherApps: true)
