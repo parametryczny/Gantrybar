@@ -249,17 +249,24 @@ public partial class DashboardWindow : Window
     /// <summary>Opens the add-printer dialog — same as the panel's + button (used from the tray menu).</summary>
     public void OpenAddPrinter() => OpenAddWindow();
 
+    /// <summary>Opens the edit dialog for a specific printer (used from a pinned tray icon's menu).</summary>
+    public void OpenEditPrinter(SavedPrinter printer) => new AddPrinterWindow(_store, printer) { Owner = this }.ShowDialog();
+
     private readonly Dictionary<string, ICardView> _views = new();
     private List<string> _renderedSerials = new();
     private bool? _renderedCompact;
 
     // Full view fits up to 8 printers; above 8 defaults to a compact one-line list. A manual
     // toggle overrides and is remembered.
-    private bool UseCompactMode()
+    private bool UseCompactMode(int count)
     {
-        if (_store.Printers.Count < 4) return false;
-        return AppSettings.CompactModeChosen ? AppSettings.CompactMode : _store.Printers.Count > 8;
+        if (count < 4) return false;
+        return AppSettings.CompactModeChosen ? AppSettings.CompactMode : count > 8;
     }
+
+    /// <summary>Forces a full relayout — e.g. after a printer is unpinned from the tray and should
+    /// reappear in the panel.</summary>
+    public void RefreshLayout() { _renderedSerials = new(); Rebuild(); }
 
     // Rebuilds the list only when the printer set/order OR the compact mode changes; telemetry
     // updates just mutate existing views, so the panel stays responsive.
@@ -268,26 +275,32 @@ public partial class DashboardWindow : Window
         bool pl = AppSettings.Polish;
         FooterText.Text = AppSettings.Text("Drukuj spokojnie — wszystko pod kontrolą",
                                            "Print in peace — everything under control");
+
+        // Printers pinned as their own tray icon show ONLY there, not duplicated as a card here.
+        var visible = _store.Printers.Where(p => !TrayProgressPreference.IsEnabled(p.Serial)).ToList();
+        int printing = visible.Count(p => _store.Telemetry.TryGetValue(p.Serial, out var tel) && tel.State == PrinterState.Printing);
         StatusLine.Text = _store.IsScanning
             ? AppSettings.Text("Skanowanie…", "Scanning…")
-            : (_store.GlobalMessage ?? AppSettings.Text($"{_store.Printers.Count} drukarek • {_store.ActivePrintCount} drukuje",
-                                                        $"{_store.Printers.Count} printers • {_store.ActivePrintCount} printing"));
+            : (_store.GlobalMessage ?? AppSettings.Text($"{visible.Count} drukarek • {printing} drukuje",
+                                                        $"{visible.Count} printers • {printing} printing"));
 
-        bool compact = UseCompactMode();
-        CompactButton.Visibility = _store.Printers.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
+        bool compact = UseCompactMode(visible.Count);
+        CompactButton.Visibility = visible.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
         CompactButton.Content = compact ? AppSettings.Text("Rozwiń", "Expand") : AppSettings.Text("Zwiń", "Collapse");
 
-        var serials = _store.Printers.Select(p => p.Serial).ToList();
+        var serials = visible.Select(p => p.Serial).ToList();
         if (!serials.SequenceEqual(_renderedSerials) || _renderedCompact != compact)
         {
             HideCardMenu();
             CardsPanel.Children.Clear();
-            if (_store.Printers.Count == 0)
+            if (visible.Count == 0)
             {
                 _views.Clear();
                 CardsPanel.Children.Add(new TextBlock
                 {
-                    Text = AppSettings.Text("Brak drukarek. Kliknij +, aby dodać.", "No printers. Click + to add one."),
+                    Text = _store.Printers.Count == 0
+                        ? AppSettings.Text("Brak drukarek. Kliknij +, aby dodać.", "No printers. Click + to add one.")
+                        : AppSettings.Text("Wszystkie drukarki są przypięte do tacki.", "All printers are pinned to the tray."),
                     Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                     Margin = new Thickness(8)
                 });
@@ -296,7 +309,7 @@ public partial class DashboardWindow : Window
                 return;
             }
             var live = new Dictionary<string, ICardView>();
-            foreach (var printer in _store.Printers)
+            foreach (var printer in visible)
             {
                 _views.TryGetValue(printer.Serial, out var existing);
                 ICardView view = compact
@@ -311,12 +324,12 @@ public partial class DashboardWindow : Window
 
             // A lone printer (or the compact list) uses a single narrow column so the window isn't
             // needlessly wide; two or more expanded cards use two columns like the macOS dock.
-            bool singleColumn = compact || _store.Printers.Count <= 1;
+            bool singleColumn = compact || visible.Count <= 1;
             Width = singleColumn ? 540 : 640;
 
             if (!compact)
             {
-                var roots = _store.Printers
+                var roots = visible
                     .Select(p => live[p.Serial].Root as FrameworkElement)
                     .Where(r => r is { }).Select(r => r!).ToList();
                 for (int i = 0; i < roots.Count; i++)
@@ -325,7 +338,7 @@ public partial class DashboardWindow : Window
             }
         }
 
-        foreach (var printer in _store.Printers)
+        foreach (var printer in visible)
             if (_views.TryGetValue(printer.Serial, out var view))
             {
                 var t = _store.Telemetry.TryGetValue(printer.Serial, out var tel) ? tel : new PrinterTelemetry();
