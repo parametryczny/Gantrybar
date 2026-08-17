@@ -2,9 +2,11 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using Gantry.Models;
 using Gantry.Services;
@@ -37,6 +39,9 @@ public partial class DashboardWindow : Window
             Hide();
         };
         MenuBackdrop.MouseLeftButtonDown += (_, _) => HideCardMenu();
+        // Accept drag-over across the whole panel so the drag "ghost" keeps following the cursor even
+        // over gaps between cards (drops still reorder via each card's own Drop handler).
+        PanelBody.AllowDrop = true;
         Rebuild();
     }
 
@@ -67,19 +72,110 @@ public partial class DashboardWindow : Window
         var above = anchor.TranslatePoint(new Point(anchor.ActualWidth, 0), MenuLayer);
 
         // Right-align the menu under the "…" button; open downward, but flip above it when that would
-        // run past the bottom. Clamp inside the panel so it's always fully visible next to its card.
-        double left = Math.Max(4, below.X - menuWidth);
+        // run past the bottom. Clamp inside the panel on BOTH axes so it's always fully visible next
+        // to its card — near the right edge it slides left, near the bottom it flips up.
+        double boundW = PanelBody.ActualWidth > 1 ? PanelBody.ActualWidth : ActualWidth;
+        double left = below.X - menuWidth;
+        left = Math.Max(4, Math.Min(left, boundW - menuWidth - 4));
         double top = below.Y + 2;
         if (top + menuHeight > bound - 4)
             top = above.Y - menuHeight - 2;
         top = Math.Max(4, Math.Min(top, bound - menuHeight - 4));
         menu.Margin = new Thickness(left, top, 0, 0);
+        AnimateMenuIn(menu);
+    }
+
+    /// A quick fade + scale so the card menu eases open from the corner nearest its button instead of
+    /// snapping in.
+    private static void AnimateMenuIn(FrameworkElement menu)
+    {
+        menu.RenderTransformOrigin = new Point(1, 0);   // grow from the top-right, by the "…" button
+        var scale = new ScaleTransform(0.95, 0.95);
+        menu.RenderTransform = scale;
+        var dur = TimeSpan.FromMilliseconds(120);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        menu.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur));
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.95, 1, dur) { EasingFunction = ease });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, 1, dur) { EasingFunction = ease });
     }
 
     private void HideCardMenu()
     {
         MenuLayer.Visibility = Visibility.Collapsed;
         if (_cardMenu is not null) { MenuLayer.Children.Remove(_cardMenu); _cardMenu = null; }
+    }
+
+    private DragAdorner? _dragAdorner;
+    private Point _dragGrab;
+
+    /// <summary>Starts a card drag with a translucent "ghost" of the card that follows the cursor —
+    /// so reordering feels like the macOS live drag rather than a bare OS drag cursor. The drop still
+    /// reorders via each card's Drop handler.</summary>
+    internal void BeginCardDrag(FrameworkElement card, string serial)
+    {
+        var layer = AdornerLayer.GetAdornerLayer(PanelBody);
+        if (layer is not null)
+        {
+            var start = Mouse.GetPosition(card);
+            _dragGrab = new Point(Math.Max(12, start.X), Math.Max(12, start.Y));
+            _dragAdorner = new DragAdorner(PanelBody, card);
+            layer.Add(_dragAdorner);
+            var m = Mouse.GetPosition(PanelBody);
+            _dragAdorner.SetPosition(m.X - _dragGrab.X, m.Y - _dragGrab.Y);
+        }
+        HideCardMenu();
+        PreviewDragOver += OnCardDragOver;
+        try { DragDrop.DoDragDrop(card, serial, DragDropEffects.Move); }
+        finally
+        {
+            PreviewDragOver -= OnCardDragOver;
+            if (_dragAdorner is not null)
+            {
+                AdornerLayer.GetAdornerLayer(PanelBody)?.Remove(_dragAdorner);
+                _dragAdorner = null;
+            }
+        }
+    }
+
+    private void OnCardDragOver(object sender, DragEventArgs e)
+    {
+        if (_dragAdorner is null) return;
+        var p = e.GetPosition(PanelBody);   // reliable during an OLE drag, unlike Mouse.GetPosition
+        _dragAdorner.SetPosition(p.X - _dragGrab.X, p.Y - _dragGrab.Y);
+        e.Effects = DragDropEffects.Move;
+    }
+
+    /// <summary>A translucent snapshot of a card that floats under the cursor during a drag.</summary>
+    private sealed class DragAdorner : Adorner
+    {
+        private readonly Rectangle _ghost;
+        private double _left, _top;
+
+        public DragAdorner(UIElement layerHost, FrameworkElement card) : base(layerHost)
+        {
+            IsHitTestVisible = false;
+            _ghost = new Rectangle
+            {
+                Width = card.ActualWidth,
+                Height = card.ActualHeight,
+                RadiusX = 14,
+                RadiusY = 14,
+                IsHitTestVisible = false,
+                Opacity = 0.78,
+                Fill = new VisualBrush(card) { Stretch = Stretch.None },
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Opacity = 0.5, Color = Colors.Black }
+            };
+        }
+
+        public void SetPosition(double left, double top) { _left = left; _top = top; InvalidateArrange(); }
+        protected override int VisualChildrenCount => 1;
+        protected override Visual GetVisualChild(int index) => _ghost;
+        protected override Size MeasureOverride(Size constraint) { _ghost.Measure(constraint); return _ghost.DesiredSize; }
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            _ghost.Arrange(new Rect(new Point(_left, _top), new Size(_ghost.Width, _ghost.Height)));
+            return finalSize;
+        }
     }
 
     /// <summary>Positions the panel above the tray (bottom-right of the work area) and shows it,
@@ -325,7 +421,7 @@ public partial class DashboardWindow : Window
                 var p = e.GetPosition(null);
                 if (Math.Abs(p.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-                DragDrop.DoDragDrop(Root, Serial, DragDropEffects.Move);
+                _owner.BeginCardDrag(Root, Serial);
             };
             header.Children.Add(grip);
             _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -415,7 +511,7 @@ public partial class DashboardWindow : Window
             _bar.Value = t.Progress;
             _bar.Foreground = new SolidColorBrush(accent);
             _percent.Text = $"{t.Progress}%";
-            _eta.Text = FormatEta(t.RemainingMinutes);
+            _eta.Text = FormatEtaWithFinish(t.RemainingMinutes);
             _layers.Text = t.CurrentLayer is { } cl && t.TotalLayers is { } tl ? $"{cl}/{tl}" : "—";
 
             // Temperature rows: single nozzle → [Nozzle, Bed, Chamber?]; dual nozzle → [L, P] + [Bed, Chamber?].
@@ -502,7 +598,7 @@ public partial class DashboardWindow : Window
                 var p = e.GetPosition(null);
                 if (Math.Abs(p.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-                DragDrop.DoDragDrop(Root, Serial, DragDropEffects.Move);
+                _owner.BeginCardDrag(Root, Serial);
             };
             Grid.SetColumn(grip, 0); grid.Children.Add(grip);
 
@@ -836,6 +932,15 @@ public partial class DashboardWindow : Window
     {
         if (minutes is not { } m || m <= 0) return "—";
         return m >= 60 ? $"{m / 60}h {m % 60}m" : $"{m}m";
+    }
+
+    /// Remaining time plus the estimated finish clock time, e.g. "33m · 14:32". The finish time is
+    /// now + remaining, which stays stable as the printer counts the remaining minutes down.
+    private static string FormatEtaWithFinish(int? minutes)
+    {
+        if (minutes is not { } m || m <= 0) return "—";
+        var finish = DateTime.Now.AddMinutes(m).ToString("t", CultureInfo.CurrentCulture);  // short time, 12/24h per system
+        return $"{FormatEta(minutes)} · {finish}";
     }
 
     private static string FormatTemp(double? current, double? target)

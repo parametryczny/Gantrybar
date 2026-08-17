@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import gi
@@ -291,7 +291,14 @@ class PrinterCard(Gtk.Frame):
         self.job.set_text(telemetry.job_name or "—")
         self.progress.set_fraction(telemetry.progress / 100)
         self.percent.set_text(f"{telemetry.progress}%")
-        eta = "—" if telemetry.remaining_minutes is None else f"{telemetry.remaining_minutes // 60}h {telemetry.remaining_minutes % 60}m"
+        if telemetry.remaining_minutes:
+            mins = telemetry.remaining_minutes
+            # Remaining time + estimated finish clock ("33m · 14:32"); now + remaining stays stable
+            # as the printer counts the remaining minutes down.
+            finish = (datetime.now() + timedelta(minutes=mins)).strftime("%H:%M")
+            eta = f"{mins // 60}h {mins % 60}m · {finish}" if mins >= 60 else f"{mins}m · {finish}"
+        else:
+            eta = "—"
         layers = "—" if telemetry.current_layer is None else f"{telemetry.current_layer}/{telemetry.total_layers or '—'}"
         self.progress_meta.set_text(f"◷ {eta}   ▤ {layers}")
 

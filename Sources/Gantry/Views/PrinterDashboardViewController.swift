@@ -681,6 +681,12 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
     private let jobLabel = MarqueeLabel()
     private let progress = BrutalistProgressView()
     private let percentLabel = NSTextField(labelWithString: "0%")
+    private static let finishTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short   // respects the system 12/24-hour setting
+        formatter.dateStyle = .none
+        return formatter
+    }()
     private let etaMetric = CompactMetricView(symbol: "clock", tooltip: "ETA")
     private let layerMetric = CompactMetricView(symbol: "square.3.layers.3d", tooltip: "Layer")
     // Nozzle/bed/chamber use explicit text labels (Dysza/L/P, Stół, Komora) instead of glued
@@ -986,8 +992,16 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         lastJobName = telemetry.jobName
         lastState = telemetry.state
         let eta = displayedRemainingMinutes.map(format) ?? "—"
+        // Append the estimated finish clock time next to the remaining time ("33m · 14:32"). Computed
+        // from the moment the remaining time was last sampled, so the finish time stays stable between
+        // refreshes instead of creeping forward every tick.
+        var etaValue = eta
+        if let mins = displayedRemainingMinutes, mins > 0, let base = etaUpdatedAt {
+            let finish = base.addingTimeInterval(Double(mins) * 60)
+            etaValue += " · \(Self.finishTimeFormatter.string(from: finish))"
+        }
         let layer = telemetry.currentLayer.flatMap { current in telemetry.totalLayers.map { "\(current)/\($0)" } } ?? "—"
-        etaMetric.value = eta
+        etaMetric.value = etaValue
         layerMetric.value = layer
 
         // Resolve the nozzle collection (falls back to the legacy single-nozzle fields for parsers
