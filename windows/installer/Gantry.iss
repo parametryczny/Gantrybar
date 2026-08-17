@@ -1,5 +1,5 @@
 #define MyAppName "Gantry"
-#define MyAppVersion "0.7.1"
+#define MyAppVersion "0.7.2"
 #define MyAppPublisher "Kamil Grzegorczyk"
 #define MyAppURL "https://github.com/parametryczny/gantrybar"
 #define MyAppExeName "Gantry.exe"
@@ -29,7 +29,7 @@ CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=0.7.1.0
+VersionInfoVersion=0.7.2.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Gantry Windows Beta Installer
 VersionInfoProductName={#MyAppName}
