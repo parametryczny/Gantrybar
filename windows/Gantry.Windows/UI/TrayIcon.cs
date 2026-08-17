@@ -279,7 +279,7 @@ public sealed class TrayIcon : IDisposable
             _store.Telemetry.TryGetValue(serial, out var telemetry);
             if (!_progressIcons.TryGetValue(serial, out var icon))
             {
-                icon = new NotifyIcon { Visible = true, ContextMenuStrip = BuildProgressIconMenu(serial) };
+                icon = new NotifyIcon { Visible = true };
                 icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleDashboard(); };
                 _progressIcons[serial] = icon;
             }
@@ -293,28 +293,6 @@ public sealed class TrayIcon : IDisposable
             _progressHandles[serial] = handle;
             icon.Text = percent is int p ? $"{name} — {p}%" : name;
         }
-    }
-
-    // A pinned printer shows only as its own tray icon (hidden from the panel), so its right-click
-    // menu is the way to edit it or send it back to the panel.
-    private ContextMenuStrip BuildProgressIconMenu(string serial)
-    {
-        var menu = new ContextMenuStrip();
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Pokaż panel", "Show panel"), null, (_, _) => ShowDashboard()));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Edytuj drukarkę…", "Edit printer…"), null, (_, _) =>
-        {
-            var printer = _store.Printers.FirstOrDefault(p => p.Serial == serial);
-            if (printer is null) return;
-            ShowDashboard();
-            EnsureDashboard().OpenEditPrinter(printer);
-        }));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Odepnij z tacki (pokaż w panelu)", "Unpin from tray (show in panel)"), null, (_, _) =>
-        {
-            TrayProgressPreference.SetEnabled(false, serial);
-            UpdateProgressIcons();
-            EnsureDashboard().RefreshLayout();
-        }));
-        return menu;
     }
 
     private void RemoveProgressIcon(string serial)
