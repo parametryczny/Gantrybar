@@ -311,10 +311,14 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
                 index, packed = _integer(item.get("id")), _integer(item.get("temp"))
                 if index is not None and packed is not None:
                     by_id[index] = (packed & 0xFFFF, (packed >> 16) & 0xFFFF)
-            if 0 in by_id:
-                result.nozzle, result.nozzle_target = by_id[0]
+            # On the H2D / X2D the LEFT (main) nozzle is id 1 and the RIGHT is id 0, so the primary
+            # reading (nozzle, shown as "L") comes from id 1.
             if 1 in by_id:
-                result.nozzle2, result.nozzle2_target = by_id[1]
+                result.nozzle, result.nozzle_target = by_id[1]        # left / main nozzle
+                if 0 in by_id:
+                    result.nozzle2, result.nozzle2_target = by_id[0]  # right nozzle
+            elif 0 in by_id:
+                result.nozzle, result.nozzle_target = by_id[0]
     if not modern_chamber and (fallback := _number(report.get("chamber_temper"))) is not None and fallback > 10:
         result.chamber = fallback
     stage = report.get("stage")

@@ -13,9 +13,11 @@ enum BambuStatusParser {
         if let value = number(report["nozzle_target_temper"]) { result.nozzleTargetTemperature = value }
         if let value = number(report["bed_temper"]) { result.bedTemperature = value }
         if let value = number(report["bed_target_temper"]) { result.bedTargetTemperature = value }
-        // Dual-nozzle printers (H2D) report each extruder under device.extruder.info as {id, temp},
-        // where temp packs current in the low 16 bits and target in the high 16 bits. Single-nozzle
-        // machines omit this and keep using nozzle_temper above.
+        // Dual-nozzle printers (H2D / X2D) report each extruder under device.extruder.info as
+        // {id, temp}, where temp packs current in the low 16 bits and target in the high 16 bits.
+        // On this hardware the LEFT (main) nozzle is id 1 and the RIGHT is id 0 — so the primary
+        // reading (nozzleTemperature, shown as "L") comes from id 1. Single-nozzle machines omit
+        // this and keep using nozzle_temper above.
         if let device = report["device"] as? [String: Any],
            let extruder = device["extruder"] as? [String: Any],
            let info = extruder["info"] as? [[String: Any]] {
@@ -24,12 +26,15 @@ enum BambuStatusParser {
                 guard let id = integer(item["id"]), let packed = integer(item["temp"]) else { continue }
                 byID[id] = (Double(packed & 0xFFFF), Double((packed >> 16) & 0xFFFF))
             }
-            if let first = byID[0] {
-                result.nozzleTemperature = first.current
-                result.nozzleTargetTemperature = first.target
+            if let left = byID[1] {
+                result.nozzleTemperature = left.current           // left / main nozzle
+                result.nozzleTargetTemperature = left.target
+                result.nozzleTemperature2 = byID[0]?.current       // right nozzle
+                result.nozzleTargetTemperature2 = byID[0]?.target
+            } else if let only = byID[0] {
+                result.nozzleTemperature = only.current
+                result.nozzleTargetTemperature = only.target
             }
-            result.nozzleTemperature2 = byID[1]?.current
-            result.nozzleTargetTemperature2 = byID[1]?.target
         }
         // Modern firmware reports the real chamber temperature under device.ctc.info.temp;
         // printers without a chamber sensor (A1, P1) omit it. The legacy chamber_temper field is

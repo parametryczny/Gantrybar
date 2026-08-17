@@ -34,9 +34,11 @@ public static class StatusParser
         if (Num(report, "nozzle_target_temper") is { } ntt) result.NozzleTargetTemperature = ntt;
         if (Num(report, "bed_temper") is { } bt) result.BedTemperature = bt;
         if (Num(report, "bed_target_temper") is { } btt) result.BedTargetTemperature = btt;
-        // Dual-nozzle printers (H2D) report each extruder under device.extruder.info as {id, temp},
-        // where temp packs current in the low 16 bits and target in the high 16 bits. Single-nozzle
-        // machines omit this and keep using nozzle_temper above.
+        // Dual-nozzle printers (H2D / X2D) report each extruder under device.extruder.info as
+        // {id, temp}, where temp packs current in the low 16 bits and target in the high 16 bits.
+        // On this hardware the LEFT (main) nozzle is id 1 and the RIGHT is id 0 — so the primary
+        // reading (NozzleTemperature, shown as "L") comes from id 1. Single-nozzle machines omit
+        // this and keep using nozzle_temper above.
         if (report.TryGetProperty("device", out var dev) && dev.ValueKind == JsonValueKind.Object
             && dev.TryGetProperty("extruder", out var extruder) && extruder.ValueKind == JsonValueKind.Object
             && extruder.TryGetProperty("info", out var extruderInfo) && extruderInfo.ValueKind == JsonValueKind.Array)
@@ -51,9 +53,12 @@ public static class StatusParser
                 if (id == 0) { current0 = current; target0 = target; }
                 else if (id == 1) { current1 = current; target1 = target; }
             }
-            if (current0 is { }) { result.NozzleTemperature = current0; result.NozzleTargetTemperature = target0; }
-            result.NozzleTemperature2 = current1;
-            result.NozzleTargetTemperature2 = target1;
+            if (current1 is { })   // left / main nozzle
+            {
+                result.NozzleTemperature = current1; result.NozzleTargetTemperature = target1;
+                result.NozzleTemperature2 = current0; result.NozzleTargetTemperature2 = target0;   // right
+            }
+            else if (current0 is { }) { result.NozzleTemperature = current0; result.NozzleTargetTemperature = target0; }
         }
         // Modern firmware reports the real chamber temperature under device.ctc.info.temp;
         // printers without a chamber sensor (A1, P1) omit it and chamber_temper is only a fixed
