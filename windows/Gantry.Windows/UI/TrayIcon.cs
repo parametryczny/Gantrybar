@@ -18,6 +18,9 @@ public sealed class TrayIcon : IDisposable
     private DashboardWindow? _dashboard;
     private SettingsWindow? _settings;
     private SpoolbaseWindow? _spoolbase;
+    private TrayFlyout? _flyout;
+    private System.Windows.Threading.DispatcherTimer? _flyoutTimer;
+    private DateTime _lastIconHover;
 
     public TrayIcon(PrinterStore store)
     {
@@ -29,6 +32,7 @@ public sealed class TrayIcon : IDisposable
             Text = "Gantry"
         };
         _notifyIcon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleDashboard(); };
+        _notifyIcon.MouseMove += (_, _) => ShowFlyout();
         _notifyIcon.BalloonTipClicked += (_, _) => OpenPendingUpdate();
         _notifyIcon.ContextMenuStrip = BuildMenu();
         _store.Updated += (_, _) =>
@@ -230,6 +234,49 @@ public sealed class TrayIcon : IDisposable
         _spoolbase.TogglePopover();
     }
 
+    // Hovering a tray icon pops up the flyout with the pinned printers' names/%/status; a timer hides
+    // it once the cursor leaves both the icon and the flyout.
+    private void ShowFlyout()
+    {
+        try
+        {
+            _lastIconHover = DateTime.Now;
+            var items = PinnedFlyoutItems();
+            if (items.Count == 0) { _flyout?.Hide(); return; }
+
+            if (_flyout is null)
+            {
+                _flyout = new TrayFlyout();
+                _flyoutTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                _flyoutTimer.Tick += (_, _) =>
+                {
+                    if (_flyout is { IsVisible: true } && !_flyout.IsMouseOver
+                        && (DateTime.Now - _lastIconHover).TotalMilliseconds > 600)
+                        _flyout.Hide();
+                };
+                _flyoutTimer.Start();
+            }
+            _flyout.SetItems(items);
+            if (!_flyout.IsVisible) _flyout.Show();
+        }
+        catch (Exception ex) { Gantry.App.LogError("TrayFlyout", ex); }
+    }
+
+    private List<(string Name, PrinterState State, int? Percent)> PinnedFlyoutItems()
+    {
+        var pinned = new HashSet<string>(TrayProgressPreference.Serials());
+        var result = new List<(string, PrinterState, int?)>();
+        foreach (var printer in _store.Printers)
+        {
+            if (!pinned.Contains(printer.Serial)) continue;
+            bool has = _store.Telemetry.TryGetValue(printer.Serial, out var t);
+            var state = has ? t.State : PrinterState.Offline;
+            int? percent = has && t.State is PrinterState.Printing or PrinterState.Paused ? t.Progress : null;
+            result.Add((printer.Name, state, percent));
+        }
+        return result;
+    }
+
     private void ShowSettings()
     {
         if (_settings is null)
@@ -289,6 +336,7 @@ public sealed class TrayIcon : IDisposable
                 // the app's entry points when printers are pinned.
                 icon = new NotifyIcon { Visible = true, ContextMenuStrip = BuildMenu() };
                 icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleDashboard(); };
+                icon.MouseMove += (_, _) => ShowFlyout();
                 _progressIcons[serial] = icon;
             }
 
