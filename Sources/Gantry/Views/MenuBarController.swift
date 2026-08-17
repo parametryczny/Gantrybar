@@ -114,9 +114,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             let printer = store.printers.first { $0.serial == first }
             button.image = nil
             button.imagePosition = .noImage
-            button.title = progressTitle(name: printer?.name ?? first, telemetry: store.telemetry[first])
+            button.attributedTitle = pinnedTitle(name: printer?.name ?? first, telemetry: store.telemetry[first])
             button.toolTip = printer?.name
         } else {
+            button.attributedTitle = NSAttributedString(string: "")
             button.title = ""
             button.image = GantryLogo.statusItemImage(height: 14)
             button.imagePosition = .imageOnly
@@ -141,7 +142,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             progressItems[serial] = item
             guard let button = item.button else { continue }
             let printer = store.printers.first { $0.serial == serial }
-            button.title = progressTitle(name: printer?.name ?? serial, telemetry: store.telemetry[serial])
+            button.attributedTitle = pinnedTitle(name: printer?.name ?? serial, telemetry: store.telemetry[serial])
             button.toolTip = printer?.name
         }
     }
@@ -171,6 +172,26 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         case .printing, .paused: return "\(name) \(telemetry.progress)%"
         default: return name
         }
+    }
+
+    /// A pinned printer's label with a leading status-coloured dot (blue printing / green ready /
+    /// orange paused / red error / grey offline), like the dots on the dashboard cards. The name
+    /// itself keeps the menu bar's own colour so it stays legible in light and dark menu bars.
+    private func pinnedTitle(name: String, telemetry: PrinterTelemetry?) -> NSAttributedString {
+        let dotColor: NSColor
+        switch telemetry?.state {
+        case .printing: dotColor = .systemBlue
+        case .finished, .idle: dotColor = .systemGreen
+        case .paused: dotColor = .systemOrange
+        case .error: dotColor = .systemRed
+        case .offline, .none: dotColor = .systemGray
+        }
+        let result = NSMutableAttributedString(string: "● ", attributes: [
+            .foregroundColor: dotColor,
+            .font: NSFont.systemFont(ofSize: 9)
+        ])
+        result.append(NSAttributedString(string: progressTitle(name: name, telemetry: telemetry)))
+        return result
     }
 
     @objc private func progressItemClicked(_ sender: NSStatusBarButton) {
