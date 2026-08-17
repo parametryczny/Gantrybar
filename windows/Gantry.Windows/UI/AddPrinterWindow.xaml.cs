@@ -89,10 +89,10 @@ public partial class AddPrinterWindow : Window
         HostLabel.Text = AppSettings.Text("Adres IP", "IP address");
         SerialLabel.Text = AppSettings.Text("Numer seryjny", "Serial number");
         CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN");
-        BambuRadio.Content = AppSettings.Text("Bambu Lab", "Bambu Lab");
-        KlipperRadio.Content = AppSettings.Text("Klipper (Moonraker)", "Klipper (Moonraker)");
-        PrusaRadio.Content = AppSettings.Text("Prusa (PrusaLink)", "Prusa (PrusaLink)");
-        SnapmakerRadio.Content = AppSettings.Text("Snapmaker", "Snapmaker");
+        BambuRadio.Content = "Bambu";
+        KlipperRadio.Content = "Klipper";
+        PrusaRadio.Content = "Prusa";
+        SnapmakerRadio.Content = "Snapmaker";
         SnapmakerHint.Text = AppSettings.Text(
             "Snapmaker 2.0 / Artisan (HTTP, port 8080). Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
             "Snapmaker 2.0 / Artisan (HTTP, port 8080). After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle.");

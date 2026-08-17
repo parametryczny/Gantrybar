@@ -165,16 +165,28 @@
 
                 <TextBlock x:Name="NameLabel" Margin="0,4,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
                 <TextBox x:Name="NameBox"/>
-                <TextBlock x:Name="HostLabel" Margin="0,10,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
-                <TextBox x:Name="HostBox"/>
-                <TextBlock x:Name="SerialLabel" Margin="0,10,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
-                <TextBox x:Name="SerialBox"/>
-                <TextBlock x:Name="CodeLabel" Margin="0,10,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
-                <TextBox x:Name="CodeBox"/>
 
-                <TextBlock x:Name="PortLabel" Margin="0,10,0,3" FontSize="12" Foreground="#FFC7C7CC" Visibility="Collapsed"/>
-                <TextBox x:Name="PortBox" Visibility="Collapsed"/>
-                <TextBlock x:Name="ApiKeyLabel" Margin="0,10,0,3" FontSize="12" Foreground="#FFC7C7CC" Visibility="Collapsed"/>
+                <!-- Host takes the width; the short Port sits beside it instead of on its own row. -->
+                <Grid Margin="0,9,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock x:Name="HostLabel" Margin="0,0,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
+                        <TextBox x:Name="HostBox"/>
+                    </StackPanel>
+                    <StackPanel x:Name="PortColumn" Grid.Column="1">
+                        <TextBlock x:Name="PortLabel" Margin="0,0,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
+                        <TextBox x:Name="PortBox" Width="96" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock x:Name="SerialLabel" Margin="0,9,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
+                <TextBox x:Name="SerialBox"/>
+                <TextBlock x:Name="CodeLabel" Margin="0,9,0,3" FontSize="12" Foreground="#FFC7C7CC"/>
+                <TextBox x:Name="CodeBox"/>
+                <TextBlock x:Name="ApiKeyLabel" Margin="0,9,0,3" FontSize="12" Foreground="#FFC7C7CC" Visibility="Collapsed"/>
                 <TextBox x:Name="ApiKeyBox" Visibility="Collapsed"/>
 
                 <CheckBox x:Name="ProgressCheck" Margin="0,14,0,0" Visibility="Collapsed"/>

@@ -95,14 +95,23 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         typeControl.action = #selector(kindChanged)
         typeControl.segmentStyle = .rounded
 
+        // Host takes the width; the short Port sits beside it (inline) instead of on its own row.
+        portField.setContentHuggingPriority(.required, for: .horizontal)
+        portField.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        hostField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        portLabel.setContentHuggingPriority(.required, for: .horizontal)
+        let hostPortRow = NSStackView(views: [hostField, portLabel, portField])
+        hostPortRow.orientation = .horizontal
+        hostPortRow.spacing = 8
+        hostPortRow.alignment = .firstBaseline
+
         form = NSGridView(views: [
             [detectedLabel, discoveryRow],
             [bambuStudioLabel, importColumn],
             [nameLabel, nameField],
-            [hostLabel, hostField],
+            [hostLabel, hostPortRow],
             [serialLabel, serialField],
             [codeLabel, codeRow],
-            [portLabel, portField],
             [apiKeyLabel, apiKeyField]
         ])
         form.rowSpacing = 10
@@ -174,13 +183,12 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     /// Shows the fields for the selected printer type.
     private func applyKind() {
         let hostBased = usesHostFields
-        // rows: 0 detected, 1 Bambu Studio, 2 name, 3 host, 4 serial, 5 code, 6 port, 7 API key
+        // rows: 0 detected, 1 Bambu Studio, 2 name, 3 host+port, 4 serial, 5 code, 6 API key
         form.row(at: 0).isHidden = hostBased
         form.row(at: 1).isHidden = hostBased
         form.row(at: 4).isHidden = hostBased
         form.row(at: 5).isHidden = hostBased
-        form.row(at: 6).isHidden = false   // port shown for every kind (optional for Bambu — tunnels)
-        form.row(at: 7).isHidden = !hostBased || selectedKind == .snapmaker   // Snapmaker: no API key
+        form.row(at: 6).isHidden = !hostBased || selectedKind == .snapmaker   // API key; Snapmaker: none
         subnetSection.isHidden = hostBased   // extra scan targets apply to Bambu discovery only
         let settings = AppSettings.shared
         switch selectedKind {

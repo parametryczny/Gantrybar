@@ -553,7 +553,15 @@ class PrinterDialog(Gtk.Dialog):
             entry = Gtk.Entry(text=defaults[key]); entry.set_visibility(key != "code")
             if key == "serial" and printer and printer.kind == PrinterKind.BAMBU: entry.set_sensitive(False)
             self.fields[key] = entry; self.rows[key] = row; row.pack_start(entry, False, False, 0)
-            box.pack_start(row, False, False, 0)
+        # Host takes the width; the short Port sits beside it instead of on its own full-width row.
+        self.fields["port"].set_width_chars(6)
+        host_port = Gtk.Box(spacing=10)
+        host_port.pack_start(self.rows["host"], True, True, 0)
+        host_port.pack_start(self.rows["port"], False, False, 0)
+        box.pack_start(self.rows["name"], False, False, 0)
+        box.pack_start(host_port, False, False, 0)
+        box.pack_start(self.rows["serial"], False, False, 0)
+        box.pack_start(self.rows["code"], False, False, 0)
         self.code_label = self.rows["code"].get_children()[0]
         self.info = Gtk.Label(xalign=0, wrap=True); self.info.get_style_context().add_class("meta")
         box.pack_start(self.info, False, False, 0)
