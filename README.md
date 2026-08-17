@@ -6,11 +6,14 @@
 [![Total downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total)](https://github.com/parametryczny/gantrybar/releases)
 [![License: MIT](https://img.shields.io/github/license/parametryczny/gantrybar)](LICENSE)
 
-![Gantry fleet dashboard](docs/renders/bambubar-fleet-dark-centered.png)
+A lightweight 3D‑printer fleet monitor for the **macOS menu bar**, **Windows system tray** and **GNU/Linux**. One click on the tray icon shows every printer at once — progress, ETA, layers, temperatures and filament — for **Bambu Lab, Klipper/Moonraker, Prusa (PrusaLink) and Snapmaker**.
+
+*Lekki monitor farmy drukarek 3D w **pasku menu macOS**, **zasobniku Windows** i **GNU/Linux**. Jedno kliknięcie ikony pokazuje wszystkie drukarki naraz — postęp, czas, warstwy, temperatury i filament — dla **Bambu Lab, Klipper/Moonraker, Prusa (PrusaLink) i Snapmaker**.*
+
+![Gantry na macOS](docs/renders/gantry-macos-anonymized.png)
 
 <p align="center">
-  <img src="docs/renders/bambubar-fleet-light-right.png" width="49%" alt="Gantry on a light macOS desktop">
-  <img src="docs/renders/bambubar-fleet-dark-left.png" width="49%" alt="Gantry on a dark macOS desktop">
+  <img src="docs/renders/gantry-windows-anonymized.png" width="88%" alt="Gantry on Windows 11">
 </p>
 
 ---
@@ -19,229 +22,150 @@
 
 Grab the latest build from the **[Releases page](https://github.com/parametryczny/gantrybar/releases/latest)** / Pobierz najnowszy build ze **[strony wydań](https://github.com/parametryczny/gantrybar/releases/latest)**:
 
-- **macOS** — `Gantry-macOS-*.zip` (access codes in the macOS Keychain / kody dostępu w pęku kluczy macOS)
-- **Windows x64** — installer `Gantry-Setup-Windows-x64.exe` (recommended / zalecany) or portable `Gantry-Windows-x64.zip`
+- **macOS** — `Gantry-*-macOS.dmg` (drag‑to‑Applications installer / instalator przeciągnij‑do‑Programów)
+- **Windows x64** — `Gantry-Setup-Windows-x64.exe` (installer / instalator, zalecany) or portable `Gantry-Windows-x64.zip`
 - **GNU/Linux** — `.deb` package (beta, GTK)
 
-The Windows installer starts Gantry after installation and enables launch at sign-in; neither Windows download requires a separate .NET installation. / Instalator Windows uruchamia Gantry po instalacji i włącza start przy logowaniu; żaden wariant Windows nie wymaga osobnej instalacji .NET.
-
-### Windows 11 beta / Podgląd wersji beta
-
-<p align="center">
-  <img src="docs/renders/bambubar-windows-11-beta.jpg" width="72%" alt="Gantry Windows 11 beta dashboard and system tray menu">
-</p>
+Neither Windows download needs a separate .NET install. On macOS the app is self‑signed, so on first launch open it with right‑click → **Open**. / Żaden wariant Windows nie wymaga osobnej instalacji .NET. Na macOS aplikacja jest podpisana lokalnie — przy pierwszym uruchomieniu otwórz ją PPM → **Otwórz**.
 
 ---
 
 ## English
 
-A compact, MIT-licensed macOS menu bar, Windows system-tray and GNU/Linux monitor named Gantry. The applications discover printers on the local network and present larger fleets in an adaptive dashboard.
+A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers on the local network, connects to Klipper/Prusa/Snapmaker by address, and lays out larger fleets in an adaptive “bento” dashboard.
 
-### Latest changes
+### Supported printers
 
-Version 0.5.0 adds the first GNU/Linux/Raspberry Pi beta with Bambu Lab, Klipper/Moonraker and PrusaLink support, a GTK dashboard, Secret Service credentials and a Debian package.
-
-[Read the full changelog](CHANGELOG.md)
+| Type | Protocol | Notes |
+|------|----------|-------|
+| **Bambu Lab** | MQTT/TLS (local) | full AMS / AMS HT / external, dual‑nozzle (H2D/X2D), HMS errors — no Bambu Cloud account |
+| **Klipper / Moonraker** | Moonraker HTTP | Happy Hare MMU and Creality CFS auto‑detected; also covers Qidi, Creality K1/K2, Snapmaker **U1** |
+| **Prusa** | PrusaLink HTTP | local IP + API key, no Prusa account |
+| **Snapmaker** | HTTP (port 8080) | Snapmaker **2.0 / Artisan**; authorize on the printer touchscreen after adding |
 
 ### Features
 
-- monitors multiple printers from one menu bar popover
-- supports Bambu Lab, Klipper/Moonraker and PrusaLink locally on all three desktop platforms
-- supports persistent drag-and-drop printer card reordering
-- offers a compact one-line status mode when four or more printers are configured
-- shows print state, progress, ETA, layers and temperatures
-- displays regular four-slot AMS and single-slot AMS units correctly
-- preserves empty AMS positions and highlights active or low-filament slots
-- reports HMS errors and useful printer notifications
-- reconnects automatically and refreshes printer addresses on the local network
-- discovers printers via SSDP multicast — now sent on every local network interface, not just the default route — plus a unicast subnet scan; a VPN like Tailscale carries no multicast, so a VPN printer is found by adding its IP, CIDR or range as an extra scan target (not by SSDP)
-- supports Polish and English, light and dark appearance
-- offers a Local build and a macOS Keychain build
-- pins each printer's TLS certificate after the first trusted connection
-- communicates locally without requiring a Bambu Cloud account
-- includes a self-contained Windows x64 system-tray build with per-user DPAPI encryption
-- includes a GTK 3 GNU/Linux beta with Secret Service storage and a Debian package
+- **One dashboard for the whole fleet** — print state, progress, ETA, layers and temperatures (nozzle/bed/chamber, dual‑nozzle L/R) on macOS‑style cards
+- **Filament at a glance** — AMS, AMS HT, Creality CFS, Happy Hare MMU and external spools with slot colours, humidity, and active / low‑filament highlighting
+- **Spoolbase** — a built‑in filament inventory (catalog of 1150+ spools): grouped by type, colour‑coded stock badges, add/edit/delete, quick spool‑count changes and search
+- **Automatic updates** (macOS + Windows) — a dedicated Updates card in Settings with an auto‑download/install toggle; the download is verified (code signature on macOS, SHA‑256 on Windows) and installs silently
+- **Notifications** — print finished, printer error, paused, low filament, high AMS humidity — with quiet hours
+- **Looks native** — light/dark theme, adjustable panel transparency, Polish and English
+- **Secure by default** — access codes/API keys in the macOS Keychain, Windows DPAPI or Linux Secret Service; local‑only, no cloud; TLS certificate pinning after the first trusted connection
+- **Finds printers for you** — Bambu discovery via SSDP multicast plus a unicast subnet scan (a VPN like Tailscale carries no multicast, so add its IP/CIDR/range as an extra scan target)
+- Persistent drag‑and‑drop card ordering, a compact one‑line mode for four or more printers, automatic reconnect and address refresh
+
+<p align="center">
+  <img src="docs/renders/gantry-linux-cards.png" width="70%" alt="Gantry cards on GNU/Linux (GTK)">
+</p>
 
 ### Requirements
 
-- macOS 26 or newer, 64-bit Windows 10/11, or a Debian/Ubuntu-family GNU/Linux desktop for the Linux beta
-- a Mac or PC and the printers on the same local network
-- LAN access enabled on each printer
-- the serial number and Access Code/PIN for each printer
-- Swift 6 and Xcode Command Line Tools when building from source
-- .NET 8 SDK when building the Windows version from source
-- Python 3.10, GTK 3 and Ayatana AppIndicator when running the GNU/Linux version
+- macOS 26 or newer, 64‑bit Windows 10/11, or a Debian/Ubuntu‑family desktop for the Linux beta
+- the computer and the printers on the same local network, LAN access enabled on each printer
+- for Bambu: the serial number and Access Code/PIN; for Prusa: the PrusaLink API key; Klipper/Snapmaker need only the IP
+- to build from source: Swift 6 + Xcode Command Line Tools (macOS), .NET 8 SDK (Windows), or Python 3.10 + GTK 3 + Ayatana AppIndicator (Linux)
 
 ### Adding printers
 
-#### Import from Bambu Studio
+Click the Gantry icon, then `+`, and pick the printer type:
 
-If Bambu Studio is installed and already has your printers configured, Gantry can match printers discovered on the local network with access codes stored in the local Bambu Studio configuration.
-
-1. Connect the Mac and printers to the same local network and enable LAN access on every printer.
-2. Make sure the printers are configured and visible in Bambu Studio.
-3. Click the Gantry icon in the menu bar and then `+`.
-4. Wait for the network scan to finish; it normally takes about 4 seconds and stops after 8 seconds.
-5. Click **Import printers and codes**. Codes are saved using the storage mode of the installed build.
-
-Installing Bambu Studio alone is not enough: the printers and their access codes must already be present in its local configuration.
-
-#### Automatic network discovery
-
-Click the Gantry icon, choose `+`, select a printer from **Detected**, enter its Access Code/PIN and click **Add**. Gantry fills in the detected name, IP address and serial number automatically.
-
-#### Manual setup
-
-If discovery is blocked, enter the printer name, local IP address, serial number and Access Code/PIN manually. The name is optional; IP address, serial number and access code are required. Check macOS Local Network permission, guest-network isolation and VLAN separation if no printers are found.
+- **Bambu** — choose a device from **Detected** (or import from Bambu Studio), enter the Access Code/PIN and click **Add**. Import matches discovered printers with codes already stored in the local Bambu Studio configuration.
+- **Klipper (Moonraker)** — enter the host IP and port (default 7125). No code needed.
+- **Prusa (PrusaLink)** — enter the IP, port (default 80) and the API key from PrusaLink settings.
+- **Snapmaker** — enter the IP (port 8080). After adding, tap **Allow** on the printer's touchscreen to authorize; re‑authorize after each power cycle.
 
 ### Build and run
-
-Clone the repository and build either application variant:
 
 ```bash
 git clone https://github.com/parametryczny/gantrybar.git
 cd gantrybar
-chmod +x scripts/build-app.sh scripts/build-release.sh
-./scripts/build-app.sh local
-./scripts/build-app.sh keychain
+chmod +x scripts/build-app.sh scripts/build-dmg.sh
+./scripts/build-app.sh local        # dist/Gantry.app
+./scripts/build-dmg.sh              # dist/Gantry-<version>-macOS.dmg (drag‑to‑install)
 ```
 
-The applications are created at `dist/Gantry.app` and `dist/Gantry Keychain.app`. Run `./scripts/build-release.sh` to create both release ZIP archives.
-
-See [windows/README.md](windows/README.md) for Windows build instructions. GitHub Actions produces a self-contained `BambuBar.exe` that does not require the .NET runtime on the target PC.
-
-See [linux/README.md](linux/README.md) for the GNU/Linux beta, local tests and `.deb` build instructions.
-
-On the first launch, allow Local Network access when macOS asks for it.
+See [windows/README.md](windows/README.md) for the Windows build (GitHub Actions produces a self‑contained `Gantry.exe` and an Inno Setup installer, no .NET runtime required on the target PC) and [linux/README.md](linux/README.md) for the GNU/Linux beta and `.deb` build. On the first macOS launch, allow Local Network access when asked.
 
 ### Tests
 
 ```bash
 swift build --disable-sandbox
 .build/debug/Gantry --self-test
-.build/debug/Gantry --storage-self-test
-.build/debug/Gantry --certificate-pin-self-test
 ```
 
-The self-test covers SSDP parsing, subnet-target parsing, MQTT framing, Unicode print names, telemetry and both four-slot and single-slot AMS layouts. Run the unit tests with `./scripts/run-tests.sh`.
+The self‑test covers SSDP parsing, MQTT framing, Unicode print names, telemetry and the AMS layouts. Run the Linux unit tests with `PYTHONPATH=linux python3 -m unittest discover -s linux/tests`.
 
 ### Privacy
 
-Gantry reads printer status only from the local network. The **Local** build stores access codes in the app's preferences; the **Keychain** build stores them in the macOS Keychain. Bambu Studio configuration is read only after the user selects **Import printers and codes**.
-
-See [SECURITY.md](SECURITY.md) for the local network trust model and vulnerability reporting guidance.
+Gantry reads printer status only from the local network and stores credentials in the OS secure store (Keychain / DPAPI / Secret Service). Bambu Studio configuration is read only after you choose **Import printers and codes**. See [SECURITY.md](SECURITY.md) for the local‑network trust model and vulnerability reporting.
 
 ### Project status
 
-This is an early, community-built release. Bambu Lab's printer MQTT protocol is not a stable public API, so firmware changes may require updates to Gantry.
-
-Gantry is an independent project and is not affiliated with, endorsed by or sponsored by Bambu Lab. Bambu Lab and related product names are trademarks of their respective owners.
+An early, community‑built project. Bambu Lab's printer MQTT protocol is not a stable public API, so firmware changes may require updates to Gantry. Gantry is independent and is not affiliated with, endorsed by or sponsored by Bambu Lab, Prusa Research, Snapmaker or Creality; product names are trademarks of their respective owners.
 
 ---
 
 ## Polski
 
-Kompaktowy monitor drukarek 3D na licencji MIT: Gantry dla macOS, Windows i GNU/Linux. Aplikacje wykrywają drukarki w sieci lokalnej i prezentują większe floty na adaptacyjnym pulpicie.
+Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa drukarki Bambu w sieci lokalnej, łączy się z Klipper/Prusa/Snapmaker po adresie i prezentuje większe floty na adaptacyjnym pulpicie „bento".
 
-### Najnowsze zmiany
+### Obsługiwane drukarki
 
-Wersja 0.5.0 dodaje pierwszą betę GNU/Linux/Raspberry Pi z obsługą Bambu Lab, Klipper/Moonraker i PrusaLink, pulpitem GTK, zapisem kodów w Secret Service i paczką Debiana.
-
-[Zobacz pełny changelog](CHANGELOG.md)
+| Typ | Protokół | Uwagi |
+|-----|----------|-------|
+| **Bambu Lab** | MQTT/TLS (lokalnie) | pełne AMS / AMS HT / zewnętrzny, dwie dysze (H2D/X2D), błędy HMS — bez konta Bambu Cloud |
+| **Klipper / Moonraker** | Moonraker HTTP | Happy Hare MMU i Creality CFS wykrywane automatycznie; obejmuje też Qidi, Creality K1/K2, Snapmaker **U1** |
+| **Prusa** | PrusaLink HTTP | lokalne IP + klucz API, bez konta Prusy |
+| **Snapmaker** | HTTP (port 8080) | Snapmaker **2.0 / Artisan**; po dodaniu zatwierdź na ekranie drukarki |
 
 ### Funkcje
 
-- monitoruje wiele drukarek z jednego okienka w pasku menu
-- lokalnie obsługuje Bambu Lab, Klipper/Moonraker i PrusaLink na wszystkich trzech platformach desktopowych
-- pozwala trwale porządkować karty drukarek metodą przeciągnij i upuść
-- oferuje kompaktowy, jednoliniowy tryb statusu przy czterech lub więcej drukarkach
-- pokazuje stan druku, postęp, szacowany czas, warstwy i temperatury
-- poprawnie wyświetla zwykłe AMS z czterema slotami oraz jednoslotowe
-- zachowuje puste pozycje AMS i wyróżnia aktywne sloty lub te z niskim poziomem filamentu
-- zgłasza błędy HMS i przydatne powiadomienia z drukarki
-- łączy się ponownie automatycznie i odświeża adresy drukarek w sieci lokalnej
-- wykrywa drukarki przez multicast SSDP — teraz wysyłany na każdej karcie sieciowej, nie tylko domyślnej — oraz unicastowy skan podsieci; VPN (np. Tailscale) nie przenosi multicastu, więc drukarkę przez VPN znajdziesz, dodając jej adres IP, CIDR lub zakres jako dodatkowy cel skanu (nie przez SSDP)
-- obsługuje polski i angielski, wygląd jasny i ciemny
-- oferuje wariant Local oraz wariant z pękiem kluczy macOS
-- przypina (pinuje) certyfikat TLS każdej drukarki po pierwszym zaufanym połączeniu
-- komunikuje się lokalnie, bez konieczności posiadania konta Bambu Cloud
-- zawiera samodzielną wersję dla Windows x64 z ikoną w zasobniku i szyfrowaniem DPAPI
-- zawiera wersję beta GTK 3 dla GNU/Linux z systemowym Secret Service i paczką `.deb`
+- **Jeden pulpit dla całej floty** — stan druku, postęp, czas do końca, warstwy i temperatury (dysza/stół/komora, dwie dysze L/P) na kartach w stylu macOS
+- **Filament na pierwszy rzut oka** — AMS, AMS HT, Creality CFS, Happy Hare MMU i szpule zewnętrzne z kolorami slotów, wilgotnością oraz wyróżnianiem aktywnego / kończącego się filamentu
+- **Spoolbase** — wbudowany magazyn filamentów (katalog 1150+ szpul): grupowanie po typie, kolorowe plakietki stanu, dodawanie/edycja/usuwanie, szybka zmiana liczby szpul i wyszukiwarka
+- **Automatyczne aktualizacje** (macOS + Windows) — dedykowana karta w Ustawieniach z przełącznikiem auto; pobranie jest weryfikowane (podpis kodu na macOS, SHA‑256 na Windows) i instalowane po cichu
+- **Powiadomienia** — koniec druku, błąd, pauza, niski filament, wysoka wilgotność AMS — z godzinami ciszy
+- **Wygląda natywnie** — motyw jasny/ciemny, regulowana przezroczystość panelu, polski i angielski
+- **Bezpieczne domyślnie** — kody dostępu / klucze API w pęku kluczy macOS, DPAPI Windows lub Secret Service na Linuksie; wyłącznie lokalnie, bez chmury; przypinanie certyfikatu TLS po pierwszym zaufanym połączeniu
+- **Znajduje drukarki za Ciebie** — wykrywanie Bambu przez multicast SSDP i unicastowy skan podsieci (VPN jak Tailscale nie przenosi multicastu — dodaj jego IP/CIDR/zakres jako dodatkowy cel skanu)
+- Trwałe porządkowanie kart przeciągnij‑i‑upuść, kompaktowy tryb jednoliniowy przy czterech i więcej drukarkach, automatyczne łączenie ponowne i odświeżanie adresów
 
 ### Wymagania
 
-- macOS 26 lub nowszy, 64-bitowy Windows 10/11 albo desktop GNU/Linux z rodziny Debian/Ubuntu dla wersji beta
-- Mac lub PC i drukarki w tej samej sieci lokalnej
-- włączony dostęp LAN na każdej drukarce
-- numer seryjny i kod dostępu (Access Code / PIN) każdej drukarki
-- Swift 6 i Xcode Command Line Tools przy budowaniu ze źródeł
-- .NET 8 SDK przy budowaniu wersji Windows ze źródeł
-- Python 3.10, GTK 3 i Ayatana AppIndicator dla wersji GNU/Linux
+- macOS 26 lub nowszy, 64‑bitowy Windows 10/11 albo desktop z rodziny Debian/Ubuntu dla wersji beta
+- komputer i drukarki w tej samej sieci lokalnej, włączony dostęp LAN na każdej drukarce
+- Bambu: numer seryjny i kod dostępu (Access Code / PIN); Prusa: klucz API PrusaLink; Klipper/Snapmaker: samo IP
+- budowa ze źródeł: Swift 6 + Xcode CLT (macOS), .NET 8 SDK (Windows) albo Python 3.10 + GTK 3 + Ayatana AppIndicator (Linux)
 
 ### Dodawanie drukarek
 
-#### Import z Bambu Studio
+Kliknij ikonę Gantry, potem `+`, i wybierz typ drukarki:
 
-Jeśli Bambu Studio jest zainstalowane i ma już skonfigurowane Twoje drukarki, Gantry może dopasować drukarki wykryte w sieci lokalnej do kodów dostępu zapisanych w lokalnej konfiguracji Bambu Studio.
-
-1. Podłącz Maca i drukarki do tej samej sieci lokalnej i włącz dostęp LAN na każdej drukarce.
-2. Upewnij się, że drukarki są skonfigurowane i widoczne w Bambu Studio.
-3. Kliknij ikonę Gantry w pasku menu, a następnie `+`.
-4. Poczekaj na zakończenie skanowania sieci; zwykle trwa około 4 sekund i kończy się po 8 sekundach.
-5. Kliknij **Importuj drukarki i kody**. Kody są zapisywane zgodnie z trybem przechowywania zainstalowanego wariantu.
-
-Sama instalacja Bambu Studio nie wystarczy: drukarki i ich kody dostępu muszą już być obecne w jego lokalnej konfiguracji.
-
-#### Automatyczne wykrywanie w sieci
-
-Kliknij ikonę Gantry, wybierz `+`, zaznacz drukarkę na liście **Wykryte**, wpisz jej kod dostępu (Access Code / PIN) i kliknij **Dodaj**. Gantry automatycznie uzupełni wykrytą nazwę, adres IP i numer seryjny.
-
-#### Konfiguracja ręczna
-
-Jeśli wykrywanie jest zablokowane, wpisz ręcznie nazwę drukarki, lokalny adres IP, numer seryjny i kod dostępu. Nazwa jest opcjonalna; adres IP, numer seryjny i kod dostępu są wymagane. Gdy nie znaleziono żadnych drukarek, sprawdź uprawnienie macOS do sieci lokalnej, izolację sieci gościnnej oraz podział na VLAN-y.
+- **Bambu** — wybierz urządzenie z listy **Wykryte** (lub zaimportuj z Bambu Studio), wpisz kod dostępu i kliknij **Dodaj**. Import dopasowuje wykryte drukarki do kodów z lokalnej konfiguracji Bambu Studio.
+- **Klipper (Moonraker)** — podaj IP hosta i port (domyślnie 7125). Kod niepotrzebny.
+- **Prusa (PrusaLink)** — podaj IP, port (domyślnie 80) i klucz API z ustawień PrusaLink.
+- **Snapmaker** — podaj IP (port 8080). Po dodaniu dotknij **Zezwól** na ekranie drukarki; po każdym wyłączeniu autoryzację trzeba powtórzyć.
 
 ### Budowanie i uruchamianie
-
-Sklonuj repozytorium i zbuduj wybrany wariant aplikacji:
 
 ```bash
 git clone https://github.com/parametryczny/gantrybar.git
 cd gantrybar
-chmod +x scripts/build-app.sh scripts/build-release.sh
-./scripts/build-app.sh local
-./scripts/build-app.sh keychain
+chmod +x scripts/build-app.sh scripts/build-dmg.sh
+./scripts/build-app.sh local        # dist/Gantry.app
+./scripts/build-dmg.sh              # dist/Gantry-<wersja>-macOS.dmg (przeciągnij, by zainstalować)
 ```
 
-Aplikacje powstają jako `dist/Gantry.app` oraz `dist/Gantry Keychain.app`. Uruchom `./scripts/build-release.sh`, aby utworzyć oba archiwa ZIP do wydania.
-
-Instrukcja budowania wersji Windows znajduje się w [windows/README.md](windows/README.md). GitHub Actions tworzy samodzielny `BambuBar.exe`, który nie wymaga środowiska .NET na komputerze docelowym.
-
-Instrukcja wersji GNU/Linux, testów lokalnych i budowania paczki `.deb` znajduje się w [linux/README.md](linux/README.md).
-
-Przy pierwszym uruchomieniu zezwól na dostęp do sieci lokalnej, gdy macOS o to zapyta.
-
-### Testy
-
-```bash
-swift build --disable-sandbox
-.build/debug/Gantry --self-test
-.build/debug/Gantry --storage-self-test
-.build/debug/Gantry --certificate-pin-self-test
-```
-
-Self-test obejmuje parsowanie SSDP, parsowanie celów skanu, ramkowanie MQTT, nazwy druków z Unicode, telemetrię oraz układy AMS cztero- i jednoslotowe. Testy jednostkowe uruchomisz przez `./scripts/run-tests.sh`.
+Budowa wersji Windows: [windows/README.md](windows/README.md) (GitHub Actions tworzy samodzielny `Gantry.exe` i instalator Inno Setup, bez środowiska .NET na docelowym PC). Wersja GNU/Linux i paczka `.deb`: [linux/README.md](linux/README.md). Przy pierwszym uruchomieniu na macOS zezwól na dostęp do sieci lokalnej.
 
 ### Prywatność
 
-Gantry odczytuje status drukarek wyłącznie z sieci lokalnej. Wariant **Local** przechowuje kody dostępu w ustawieniach aplikacji; wariant **Keychain** przechowuje je w pęku kluczy macOS. Konfiguracja Bambu Studio jest odczytywana dopiero po wybraniu przez użytkownika opcji **Importuj drukarki i kody**.
-
-Zobacz [SECURITY.md](SECURITY.md), gdzie opisano model zaufania w sieci lokalnej oraz zasady zgłaszania podatności.
+Gantry odczytuje status drukarek wyłącznie z sieci lokalnej i przechowuje poświadczenia w systemowym magazynie sekretów (Keychain / DPAPI / Secret Service). Konfiguracja Bambu Studio jest czytana dopiero po wybraniu **Importuj drukarki i kody**. Zobacz [SECURITY.md](SECURITY.md).
 
 ### Status projektu
 
-To wczesne wydanie tworzone przez społeczność. Protokół MQTT drukarek Bambu Lab nie jest stabilnym, publicznym API, więc zmiany firmware'u mogą wymagać aktualizacji Gantry.
-
-Gantry jest projektem niezależnym i nie jest powiązany z Bambu Lab, wspierany ani sponsorowany przez Bambu Lab. Bambu Lab i powiązane nazwy produktów są znakami towarowymi ich właścicieli.
+To wczesny projekt tworzony przez społeczność. Protokół MQTT Bambu Lab nie jest stabilnym publicznym API, więc zmiany firmware'u mogą wymagać aktualizacji. Gantry jest niezależny i nie jest powiązany z Bambu Lab, Prusa Research, Snapmaker ani Creality; nazwy produktów są znakami towarowymi ich właścicieli.
 
 ---
 
@@ -257,5 +181,4 @@ Gantry jest projektem niezależnym i nie jest powiązany z Bambu Lab, wspierany 
 
 [MIT](LICENSE)
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
-Wkład jest mile widziany. Przed otwarciem pull requesta zobacz [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. / Wkład mile widziany — zajrzyj do [CONTRIBUTING.md](CONTRIBUTING.md) przed otwarciem pull requesta.
