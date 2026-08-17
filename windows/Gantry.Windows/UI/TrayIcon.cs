@@ -24,7 +24,7 @@ public sealed class TrayIcon : IDisposable
         _store = store;
         _notifyIcon = new NotifyIcon
         {
-            Icon = BuildIcon(),
+            Icon = BuildIcon(out _mainIconHandle),
             Visible = true,
             Text = "Gantry"
         };
@@ -268,18 +268,26 @@ public sealed class TrayIcon : IDisposable
     {
         var validSerials = _store.Printers.Select(p => p.Serial).ToList();
         TrayProgressPreference.Prune(validSerials);
-        var pinned = new HashSet<string>(TrayProgressPreference.Serials().Where(validSerials.Contains));
+        var pinnedSet = new HashSet<string>(TrayProgressPreference.Serials());
+        var ordered = validSerials.Where(pinnedSet.Contains).ToList();   // stable dashboard order
 
-        foreach (var serial in _progressIcons.Keys.Where(s => !pinned.Contains(s)).ToList())
+        // The FIRST pinned printer rides on the main Gantry tray icon (which turns into its progress),
+        // so there's no redundant extra icon; any others get their own extra icons.
+        var extras = ordered.Skip(1).ToList();
+        var extrasSet = new HashSet<string>(extras);
+
+        foreach (var serial in _progressIcons.Keys.Where(s => !extrasSet.Contains(s)).ToList())
             RemoveProgressIcon(serial);
 
-        foreach (var serial in pinned)
+        foreach (var serial in extras)
         {
             var printer = _store.Printers.FirstOrDefault(p => p.Serial == serial);
             _store.Telemetry.TryGetValue(serial, out var telemetry);
             if (!_progressIcons.TryGetValue(serial, out var icon))
             {
-                icon = new NotifyIcon { Visible = true };
+                // Right-click gives the full app menu, matching the main icon — the indicators are
+                // the app's entry points when printers are pinned.
+                icon = new NotifyIcon { Visible = true, ContextMenuStrip = BuildMenu() };
                 icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleDashboard(); };
                 _progressIcons[serial] = icon;
             }
@@ -292,6 +300,22 @@ public sealed class TrayIcon : IDisposable
             icon.Icon = BuildProgressIcon(percent, out var handle);
             _progressHandles[serial] = handle;
             icon.Text = percent is int p ? $"{name} — {p}%" : name;
+        }
+
+        // Main icon: the first pinned printer's live progress, or the Gantry logo when none are pinned.
+        if (ordered.Count > 0)
+        {
+            var serial = ordered[0];
+            var printer = _store.Printers.FirstOrDefault(p => p.Serial == serial);
+            _store.Telemetry.TryGetValue(serial, out var tel);
+            string name = printer?.Name ?? serial;
+            int? percent = tel is { State: PrinterState.Printing or PrinterState.Paused } ? tel.Progress : null;
+            SetMainIcon(BuildProgressIcon(percent, out var handle), handle);
+            _notifyIcon.Text = percent is int p ? $"{name} — {p}%" : name;
+        }
+        else
+        {
+            SetMainIcon(BuildIcon(out var handle), handle);   // back to the Gantry logo; tooltip via RefreshTooltip
         }
     }
 
@@ -328,7 +352,7 @@ public sealed class TrayIcon : IDisposable
         return Icon.FromHandle(handle);
     }
 
-    private static Icon BuildIcon()
+    private static Icon BuildIcon(out IntPtr handle)
     {
         using var bmp = new Bitmap(32, 32);
         using (var g = Graphics.FromImage(bmp))
@@ -340,7 +364,19 @@ public sealed class TrayIcon : IDisposable
             g.FillPath(back, path);
             DrawLogo(g, new RectangleF(6, 6, 20, 20), Color.FromArgb(255, 245, 245, 247));
         }
-        return Icon.FromHandle(bmp.GetHicon());
+        handle = bmp.GetHicon();
+        return Icon.FromHandle(handle);
+    }
+
+    // Handle for the main tray icon's current bitmap (freed before it's replaced, like the progress
+    // icons') — the main icon doubles as the first pinned printer's progress indicator.
+    private IntPtr _mainIconHandle = IntPtr.Zero;
+
+    private void SetMainIcon(Icon icon, IntPtr handle)
+    {
+        if (_mainIconHandle != IntPtr.Zero) DestroyIcon(_mainIconHandle);
+        _notifyIcon.Icon = icon;
+        _mainIconHandle = handle;
     }
 
     /// <summary>Draws the Gantry "G" mark filled into <paramref name="dst"/>, centered.</summary>
