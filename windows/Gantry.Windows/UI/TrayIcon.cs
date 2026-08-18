@@ -250,11 +250,14 @@ public sealed class TrayIcon : IDisposable
 
     private void RefreshTooltip()
     {
+        // When a printer is pinned the main icon shows that printer, and UpdateProgressIcons owns its
+        // tooltip — don't fight it here (two writes per tick made the tooltip flicker).
+        if (TrayProgressPreference.Serials().Any(s => _store.Printers.Any(p => p.Serial == s))) return;
         int active = _store.ActivePrintCount;
         int total = _store.Printers.Count;
-        _notifyIcon.Text = active > 0
+        SetMainText(active > 0
             ? AppSettings.Text($"Gantry — {active} drukuje", $"Gantry — {active} printing")
-            : AppSettings.Text($"Gantry — {total} drukarek", $"Gantry — {total} printers");
+            : AppSettings.Text($"Gantry — {total} drukarek", $"Gantry — {total} printers"));
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
@@ -293,13 +296,19 @@ public sealed class TrayIcon : IDisposable
             }
 
             string name = printer?.Name ?? serial;
+            var state = telemetry?.State ?? PrinterState.Offline;
             int? percent = telemetry is { State: PrinterState.Printing or PrinterState.Paused }
                 ? telemetry.Progress : null;
 
-            if (_progressHandles.TryGetValue(serial, out var oldHandle)) DestroyIcon(oldHandle);
-            icon.Icon = BuildProgressIcon(percent, telemetry?.State ?? PrinterState.Offline, out var handle);
-            _progressHandles[serial] = handle;
-            icon.Text = percent is int p ? $"{name} — {p}%" : name;
+            string key = $"{state}:{percent}:{name}";
+            if (!_iconKeys.TryGetValue(serial, out var prev) || prev != key)
+            {
+                _iconKeys[serial] = key;
+                if (_progressHandles.TryGetValue(serial, out var oldHandle)) DestroyIcon(oldHandle);
+                icon.Icon = BuildProgressIcon(percent, state, out var handle);
+                _progressHandles[serial] = handle;
+                icon.Text = percent is int p ? $"{name} — {p}%" : name;
+            }
         }
 
         // Main icon: the first pinned printer's live progress, or the Gantry logo when none are pinned.
@@ -309,12 +318,19 @@ public sealed class TrayIcon : IDisposable
             var printer = _store.Printers.FirstOrDefault(p => p.Serial == serial);
             _store.Telemetry.TryGetValue(serial, out var tel);
             string name = printer?.Name ?? serial;
+            var state = tel?.State ?? PrinterState.Offline;
             int? percent = tel is { State: PrinterState.Printing or PrinterState.Paused } ? tel.Progress : null;
-            SetMainIcon(BuildProgressIcon(percent, tel?.State ?? PrinterState.Offline, out var handle), handle);
-            _notifyIcon.Text = percent is int p ? $"{name} — {p}%" : name;
+            string key = $"{state}:{percent}";
+            if (_mainIconKey != key)
+            {
+                _mainIconKey = key;
+                SetMainIcon(BuildProgressIcon(percent, state, out var handle), handle);
+            }
+            SetMainText(percent is int p ? $"{name} — {p}%" : name);
         }
-        else
+        else if (_mainIconKey != "logo")
         {
+            _mainIconKey = "logo";
             SetMainIcon(BuildIcon(out var handle), handle);   // back to the Gantry logo; tooltip via RefreshTooltip
         }
     }
@@ -327,6 +343,7 @@ public sealed class TrayIcon : IDisposable
             icon.Dispose();
         }
         if (_progressHandles.Remove(serial, out var handle)) DestroyIcon(handle);
+        _iconKeys.Remove(serial);
     }
 
     // Tray-icon fill by printer state, matching the dashboard dots: blue printing, green ready/done,
@@ -388,6 +405,20 @@ public sealed class TrayIcon : IDisposable
         if (_mainIconHandle != IntPtr.Zero) DestroyIcon(_mainIconHandle);
         _notifyIcon.Icon = icon;
         _mainIconHandle = handle;
+    }
+
+    // Re-drawing the tray icon or re-setting its tooltip on every telemetry tick (several per second)
+    // makes the icon and its tooltip flicker. Cache what's currently drawn/shown and only touch the
+    // tray when the visible value (state + percent, or the tooltip text) actually changes.
+    private string? _mainIconKey;
+    private string? _mainText;
+    private readonly Dictionary<string, string> _iconKeys = new();
+
+    private void SetMainText(string text)
+    {
+        if (_mainText == text) return;
+        _mainText = text;
+        _notifyIcon.Text = text.Length > 63 ? text[..63] : text;
     }
 
     /// <summary>Draws the Gantry "G" mark filled into <paramref name="dst"/>, centered.</summary>
