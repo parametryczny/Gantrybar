@@ -7,6 +7,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private static let statusAutosaveName = "GantryStatusItemV2"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var progressItems: [String: NSStatusItem] = [:]
+    private var dashboardViewController: NSViewController?
+    private var detailViewController: PrinterDetailViewController?
+    private var dashboardContentSize = NSSize(width: 540, height: 650)
+    private var suppressFleetReset = false
     private let popover = NSPopover()
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
@@ -21,15 +25,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         self.store = store
         super.init()
 
-        // Give the menu-bar item a stable identity so macOS remembers where the user ⌘-drags it —
-        // and keeps that spot across relaunches and reinstalls. Without this, every launch places it
-        // at the far-left of the status area. On a first-ever launch (no saved position) seed a
-        // right-leaning default so it lands near the clock instead of the far left; the user can
-        // still ⌘-drag it anywhere and that choice sticks.
+        // macOS 27 keeps drifting the menu-bar item to the far-left on relaunch: on quit it writes a
+        // stale position back under the autosave key, and a nil-guarded seed then never corrects it.
+        // So we pin the preferred position near the clock on *every* launch (points measured from the
+        // right edge), not just the first. Trade-off: a manual ⌘-drag won't survive a relaunch, but the
+        // item reliably reappears by the clock — which is the behaviour that kept regressing.
         let positionKey = "NSStatusItem Preferred Position \(Self.statusAutosaveName)"
-        if UserDefaults.standard.object(forKey: positionKey) == nil {
-            UserDefaults.standard.set(88, forKey: positionKey)
-        }
+        UserDefaults.standard.set(88, forKey: positionKey)
         statusItem.autosaveName = Self.statusAutosaveName
 
         let dashboard = PrinterDashboardViewController(
@@ -37,11 +39,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             onAdd: { [weak self] in self?.showAddPrinter() },
             onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
             onReconnect: { [weak store] printer in store?.reconnect(printer) },
+            onShowDetails: { [weak self] serial in self?.showDetails(serial: serial) },
             onPreferredContentSize: { [weak self] size in
-                guard let self, self.popover.contentSize != size else { return }
+                guard let self else { return }
+                self.dashboardContentSize = size
+                // Ignore while the detail view owns the popover, so it doesn't fight for size.
+                guard self.detailViewController == nil, self.popover.contentSize != size else { return }
                 self.popover.contentSize = size
             }
         )
+        dashboardViewController = dashboard
         popover.contentSize = NSSize(width: 540, height: 650)
         popover.contentViewController = dashboard
         popover.behavior = .transient
@@ -395,6 +402,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         removeOutsideClickMonitor()
+        // Reset to the fleet list so reopening never lands back in a stale detail view — but not while
+        // we're intentionally closing to swap content in a new size.
+        if detailViewController != nil, !suppressFleetReset { returnToFleet() }
     }
 
     // Applied on every show (and on settings change): the vibrancy material plus, for "high", a lower
@@ -423,5 +433,45 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         addWindow?.showWindow(nil)
         addWindow?.window?.center()
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    /// Swaps the popover's content to the in-bubble detail view for one printer, keeping everything
+    /// inside the popover instead of opening a separate window.
+    private func showDetails(serial: String) {
+        let detail = PrinterDetailViewController(store: store, serial: serial) { [weak self] in
+            self?.returnToFleet()
+        }
+        detailViewController = detail
+        swapPopoverContent(to: detail, size: NSSize(width: 480, height: 700))
+    }
+
+    /// Returns the popover to the fleet dashboard.
+    private func returnToFleet() {
+        detailViewController = nil
+        guard let dashboard = dashboardViewController else { return }
+        swapPopoverContent(to: dashboard, size: dashboardContentSize)
+    }
+
+    /// Reliably resize the popover when swapping content: an already-open popover won't re-measure on
+    /// a contentViewController swap, so close and reopen it in the target size (fresh measurement).
+    private func swapPopoverContent(to controller: NSViewController, size: NSSize) {
+        guard popover.isShown, let button = anchorButton else {
+            popover.contentViewController = controller
+            popover.contentSize = size
+            return
+        }
+        // Disable animation so close() (and its popoverDidClose delegate) run synchronously under the
+        // guard; otherwise the delayed delegate fires after the guard clears and reopens the fleet.
+        let wasAnimating = popover.animates
+        popover.animates = false
+        suppressFleetReset = true
+        popover.close()
+        popover.contentViewController = controller
+        popover.contentSize = size
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        suppressFleetReset = false
+        popover.animates = wasAnimating
+        // close() removed the outside-click monitor; reinstall it so clicking away still dismisses.
+        installOutsideClickMonitor()
     }
 }

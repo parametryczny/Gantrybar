@@ -48,6 +48,14 @@ enum BambuStatusParser {
         }
         if let value = integer(report["layer_num"]) { result.currentLayer = value }
         if let value = integer(report["total_layer_num"]) { result.totalLayers = value }
+        // Fans (part / aux / chamber), speed level+magnitude and nozzle diameter. Not every model
+        // reports each field, so keep the previous value when a key is missing.
+        if let value = fanPercent(report["cooling_fan_speed"]) { result.partFanPercent = value }
+        if let value = fanPercent(report["big_fan1_speed"]) { result.auxFanPercent = value }
+        if let value = fanPercent(report["big_fan2_speed"]) { result.chamberFanPercent = value }
+        if let value = integer(report["spd_lvl"]) { result.speedLevel = value }
+        if let value = integer(report["spd_mag"]) { result.speedPercent = value }
+        if let value = number(report["nozzle_diameter"]), value > 0 { result.nozzleDiameter = value }
         if let stage = report["stage"] as? [String: Any], let value = integer(stage["_id"]) {
             result.currentStage = value
         } else if let value = integer(report["stg_cur"]) {
@@ -141,6 +149,14 @@ enum BambuStatusParser {
             }
         }
         return value.precomposedStringWithCanonicalMapping
+    }
+
+    /// Bambu reports fan speeds as a 0–15 gear (some firmwares already send a 0–100 percentage).
+    /// Normalise both to a percentage.
+    private static func fanPercent(_ value: Any?) -> Int? {
+        guard let raw = integer(value) else { return nil }
+        if raw > 15 { return min(raw, 100) }
+        return Int((Double(raw) / 15.0 * 100).rounded())
     }
 
     private static func number(_ value: Any?) -> Double? {

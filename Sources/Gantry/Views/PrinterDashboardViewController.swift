@@ -15,6 +15,7 @@ final class PrinterDashboardViewController: NSViewController {
     private let onAdd: () -> Void
     private let onEdit: (SavedPrinter) -> Void
     private let onReconnect: (SavedPrinter) -> Void
+    private let onShowDetails: (String) -> Void
     private let onPreferredContentSize: (NSSize) -> Void
     private let cardsStack = NSStackView()
     private let summaryLabel = NSTextField(labelWithString: "")
@@ -43,12 +44,14 @@ final class PrinterDashboardViewController: NSViewController {
         onAdd: @escaping () -> Void,
         onEdit: @escaping (SavedPrinter) -> Void,
         onReconnect: @escaping (SavedPrinter) -> Void,
+        onShowDetails: @escaping (String) -> Void,
         onPreferredContentSize: @escaping (NSSize) -> Void
     ) {
         self.store = store
         self.onAdd = onAdd
         self.onEdit = onEdit
         self.onReconnect = onReconnect
+        self.onShowDetails = onShowDetails
         self.onPreferredContentSize = onPreferredContentSize
         prefersCompactMode = BambuDefaults.shared.bool(forKey: "dashboard-compact-mode")
         compactModeChosen = BambuDefaults.shared.bool(forKey: "dashboard-compact-mode-set")
@@ -459,6 +462,7 @@ final class PrinterDashboardViewController: NSViewController {
                 self.onReconnect(current)
             },
             onOpenCamera: { [weak self] in self?.openBambuStudio(camera: true) },
+            onShowDetails: { [weak self] in self?.onShowDetails(printer.serial) },
             onOpenSlicer: { url in SlicerLauncher.open(url) },
             onCopyIP: { [weak self] in
                 guard let self, let host = self.store.printers.first(where: { $0.serial == printer.serial })?.host else { return }
@@ -672,6 +676,7 @@ private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
 @MainActor
 private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
     let serial: String
+    private let onShowDetails: () -> Void
     private let stateEmphasisLayer = CALayer()
     private let dropIndicatorLayer = CALayer()
     private let nameLabel = NSTextField(labelWithString: "")
@@ -715,12 +720,14 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         onEdit: @escaping () -> Void,
         onReconnect: @escaping () -> Void,
         onOpenCamera: @escaping () -> Void,
+        onShowDetails: @escaping () -> Void,
         onOpenSlicer: @escaping (URL) -> Void,
         onCopyIP: @escaping () -> Void,
         onRemove: @escaping () -> Void,
         onMove: @escaping (_ sourceSerial: String, _ targetSerial: String, _ insertAfter: Bool) -> Void
     ) {
         serial = printer.serial
+        self.onShowDetails = onShowDetails
         super.init(frame: .zero)
         style = .regular
         cornerRadius = 18
@@ -761,6 +768,7 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         statusLabel.lineBreakMode = .byTruncatingTail
 
         var actionEntries: [CardActionsButton.Entry] = [
+            .init(polishTitle: "Szczegóły", englishTitle: "Details", symbol: "chart.xyaxis.line", action: onShowDetails),
             .init(polishTitle: "Połącz ponownie", englishTitle: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)
         ]
         // Camera lives in Bambu Studio, so it only makes sense for Bambu printers.
@@ -791,7 +799,32 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         titleCluster.orientation = .horizontal
         titleCluster.alignment = .firstBaseline
         titleCluster.spacing = 5
-        let header = NSStackView(views: [stateDot, titleCluster, NSView(), handle, actions])
+        // A small "bento" pill next to the name opens the detail view directly (also in the ⋯ menu).
+        let detailsChip = NSView()
+        detailsChip.wantsLayer = true
+        detailsChip.layer?.cornerRadius = 9
+        detailsChip.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.16).cgColor
+        let detailsIcon = NSImageView(image: NSImage(systemSymbolName: "chart.xyaxis.line", accessibilityDescription: nil) ?? NSImage())
+        detailsIcon.contentTintColor = .controlAccentColor
+        detailsIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+        let detailsText = NSTextField(labelWithString: AppSettings.shared.text("Szczegóły", "Details"))
+        detailsText.font = .systemFont(ofSize: 10, weight: .semibold)
+        detailsText.textColor = .controlAccentColor
+        let detailsInner = NSStackView(views: [detailsIcon, detailsText])
+        detailsInner.orientation = .horizontal
+        detailsInner.alignment = .centerY
+        detailsInner.spacing = 3
+        detailsInner.translatesAutoresizingMaskIntoConstraints = false
+        detailsChip.addSubview(detailsInner)
+        NSLayoutConstraint.activate([
+            detailsInner.topAnchor.constraint(equalTo: detailsChip.topAnchor, constant: 3),
+            detailsInner.bottomAnchor.constraint(equalTo: detailsChip.bottomAnchor, constant: -3),
+            detailsInner.leadingAnchor.constraint(equalTo: detailsChip.leadingAnchor, constant: 8),
+            detailsInner.trailingAnchor.constraint(equalTo: detailsChip.trailingAnchor, constant: -8)
+        ])
+        detailsChip.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(detailsPressed)))
+        detailsChip.setContentHuggingPriority(.required, for: .horizontal)
+        let header = NSStackView(views: [stateDot, titleCluster, detailsChip, NSView(), handle, actions])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 7
@@ -873,6 +906,8 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         currentLayoutWidth = width
         configureMetricsLayout(dual: lastDual, settings: AppSettings.shared)
     }
+
+    @objc private func detailsPressed() { onShowDetails() }
 
     private func beginCardDrag(with event: NSEvent) {
         let item = NSPasteboardItem()

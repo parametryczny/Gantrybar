@@ -10,6 +10,12 @@ final class PrinterStore: ObservableObject {
     @Published var isScanning = false
     @Published var globalMessage: String?
 
+    /// Rolling temperature history per printer, drawn by the detail window's graph. Deliberately not
+    /// @Published — the detail view already redraws on the store's telemetry change, so publishing it
+    /// separately would only add churn to every observer.
+    private(set) var temperatureHistory: [String: [TemperatureSample]] = [:]
+    private let maxTemperatureSamples = 240
+
     private let persistence = PrinterPersistence()
     private let discovery = SSDPDiscovery()
     private let subnetDiscovery = BambuSubnetDiscovery()
@@ -35,6 +41,12 @@ final class PrinterStore: ObservableObject {
 
     var activePrintCount: Int {
         telemetry.values.filter { $0.state == .printing }.count
+    }
+
+    /// Access code for a Bambu printer, used by the detail window's camera stream. Prefers the
+    /// session cache (already unlocked for MQTT) and falls back to the Keychain.
+    func accessCode(for serial: String) -> String? {
+        sessionCodes[serial] ?? AccessCodeStore.accessCode(for: serial)
     }
 
     func scan() {
@@ -235,6 +247,7 @@ final class PrinterStore: ObservableObject {
         sessionCodes.removeValue(forKey: printer.serial)
         printers.removeAll { $0.serial == printer.serial }
         telemetry.removeValue(forKey: printer.serial)
+        temperatureHistory.removeValue(forKey: printer.serial)
         connectionMessages.removeValue(forKey: printer.serial)
         AccessCodeStore.delete(for: printer.serial)
         CertificatePinStore.shared.delete(for: printer.serial)
@@ -389,6 +402,7 @@ final class PrinterStore: ObservableObject {
                 dismissedJobs.removeValue(forKey: serial)
             }
             telemetry[serial] = value
+            recordTemperature(serial: serial, value: value)
             connectionMessages[serial] = nil
             if printersWithTelemetry.contains(serial), let printer = printers.first(where: { $0.serial == serial }) {
                 notifyChanges(printer: printer, previous: previous, current: value)
@@ -524,6 +538,18 @@ final class PrinterStore: ObservableObject {
                 subtitle: printer.name
             )
         }
+    }
+
+    /// Append the latest temperatures to the rolling history (throttled to one sample / 2 s).
+    private func recordTemperature(serial: String, value: PrinterTelemetry) {
+        guard value.nozzleTemperature != nil || value.bedTemperature != nil || value.chamberTemperature != nil else { return }
+        let now = value.lastUpdated ?? Date()
+        var history = temperatureHistory[serial] ?? []
+        if let last = history.last, now.timeIntervalSince(last.time) < 2 { return }
+        history.append(TemperatureSample(time: now, nozzle: value.nozzleTemperature,
+                                         bed: value.bedTemperature, chamber: value.chamberTemperature))
+        if history.count > maxTemperatureSamples { history.removeFirst(history.count - maxTemperatureSamples) }
+        temperatureHistory[serial] = history
     }
 
     private func isHumidityHigh(_ value: Int?) -> Bool {

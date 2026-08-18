@@ -45,6 +45,13 @@ struct PrinterTelemetry: Equatable, Sendable {
     var chamberTemperature: Double?
     var currentLayer: Int?
     var totalLayers: Int?
+    // Cooling fans as a percentage (parsed from Bambu's 0–15 gear). Aux = big_fan1, chamber = big_fan2.
+    var partFanPercent: Int?
+    var auxFanPercent: Int?
+    var chamberFanPercent: Int?
+    var speedLevel: Int?        // Bambu spd_lvl: 1 Silent, 2 Standard, 3 Sport, 4 Ludicrous
+    var speedPercent: Int?      // Bambu spd_mag
+    var nozzleDiameter: Double?
     var currentStage: Int?
     var jobName: String?
     var errorCode: UInt64 = 0
@@ -95,6 +102,14 @@ struct FilamentSlot: Equatable, Identifiable, Sendable {
         guard let material else { return false }
         return !material.isEmpty && material != "—"
     }
+}
+
+/// One point in a printer's rolling temperature history, drawn by the detail window's graph.
+struct TemperatureSample: Equatable, Sendable {
+    let time: Date
+    let nozzle: Double?
+    let bed: Double?
+    let chamber: Double?
 }
 
 enum NozzlePosition: String, Sendable {
