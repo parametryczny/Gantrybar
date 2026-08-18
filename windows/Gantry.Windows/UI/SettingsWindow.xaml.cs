@@ -127,8 +127,28 @@ public partial class SettingsWindow : Window
             }
             else if (r.IsNewer)
             {
-                UpdateStatus.Text = AppSettings.Text($"Dostępna wersja {r.Release.Version} — otwieram stronę…",
-                                                     $"Version {r.Release.Version} available — opening page…");
+                // Download, verify and install in-app (same path as auto-update), instead of just
+                // sending the user to the GitHub page. Falls back to the page if there's no installer
+                // asset or the download fails.
+                if (!string.IsNullOrEmpty(r.Release.SetupUrl))
+                {
+                    UpdateStatus.Text = AppSettings.Text($"Pobieram wersję {r.Release.Version}…",
+                                                         $"Downloading {r.Release.Version}…");
+                    if (await UpdateChecker.DownloadAndInstallAsync(r.Release))
+                    {
+                        UpdateStatus.Text = AppSettings.Text("Instaluję i uruchamiam ponownie…",
+                                                             "Installing and restarting…");
+                        System.Windows.Application.Current?.Shutdown();   // the helper installs + relaunches
+                        return;
+                    }
+                    UpdateStatus.Text = AppSettings.Text("Nie udało się pobrać — otwieram stronę…",
+                                                         "Download failed — opening page…");
+                }
+                else
+                {
+                    UpdateStatus.Text = AppSettings.Text($"Dostępna wersja {r.Release.Version} — otwieram stronę…",
+                                                         $"Version {r.Release.Version} available — opening page…");
+                }
                 try { Process.Start(new ProcessStartInfo(r.Release.PageUrl) { UseShellExecute = true }); } catch { }
             }
             else
