@@ -31,10 +31,10 @@ jobs:
       - name: Build Debian package
         run: GANTRY_PACKAGE_SUFFIX=hotfix sh linux/scripts/build-deb.sh
       - name: Inspect Debian package
-        run: dpkg-deb --info linux/dist/Gantry-0.7.2-Linux-all-hotfix.deb
+        run: dpkg-deb --info linux/dist/Gantry-0.7.3-Linux-all-hotfix.deb
       - name: Upload GNU/Linux package
         uses: actions/upload-artifact@v7
         with:
           name: Gantry-Linux-hotfix
-          path: linux/dist/Gantry-0.7.2-Linux-all-hotfix.deb
+          path: linux/dist/Gantry-0.7.3-Linux-all-hotfix.deb
           if-no-files-found: error
