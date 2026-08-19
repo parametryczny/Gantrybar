@@ -82,7 +82,10 @@ final class PrinterStore: ObservableObject {
 
     /// Fires conditional automations once per print when their condition first becomes true.
     private func evaluateAutomations(serial: String, previous: PrinterTelemetry?, current: PrinterTelemetry) {
-        if current.jobName != previous?.jobName || (current.state == .printing && previous?.state != .printing) {
+        // Re-arm the once-per-print guard only at a clear end-of-print state (idle/finished). Using the
+        // job name here was wrong: Bambu's partial MQTT reports drop it constantly, which looked like a
+        // new print and made a rule (e.g. "light off") fire again and again mid-print.
+        if current.state == .idle || current.state == .finished {
             firedAutomations[serial] = []
         }
         for auto in AutomationStore.shared.automations(for: serial) where auto.enabled {
