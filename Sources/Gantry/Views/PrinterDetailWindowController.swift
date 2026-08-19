@@ -12,6 +12,7 @@ final class PrinterDetailViewController: NSViewController {
     private let serial: String
     private let onBack: () -> Void
     private let onOpenAutomations: () -> Void
+    private let onOpenAdvanced: () -> Void
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var refreshScheduled = false
@@ -57,11 +58,12 @@ final class PrinterDetailViewController: NSViewController {
     private var receivedFrame = false
 
     init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
-         onOpenAutomations: @escaping () -> Void) {
+         onOpenAutomations: @escaping () -> Void, onOpenAdvanced: @escaping () -> Void) {
         self.store = store
         self.serial = serial
         self.onBack = onBack
         self.onOpenAutomations = onOpenAutomations
+        self.onOpenAdvanced = onOpenAdvanced
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -362,14 +364,25 @@ final class PrinterDetailViewController: NSViewController {
         cameraCard = box
         cameraView.translatesAutoresizingMaskIntoConstraints = false
         cameraView.heightAnchor.constraint(equalToConstant: 230).isActive = true
-        let stack = NSStackView(views: [sectionTitle("Kamera"), cameraView])
+        let advancedButton = NSButton(title: AppSettings.shared.text("Zaawansowane…", "Advanced…"),
+                                      target: self, action: #selector(openAdvanced))
+        advancedButton.isBordered = false
+        advancedButton.font = .systemFont(ofSize: 10, weight: .medium)
+        advancedButton.contentTintColor = .controlAccentColor
+        let header = NSStackView(views: [sectionTitle("Kamera"), NSView(), advancedButton])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        let stack = NSStackView(views: [header, cameraView])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
         cameraView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
+
+    @objc private func openAdvanced() { onOpenAdvanced() }
 
     private func pin(_ inner: NSView, in outer: NSView, inset: CGFloat) {
         inner.translatesAutoresizingMaskIntoConstraints = false
@@ -466,6 +479,12 @@ final class PrinterDetailViewController: NSViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
     }
 
+    /// Camera reachable on a separate IP (per-printer override) or the printer's own host.
+    private func cameraHost(for printer: SavedPrinter) -> String {
+        let override = PrinterOverridesStore.shared.overrides(for: serial).cameraHost
+        return (override?.isEmpty == false) ? override! : printer.host
+    }
+
     private func startBambuCamera(_ printer: SavedPrinter) {
         guard stream == nil, let code = store.accessCode(for: serial), !code.isEmpty else {
             cameraView.showStatus(AppSettings.shared.text("Kamera niedostępna (brak kodu dostępu)",
@@ -474,7 +493,7 @@ final class PrinterDetailViewController: NSViewController {
         }
         cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
         let stream = RTSPCameraStream(
-            host: printer.host,
+            host: cameraHost(for: printer),
             accessCode: code,
             onState: { state in Task { @MainActor [weak self] in self?.handleCameraState(state) } },
             onParameterSets: { sps, pps in Task { @MainActor [weak self] in self?.cameraView.setParameterSets(sps: sps, pps: pps) } },
@@ -488,7 +507,7 @@ final class PrinterDetailViewController: NSViewController {
         guard klipperStream == nil else { return }
         cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
         let stream = KlipperCameraStream(
-            host: printer.host,
+            host: cameraHost(for: printer),
             port: printer.port ?? 7125,
             apiKey: store.accessCode(for: serial),
             onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },

@@ -64,6 +64,17 @@ final class PrinterStore: ObservableObject {
     /// Chamber LED on/off. Bambu uses `ledctrl`; Klipper uses a best-effort `caselight` pin (configs
     /// vary — advanced users can point a custom-command/script action at their own macro).
     func setChamberLight(_ on: Bool, serial: String) {
+        // A per-printer override wins: Bambu treats it as MQTT JSON, Klipper as a G-code line.
+        let custom = on ? PrinterOverridesStore.shared.overrides(for: serial).ledOn
+                        : PrinterOverridesStore.shared.overrides(for: serial).ledOff
+        if let custom, !custom.isEmpty {
+            if printers.first(where: { $0.serial == serial })?.kind == .klipper {
+                sendGcode(serial: serial, script: custom)
+            } else {
+                sendCommand(serial: serial, json: custom)
+            }
+            return
+        }
         switch printers.first(where: { $0.serial == serial })?.kind {
         case .klipper:
             sendGcode(serial: serial, script: on ? "SET_PIN PIN=caselight VALUE=1" : "SET_PIN PIN=caselight VALUE=0")

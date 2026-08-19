@@ -10,6 +10,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var dashboardViewController: NSViewController?
     private var detailViewController: PrinterDetailViewController?
     private var automationsWindows: [String: AutomationsWindowController] = [:]
+    private var advancedWindows: [String: PrinterAdvancedWindowController] = [:]
     private var dashboardContentSize = NSSize(width: 540, height: 650)
     private var suppressFleetReset = false
     private let popover = NSPopover()
@@ -442,7 +443,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let detail = PrinterDetailViewController(
             store: store, serial: serial,
             onBack: { [weak self] in self?.returnToFleet() },
-            onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) })
+            onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
+            onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) })
         detailViewController = detail
         swapPopoverContent(to: detail, size: NSSize(width: 480, height: 700))
     }
@@ -456,6 +458,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
         let controller = AutomationsWindowController(store: store, serial: serial)
         automationsWindows[serial] = controller
+        controller.show()
+    }
+
+    /// Opens (or re-focuses) the per-printer advanced overrides editor (camera IP, light commands).
+    private func showAdvanced(serial: String) {
+        popover.performClose(nil)
+        if let existing = advancedWindows[serial], existing.window != nil {
+            existing.show()
+            return
+        }
+        let controller = PrinterAdvancedWindowController(store: store, serial: serial)
+        advancedWindows[serial] = controller
         controller.show()
     }
 
