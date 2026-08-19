@@ -37,6 +37,15 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
         queue.async { [weak self] in self?.connect() }
     }
 
+    /// Publishes a raw JSON command to `device/<serial>/request` (chamber LED, pause, …).
+    /// No-op until the socket is connected.
+    func sendCommand(_ json: String) {
+        queue.async { [weak self] in
+            guard let self, self.connection != nil, !self.stopped else { return }
+            self.send(MQTTCodec.publish(topic: "device/\(self.printer.serial)/request", payload: Data(json.utf8)))
+        }
+    }
+
     func stop() {
         queue.async { [weak self] in
             guard let self else { return }

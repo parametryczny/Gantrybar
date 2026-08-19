@@ -9,6 +9,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var progressItems: [String: NSStatusItem] = [:]
     private var dashboardViewController: NSViewController?
     private var detailViewController: PrinterDetailViewController?
+    private var automationsWindows: [String: AutomationsWindowController] = [:]
     private var dashboardContentSize = NSSize(width: 540, height: 650)
     private var suppressFleetReset = false
     private let popover = NSPopover()
@@ -438,11 +439,24 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Swaps the popover's content to the in-bubble detail view for one printer, keeping everything
     /// inside the popover instead of opening a separate window.
     private func showDetails(serial: String) {
-        let detail = PrinterDetailViewController(store: store, serial: serial) { [weak self] in
-            self?.returnToFleet()
-        }
+        let detail = PrinterDetailViewController(
+            store: store, serial: serial,
+            onBack: { [weak self] in self?.returnToFleet() },
+            onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) })
         detailViewController = detail
         swapPopoverContent(to: detail, size: NSSize(width: 480, height: 700))
+    }
+
+    /// Opens (or re-focuses) the per-printer automations editor window.
+    private func showAutomations(serial: String) {
+        popover.performClose(nil)
+        if let existing = automationsWindows[serial], existing.window != nil {
+            existing.show()
+            return
+        }
+        let controller = AutomationsWindowController(store: store, serial: serial)
+        automationsWindows[serial] = controller
+        controller.show()
     }
 
     /// Returns the popover to the fleet dashboard.

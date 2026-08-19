@@ -11,6 +11,7 @@ final class PrinterDetailViewController: NSViewController {
     private let store: PrinterStore
     private let serial: String
     private let onBack: () -> Void
+    private let onOpenAutomations: () -> Void
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var refreshScheduled = false
@@ -48,10 +49,12 @@ final class PrinterDetailViewController: NSViewController {
     private var cameraTimeout: DispatchWorkItem?
     private var receivedFrame = false
 
-    init(store: PrinterStore, serial: String, onBack: @escaping () -> Void) {
+    init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
+         onOpenAutomations: @escaping () -> Void) {
         self.store = store
         self.serial = serial
         self.onBack = onBack
+        self.onOpenAutomations = onOpenAutomations
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -106,11 +109,13 @@ final class PrinterDetailViewController: NSViewController {
             stack.bottomAnchor.constraint(equalTo: flipped.bottomAnchor)
         ])
 
+        let isBambu = store.printers.first(where: { $0.serial == serial })?.kind == .bambu
         stack.addArrangedSubview(makeStatusCard())
         stack.addArrangedSubview(makeTemperatureCard())
         stack.addArrangedSubview(makeFansCard())
         stack.addArrangedSubview(makeAMSCard())
-        if store.printers.first(where: { $0.serial == serial })?.kind == .bambu {
+        if isBambu {
+            stack.addArrangedSubview(makeControlCard())
             stack.addArrangedSubview(makeCameraCard())
         }
         for case let card as NSView in stack.arrangedSubviews {
@@ -280,6 +285,37 @@ final class PrinterDetailViewController: NSViewController {
         pin(stack, in: box, inset: 14)
         amsStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
+    }
+
+    private func makeControlCard() -> NSView {
+        let box = card()
+        let onButton = NSButton(title: AppSettings.shared.text("Światło wł.", "Light on"),
+                                target: self, action: #selector(lightOn))
+        let offButton = NSButton(title: AppSettings.shared.text("Światło wył.", "Light off"),
+                                 target: self, action: #selector(lightOff))
+        let automationsButton = NSButton(title: AppSettings.shared.text("Automatyzacje…", "Automations…"),
+                                         target: self, action: #selector(openAutomations))
+        for b in [onButton, offButton, automationsButton] { b.bezelStyle = .rounded; b.controlSize = .regular }
+        let buttons = NSStackView(views: [onButton, offButton, NSView(), automationsButton])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+        let stack = NSStackView(views: [sectionTitle("Sterowanie i automatyzacje"), buttons])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        pin(stack, in: box, inset: 14)
+        buttons.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return box
+    }
+
+    @objc private func lightOn() { setChamberLight(true) }
+    @objc private func lightOff() { setChamberLight(false) }
+    @objc private func openAutomations() { onOpenAutomations() }
+
+    private func setChamberLight(_ on: Bool) {
+        let mode = on ? "on" : "off"
+        let json = "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}"
+        store.sendCommand(serial: serial, json: json)
     }
 
     private func makeCameraCard() -> NSView {

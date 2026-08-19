@@ -27,6 +27,7 @@ final class PrinterStore: ObservableObject {
     private var sessionCodes: [String: String] = [:]
     private var dismissedJobs: [String: String] = [:]
     private var printersWithTelemetry = Set<String>()
+    private var firedAutomations: [String: Set<UUID>] = [:]
     private var scanToken: UUID?
 
     init() {
@@ -47,6 +48,58 @@ final class PrinterStore: ObservableObject {
     /// session cache (already unlocked for MQTT) and falls back to the Keychain.
     func accessCode(for serial: String) -> String? {
         sessionCodes[serial] ?? AccessCodeStore.accessCode(for: serial)
+    }
+
+    /// Sends a raw JSON command to a Bambu printer over its live MQTT connection (chamber LED,
+    /// pause, …). Silently ignores printers that aren't connected Bambu machines.
+    func sendCommand(serial: String, json: String) {
+        (clients[serial] as? MQTTClient)?.sendCommand(json)
+    }
+
+    /// Chamber LED on/off (Bambu `ledctrl`).
+    func setChamberLight(_ on: Bool, serial: String) {
+        let mode = on ? "on" : "off"
+        sendCommand(serial: serial, json: "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}")
+    }
+
+    /// Runs one automation's action now (used by both the Run button and the trigger engine).
+    func runAutomation(_ auto: PrinterAutomation, serial: String) {
+        let name = printers.first { $0.serial == serial }?.name ?? serial
+        switch auto.action {
+        case .light(let on): setChamberLight(on, serial: serial)
+        case .pause: sendCommand(serial: serial, json: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"pause\"}}")
+        case .resume: sendCommand(serial: serial, json: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"resume\"}}")
+        case .stop: sendCommand(serial: serial, json: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"stop\"}}")
+        case .notify(let text): NotificationService.post(title: name, body: text)
+        case .command(let json): sendCommand(serial: serial, json: json)
+        case .script(let content):
+            ScriptRunner.shared.run(auto.id, script: content)
+            NotificationService.post(title: name,
+                                     body: AppSettings.shared.text("Uruchomiono skrypt: \(auto.name)",
+                                                                   "Ran script: \(auto.name)"))
+        }
+    }
+
+    /// Fires conditional automations once per print when their condition first becomes true.
+    private func evaluateAutomations(serial: String, previous: PrinterTelemetry?, current: PrinterTelemetry) {
+        if current.jobName != previous?.jobName || (current.state == .printing && previous?.state != .printing) {
+            firedAutomations[serial] = []
+        }
+        for auto in AutomationStore.shared.automations(for: serial) where auto.enabled {
+            guard automationShouldFire(auto.trigger, previous: previous, current: current) else { continue }
+            if firedAutomations[serial, default: []].insert(auto.id).inserted {
+                runAutomation(auto, serial: serial)
+            }
+        }
+    }
+
+    private func automationShouldFire(_ trigger: AutomationTrigger, previous: PrinterTelemetry?, current: PrinterTelemetry) -> Bool {
+        switch trigger {
+        case .manual: false
+        case .atLayer(let n): (current.currentLayer ?? 0) >= n && (previous?.currentLayer ?? 0) < n
+        case .atProgress(let p): current.progress >= p && (previous?.progress ?? -1) < p
+        case .onState(let s): current.state.rawValue == s && previous?.state.rawValue != s
+        }
     }
 
     func scan() {
@@ -408,6 +461,7 @@ final class PrinterStore: ObservableObject {
                 notifyChanges(printer: printer, previous: previous, current: value)
             }
             printersWithTelemetry.insert(serial)
+            evaluateAutomations(serial: serial, previous: previous, current: value)
         case .disconnected(let reason):
             var offline = telemetry[serial] ?? PrinterTelemetry()
             offline.state = .offline
