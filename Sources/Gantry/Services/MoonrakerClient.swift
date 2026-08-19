@@ -18,8 +18,12 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
     private var cfsGroups: [FilamentGroup] = []
     private static let cfsRequest = "{\"method\":\"get\",\"params\":{\"boxsInfo\":1}}"
 
-    init(printer: SavedPrinter, onEvent: @escaping @Sendable (MQTTClient.Event) -> Void) {
+    private let objects: MoonrakerObjects
+
+    init(printer: SavedPrinter, objects: MoonrakerObjects = .init(),
+         onEvent: @escaping @Sendable (MQTTClient.Event) -> Void) {
         self.printer = printer
+        self.objects = objects
         self.onEvent = onEvent
     }
 
@@ -60,7 +64,7 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
         while !Task.isCancelled {
             do {
                 let data = try await get(queryURL)
-                if var updated = MoonrakerStatusParser.telemetry(from: data, previous: telemetry) {
+                if var updated = MoonrakerStatusParser.telemetry(from: data, previous: telemetry, objects: objects) {
                     // A Creality CFS overrides the (absent) Happy Hare gates with its own modules.
                     let cfs = currentCFSGroups()
                     if !cfs.isEmpty {
@@ -84,7 +88,10 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
     /// Query only objects the printer actually exposes, so Moonraker doesn't reject the request,
     /// and pick up any chamber temperature sensor and the MMU object if present.
     private func buildQueryURL() async -> URL? {
-        var wanted = ["print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu", "fan", "gcode_move"]
+        var wanted = ["print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move",
+                      objects.nozzle, objects.bed, objects.fan]
+        if let chamber = objects.chamber { wanted.append(chamber) }
+        wanted = Array(Set(wanted))
         if let listURL = URL(string: "\(baseURL)/printer/objects/list"),
            let data = try? await get(listURL),
            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

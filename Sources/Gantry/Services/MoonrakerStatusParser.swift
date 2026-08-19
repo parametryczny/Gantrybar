@@ -4,7 +4,8 @@ import Foundation
 /// Happy Hare `mmu` object mapped to AMS slots. Field names verified defensively; unknown or
 /// missing values fall back to the previous telemetry.
 enum MoonrakerStatusParser {
-    static func telemetry(from data: Data, previous: PrinterTelemetry = .init()) -> PrinterTelemetry? {
+    static func telemetry(from data: Data, previous: PrinterTelemetry = .init(),
+                          objects: MoonrakerObjects = .init()) -> PrinterTelemetry? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         let result = root["result"] as? [String: Any] ?? root
         guard let status = result["status"] as? [String: Any] else { return nil }
@@ -43,19 +44,25 @@ enum MoonrakerStatusParser {
             telemetry.remainingMinutes = Int((remainingSeconds / 60).rounded())
         }
 
-        if let extruder = status["extruder"] as? [String: Any] {
+        if let extruder = status[objects.nozzle] as? [String: Any] {
             if let temp = number(extruder["temperature"]) { telemetry.nozzleTemperature = temp }
             if let target = number(extruder["target"]) { telemetry.nozzleTargetTemperature = target }
         }
-        if let bed = status["heater_bed"] as? [String: Any] {
+        if let bed = status[objects.bed] as? [String: Any] {
             if let temp = number(bed["temperature"]) { telemetry.bedTemperature = temp }
             if let target = number(bed["target"]) { telemetry.bedTargetTemperature = target }
         }
-        // Chamber: any temperature_sensor / heater_generic whose name mentions "chamber".
-        if let chamber = chamberTemperature(in: status) { telemetry.chamberTemperature = chamber }
+        // Chamber: the overridden object if given, else any temperature_sensor / heater_generic whose
+        // name mentions "chamber".
+        if let name = objects.chamber, let object = status[name] as? [String: Any],
+           let temp = number(object["temperature"]) {
+            telemetry.chamberTemperature = temp
+        } else if let chamber = chamberTemperature(in: status) {
+            telemetry.chamberTemperature = chamber
+        }
 
         // Part-cooling fan (0–1) and the live speed factor (1.0 = 100%).
-        if let fan = status["fan"] as? [String: Any], let speed = number(fan["speed"]) {
+        if let fan = status[objects.fan] as? [String: Any], let speed = number(fan["speed"]) {
             telemetry.partFanPercent = Int((speed * 100).rounded())
         }
         if let gm = status["gcode_move"] as? [String: Any], let factor = number(gm["speed_factor"]) {

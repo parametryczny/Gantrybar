@@ -366,7 +366,8 @@ final class PrinterStore: ObservableObject {
         let client: PrinterConnection
         switch printer.kind {
         case .klipper:
-            client = MoonrakerClient(printer: hydratedWithSecret(printer), onEvent: handler)
+            let objects = PrinterOverridesStore.shared.overrides(for: printer.serial).moonrakerObjects
+            client = MoonrakerClient(printer: hydratedWithSecret(printer), objects: objects, onEvent: handler)
         case .prusa:
             client = PrusaLinkClient(printer: hydratedWithSecret(printer), onEvent: handler)
         case .snapmaker:
