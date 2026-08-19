@@ -54,6 +54,14 @@ enum MoonrakerStatusParser {
         // Chamber: any temperature_sensor / heater_generic whose name mentions "chamber".
         if let chamber = chamberTemperature(in: status) { telemetry.chamberTemperature = chamber }
 
+        // Part-cooling fan (0–1) and the live speed factor (1.0 = 100%).
+        if let fan = status["fan"] as? [String: Any], let speed = number(fan["speed"]) {
+            telemetry.partFanPercent = Int((speed * 100).rounded())
+        }
+        if let gm = status["gcode_move"] as? [String: Any], let factor = number(gm["speed_factor"]) {
+            telemetry.speedPercent = Int((factor * 100).rounded())
+        }
+
         if let mmu = status["mmu"] as? [String: Any], let group = parseMMUGroup(mmu) {
             telemetry.filamentGroups = [group]
             telemetry.amsSlots = group.legacyAMSSlots

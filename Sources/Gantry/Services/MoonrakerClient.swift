@@ -34,6 +34,22 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
         webSocket?.cancel(with: .goingAway, reason: nil)
     }
 
+    /// Sends a raw G-code line (used by the detail card's controls and automations). Klipper macros
+    /// like PAUSE / RESUME / CANCEL_PRINT go through here too.
+    func sendGcode(_ script: String) {
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self,
+                  var components = URLComponents(string: "\(self.baseURL)/printer/gcode/script") else { return }
+            components.queryItems = [URLQueryItem(name: "script", value: script)]
+            guard let url = components.url else { return }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 8
+            if let key = self.printer.apiKey, !key.isEmpty { request.setValue(key, forHTTPHeaderField: "X-Api-Key") }
+            _ = try? await URLSession.shared.data(for: request)
+        }
+    }
+
     private var baseURL: String { "http://\(printer.host):\(printer.port ?? 7125)" }
 
     private func run() async {
@@ -68,7 +84,7 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
     /// Query only objects the printer actually exposes, so Moonraker doesn't reject the request,
     /// and pick up any chamber temperature sensor and the MMU object if present.
     private func buildQueryURL() async -> URL? {
-        var wanted = ["print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu"]
+        var wanted = ["print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu", "fan", "gcode_move"]
         if let listURL = URL(string: "\(baseURL)/printer/objects/list"),
            let data = try? await get(listURL),
            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

@@ -56,22 +56,43 @@ final class PrinterStore: ObservableObject {
         (clients[serial] as? MQTTClient)?.sendCommand(json)
     }
 
-    /// Chamber LED on/off (Bambu `ledctrl`).
+    /// Sends a raw G-code line to a Klipper printer over Moonraker (chamber light, pause, custom).
+    func sendGcode(serial: String, script: String) {
+        (clients[serial] as? MoonrakerClient)?.sendGcode(script)
+    }
+
+    /// Chamber LED on/off. Bambu uses `ledctrl`; Klipper uses a best-effort `caselight` pin (configs
+    /// vary — advanced users can point a custom-command/script action at their own macro).
     func setChamberLight(_ on: Bool, serial: String) {
-        let mode = on ? "on" : "off"
-        sendCommand(serial: serial, json: "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}")
+        switch printers.first(where: { $0.serial == serial })?.kind {
+        case .klipper:
+            sendGcode(serial: serial, script: on ? "SET_PIN PIN=caselight VALUE=1" : "SET_PIN PIN=caselight VALUE=0")
+        default:
+            let mode = on ? "on" : "off"
+            sendCommand(serial: serial, json: "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}")
+        }
     }
 
     /// Runs one automation's action now (used by both the Run button and the trigger engine).
     func runAutomation(_ auto: PrinterAutomation, serial: String) {
-        let name = printers.first { $0.serial == serial }?.name ?? serial
+        let printer = printers.first { $0.serial == serial }
+        let name = printer?.name ?? serial
+        let isKlipper = printer?.kind == .klipper
+
+        func printCommand(bambu: String, klipperMacro: String) {
+            if isKlipper { sendGcode(serial: serial, script: klipperMacro) }
+            else { sendCommand(serial: serial, json: bambu) }
+        }
+
         switch auto.action {
         case .light(let on): setChamberLight(on, serial: serial)
-        case .pause: sendCommand(serial: serial, json: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"pause\"}}")
-        case .resume: sendCommand(serial: serial, json: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"resume\"}}")
-        case .stop: sendCommand(serial: serial, json: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"stop\"}}")
+        case .pause: printCommand(bambu: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"pause\"}}", klipperMacro: "PAUSE")
+        case .resume: printCommand(bambu: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"resume\"}}", klipperMacro: "RESUME")
+        case .stop: printCommand(bambu: "{\"print\":{\"sequence_id\":\"2004\",\"command\":\"stop\"}}", klipperMacro: "CANCEL_PRINT")
         case .notify(let text): NotificationService.post(title: name, body: text)
-        case .command(let json): sendCommand(serial: serial, json: json)
+        case .command(let payload):
+            // Bambu: raw MQTT JSON. Klipper: raw G-code line.
+            if isKlipper { sendGcode(serial: serial, script: payload) } else { sendCommand(serial: serial, json: payload) }
         case .script(let content):
             ScriptRunner.shared.run(auto.id, script: content)
             NotificationService.post(title: name,

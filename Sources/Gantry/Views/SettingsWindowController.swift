@@ -17,6 +17,8 @@ final class SettingsWindowController: NSWindowController {
     private let launchLabel = NSTextField(labelWithString: "")
     private let spoolbaseSwitch = NSSwitch()
     private let spoolbaseLabel = NSTextField(labelWithString: "")
+    private let developerSwitch = NSSwitch()
+    private let developerLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
     private let supportButton = NSButton()
     private let supportSubtitle = NSTextField(wrappingLabelWithString: "")
@@ -105,6 +107,13 @@ final class SettingsWindowController: NSWindowController {
         let spoolbaseRow = NSStackView(views: [spoolbaseLabel, NSView(), spoolbaseSwitch])
         spoolbaseRow.orientation = .horizontal
         spoolbaseRow.alignment = .centerY
+
+        developerSwitch.target = self
+        developerSwitch.action = #selector(developerToggled)
+        developerLabel.font = .systemFont(ofSize: 12)
+        let developerRow = NSStackView(views: [developerLabel, NSView(), developerSwitch])
+        developerRow.orientation = .horizontal
+        developerRow.alignment = .centerY
 
         let form = NSGridView(views: [
             [languageLabel, languageControl],
@@ -211,7 +220,7 @@ final class SettingsWindowController: NSWindowController {
         quietRow.spacing = 6
         notificationsStack.addArrangedSubview(quietRow)
 
-        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, spoolbaseRow, notificationsStack, separator, updateRow, actionRow, supportStack])
+        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, spoolbaseRow, developerRow, notificationsStack, separator, updateRow, actionRow, supportStack])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -226,6 +235,7 @@ final class SettingsWindowController: NSWindowController {
             form.widthAnchor.constraint(equalTo: stack.widthAnchor),
             launchRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             spoolbaseRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            developerRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             notificationsStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
             updateRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -263,6 +273,9 @@ final class SettingsWindowController: NSWindowController {
         launchSwitch.state = LaunchAtLoginManager.isEnabled ? .on : .off
         spoolbaseLabel.stringValue = settings.text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock")
         spoolbaseSwitch.state = settings.spoolbaseEnabled ? .on : .off
+        developerLabel.stringValue = settings.text("Tryb deweloperski (sterowanie + automatyzacje)",
+                                                   "Developer mode (control + automations)")
+        developerSwitch.state = settings.developerMode ? .on : .off
         notificationsLabel.stringValue = settings.text("Powiadomienia:", "Notifications:")
         notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished")
         notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error")
@@ -331,6 +344,10 @@ final class SettingsWindowController: NSWindowController {
             launchSwitch.state = LaunchAtLoginManager.isEnabled ? .on : .off
             NotificationService.post(title: "Gantry", body: error.localizedDescription)
         }
+    }
+
+    @objc private func developerToggled() {
+        AppSettings.shared.developerMode = developerSwitch.state == .on
     }
 
     @objc private func spoolbaseToggled() {

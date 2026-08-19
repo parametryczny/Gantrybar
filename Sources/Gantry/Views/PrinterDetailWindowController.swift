@@ -52,6 +52,7 @@ final class PrinterDetailViewController: NSViewController {
     private let cameraView = CameraView()
     private var cameraCard: NSView?
     private var stream: RTSPCameraStream?
+    private var klipperStream: KlipperCameraStream?
     private var cameraTimeout: DispatchWorkItem?
     private var receivedFrame = false
 
@@ -114,15 +115,18 @@ final class PrinterDetailViewController: NSViewController {
             contentStack.bottomAnchor.constraint(equalTo: flipped.bottomAnchor)
         ])
 
-        let isBambu = store.printers.first(where: { $0.serial == serial })?.kind == .bambu
+        // Bambu (MQTT) and Klipper (Moonraker) both support control + camera; Prusa/Snapmaker later.
+        let kind = store.printers.first(where: { $0.serial == serial })?.kind
+        let supportsControlCamera = kind == .bambu || kind == .klipper
         cardViews = [
             "status": makeStatusCard(),
             "temps": makeTemperatureCard(),
             "fans": makeFansCard(),
             "ams": makeAMSCard()
         ]
-        if isBambu {
-            cardViews["control"] = makeControlCard()
+        if supportsControlCamera {
+            // The control + automations tile only appears in developer mode.
+            if AppSettings.shared.developerMode { cardViews["control"] = makeControlCard() }
             cardViews["camera"] = makeCameraCard()
         }
         rebuildCards()
@@ -350,9 +354,7 @@ final class PrinterDetailViewController: NSViewController {
     @objc private func openAutomations() { onOpenAutomations() }
 
     private func setChamberLight(_ on: Bool) {
-        let mode = on ? "on" : "off"
-        let json = "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}"
-        store.sendCommand(serial: serial, json: json)
+        store.setChamberLight(on, serial: serial)
     }
 
     private func makeCameraCard() -> NSView {
@@ -424,6 +426,9 @@ final class PrinterDetailViewController: NSViewController {
             if let mag = t.speedPercent { text += " · \(mag)%" }
             speedLabel.stringValue = text
             speedLabel.isHidden = false
+        } else if let mag = t.speedPercent {
+            speedLabel.stringValue = settings.text("Prędkość: \(mag)%", "Speed: \(mag)%")
+            speedLabel.isHidden = false
         } else {
             speedLabel.isHidden = true
         }
@@ -445,16 +450,28 @@ final class PrinterDetailViewController: NSViewController {
     // MARK: Camera
 
     private func startCamera() {
-        guard stream == nil,
-              let printer = store.printers.first(where: { $0.serial == serial }), printer.kind == .bambu,
-              let code = store.accessCode(for: serial), !code.isEmpty else {
-            if store.printers.first(where: { $0.serial == serial })?.kind == .bambu {
-                cameraView.showStatus(AppSettings.shared.text("Kamera niedostępna (brak kodu dostępu)",
-                                                              "Camera unavailable (no access code)"))
-            }
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        receivedFrame = false
+        switch printer.kind {
+        case .bambu: startBambuCamera(printer)
+        case .klipper: startKlipperCamera(printer)
+        default: return
+        }
+        // If no frame arrives in time, show a helpful fallback.
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, !self.receivedFrame else { return }
+            self.cameraView.showStatus(Self.cameraUnavailableText)
+        }
+        cameraTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
+    }
+
+    private func startBambuCamera(_ printer: SavedPrinter) {
+        guard stream == nil, let code = store.accessCode(for: serial), !code.isEmpty else {
+            cameraView.showStatus(AppSettings.shared.text("Kamera niedostępna (brak kodu dostępu)",
+                                                          "Camera unavailable (no access code)"))
             return
         }
-        receivedFrame = false
         cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
         let stream = RTSPCameraStream(
             host: printer.host,
@@ -465,14 +482,20 @@ final class PrinterDetailViewController: NSViewController {
         )
         self.stream = stream
         stream.start()
+    }
 
-        // If no frame arrives in time, show a helpful fallback.
-        let timeout = DispatchWorkItem { [weak self] in
-            guard let self, !self.receivedFrame else { return }
-            self.cameraView.showStatus(Self.cameraUnavailableText)
-        }
-        cameraTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
+    private func startKlipperCamera(_ printer: SavedPrinter) {
+        guard klipperStream == nil else { return }
+        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
+        let stream = KlipperCameraStream(
+            host: printer.host,
+            port: printer.port ?? 7125,
+            apiKey: store.accessCode(for: serial),
+            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
+            onState: { state in Task { @MainActor [weak self] in self?.handleKlipperState(state) } }
+        )
+        klipperStream = stream
+        stream.start()
     }
 
     private func stopCamera() {
@@ -480,6 +503,8 @@ final class PrinterDetailViewController: NSViewController {
         cameraTimeout = nil
         stream?.stop()
         stream = nil
+        klipperStream?.stop()
+        klipperStream = nil
     }
 
     private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {
@@ -488,12 +513,31 @@ final class PrinterDetailViewController: NSViewController {
         cameraView.enqueue(avcc, keyframe: keyframe)
     }
 
+    private func handleKlipperFrame(_ data: Data) {
+        receivedFrame = true
+        cameraTimeout?.cancel()
+        if let image = NSImage(data: data) { cameraView.show(image) }
+    }
+
     private func handleCameraState(_ state: RTSPCameraStream.State) {
         switch state {
         case .connecting, .playing:
             break
         case .failed:
             if !receivedFrame { cameraView.showStatus(Self.cameraUnavailableText) }
+        }
+    }
+
+    private func handleKlipperState(_ state: KlipperCameraStream.State) {
+        switch state {
+        case .connecting, .streaming:
+            break
+        case .failed:
+            if !receivedFrame {
+                cameraView.showStatus(AppSettings.shared.text(
+                    "Kamera niedostępna — sprawdź konfigurację webcam w Moonraker (Fluidd/Mainsail)",
+                    "Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)"))
+            }
         }
     }
 
@@ -738,7 +782,8 @@ final class FanChip: NSView {
 
 @MainActor
 final class CameraView: NSView {
-    private let displayLayer = AVSampleBufferDisplayLayer()
+    private let displayLayer = AVSampleBufferDisplayLayer()   // Bambu H.264
+    private let imageView = NSImageView()                     // Klipper JPEG snapshots
     private let statusLabel = NSTextField(labelWithString: "")
     private var formatDescription: CMFormatDescription?
 
@@ -752,6 +797,17 @@ final class CameraView: NSView {
         displayLayer.videoGravity = .resizeAspect
         displayLayer.frame = bounds
         layer?.addSublayer(displayLayer)
+
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.isHidden = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: topAnchor),
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            imageView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
 
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = .white
@@ -834,6 +890,13 @@ final class CameraView: NSView {
 
         if displayLayer.status == .failed { displayLayer.flush() }
         displayLayer.enqueue(sampleBuffer)
+        statusLabel.isHidden = true
+    }
+
+    /// Klipper JPEG snapshot frame.
+    func show(_ image: NSImage) {
+        imageView.image = image
+        imageView.isHidden = false
         statusLabel.isHidden = true
     }
 

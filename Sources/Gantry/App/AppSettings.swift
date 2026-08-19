@@ -61,6 +61,10 @@ final class AppSettings: ObservableObject {
     /// notifying that one is available.
     @Published var autoUpdate: Bool { didSet { defaults.set(autoUpdate, forKey: "auto-update") } }
 
+    /// Developer mode: reveals the printer control + automations tile in the detail card. Off by
+    /// default so casual users get a pure monitor without control surfaces.
+    @Published var developerMode: Bool { didSet { defaults.set(developerMode, forKey: "developer-mode") } }
+
     @Published var notifyFinished: Bool { didSet { defaults.set(notifyFinished, forKey: "notify-finished") } }
     @Published var notifyError: Bool { didSet { defaults.set(notifyError, forKey: "notify-error") } }
     @Published var notifyPaused: Bool { didSet { defaults.set(notifyPaused, forKey: "notify-paused") } }
@@ -93,6 +97,7 @@ final class AppSettings: ObservableObject {
         panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
         spoolbaseEnabled = defaults.object(forKey: "spoolbase-enabled") as? Bool ?? true
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
+        developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true
         notifyPaused = defaults.object(forKey: "notify-paused") as? Bool ?? true
