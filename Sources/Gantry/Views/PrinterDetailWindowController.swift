@@ -1,5 +1,7 @@
 import AppKit
+import AVFoundation
 import Combine
+import CoreMedia
 
 /// Rich, in-popover per-printer detail view ("Szczegóły") — a HelixScreen-style read view shown by
 /// swapping the popover's content, with a back button to return to the fleet. Monitor only: no
@@ -42,7 +44,7 @@ final class PrinterDetailViewController: NSViewController {
     // Camera
     private let cameraView = CameraView()
     private var cameraCard: NSView?
-    private var stream: BambuCameraStream?
+    private var stream: RTSPCameraStream?
     private var cameraTimeout: DispatchWorkItem?
     private var receivedFrame = false
 
@@ -392,22 +394,23 @@ final class PrinterDetailViewController: NSViewController {
         }
         receivedFrame = false
         cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
-        let stream = BambuCameraStream(
+        let stream = RTSPCameraStream(
             host: printer.host,
             accessCode: code,
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in self?.handleCameraState(state) } }
+            onState: { state in Task { @MainActor [weak self] in self?.handleCameraState(state) } },
+            onParameterSets: { sps, pps in Task { @MainActor [weak self] in self?.cameraView.setParameterSets(sps: sps, pps: pps) } },
+            onAccessUnit: { avcc, keyframe in Task { @MainActor [weak self] in self?.handleAccessUnit(avcc, keyframe: keyframe) } }
         )
         self.stream = stream
         stream.start()
 
-        // If no frame arrives, the model/firmware probably has LAN Live View off — say so.
+        // If no frame arrives in time, show a helpful fallback.
         let timeout = DispatchWorkItem { [weak self] in
             guard let self, !self.receivedFrame else { return }
             self.cameraView.showStatus(Self.cameraUnavailableText)
         }
         cameraTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: timeout)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
     }
 
     private func stopCamera() {
@@ -417,15 +420,15 @@ final class PrinterDetailViewController: NSViewController {
         stream = nil
     }
 
-    private func handleFrame(_ data: Data) {
+    private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {
         receivedFrame = true
         cameraTimeout?.cancel()
-        if let image = NSImage(data: data) { cameraView.show(image) }
+        cameraView.enqueue(avcc, keyframe: keyframe)
     }
 
-    private func handleCameraState(_ state: BambuCameraStream.State) {
+    private func handleCameraState(_ state: RTSPCameraStream.State) {
         switch state {
-        case .connecting, .streaming:
+        case .connecting, .playing:
             break
         case .failed:
             if !receivedFrame { cameraView.showStatus(Self.cameraUnavailableText) }
@@ -759,17 +762,19 @@ final class AMSSlotView: NSView {
 
         let color = AMSSlotView.color(from: slot.colorHex)
         // Translucent fill from the bottom = remaining amount.
-        fillLayer.backgroundColor = (slot.isPresent ? color.withAlphaComponent(0.20) : NSColor.clear).cgColor
+        fillLayer.backgroundColor = (slot.isPresent ? color.withAlphaComponent(0.33) : NSColor.clear).cgColor
         fillLayer.actions = ["bounds": NSNull(), "position": NSNull()]
         layer?.addSublayer(fillLayer)
 
-        // Colour bar (the spool colour) across the top.
+        // Colour bar (the spool colour) across the top — a bold cap so the true colour reads clearly.
         let colorBar = NSView()
         colorBar.wantsLayer = true
-        colorBar.layer?.cornerRadius = 4
+        colorBar.layer?.cornerRadius = 5
         colorBar.layer?.backgroundColor = (slot.isPresent ? color : NSColor.separatorColor).cgColor
+        colorBar.layer?.borderWidth = 0.5
+        colorBar.layer?.borderColor = NSColor.black.withAlphaComponent(0.15).cgColor
         colorBar.translatesAutoresizingMaskIntoConstraints = false
-        colorBar.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        colorBar.heightAnchor.constraint(equalToConstant: 20).isActive = true
 
         let slotLabel = NSTextField(labelWithString: slot.label)
         slotLabel.font = .systemFont(ofSize: 10, weight: .semibold)
@@ -822,12 +827,13 @@ final class AMSSlotView: NSView {
     }
 }
 
-// MARK: - Camera view
+// MARK: - Camera view (H.264 via AVSampleBufferDisplayLayer)
 
 @MainActor
 final class CameraView: NSView {
-    private let imageView = NSImageView()
+    private let displayLayer = AVSampleBufferDisplayLayer()
     private let statusLabel = NSTextField(labelWithString: "")
+    private var formatDescription: CMFormatDescription?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -836,9 +842,10 @@ final class CameraView: NSView {
         layer?.backgroundColor = NSColor.black.cgColor
         layer?.masksToBounds = true
 
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(imageView)
+        displayLayer.videoGravity = .resizeAspect
+        displayLayer.frame = bounds
+        layer?.addSublayer(displayLayer)
+
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = .white
         statusLabel.alignment = .center
@@ -847,10 +854,6 @@ final class CameraView: NSView {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(statusLabel)
         NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: topAnchor),
-            imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            imageView.bottomAnchor.constraint(equalTo: bottomAnchor),
             statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 12),
@@ -860,8 +863,70 @@ final class CameraView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    func show(_ image: NSImage) {
-        imageView.image = image
+    override func layout() {
+        super.layout()
+        displayLayer.frame = bounds
+    }
+
+    func setParameterSets(sps: Data, pps: Data) {
+        var format: CMFormatDescription?
+        sps.withUnsafeBytes { spsRaw in
+            pps.withUnsafeBytes { ppsRaw in
+                guard let spsBase = spsRaw.bindMemory(to: UInt8.self).baseAddress,
+                      let ppsBase = ppsRaw.bindMemory(to: UInt8.self).baseAddress else { return }
+                let pointers: [UnsafePointer<UInt8>] = [spsBase, ppsBase]
+                let sizes: [Int] = [sps.count, pps.count]
+                pointers.withUnsafeBufferPointer { ptrBuf in
+                    sizes.withUnsafeBufferPointer { sizeBuf in
+                        CMVideoFormatDescriptionCreateFromH264ParameterSets(
+                            allocator: kCFAllocatorDefault,
+                            parameterSetCount: 2,
+                            parameterSetPointers: ptrBuf.baseAddress!,
+                            parameterSetSizes: sizeBuf.baseAddress!,
+                            nalUnitHeaderLength: 4,
+                            formatDescriptionOut: &format)
+                    }
+                }
+            }
+        }
+        if let format { formatDescription = format }
+    }
+
+    func enqueue(_ avcc: Data, keyframe: Bool) {
+        guard let formatDescription else { return }
+        let length = avcc.count
+        var blockBuffer: CMBlockBuffer?
+        guard CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: length,
+            blockAllocator: kCFAllocatorDefault, customBlockSource: nil,
+            offsetToData: 0, dataLength: length, flags: 0, blockBufferOut: &blockBuffer) == kCMBlockBufferNoErr,
+              let blockBuffer else { return }
+        let copied = avcc.withUnsafeBytes {
+            CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: blockBuffer,
+                                          offsetIntoDestination: 0, dataLength: length)
+        }
+        guard copied == kCMBlockBufferNoErr else { return }
+
+        var sampleBuffer: CMSampleBuffer?
+        var sampleSize = length
+        guard CMSampleBufferCreate(
+            allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, dataReady: true,
+            makeDataReadyCallback: nil, refcon: nil, formatDescription: formatDescription,
+            sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil,
+            sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize, sampleBufferOut: &sampleBuffer) == noErr,
+              let sampleBuffer else { return }
+
+        // Live stream with no timestamps → display each frame as soon as it arrives.
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true),
+           CFArrayGetCount(attachments) > 0 {
+            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+            CFDictionarySetValue(dict,
+                                 Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+        }
+
+        if displayLayer.status == .failed { displayLayer.flush() }
+        displayLayer.enqueue(sampleBuffer)
         statusLabel.isHidden = true
     }
 
