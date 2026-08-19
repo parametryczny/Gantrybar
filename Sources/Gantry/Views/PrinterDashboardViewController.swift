@@ -1529,11 +1529,38 @@ private final class LabeledMetricView: NSView {
     required init?(coder: NSCoder) { nil }
 }
 
+/// A colour swatch whose fill rises from the bottom in proportion to the remaining filament — the
+/// emptier the spool, the shorter the coloured fill. The unfilled part shows a faded tint.
+@MainActor
+final class FilamentSwatchView: NSView {
+    private let fillLayer = CALayer()
+    private let fraction: CGFloat
+
+    init(color: NSColor, fraction: CGFloat) {
+        self.fraction = max(0, min(1, fraction))
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.masksToBounds = true
+        layer?.backgroundColor = color.withAlphaComponent(0.20).cgColor
+        fillLayer.backgroundColor = color.cgColor
+        fillLayer.actions = ["bounds": NSNull(), "position": NSNull()]
+        layer?.addSublayer(fillLayer)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        fillLayer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height * fraction)
+    }
+}
+
 /// One filament slot swatch. The active slot gets a thin white ring; empty slots stay grey and keep
 /// their position so the group never collapses.
 @MainActor
-private final class FilamentSlotView: NSView {
-    init(slot: FilamentSlot, isExternal: Bool) {
+final class FilamentSlotView: NSView {
+    init(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool = false) {
         super.init(frame: .zero)
         let present = slot.isPresent
         let color = present
@@ -1542,10 +1569,17 @@ private final class FilamentSlotView: NSView {
         // Flexible width so the slots stretch to fill their module (distribution .fillEqually).
         setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let swatch = NSView()
-        swatch.wantsLayer = true
-        swatch.layer?.cornerRadius = 6
-        swatch.layer?.backgroundColor = color.cgColor
+        // In the detail card the swatch fills from the bottom in proportion to the remaining amount
+        // (less filament → shorter fill); elsewhere it's a solid colour chip.
+        let swatch: NSView
+        if showRemaining, present, let pct = slot.remainingPercent {
+            swatch = FilamentSwatchView(color: color, fraction: CGFloat(pct) / 100)
+        } else {
+            swatch = NSView()
+            swatch.wantsLayer = true
+            swatch.layer?.cornerRadius = 6
+            swatch.layer?.backgroundColor = color.cgColor
+        }
         if slot.isActive {
             swatch.layer?.borderColor = NSColor.white.cgColor
             swatch.layer?.borderWidth = 2
@@ -1572,7 +1606,16 @@ private final class FilamentSlotView: NSView {
         title.textColor = slot.isActive ? .labelColor : .secondaryLabelColor
         title.toolTip = "\(slot.label) • \(slot.material ?? "—") • \(slot.remainingPercent.map { "\($0)%" } ?? "—")"
 
-        let stack = NSStackView(views: [swatch, title])
+        var slotViews: [NSView] = [swatch, title]
+        // Optional remaining-amount label under the swatch (used by the detail card).
+        if showRemaining, present, let pct = slot.remainingPercent {
+            let percentLabel = NSTextField(labelWithString: "\(pct)%")
+            percentLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+            percentLabel.alignment = .center
+            percentLabel.textColor = pct <= 15 && !isExternal ? .systemRed : .secondaryLabelColor
+            slotViews.append(percentLabel)
+        }
+        let stack = NSStackView(views: slotViews)
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 3
@@ -1611,8 +1654,8 @@ private final class FilamentSlotView: NSView {
 /// A physical filament module: a tonal card with a name + per-module humidity/temperature header and
 /// its slots, so an AMS, AMS HT, CFS or EXT reads as one distinct unit.
 @MainActor
-private final class FilamentGroupView: NSView {
-    init(group: FilamentGroup, settings: AppSettings) {
+final class FilamentGroupView: NSView {
+    init(group: FilamentGroup, settings: AppSettings, showRemaining: Bool = false) {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 10
@@ -1650,7 +1693,7 @@ private final class FilamentGroupView: NSView {
         header.alignment = .centerY
         header.spacing = 6
 
-        let slots = NSStackView(views: group.slots.map { FilamentSlotView(slot: $0, isExternal: group.isExternal) })
+        let slots = NSStackView(views: group.slots.map { FilamentSlotView(slot: $0, isExternal: group.isExternal, showRemaining: showRemaining) })
         slots.orientation = .horizontal
         slots.alignment = .top
         slots.distribution = .fillEqually   // slots stretch to fill the module width
@@ -1700,7 +1743,7 @@ private final class FilamentGroupView: NSView {
 /// Lays filament modules out in rows of up to two, side by side, each module's width proportional to
 /// its slot count so a 4-slot AMS is wide and a single EXT stays narrow — matching the reference.
 @MainActor
-private final class FilamentDockView: NSView {
+final class FilamentDockView: NSView {
     private let column = NSStackView()
 
     override init(frame frameRect: NSRect) {
@@ -1719,13 +1762,13 @@ private final class FilamentDockView: NSView {
     }
     required init?(coder: NSCoder) { nil }
 
-    func setGroups(_ groups: [FilamentGroup], settings: AppSettings) {
+    func setGroups(_ groups: [FilamentGroup], settings: AppSettings, showRemaining: Bool = false) {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
         var index = 0
         while index < groups.count {
             let rowGroups = Array(groups[index ..< min(index + 2, groups.count)])
             index += 2
-            let views = rowGroups.map { FilamentGroupView(group: $0, settings: settings) }
+            let views = rowGroups.map { FilamentGroupView(group: $0, settings: settings, showRemaining: showRemaining) }
             let row = NSStackView(views: views)
             row.orientation = .horizontal
             row.alignment = .top

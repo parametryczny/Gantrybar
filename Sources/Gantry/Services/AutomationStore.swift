@@ -36,10 +36,28 @@ final class ScriptRunner {
     func run(_ id: UUID, script: String, onFinish: @escaping @MainActor (Int32) -> Void = { _ in }) -> Bool {
         stop(id)
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-c", script]
+
+        // A script starting with a shebang (e.g. `#!/usr/bin/env python3`) is written to a temp file
+        // and executed directly, so the kernel honours the interpreter — this is how pasting raw
+        // Python (or any language) works. Otherwise the content runs as a zsh command.
+        let tempURL: URL?
+        if script.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#!") {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("gantry-\(id.uuidString)")
+            do {
+                try script.write(to: url, atomically: true, encoding: .utf8)
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            } catch { return false }
+            tempURL = url
+            process.executableURL = url
+        } else {
+            tempURL = nil
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-c", script]
+        }
+
         process.terminationHandler = { [weak self] proc in
             let status = proc.terminationStatus
+            if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
             Task { @MainActor in
                 self?.processes.removeValue(forKey: id)
                 onFinish(status)
@@ -50,6 +68,7 @@ final class ScriptRunner {
             processes[id] = process
             return true
         } catch {
+            if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
             return false
         }
     }

@@ -76,10 +76,28 @@ Przydatne linie do `param`:
 
 ---
 
-## Skrypty (zsh)
+## Skrypty (zsh / dowolny język przez shebang)
 
-W akcji **Skrypt** wklejasz treść. Uruchamia się przez `/bin/zsh -c "…"`. Gdy skrypt odpali się
-automatycznie, Gantry wysyła powiadomienie „Uruchomiono skrypt".
+W akcji **Skrypt** wklejasz treść. Zachowanie zależy od pierwszej linii:
+
+- **Zwykły shell** — jeśli nie zaczyna się od `#!`, treść leci przez `/bin/zsh -c "…"`.
+- **Shebang** — jeśli **pierwsza linia to `#!…`** (np. `#!/usr/bin/env python3`), Gantry zapisuje treść
+  do pliku tymczasowego i uruchamia właściwym interpreterem. Dzięki temu **wklejasz czysty kod .py**
+  (albo bash/node/ruby…) bez wskazywania pliku.
+
+Gdy skrypt odpali się automatycznie, Gantry wysyła powiadomienie „Uruchomiono skrypt".
+
+### Czysty Python (shebang)
+```python
+#!/usr/bin/env python3
+import subprocess
+subprocess.run(["osascript", "-e", 'display notification "Warstwa 20" with title "Gantry"'])
+```
+
+### Python jednoliniowo z shella (bez shebang)
+```zsh
+python3 -c 'print("z Pythona")'
+```
 
 ### Powiadomienie systemowe macOS
 ```zsh

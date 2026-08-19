@@ -16,6 +16,12 @@ final class PrinterDetailViewController: NSViewController {
     private var settingsSubscription: AnyCancellable?
     private var refreshScheduled = false
 
+    // Reorderable section cards
+    private let contentStack = NSStackView()
+    private var cardViews: [String: NSView] = [:]
+    private static let defaultCardOrder = ["status", "temps", "fans", "ams", "control", "camera"]
+    private static let cardOrderKey = "detail-card-order"
+
     // Header
     private let backButton = NSButton()
     private let stateDot = NSView()
@@ -33,14 +39,14 @@ final class PrinterDetailViewController: NSViewController {
     private let chamberChip = TempChipView(title: "Komora")
 
     // Fans / speed
-    private let partFan = FanGaugeView(title: "Part")
-    private let auxFan = FanGaugeView(title: "Aux")
-    private let chamberFan = FanGaugeView(title: "Chamber")
+    private let partFan = FanChip(title: "Part")
+    private let auxFan = FanChip(title: "Aux")
+    private let chamberFan = FanChip(title: "Chamber")
     private let speedLabel = NSTextField(labelWithString: "")
     private let diameterLabel = NSTextField(labelWithString: "")
 
-    // AMS / filaments
-    private let amsStack = NSStackView()
+    // AMS / filaments — reuse the fleet card's dock so the layout logic stays identical.
+    private let filamentDock = FilamentDockView()
 
     // Camera
     private let cameraView = CameraView()
@@ -93,35 +99,71 @@ final class PrinterDetailViewController: NSViewController {
         let flipped = FlippedView()
         flipped.translatesAutoresizingMaskIntoConstraints = false
         scroll.documentView = flipped
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 14
-        stack.edgeInsets = NSEdgeInsets(top: 6, left: 14, bottom: 16, right: 14)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        flipped.addSubview(stack)
+        contentStack.orientation = .vertical
+        contentStack.alignment = .leading
+        contentStack.spacing = 8
+        contentStack.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 14, right: 12)
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        flipped.addSubview(contentStack)
         NSLayoutConstraint.activate([
             flipped.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
             flipped.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: flipped.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: flipped.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: flipped.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: flipped.bottomAnchor)
+            contentStack.topAnchor.constraint(equalTo: flipped.topAnchor),
+            contentStack.leadingAnchor.constraint(equalTo: flipped.leadingAnchor),
+            contentStack.trailingAnchor.constraint(equalTo: flipped.trailingAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: flipped.bottomAnchor)
         ])
 
         let isBambu = store.printers.first(where: { $0.serial == serial })?.kind == .bambu
-        stack.addArrangedSubview(makeStatusCard())
-        stack.addArrangedSubview(makeTemperatureCard())
-        stack.addArrangedSubview(makeFansCard())
-        stack.addArrangedSubview(makeAMSCard())
+        cardViews = [
+            "status": makeStatusCard(),
+            "temps": makeTemperatureCard(),
+            "fans": makeFansCard(),
+            "ams": makeAMSCard()
+        ]
         if isBambu {
-            stack.addArrangedSubview(makeControlCard())
-            stack.addArrangedSubview(makeCameraCard())
+            cardViews["control"] = makeControlCard()
+            cardViews["camera"] = makeCameraCard()
         }
-        for case let card as NSView in stack.arrangedSubviews {
-            card.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -28).isActive = true
-        }
+        rebuildCards()
         view = root
+    }
+
+    // MARK: Card ordering (drag to reorder, persisted)
+
+    private func orderedCardIDs() -> [String] {
+        let available = Set(cardViews.keys)
+        var result = savedCardOrder().filter { available.contains($0) }
+        for id in Self.defaultCardOrder where available.contains(id) && !result.contains(id) { result.append(id) }
+        return result
+    }
+
+    private func savedCardOrder() -> [String] {
+        guard let data = BambuDefaults.shared.data(forKey: Self.cardOrderKey),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return arr
+    }
+
+    private func rebuildCards() {
+        contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for id in orderedCardIDs() {
+            guard let content = cardViews[id] else { continue }
+            let container = DetailCardContainer(id: id, content: content) { [weak self] dragged, target, after in
+                self?.reorderCard(dragged: dragged, target: target, after: after)
+            }
+            contentStack.addArrangedSubview(container)
+            container.widthAnchor.constraint(equalTo: contentStack.widthAnchor, constant: -28).isActive = true
+        }
+    }
+
+    private func reorderCard(dragged: String, target: String, after: Bool) {
+        guard dragged != target else { return }
+        var order = orderedCardIDs()
+        order.removeAll { $0 == dragged }
+        guard let idx = order.firstIndex(of: target) else { return }
+        order.insert(dragged, at: idx + (after ? 1 : 0))
+        if let data = try? JSONEncoder().encode(order) { BambuDefaults.shared.set(data, forKey: Self.cardOrderKey) }
+        rebuildCards()
     }
 
     override func viewDidLoad() {
@@ -185,10 +227,8 @@ final class PrinterDetailViewController: NSViewController {
     private func card() -> NSView {
         let box = NSView()
         box.wantsLayer = true
-        box.layer?.cornerRadius = 14
-        box.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5).cgColor
-        box.layer?.borderWidth = 1
-        box.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.4).cgColor
+        box.layer?.cornerRadius = 12
+        box.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.28).cgColor
         return box
     }
 
@@ -226,7 +266,7 @@ final class PrinterDetailViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        pin(stack, in: box, inset: 14)
+        pin(stack, in: box, inset: 11)
         topRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         progress.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         bottomRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -236,7 +276,7 @@ final class PrinterDetailViewController: NSViewController {
     private func makeTemperatureCard() -> NSView {
         let box = card()
         graph.translatesAutoresizingMaskIntoConstraints = false
-        graph.heightAnchor.constraint(equalToConstant: 170).isActive = true
+        graph.heightAnchor.constraint(equalToConstant: 104).isActive = true
         let chips = NSStackView(views: [nozzleChip, bedChip, chamberChip])
         chips.orientation = .horizontal
         chips.distribution = .fillEqually
@@ -245,7 +285,7 @@ final class PrinterDetailViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
-        pin(stack, in: box, inset: 14)
+        pin(stack, in: box, inset: 11)
         graph.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         chips.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
@@ -267,7 +307,7 @@ final class PrinterDetailViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
-        pin(stack, in: box, inset: 14)
+        pin(stack, in: box, inset: 11)
         gauges.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         infoRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
@@ -275,15 +315,12 @@ final class PrinterDetailViewController: NSViewController {
 
     private func makeAMSCard() -> NSView {
         let box = card()
-        amsStack.orientation = .vertical
-        amsStack.alignment = .leading
-        amsStack.spacing = 12
-        let stack = NSStackView(views: [sectionTitle("Filamenty / AMS"), amsStack])
+        let stack = NSStackView(views: [sectionTitle("Filamenty / AMS"), filamentDock])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
-        pin(stack, in: box, inset: 14)
-        amsStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        pin(stack, in: box, inset: 11)
+        filamentDock.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
@@ -303,7 +340,7 @@ final class PrinterDetailViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
-        pin(stack, in: box, inset: 14)
+        pin(stack, in: box, inset: 11)
         buttons.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
@@ -327,7 +364,7 @@ final class PrinterDetailViewController: NSViewController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
-        pin(stack, in: box, inset: 14)
+        pin(stack, in: box, inset: 11)
         cameraView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
@@ -401,19 +438,8 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     private func renderAMS(_ groups: [FilamentGroup]) {
-        amsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        guard !groups.isEmpty else {
-            let empty = NSTextField(labelWithString: AppSettings.shared.text("Brak modułów filamentu", "No filament modules"))
-            empty.font = .systemFont(ofSize: 11)
-            empty.textColor = .tertiaryLabelColor
-            amsStack.addArrangedSubview(empty)
-            return
-        }
-        for group in groups {
-            let module = AMSModuleView(group: group)
-            amsStack.addArrangedSubview(module)
-            module.widthAnchor.constraint(equalTo: amsStack.widthAnchor).isActive = true
-        }
+        filamentDock.isHidden = groups.isEmpty
+        filamentDock.setGroups(groups, settings: AppSettings.shared, showRemaining: true)
     }
 
     // MARK: Camera
@@ -669,199 +695,44 @@ final class TempChipView: NSView {
     }
 }
 
-// MARK: - Fan radial gauge
+// MARK: - Compact fan chip (icon · label · %)
 
 @MainActor
-final class FanGaugeView: NSView {
-    private let title: String
-    private var percent: Int?
-    private let percentLabel = NSTextField(labelWithString: "—")
-    private let titleLabel = NSTextField(labelWithString: "")
+final class FanChip: NSView {
+    private let valueLabel = NSTextField(labelWithString: "—")
 
     init(title: String) {
-        self.title = title
         super.init(frame: .zero)
-        heightAnchor.constraint(equalToConstant: 84).isActive = true
-        percentLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .bold)
-        percentLabel.alignment = .center
-        percentLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.stringValue = title
-        titleLabel.font = .systemFont(ofSize: 9, weight: .medium)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "wind", accessibilityDescription: nil) ?? NSImage())
+        icon.contentTintColor = .secondaryLabelColor
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .regular)
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 10, weight: .medium)
         titleLabel.textColor = .secondaryLabelColor
-        titleLabel.alignment = .center
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(percentLabel)
-        addSubview(titleLabel)
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+
+        let stack = NSStackView(views: [icon, titleLabel, valueLabel])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
         NSLayoutConstraint.activate([
-            percentLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            percentLabel.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -4),
-            titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            titleLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2)
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor)
         ])
     }
 
     required init?(coder: NSCoder) { nil }
 
     func set(percent: Int?) {
-        self.percent = percent
-        percentLabel.stringValue = percent.map { "\($0)%" } ?? "—"
-        percentLabel.textColor = percent == nil ? .tertiaryLabelColor : .labelColor
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let radius: CGFloat = 26
-        let center = NSPoint(x: bounds.midX, y: bounds.midY + 6)
-        let bg = NSBezierPath()
-        bg.appendArc(withCenter: center, radius: radius, startAngle: -140, endAngle: -400, clockwise: true)
-        bg.lineWidth = 6
-        bg.lineCapStyle = .round
-        NSColor.separatorColor.withAlphaComponent(0.5).setStroke()
-        bg.stroke()
-
-        guard let percent, percent > 0 else { return }
-        let sweep = 280.0 * Double(min(percent, 100)) / 100.0
-        let arc = NSBezierPath()
-        arc.appendArc(withCenter: center, radius: radius, startAngle: -140, endAngle: -140 - sweep, clockwise: true)
-        arc.lineWidth = 6
-        arc.lineCapStyle = .round
-        NSColor.systemBlue.setStroke()
-        arc.stroke()
+        valueLabel.stringValue = percent.map { "\($0)%" } ?? "—"
+        valueLabel.textColor = percent == nil ? .tertiaryLabelColor : .labelColor
     }
 }
 
-// MARK: - AMS module (grouped filament slots)
-
-@MainActor
-final class AMSModuleView: NSView {
-    init(group: FilamentGroup) {
-        super.init(frame: .zero)
-
-        let name = NSTextField(labelWithString: group.displayName)
-        name.font = .systemFont(ofSize: 12, weight: .semibold)
-        var subParts: [String] = []
-        if let humidity = group.humidityPercent { subParts.append("💧 \(humidity)%") }
-        if let temp = group.temperatureCelsius { subParts.append("\(Int(temp))°C") }
-        var headerViews: [NSView] = [name, NSView()]
-        if !subParts.isEmpty {
-            let sub = NSTextField(labelWithString: subParts.joined(separator: " · "))
-            sub.font = .systemFont(ofSize: 10)
-            sub.textColor = .secondaryLabelColor
-            headerViews.append(sub)
-        }
-        let header = NSStackView(views: headerViews)
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = 6
-
-        let slotsRow = NSStackView(views: group.slots.map { AMSSlotView(slot: $0) })
-        slotsRow.orientation = .horizontal
-        slotsRow.alignment = .top
-        slotsRow.distribution = .fillEqually
-        slotsRow.spacing = 8
-
-        let stack = NSStackView(views: [header, slotsRow])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            header.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            slotsRow.widthAnchor.constraint(equalTo: stack.widthAnchor)
-        ])
-    }
-
-    required init?(coder: NSCoder) { nil }
-}
-
-/// A tall "spool" card: colour bar on top, material label, a translucent fill from the bottom that
-/// visualises how much filament is left, and the percentage in the corner.
-@MainActor
-final class AMSSlotView: NSView {
-    private let fillLayer = CALayer()
-    private let fillFraction: CGFloat
-
-    init(slot: FilamentSlot) {
-        fillFraction = CGFloat(slot.remainingPercent ?? 0) / 100
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 12
-        layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.45).cgColor
-        layer?.borderWidth = slot.isActive ? 2 : 1
-        layer?.borderColor = (slot.isActive ? NSColor.systemBlue : NSColor.separatorColor.withAlphaComponent(0.6)).cgColor
-
-        let color = AMSSlotView.color(from: slot.colorHex)
-        // Translucent fill from the bottom = remaining amount.
-        fillLayer.backgroundColor = (slot.isPresent ? color.withAlphaComponent(0.33) : NSColor.clear).cgColor
-        fillLayer.actions = ["bounds": NSNull(), "position": NSNull()]
-        layer?.addSublayer(fillLayer)
-
-        // Colour bar (the spool colour) across the top — a bold cap so the true colour reads clearly.
-        let colorBar = NSView()
-        colorBar.wantsLayer = true
-        colorBar.layer?.cornerRadius = 5
-        colorBar.layer?.backgroundColor = (slot.isPresent ? color : NSColor.separatorColor).cgColor
-        colorBar.layer?.borderWidth = 0.5
-        colorBar.layer?.borderColor = NSColor.black.withAlphaComponent(0.15).cgColor
-        colorBar.translatesAutoresizingMaskIntoConstraints = false
-        colorBar.heightAnchor.constraint(equalToConstant: 20).isActive = true
-
-        let slotLabel = NSTextField(labelWithString: slot.label)
-        slotLabel.font = .systemFont(ofSize: 10, weight: .semibold)
-        slotLabel.textColor = .secondaryLabelColor
-        let material = NSTextField(labelWithString: slot.isPresent ? (slot.material ?? "—") : "—")
-        material.font = .systemFont(ofSize: 11, weight: .semibold)
-        material.lineBreakMode = .byWordWrapping
-        material.maximumNumberOfLines = 2
-        material.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-
-        let percent = NSTextField(labelWithString: slot.isPresent ? (slot.remainingPercent.map { "\($0)%" } ?? "—") : "—")
-        percent.font = .monospacedDigitSystemFont(ofSize: 15, weight: .bold)
-        percent.textColor = slot.isPresent ? .labelColor : .tertiaryLabelColor
-
-        let top = NSStackView(views: [colorBar, slotLabel, material])
-        top.orientation = .vertical
-        top.alignment = .leading
-        top.spacing = 4
-        top.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(top)
-        percent.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(percent)
-        NSLayoutConstraint.activate([
-            top.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            top.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            top.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            colorBar.widthAnchor.constraint(equalTo: top.widthAnchor),
-            percent.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            percent.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
-            heightAnchor.constraint(equalToConstant: 128)
-        ])
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override func layout() {
-        super.layout()
-        // Fill grows from the bottom to represent the remaining amount.
-        let h = bounds.height * max(0, min(1, fillFraction))
-        fillLayer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: h)
-    }
-
-    static func color(from hex: String?) -> NSColor {
-        guard var hex else { return .systemGray }
-        hex = hex.trimmingCharacters(in: .whitespaces)
-        if hex.hasPrefix("#") { hex.removeFirst() }
-        guard hex.count >= 6, let value = UInt32(hex.prefix(6), radix: 16) else { return .systemGray }
-        return NSColor(red: CGFloat((value >> 16) & 0xFF) / 255, green: CGFloat((value >> 8) & 0xFF) / 255,
-                       blue: CGFloat(value & 0xFF) / 255, alpha: 1)
-    }
-}
 
 // MARK: - Camera view (H.264 via AVSampleBufferDisplayLayer)
 
@@ -970,4 +841,101 @@ final class CameraView: NSView {
         statusLabel.stringValue = text
         statusLabel.isHidden = false
     }
+}
+
+// MARK: - Reorderable card container
+
+private let detailCardType = NSPasteboard.PasteboardType("pl.gantry.detailcard")
+
+/// Wraps one section card, adds a drag grip (top-right), and acts as both drag source and drop
+/// target so the user can reorder the Szczegóły cards.
+@MainActor
+final class DetailCardContainer: NSView, NSDraggingSource {
+    let cardID: String
+    private let onReorder: (_ dragged: String, _ target: String, _ after: Bool) -> Void
+
+    init(id: String, content: NSView, onReorder: @escaping (String, String, Bool) -> Void) {
+        self.cardID = id
+        self.onReorder = onReorder
+        super.init(frame: .zero)
+
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: topAnchor),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+
+        let handle = CardDragHandle { [weak self] event in self?.beginDrag(event) }
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(handle)
+        NSLayoutConstraint.activate([
+            handle.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            handle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            handle.widthAnchor.constraint(equalToConstant: 22),
+            handle.heightAnchor.constraint(equalToConstant: 18)
+        ])
+
+        registerForDraggedTypes([detailCardType])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private func beginDrag(_ event: NSEvent) {
+        let item = NSPasteboardItem()
+        item.setString(cardID, forType: detailCardType)
+        let dragging = NSDraggingItem(pasteboardWriter: item)
+        dragging.setDraggingFrame(bounds, contents: snapshot())
+        beginDraggingSession(with: [dragging], event: event, source: self)
+    }
+
+    private func snapshot() -> NSImage {
+        guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return NSImage(size: bounds.size) }
+        cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .move }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingPasteboard.string(forType: detailCardType) != nil ? .move : []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let dragged = sender.draggingPasteboard.string(forType: detailCardType) else { return false }
+        // Non-flipped container coords: lower y = visually lower half → insert after (below).
+        let point = convert(sender.draggingLocation, from: nil)
+        onReorder(dragged, cardID, point.y < bounds.midY)
+        return true
+    }
+}
+
+/// A small grip (top-right of a card) that starts the card drag on drag.
+@MainActor
+final class CardDragHandle: NSView {
+    private let onDrag: (NSEvent) -> Void
+
+    init(onDrag: @escaping (NSEvent) -> Void) {
+        self.onDrag = onDrag
+        super.init(frame: .zero)
+        let icon = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Przenieś") ?? NSImage())
+        icon.contentTintColor = .tertiaryLabelColor
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(icon)
+        NSLayoutConstraint.activate([
+            icon.centerXAnchor.constraint(equalTo: centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        toolTip = AppSettings.shared.text("Przeciągnij, aby zmienić kolejność", "Drag to reorder")
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
+    override func mouseDragged(with event: NSEvent) { onDrag(event) }
 }
