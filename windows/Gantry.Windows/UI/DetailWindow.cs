@@ -1,9 +1,15 @@
 using System.Globalization;
+using System.IO;
+using System.Net.Http;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using LibVLCSharp.Shared;
+using LibVLCSharp.WPF;
 using Gantry.Models;
 using Gantry.Services;
 
@@ -24,6 +30,19 @@ public sealed class DetailWindow : Window
     private readonly Canvas _graph;
     private readonly StackPanel _temps, _fans, _ams;
 
+    // Camera
+    private readonly PrinterKind _kind;
+    private VideoView? _videoView;          // Bambu RTSPS/H.264 via LibVLC
+    private MediaPlayer? _player;
+    private Image? _cameraImage;            // Klipper MJPEG snapshots
+    private DispatcherTimer? _cameraTimer;
+    private string? _snapshotUrl;
+    private bool _cameraStarted;
+    private TextBlock? _cameraStatus;
+    private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
+    private static LibVLC? _libVlc;
+    private static LibVLC Vlc { get { if (_libVlc is null) { Core.Initialize(); _libVlc = new LibVLC("--no-osd", "--network-caching=300"); } return _libVlc; } }
+
     private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
     private static readonly Brush BedBrush = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF));
     private static readonly Brush ChamberBrush = new SolidColorBrush(Color.FromRgb(0x64, 0xD2, 0xFF));
@@ -34,6 +53,7 @@ public sealed class DetailWindow : Window
         _serial = serial;
         _pl = AppSettings.Polish;
         var printer = store.Printers.FirstOrDefault(p => p.Serial == serial);
+        _kind = printer?.Kind ?? PrinterKind.Bambu;
 
         Title = (_pl ? "Szczegóły — " : "Details — ") + (printer?.Name ?? serial);
         Width = 480; Height = 720; MinWidth = 380; MinHeight = 480;
@@ -94,6 +114,20 @@ public sealed class DetailWindow : Window
             autoBtn.Click += (_, _) => new AutomationsWindow(_store, _serial) { Owner = this }.Show();
             var controls = new StackPanel { Orientation = Orientation.Horizontal, Children = { lightOn, lightOff, autoBtn } };
             stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } }));
+        }
+
+        // --- Camera card (Bambu RTSPS via LibVLC, Klipper MJPEG snapshots) ---
+        if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
+        {
+            var container = new Grid { Height = 230, Background = new SolidColorBrush(Colors.Black) };
+            _cameraStatus = new TextBlock { Foreground = White(), FontSize = 11, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12) };
+            if (_kind == PrinterKind.Bambu) { _videoView = new VideoView(); container.Children.Add(_videoView); }
+            else { _cameraImage = new Image { Stretch = Stretch.Uniform }; container.Children.Add(_cameraImage); }
+            container.Children.Add(_cameraStatus);
+            var frame = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = container };
+            stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "KAMERA" : "CAMERA"), frame } }));
+            Loaded += (_, _) => StartCamera();
+            Closed += (_, _) => StopCamera();
         }
 
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stack };
@@ -201,6 +235,117 @@ public sealed class DetailWindow : Window
         DrawLine(s => s.Nozzle, NozzleBrush);
     }
 
+    // --- camera ---
+
+    private void StartCamera()
+    {
+        if (_cameraStarted) return;
+        _cameraStarted = true;
+        var printer = _store.Printers.FirstOrDefault(p => p.Serial == _serial);
+        if (printer is null || _cameraStatus is null) return;
+        var over = PrinterOverridesStore.For(_serial).CameraHost;
+        var host = string.IsNullOrEmpty(over) ? printer.Host : over!;
+        _cameraStatus.Text = _pl ? "Łączenie z kamerą…" : "Connecting to camera…";
+
+        if (_kind == PrinterKind.Bambu)
+        {
+            var code = AccessCodeStore.AccessCode(_serial);
+            if (string.IsNullOrEmpty(code)) { _cameraStatus.Text = _pl ? "Kamera niedostępna (brak kodu dostępu)" : "Camera unavailable (no access code)"; return; }
+            try
+            {
+                _player = new MediaPlayer(Vlc);
+                _videoView!.MediaPlayer = _player;
+                var media = new Media(Vlc, new Uri($"rtsps://bblp:{code}@{host}:322/streaming/live/1"));
+                media.AddOption(":rtsp-tcp");
+                _player.Playing += (_, _) => Dispatcher.Invoke(() => _cameraStatus.Visibility = Visibility.Collapsed);
+                _player.Play(media);   // the player retains the media; don't dispose it here
+            }
+            catch (Exception ex) { _cameraStatus.Text = ex.Message; }
+        }
+        else
+        {
+            _ = StartKlipperCameraAsync(host);
+        }
+    }
+
+    private async Task StartKlipperCameraAsync(string host)
+    {
+        _snapshotUrl = await DiscoverSnapshotUrlAsync(host);
+        if (_snapshotUrl is null) { if (_cameraStatus is not null) _cameraStatus.Text = _pl ? "Kamera niedostępna — sprawdź webcam w Moonraker" : "Camera unavailable — check the webcam in Moonraker"; return; }
+        _cameraTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+        _cameraTimer.Tick += async (_, _) => await PollSnapshotAsync();
+        _cameraTimer.Start();
+        await PollSnapshotAsync();
+    }
+
+    private async Task<string?> DiscoverSnapshotUrlAsync(string host)
+    {
+        var printer = _store.Printers.FirstOrDefault(p => p.Serial == _serial);
+        int port = printer?.Port ?? 7125;
+        var apiKey = AccessCodeStore.AccessCode(_serial);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{port}/server/webcams/list");
+            if (!string.IsNullOrEmpty(apiKey)) request.Headers.Add("X-Api-Key", apiKey);
+            using var response = await CamHttp.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                if (doc.RootElement.TryGetProperty("result", out var result) && result.TryGetProperty("webcams", out var cams)
+                    && cams.ValueKind == JsonValueKind.Array && cams.GetArrayLength() > 0)
+                {
+                    var first = cams[0];
+                    string? raw = first.TryGetProperty("snapshot_url", out var su) ? su.GetString()
+                        : first.TryGetProperty("stream_url", out var st) ? st.GetString() : null;
+                    if (!string.IsNullOrEmpty(raw)) return AbsoluteSnapshot(raw!, host);
+                }
+            }
+        }
+        catch { }
+        return $"http://{host}/webcam/?action=snapshot";
+    }
+
+    private static string AbsoluteSnapshot(string raw, string host)
+    {
+        if (raw.StartsWith("http")) return raw;
+        var path = raw.StartsWith("/") ? raw : "/" + raw;
+        path = path.Replace("action=stream", "action=snapshot");
+        return $"http://{host}{path}";
+    }
+
+    private async Task PollSnapshotAsync()
+    {
+        if (_snapshotUrl is null || _cameraImage is null) return;
+        try
+        {
+            var apiKey = AccessCodeStore.AccessCode(_serial);
+            using var request = new HttpRequestMessage(HttpMethod.Get, _snapshotUrl);
+            if (!string.IsNullOrEmpty(apiKey)) request.Headers.Add("X-Api-Key", apiKey);
+            using var response = await CamHttp.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return;
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            if (bytes.Length == 0) return;
+            var bitmap = new BitmapImage();
+            using var ms = new MemoryStream(bytes);
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.StreamSource = ms;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            _cameraImage.Source = bitmap;
+            if (_cameraStatus is not null) _cameraStatus.Visibility = Visibility.Collapsed;
+        }
+        catch { }
+    }
+
+    private void StopCamera()
+    {
+        _cameraTimer?.Stop();
+        try { _player?.Stop(); _player?.Dispose(); } catch { }
+        try { _videoView?.Dispose(); } catch { }
+        _player = null;
+    }
+
     // --- small builders ---
 
     private static Border Card(UIElement child) => new()
@@ -255,6 +400,7 @@ public sealed class DetailWindow : Window
     };
 
     private static Brush Muted() => new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93));
+    private static Brush White() => new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7));
 
     private static Color ParseHex(string hex)
     {
