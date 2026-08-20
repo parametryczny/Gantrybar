@@ -12,6 +12,7 @@ using LibVLCSharp.Shared;
 using LibVLCSharp.WPF;
 using Gantry.Models;
 using Gantry.Services;
+using MediaPlayer = LibVLCSharp.Shared.MediaPlayer;
 
 namespace Gantry.UI;
 
