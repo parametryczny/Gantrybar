@@ -1,7 +1,8 @@
 # Gantry — Automatyzacje (reguły, komendy, skrypty)
 
-Przewodnik po sekcji **Automatyzacje** (macOS): jak działają wyzwalacze i akcje, oraz gotowe
-przykłady **własnych komend MQTT** i **skryptów**.
+Przewodnik po sekcji **Automatyzacje** (macOS i Windows): jak działają wyzwalacze i akcje, oraz
+gotowe przykłady **własnych komend MQTT** i **skryptów**. Sekcja pojawia się w widoku **Szczegóły**
+po włączeniu **trybu deweloperskiego** w Ustawieniach.
 
 > ⚠️ **Bezpieczeństwo.** Skrypty uruchamiają się przez `/bin/zsh -c` **z Twoimi uprawnieniami**.
 > Regułę tworzysz świadomie, ale reguła warunkowa może odpalić skrypt **bez nadzoru**. Testuj każdy

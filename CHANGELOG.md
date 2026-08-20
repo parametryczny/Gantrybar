@@ -2,6 +2,54 @@
 
 Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są opisane w tym pliku.
 
+## 0.8.0 — 2026-08-20
+
+Duże wydanie: pełny widok **„Szczegóły"** drukarki, **podgląd kamery na żywo**, **automatyzacje ze sterowaniem** i **nadpisania per‑drukarka** — najpierw na macOS, a w tym wydaniu doprowadzone do **parytetu 1:1 na Windows**.
+
+### Szczegóły drukarki (nowość)
+
+- nowy widok **„Szczegóły"** otwierany **w obrębie głównego dymka** (z przyciskiem **„‹ Wróć"**), nie jako osobne okno — spójnie na macOS i Windows
+- wejście prosto z karty: **widoczny przycisk „Szczegóły"** przy nazwie (oraz nadal z menu ⋯)
+- zawartość: **wykres temperatur w czasie** (dysza / stół / komora), temperatury z wartościami zadanymi, **wentylatory** (part / aux / komora), **poziom prędkości** i **średnica dyszy**, **AMS/filamenty** tym samym widokiem co okno główne (AMS / AMS+EXT / EXT / AMS HT) z **pozostałym %** i wizualnym wypełnieniem szpuli, oraz postęp / warstwy / ETA
+- **kafle Szczegółów można przestawiać** metodą przeciągnij‑i‑upuść (uchwyt ⠿); kolejność jest zapamiętywana
+- widok tylko‑do‑odczytu jest domyślny; sterowanie pojawia się w trybie deweloperskim
+
+### Kamera na żywo
+
+- **Bambu (macOS):** natywny odbiór **RTSPS na porcie 322** (`rtsps://…/streaming/live/1`, LIVE555, autoryzacja Digest) — działa nawet przy połączeniu z chmurą, wystarczy **„LAN Mode Live View"** na drukarce; dekodowanie H.264 przez VideoToolbox. Zastępuje nieskuteczny na nowszym firmware strumień portu 6000
+- **Bambu (Windows):** własny natywny klient **RTSPS/RTSP/JPEG** — aplikacja sama nawiązuje TLS i **akceptuje self‑signed certyfikat drukarki**, a `ffmpeg` służy wyłącznie jako dekoder H.264 (bez sieci/TLS). Kolejność prób **322 → 554 → 6000** (A1/P1), autoryzacja Digest/Basic. W rogu obrazu **plakietka trybu i rozdzielczości** (np. `RTSPS · 1920×1080`)
+- **Klipper / Creality (Moonraker):** podgląd jako **MJPEG** (z `/server/webcams/list`, fallback `/webcam/?action=snapshot`)
+- czytelne komunikaty, gdy drukarka nie oddaje obrazu (np. wyłączony podgląd LAN)
+
+### Automatyzacje i sterowanie
+
+- Gantry potrafi teraz **wysyłać komendy** (dotąd tylko czytał): **światło komory**, **pauza / wznów / stop**
+- **silnik reguł „raz na wydruk":** wyzwalacz (ręcznie / po warstwie ≥ N / po ≥ % / zmiana stanu) → akcja: **LED**, **pauza/wznów/stop**, **powiadomienie**, **własna komenda** (Bambu: JSON MQTT / Klipper: G‑code) lub **skrypt**
+- **skrypty własne:** wskazanie pliku albo **wklejenie kodu** z obsługą **shebang** (`#!/usr/bin/env python3` itd.), więc można wklejać czysty kod `.py`
+- osobny **edytor reguł** (dodaj / edytuj / usuń, Uruchom / Stop, skrypt z potwierdzeniem)
+- reset licznika reguł następuje **tylko przy realnym końcu wydruku** (idle/finished) — koniec z regułą odpalaną w kółko (np. gaszeniem lampy) przez chwilowe gubienie nazwy zadania w raportach MQTT
+- dokumentacja: **[`docs/automations.md`](docs/automations.md)** — komendy, przykłady skryptów i przepisy (w tym Python)
+
+### Nadpisania per‑drukarka („Zaawansowane…")
+
+- **opcjonalne IP kamery** — gdy kamera jest pod innym adresem niż drukarka (np. Raspberry Pi z kamerą)
+- **własne komendy światła** wł./wył. (Bambu: JSON MQTT / Klipper: G‑code)
+- **nazwy obiektów Moonraker** dla niestandardowych konfiguracji Klippera: **dysza / stół / czujnik komory / wentylator** (puste = domyślne/auto); zapis od razu ponawia połączenie
+
+### Tryb deweloperski
+
+- nowy przełącznik w Ustawieniach; odsłania **kafel „Sterowanie i automatyzacje"** w Szczegółach oraz (macOS) diagnostyczny **podgląd surowego AMS** (JSON `ams`/`vt_tray`/`vir_slot`)
+
+### Parytet Windows (1:1 z macOS)
+
+- pełna migracja powyższych funkcji na Windows: Szczegóły, telemetria wentylatorów / prędkości / ⌀ dyszy, historia temperatur, sterowanie + automatyzacje, nadpisania per‑drukarka, tryb deweloperski i kamera
+
+### Wygląd i poprawki
+
+- **spokojniejsze okno główne (macOS):** karty nie zalewają się kolorem stanu — kolor zostaje na kropce, pasku i tekście, błąd to cienka statyczna krawędź; „Szczegóły" jako stonowany chip z obrysem
+- **Windows:** po wejściu i wyjściu ze Szczegółów okno od razu dobiera właściwą wysokość (bez chwilowego „za dużego" okna)
+- pod maską: kamera Bambu na Windows przez statyczny `ffmpeg.exe` (dokładany przez CI) zamiast LibVLC, który nie obsługiwał schematu `rtsps://`
+
 ## 0.6.0 — 2026-08-09
 
 - **Linux hotfix:** jawne przypięcie `Gdk 3.0`, `Gtk 3.0`, `GLib 2.0` i `Pango 1.0` przed importem PyGObject; usuwa awarię startu na Ubuntu 26.04, gdy równolegle zainstalowane są biblioteki GTK 3 i GTK 4
