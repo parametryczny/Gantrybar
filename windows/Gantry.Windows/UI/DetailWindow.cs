@@ -43,7 +43,27 @@ public sealed class DetailWindow : Window
     private string? _lastVlcError;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
     private static LibVLC? _libVlc;
-    private static LibVLC Vlc { get { if (_libVlc is null) { Core.Initialize(); _libVlc = new LibVLC("--no-osd", "--network-caching=300"); } return _libVlc; } }
+    private static LibVLC Vlc
+    {
+        get
+        {
+            if (_libVlc is null)
+            {
+                Core.Initialize();
+                _libVlc = new LibVLC("--no-osd", "--network-caching=300");
+                // The printer serves rtsps with a self-signed certificate; libvlc has no UI, so an
+                // unhandled "insecure certificate" question makes the MRL fail to open. Register dialog
+                // handlers and auto-accept so the stream can start.
+                _libVlc.SetDialogHandlers(
+                    (title, text) => Task.CompletedTask,
+                    (dialog, title, text, defaultUsername, askStore, token) => Task.CompletedTask,
+                    (dialog, title, text, type, cancel, action1, action2, token) => { try { dialog.PostAction(1); } catch { } return Task.CompletedTask; },
+                    (dialog, title, text, indeterminate, position, cancel, token) => Task.CompletedTask,
+                    (dialog, position, text) => Task.CompletedTask);
+            }
+            return _libVlc;
+        }
+    }
 
     private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
     private static readonly Brush BedBrush = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF));
