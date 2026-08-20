@@ -54,6 +54,14 @@ public sealed class PrinterTelemetry
     public double? ChamberTemperature { get; set; }
     public int? CurrentLayer { get; set; }
     public int? TotalLayers { get; set; }
+    // Cooling fans as a percentage (Bambu 0-15 gear normalised, or Moonraker 0-1). Aux = big_fan1,
+    // chamber = big_fan2.
+    public int? PartFanPercent { get; set; }
+    public int? AuxFanPercent { get; set; }
+    public int? ChamberFanPercent { get; set; }
+    public int? SpeedLevel { get; set; }     // Bambu spd_lvl: 1 Silent, 2 Standard, 3 Sport, 4 Ludicrous
+    public int? SpeedPercent { get; set; }   // Bambu spd_mag or Moonraker speed_factor
+    public double? NozzleDiameter { get; set; }
     public int? CurrentStage { get; set; }
     public string? JobName { get; set; }
     public ulong ErrorCode { get; set; }
@@ -84,6 +92,12 @@ public sealed class PrinterTelemetry
             ChamberTemperature = ChamberTemperature,
             CurrentLayer = CurrentLayer,
             TotalLayers = TotalLayers,
+            PartFanPercent = PartFanPercent,
+            AuxFanPercent = AuxFanPercent,
+            ChamberFanPercent = ChamberFanPercent,
+            SpeedLevel = SpeedLevel,
+            SpeedPercent = SpeedPercent,
+            NozzleDiameter = NozzleDiameter,
             CurrentStage = CurrentStage,
             JobName = JobName,
             ErrorCode = ErrorCode,
@@ -97,6 +111,9 @@ public sealed class PrinterTelemetry
         };
     }
 }
+
+/// One point in a printer's rolling temperature history, drawn by the detail window's graph.
+public readonly record struct TemperatureSample(DateTime Time, double? Nozzle, double? Bed, double? Chamber);
 
 public sealed class AmsSlot
 {

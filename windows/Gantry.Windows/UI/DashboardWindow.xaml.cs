@@ -730,7 +730,7 @@ public partial class DashboardWindow : Window
     /// <summary>Lay up to two filament modules side by side, like the macOS dock: each column's width
     /// is proportional to its slot count, with an external spool counting for half so an AMS stays the
     /// wider, primary module. A lone external is a compact tile; a lone AMS fills the width.</summary>
-    private static UIElement FilamentRow(List<FilamentGroup> rowGroups)
+    internal static UIElement FilamentRow(List<FilamentGroup> rowGroups)
     {
         static double Weight(FilamentGroup g) => Math.Max(1, g.DeclaredCapacity) * (g.IsExternal ? 0.5 : 1.0);
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
@@ -894,6 +894,8 @@ public partial class DashboardWindow : Window
             button.Click += (_, _) => { HideCardMenu(); action(); };
             items.Children.Add(button);
         }
+
+        Item(AppSettings.Text("Szczegóły", "Details"), () => new DetailWindow(_store, serial) { Owner = this }.Show());
 
         Item(AppSettings.Text("Połącz ponownie", "Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 

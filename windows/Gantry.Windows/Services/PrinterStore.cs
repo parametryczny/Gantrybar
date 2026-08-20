@@ -13,6 +13,9 @@ public sealed class PrinterStore
 
     public List<SavedPrinter> Printers { get; private set; }
     public Dictionary<string, PrinterTelemetry> Telemetry { get; } = new();
+    // Rolling temperature history per printer, drawn by the detail window's graph.
+    public Dictionary<string, List<TemperatureSample>> TemperatureHistory { get; } = new();
+    private const int MaxTemperatureSamples = 240;
     public Dictionary<string, string?> ConnectionMessages { get; } = new();
     public List<DiscoveredPrinter> Discovered { get; private set; } = new();
     public bool IsScanning { get; private set; }
@@ -446,6 +449,7 @@ public sealed class PrinterStore
                 else if (value.JobName != (_dismissedJobs.TryGetValue(serial, out var d) ? d : null))
                     _dismissedJobs.Remove(serial);
                 Telemetry[serial] = value;
+                RecordTemperature(serial, value);
                 ConnectionMessages[serial] = null;
                 if (_printersWithTelemetry.Contains(serial) && Printers.FirstOrDefault(p => p.Serial == serial) is { } printer)
                     NotifyChanges(printer, previous, value);
@@ -523,6 +527,21 @@ public sealed class PrinterStore
         cleared.TotalLayers = null;
         cleared.JobName = null;
         return cleared;
+    }
+
+    // Append the latest temperatures to the rolling history (throttled to one sample / 2 s).
+    private void RecordTemperature(string serial, PrinterTelemetry value)
+    {
+        if (value.NozzleTemperature is null && value.BedTemperature is null && value.ChamberTemperature is null) return;
+        var now = value.LastUpdated ?? DateTime.Now;
+        if (!TemperatureHistory.TryGetValue(serial, out var history))
+        {
+            history = new List<TemperatureSample>();
+            TemperatureHistory[serial] = history;
+        }
+        if (history.Count > 0 && (now - history[^1].Time).TotalSeconds < 2) return;
+        history.Add(new TemperatureSample(now, value.NozzleTemperature, value.BedTemperature, value.ChamberTemperature));
+        if (history.Count > MaxTemperatureSamples) history.RemoveRange(0, history.Count - MaxTemperatureSamples);
     }
 
     private void NotifyChanges(SavedPrinter printer, PrinterTelemetry? previous, PrinterTelemetry current)

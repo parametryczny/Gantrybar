@@ -61,6 +61,12 @@ public static class MoonrakerStatusParser
         }
         if (ChamberTemperature(status) is { } chamber) t.ChamberTemperature = chamber;
 
+        // Part-cooling fan (0-1) and the live speed factor (1.0 = 100%).
+        if (Obj(status, "fan", out var fan) && Num(fan, "speed") is { } fanSpeed)
+            t.PartFanPercent = (int)Math.Round(fanSpeed * 100);
+        if (Obj(status, "gcode_move", out var gm) && Num(gm, "speed_factor") is { } speedFactor)
+            t.SpeedPercent = (int)Math.Round(speedFactor * 100);
+
         if (Obj(status, "mmu", out var mmu) && ParseMmuGroup(mmu) is { } mmuGroup)
         {
             t.FilamentGroups = new List<FilamentGroup> { mmuGroup };

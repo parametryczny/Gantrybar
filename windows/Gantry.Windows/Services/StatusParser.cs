@@ -77,6 +77,15 @@ public static class StatusParser
         if (Int(report, "layer_num") is { } ln) result.CurrentLayer = ln;
         if (Int(report, "total_layer_num") is { } tln) result.TotalLayers = tln;
 
+        // Fans (part / aux / chamber), speed level+magnitude and nozzle diameter. Keep the previous
+        // value when a key is missing (partial reports drop them).
+        if (FanPercent(report, "cooling_fan_speed") is { } pf) result.PartFanPercent = pf;
+        if (FanPercent(report, "big_fan1_speed") is { } af) result.AuxFanPercent = af;
+        if (FanPercent(report, "big_fan2_speed") is { } cf) result.ChamberFanPercent = cf;
+        if (Int(report, "spd_lvl") is { } sl) result.SpeedLevel = sl;
+        if (Int(report, "spd_mag") is { } sm) result.SpeedPercent = sm;
+        if (Num(report, "nozzle_diameter") is { } nd && nd > 0) result.NozzleDiameter = nd;
+
         if (report.TryGetProperty("stage", out var stage) && stage.ValueKind == JsonValueKind.Object && Int(stage, "_id") is { } sid)
             result.CurrentStage = sid;
         else if (Int(report, "stg_cur") is { } stg)
@@ -310,6 +319,15 @@ public static class StatusParser
     {
         var n = Num(obj, key);
         return n.HasValue ? (int)n.Value : null;
+    }
+
+    // Bambu reports fan speeds as a 0-15 gear (some firmwares already send a 0-100 percentage).
+    // Normalise both to a percentage.
+    private static int? FanPercent(JsonElement obj, string key)
+    {
+        if (Int(obj, key) is not { } raw) return null;
+        if (raw > 15) return Math.Min(raw, 100);
+        return (int)Math.Round(raw / 15.0 * 100);
     }
 
     private static ulong? UInt64Value(JsonElement obj, string key)

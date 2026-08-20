@@ -82,7 +82,7 @@ public sealed class MoonrakerClient : IPrinterConnection
 
     private async Task<string?> BuildQueryUrlAsync()
     {
-        var wanted = new List<string> { "print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu" };
+        var wanted = new List<string> { "print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu", "fan", "gcode_move" };
         try
         {
             var listData = await GetAsync($"{BaseUrl}/printer/objects/list");
