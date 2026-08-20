@@ -38,6 +38,7 @@ public sealed class DetailWindow : Window
     private TextBlock? _cameraStatus;
     private Process? _ffmpeg;               // Bambu: decodes rtsps → MJPEG on stdout
     private volatile string? _ffmpegErr;
+    private volatile bool _gotFrame;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
 
     private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
@@ -277,7 +278,7 @@ public sealed class DetailWindow : Window
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var a in new[] { "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp",
+        foreach (var a in new[] { "-nostdin", "-loglevel", "verbose", "-rtsp_transport", "tcp",
                                   "-i", url, "-an", "-f", "mjpeg", "-q:v", "6", "-r", "12", "pipe:1" })
             psi.ArgumentList.Add(a);
 
@@ -286,25 +287,40 @@ public sealed class DetailWindow : Window
         catch (Exception ex) { if (_cameraStatus is not null) _cameraStatus.Text = (_pl ? "Nie mogę uruchomić ffmpeg: " : "Cannot start ffmpeg: ") + ex.Message; return; }
         _ffmpeg = proc;
 
-        // Drain stderr so ffmpeg never blocks on a full pipe, and keep the last line for diagnostics.
+        // Drain stderr so ffmpeg never blocks on a full pipe, and keep the last lines for diagnostics.
         _ = Task.Run(async () =>
         {
-            try { string? line; while ((line = await proc.StandardError.ReadLineAsync()) is not null) if (line.Length > 0) _ffmpegErr = line; } catch { }
+            try { string? line; while ((line = await proc.StandardError.ReadLineAsync()) is not null) AddFfmpegLine(line); } catch { }
         });
 
         // Watchdog: if no frame arrives, surface why (LAN mode off / ffmpeg error) instead of a black box.
         _cameraTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
-        _cameraTimer.Tick += (_, _) =>
-        {
-            _cameraTimer!.Stop();
-            if (_cameraStatus is { Visibility: Visibility.Visible })
-                _cameraStatus.Text = _ffmpegErr is not null
-                    ? "ffmpeg: " + _ffmpegErr
-                    : (_pl ? "Brak obrazu — włącz „LAN Mode Live View” w drukarce" : "No video — enable “LAN Mode Live View” on the printer");
-        };
+        _cameraTimer.Tick += (_, _) => { _cameraTimer!.Stop(); ShowCameraError(); };
         _cameraTimer.Start();
 
         await Task.Run(() => ReadMjpegPipe(proc));
+        // ffmpeg exited (stdout closed); if it never produced a frame, show why straight away.
+        if (!_gotFrame) Dispatcher.Invoke(() => { _cameraTimer?.Stop(); ShowCameraError(); });
+    }
+
+    private readonly List<string> _ffmpegLines = new();
+    private void AddFfmpegLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return;
+        lock (_ffmpegLines)
+        {
+            _ffmpegLines.Add(line.Trim());
+            if (_ffmpegLines.Count > 8) _ffmpegLines.RemoveAt(0);
+            _ffmpegErr = string.Join("\n", _ffmpegLines);
+        }
+    }
+
+    private void ShowCameraError()
+    {
+        if (_cameraStatus is { Visibility: Visibility.Visible })
+            _cameraStatus.Text = _ffmpegErr is not null
+                ? "ffmpeg:\n" + _ffmpegErr
+                : (_pl ? "Brak obrazu — włącz „LAN Mode Live View” w drukarce" : "No video — enable “LAN Mode Live View” on the printer");
     }
 
     // Splits ffmpeg's concatenated-JPEG output into whole frames (SOI FF D8 … EOI FF D9) and paints each.
@@ -355,6 +371,7 @@ public sealed class DetailWindow : Window
             bmp.StreamSource = ms;
             bmp.EndInit();
             bmp.Freeze();
+            _gotFrame = true;
             Dispatcher.Invoke(() =>
             {
                 if (_cameraImage is not null) _cameraImage.Source = bmp;
