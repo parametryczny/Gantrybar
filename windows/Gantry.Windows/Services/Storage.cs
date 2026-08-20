@@ -146,6 +146,27 @@ public static class AppSettings
         set => Defaults.SetBool("developer-mode", value);
     }
 
+    /// Security kill switch for automation actions that execute code: "script" (runs a program on this
+    /// PC) and "command" (sends an arbitrary raw MQTT/G-code command to the printer). OFF by default so a
+    /// tampered or planted automation config cannot run code silently — the same class of issue as
+    /// KeePass triggers (CVE-2023-24055). The rule engine refuses these actions unless this is enabled.
+    public static bool AllowScriptActions
+    {
+        get => Defaults.GetBool("allow-script-actions", false);
+        set => Defaults.SetBool("allow-script-actions", value);
+    }
+
+    /// Ids of script/command rules the user has explicitly approved (per-rule, first-run consent), so
+    /// the confirmation prompt only appears once per rule rather than on every trigger.
+    public static bool IsScriptRuleApproved(string id)
+        => (Defaults.GetString("approved-script-rules") ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries).Contains(id);
+
+    public static void ApproveScriptRule(string id)
+    {
+        var set = new HashSet<string>((Defaults.GetString("approved-script-rules") ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        if (set.Add(id)) Defaults.SetString("approved-script-rules", string.Join("\n", set));
+    }
+
     public static bool CompactMode
     {
         get => Defaults.GetBool("dashboard-compact-mode");

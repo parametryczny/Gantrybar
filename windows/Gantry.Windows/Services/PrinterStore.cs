@@ -581,12 +581,49 @@ public sealed class PrinterStore
             case "resume": PrintCmd("{\"print\":{\"sequence_id\":\"2004\",\"command\":\"resume\"}}", "RESUME"); break;
             case "stop": PrintCmd("{\"print\":{\"sequence_id\":\"2004\",\"command\":\"stop\"}}", "CANCEL_PRINT"); break;
             case "notify": NotificationService.Post(name, auto.ActionText); break;
-            case "command": if (isKlipper) SendGcode(serial, auto.ActionText); else SendCommand(serial, auto.ActionText); break;
+            case "command":
+                if (!AllowCodeAction(auto, name)) break;
+                if (isKlipper) SendGcode(serial, auto.ActionText); else SendCommand(serial, auto.ActionText);
+                break;
             case "script":
+                if (!AllowCodeAction(auto, name)) break;
                 ScriptRunner.Run(auto.Id, auto.ActionText);
                 NotificationService.Post(name, AppSettings.Text($"Uruchomiono skrypt: {auto.Name}", $"Ran script: {auto.Name}"));
                 break;
         }
+    }
+
+    /// Guard for automation actions that execute code — "script" (a program on this PC) and "command"
+    /// (an arbitrary raw MQTT/G-code command). Two layers: (1) a kill switch that is OFF by default, so a
+    /// planted config cannot run code silently; (2) a one-time, per-rule consent prompt that shows exactly
+    /// what will run. Returns true only when the action may proceed.
+    private bool AllowCodeAction(PrinterAutomation auto, string printerName)
+    {
+        if (!AppSettings.AllowScriptActions)
+        {
+            NotificationService.Post(printerName, AppSettings.Text(
+                $"Pominięto „{auto.Name}” — akcje skryptowe/komendy są wyłączone (Ustawienia → Bezpieczeństwo).",
+                $"Skipped \"{auto.Name}\" — script/command actions are disabled (Settings → Security)."));
+            return false;
+        }
+        if (AppSettings.IsScriptRuleApproved(auto.Id)) return true;
+
+        bool approved = false;
+        void Ask()
+        {
+            var preview = (auto.ActionText ?? "").Trim();
+            if (preview.Length > 700) preview = preview[..700] + "…";
+            bool script = auto.ActionKind == "script";
+            var msg = AppSettings.Text(
+                $"Automatyzacja „{auto.Name}” ({printerName}) chce wykonać {(script ? "skrypt na tym komputerze" : "komendę drukarki")}:\n\n{preview}\n\nZezwolić i zapamiętać dla tej reguły?",
+                $"Automation \"{auto.Name}\" ({printerName}) wants to run {(script ? "a script on this PC" : "a printer command")}:\n\n{preview}\n\nAllow and remember for this rule?");
+            approved = System.Windows.MessageBox.Show(msg, "Gantry — " + AppSettings.Text("Potwierdzenie", "Confirm"),
+                System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning) == System.Windows.MessageBoxResult.Yes;
+        }
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(Ask); else Ask();
+        if (approved) AppSettings.ApproveScriptRule(auto.Id);
+        return approved;
     }
 
     private readonly Dictionary<string, HashSet<string>> _firedAutomations = new();

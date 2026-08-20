@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -103,13 +104,48 @@ final class PrinterStore: ObservableObject {
         case .notify(let text): NotificationService.post(title: name, body: text)
         case .command(let payload):
             // Bambu: raw MQTT JSON. Klipper: raw G-code line.
+            guard allowCodeAction(auto, printerName: name) else { break }
             if isKlipper { sendGcode(serial: serial, script: payload) } else { sendCommand(serial: serial, json: payload) }
         case .script(let content):
+            guard allowCodeAction(auto, printerName: name) else { break }
             ScriptRunner.shared.run(auto.id, script: content)
             NotificationService.post(title: name,
                                      body: AppSettings.shared.text("Uruchomiono skrypt: \(auto.name)",
                                                                    "Ran script: \(auto.name)"))
         }
+    }
+
+    /// Guard for automation actions that execute code — `.script` (a program on this Mac) and `.command`
+    /// (an arbitrary raw MQTT/G-code command). Two layers: (1) a kill switch that is OFF by default, so a
+    /// planted config cannot run code silently; (2) a one-time, per-rule consent prompt showing exactly
+    /// what will run. Returns true only when the action may proceed.
+    private func allowCodeAction(_ auto: PrinterAutomation, printerName: String) -> Bool {
+        let s = AppSettings.shared
+        guard s.allowScriptActions else {
+            NotificationService.post(title: printerName,
+                body: s.text("Pominięto „\(auto.name)” — akcje skryptowe/komendy są wyłączone (Ustawienia → Bezpieczeństwo).",
+                             "Skipped \"\(auto.name)\" — script/command actions are disabled (Settings → Security)."))
+            return false
+        }
+        if s.isScriptRuleApproved(auto.id) { return true }
+
+        let isScript = auto.action.isScript
+        var preview = ""
+        if case .script(let c) = auto.action { preview = c } else if case .command(let c) = auto.action { preview = c }
+        preview = preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        if preview.count > 700 { preview = String(preview.prefix(700)) + "…" }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = s.text("Potwierdź automatyzację", "Confirm automation")
+        alert.informativeText = s.text(
+            "Automatyzacja „\(auto.name)” (\(printerName)) chce wykonać \(isScript ? "skrypt na tym komputerze" : "komendę drukarki"):\n\n\(preview)\n\nZezwolić i zapamiętać dla tej reguły?",
+            "Automation \"\(auto.name)\" (\(printerName)) wants to run \(isScript ? "a script on this Mac" : "a printer command"):\n\n\(preview)\n\nAllow and remember for this rule?")
+        alert.addButton(withTitle: s.text("Zezwól", "Allow"))
+        alert.addButton(withTitle: s.text("Odmów", "Deny"))
+        let approved = alert.runModal() == .alertFirstButtonReturn
+        if approved { s.approveScriptRule(auto.id) }
+        return approved
     }
 
     /// Fires conditional automations once per print when their condition first becomes true.

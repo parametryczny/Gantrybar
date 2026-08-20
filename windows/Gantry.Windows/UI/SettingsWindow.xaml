@@ -94,6 +94,8 @@
                     <CheckBox x:Name="StartupCheckBox" Margin="0,10,0,4"/>
                     <CheckBox x:Name="SpoolbaseCheckBox" Margin="0,7,0,4"/>
                     <CheckBox x:Name="DeveloperCheckBox" Margin="0,7,0,4"/>
+                    <CheckBox x:Name="ScriptActionsCheckBox" Margin="0,7,0,0"/>
+                    <TextBlock x:Name="ScriptActionsHint" FontSize="10" Foreground="#FF9A9A9E" TextWrapping="Wrap" Margin="24,1,0,4"/>
                 </StackPanel>
             </Border>
 

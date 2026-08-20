@@ -28,6 +28,7 @@ public partial class SettingsWindow : Window
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
         SpoolbaseCheckBox.Click += (_, _) => AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;
         DeveloperCheckBox.Click += (_, _) => AppSettings.DeveloperMode = DeveloperCheckBox.IsChecked == true;
+        ScriptActionsCheckBox.Click += (_, _) => AppSettings.AllowScriptActions = ScriptActionsCheckBox.IsChecked == true;
         AutoUpdateCheckBox.Click += (_, _) => AppSettings.AutoUpdate = AutoUpdateCheckBox.IsChecked == true;
         PrintFinishedCheckBox.Click += (_, _) => AppSettings.NotifyPrintFinished = PrintFinishedCheckBox.IsChecked == true;
         PrinterErrorCheckBox.Click += (_, _) => AppSettings.NotifyPrinterError = PrinterErrorCheckBox.IsChecked == true;
@@ -74,6 +75,10 @@ public partial class SettingsWindow : Window
         StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
         SpoolbaseCheckBox.Content = AppSettings.Text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock");
         DeveloperCheckBox.Content = AppSettings.Text("Tryb deweloperski (sterowanie + automatyzacje)", "Developer mode (control + automations)");
+        ScriptActionsCheckBox.Content = AppSettings.Text("Zezwól automatyzacjom na skrypty i własne komendy", "Allow automations to run scripts and custom commands");
+        ScriptActionsHint.Text = AppSettings.Text(
+            "Wyłączone domyślnie ze względów bezpieczeństwa: uniemożliwia podrzuconej regule ciche uruchomienie kodu. Każda reguła i tak pyta o zgodę przy pierwszym odpaleniu.",
+            "Off by default for safety: stops a planted rule from silently running code. Each rule still asks for confirmation the first time it fires.");
         AutoUpdateCheckBox.Content = AppSettings.Text("Automatycznie pobieraj i instaluj aktualizacje", "Download and install updates automatically");
 
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
@@ -105,6 +110,7 @@ public partial class SettingsWindow : Window
         StartupCheckBox.IsChecked = LaunchAtLogin.IsEnabled;
         SpoolbaseCheckBox.IsChecked = AppSettings.SpoolbaseEnabled;
         DeveloperCheckBox.IsChecked = AppSettings.DeveloperMode;
+        ScriptActionsCheckBox.IsChecked = AppSettings.AllowScriptActions;
         AutoUpdateCheckBox.IsChecked = AppSettings.AutoUpdate;
         PrintFinishedCheckBox.IsChecked = AppSettings.NotifyPrintFinished;
         PrinterErrorCheckBox.IsChecked = AppSettings.NotifyPrinterError;

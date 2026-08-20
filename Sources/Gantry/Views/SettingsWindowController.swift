@@ -19,6 +19,8 @@ final class SettingsWindowController: NSWindowController {
     private let spoolbaseLabel = NSTextField(labelWithString: "")
     private let developerSwitch = NSSwitch()
     private let developerLabel = NSTextField(labelWithString: "")
+    private let scriptActionsSwitch = NSSwitch()
+    private let scriptActionsLabel = NSTextField(labelWithString: "")
     private let versionLabel = NSTextField(labelWithString: "")
     private let supportButton = NSButton()
     private let supportSubtitle = NSTextField(wrappingLabelWithString: "")
@@ -114,6 +116,15 @@ final class SettingsWindowController: NSWindowController {
         let developerRow = NSStackView(views: [developerLabel, NSView(), developerSwitch])
         developerRow.orientation = .horizontal
         developerRow.alignment = .centerY
+
+        scriptActionsSwitch.target = self
+        scriptActionsSwitch.action = #selector(scriptActionsToggled)
+        scriptActionsLabel.font = .systemFont(ofSize: 12)
+        scriptActionsLabel.lineBreakMode = .byWordWrapping
+        scriptActionsLabel.maximumNumberOfLines = 2
+        let scriptActionsRow = NSStackView(views: [scriptActionsLabel, NSView(), scriptActionsSwitch])
+        scriptActionsRow.orientation = .horizontal
+        scriptActionsRow.alignment = .centerY
 
         let form = NSGridView(views: [
             [languageLabel, languageControl],
@@ -220,7 +231,7 @@ final class SettingsWindowController: NSWindowController {
         quietRow.spacing = 6
         notificationsStack.addArrangedSubview(quietRow)
 
-        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, spoolbaseRow, developerRow, notificationsStack, separator, updateRow, actionRow, supportStack])
+        let stack = NSStackView(views: [titleLabel, authorLabel, profileRow, form, launchRow, spoolbaseRow, developerRow, scriptActionsRow, notificationsStack, separator, updateRow, actionRow, supportStack])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -236,6 +247,7 @@ final class SettingsWindowController: NSWindowController {
             launchRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             spoolbaseRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             developerRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            scriptActionsRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             notificationsStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
             separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
             updateRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -276,6 +288,9 @@ final class SettingsWindowController: NSWindowController {
         developerLabel.stringValue = settings.text("Tryb deweloperski (sterowanie + automatyzacje)",
                                                    "Developer mode (control + automations)")
         developerSwitch.state = settings.developerMode ? .on : .off
+        scriptActionsLabel.stringValue = settings.text("Zezwól automatyzacjom na skrypty i własne komendy (domyślnie wył.)",
+                                                       "Allow automations to run scripts and custom commands (off by default)")
+        scriptActionsSwitch.state = settings.allowScriptActions ? .on : .off
         notificationsLabel.stringValue = settings.text("Powiadomienia:", "Notifications:")
         notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished")
         notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error")
@@ -348,6 +363,10 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func developerToggled() {
         AppSettings.shared.developerMode = developerSwitch.state == .on
+    }
+
+    @objc private func scriptActionsToggled() {
+        AppSettings.shared.allowScriptActions = scriptActionsSwitch.state == .on
     }
 
     @objc private func spoolbaseToggled() {

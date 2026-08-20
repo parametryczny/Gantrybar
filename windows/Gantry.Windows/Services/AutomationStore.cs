@@ -27,6 +27,22 @@ public static class AutomationStore
         try { return JsonSerializer.Deserialize<Dictionary<string, List<PrinterAutomation>>>(raw) ?? new(); }
         catch { return new(); }
     }
+
+    /// Automations are loaded ONLY from this app's own settings — they are never imported from an
+    /// external file, a shared bundle, or another user (the CSV printer import carries no automations).
+    /// That's deliberate: it stops a shared/planted config from delivering a code-executing rule.
+    /// If an import or restore path is ever added, it MUST pass the lists through Sanitize() first, which
+    /// disables any code-executing action ("script"/"command") so imported rules can't run code silently.
+    public static List<PrinterAutomation> Sanitize(IEnumerable<PrinterAutomation> items)
+    {
+        var safe = new List<PrinterAutomation>();
+        foreach (var a in items)
+        {
+            if (a.ActionKind is "script" or "command") a.Enabled = false;
+            safe.Add(a);
+        }
+        return safe;
+    }
 }
 
 /// Runs (and stops) user scripts for script-action automations, keyed by automation id. On Windows a

@@ -21,6 +21,22 @@ final class AutomationStore {
         if list.isEmpty { all.removeValue(forKey: serial) } else { all[serial] = list }
         if let data = try? JSONEncoder().encode(all) { defaults.set(data, forKey: key) }
     }
+
+    /// Automations are loaded ONLY from this app's own defaults — never imported from an external file, a
+    /// shared bundle, or another user (the CSV printer import carries no automations). That's deliberate:
+    /// it stops a shared/planted config from delivering a code-executing rule. If an import or restore
+    /// path is ever added, it MUST pass lists through `sanitize(_:)` first, which disables any
+    /// code-executing action (`.script`/`.command`) so imported rules can't run code silently.
+    static func sanitize(_ items: [PrinterAutomation]) -> [PrinterAutomation] {
+        items.map { auto in
+            var copy = auto
+            switch auto.action {
+            case .script, .command: copy.enabled = false
+            default: break
+            }
+            return copy
+        }
+    }
 }
 
 /// Runs (and stops) user shell scripts for script-action automations, keyed by automation id so a

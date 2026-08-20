@@ -65,6 +65,22 @@ final class AppSettings: ObservableObject {
     /// default so casual users get a pure monitor without control surfaces.
     @Published var developerMode: Bool { didSet { defaults.set(developerMode, forKey: "developer-mode") } }
 
+    /// Security kill switch for automation actions that execute code: `.script` (runs a program on this
+    /// Mac) and `.command` (an arbitrary raw MQTT/G-code command). OFF by default so a tampered or planted
+    /// automation config cannot run code silently — the same class of issue as KeePass triggers
+    /// (CVE-2023-24055). The rule engine refuses these actions unless this is enabled.
+    @Published var allowScriptActions: Bool { didSet { defaults.set(allowScriptActions, forKey: "allow-script-actions") } }
+
+    /// Per-rule, first-run consent: ids the user has explicitly approved, so the confirmation prompt
+    /// appears once per rule rather than on every trigger.
+    func isScriptRuleApproved(_ id: UUID) -> Bool {
+        (defaults.string(forKey: "approved-script-rules") ?? "").split(separator: "\n").contains(Substring(id.uuidString))
+    }
+    func approveScriptRule(_ id: UUID) {
+        var set = Set((defaults.string(forKey: "approved-script-rules") ?? "").split(separator: "\n").map(String.init))
+        if set.insert(id.uuidString).inserted { defaults.set(set.joined(separator: "\n"), forKey: "approved-script-rules") }
+    }
+
     @Published var notifyFinished: Bool { didSet { defaults.set(notifyFinished, forKey: "notify-finished") } }
     @Published var notifyError: Bool { didSet { defaults.set(notifyError, forKey: "notify-error") } }
     @Published var notifyPaused: Bool { didSet { defaults.set(notifyPaused, forKey: "notify-paused") } }
@@ -98,6 +114,7 @@ final class AppSettings: ObservableObject {
         spoolbaseEnabled = defaults.object(forKey: "spoolbase-enabled") as? Bool ?? true
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
+        allowScriptActions = defaults.object(forKey: "allow-script-actions") as? Bool ?? false
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true
         notifyPaused = defaults.object(forKey: "notify-paused") as? Bool ?? true
