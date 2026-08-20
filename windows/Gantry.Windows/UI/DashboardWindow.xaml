@@ -65,6 +65,8 @@
                     <WrapPanel x:Name="CardsPanel" Orientation="Horizontal"/>
                 </ScrollViewer>
             </DockPanel>
+            <!-- In-window detail view (replaces the list in place, like the macOS popover). -->
+            <Border x:Name="DetailLayer" Visibility="Collapsed" Background="#FF161618" CornerRadius="12"/>
             <!-- In-window card menu overlay (avoids Popup z-order issues under a topmost window). -->
             <Grid x:Name="MenuLayer" Visibility="Collapsed">
                 <Border x:Name="MenuBackdrop" Background="#01000000"/>

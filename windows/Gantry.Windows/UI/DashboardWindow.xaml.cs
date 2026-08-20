@@ -105,6 +105,21 @@ public partial class DashboardWindow : Window
         if (_cardMenu is not null) { MenuLayer.Children.Remove(_cardMenu); _cardMenu = null; }
     }
 
+    /// <summary>Shows the printer detail view in place (replacing the card list), like the macOS popover,
+    /// instead of opening a separate window. The Back button restores the list.</summary>
+    internal void ShowDetail(string serial)
+    {
+        HideCardMenu();
+        DetailLayer.Child = new DetailView(_store, serial, HideDetail);
+        DetailLayer.Visibility = Visibility.Visible;
+    }
+
+    private void HideDetail()
+    {
+        DetailLayer.Child = null;   // removing the view fires its Unloaded → stops the camera + timer
+        DetailLayer.Visibility = Visibility.Collapsed;
+    }
+
     private DragAdorner? _dragAdorner;
     private Point _dragGrab;
 
@@ -438,7 +453,7 @@ public partial class DashboardWindow : Window
                 Background = System.Windows.Media.Brushes.Transparent, Foreground = Muted(),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)), BorderThickness = new Thickness(1)
             };
-            details.Click += (_, _) => new DetailWindow(_owner._store, Serial) { Owner = _owner }.Show();
+            details.Click += (_, _) => _owner.ShowDetail(Serial);
             Grid.SetColumn(details, 2);
             header.Children.Add(details);
             // "…" menu in the header (macOS layout) instead of a separate row at the bottom — saves height.
@@ -909,7 +924,7 @@ public partial class DashboardWindow : Window
             items.Children.Add(button);
         }
 
-        Item(AppSettings.Text("Szczegóły", "Details"), () => new DetailWindow(_store, serial) { Owner = this }.Show());
+        Item(AppSettings.Text("Szczegóły", "Details"), () => ShowDetail(serial));
         Item(AppSettings.Text("Zaawansowane…", "Advanced…"), () => new AdvancedWindow(_store, serial) { Owner = this }.Show());
 
         Item(AppSettings.Text("Połącz ponownie", "Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });

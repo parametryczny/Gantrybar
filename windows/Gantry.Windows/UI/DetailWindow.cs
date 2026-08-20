@@ -17,7 +17,7 @@ namespace Gantry.UI;
 /// Per-printer "Szczegóły" (details) window — a richer read view: live temperature graph, temps with
 /// targets, fans + speed + nozzle diameter, and the AMS/filament dock. Monitor only (control and
 /// camera arrive in later phases). Mirrors the macOS detail card.
-public sealed class DetailWindow : Window
+public sealed class DetailView : UserControl
 {
     private readonly PrinterStore _store;
     private readonly string _serial;
@@ -50,18 +50,18 @@ public sealed class DetailWindow : Window
     private static readonly Brush BedBrush = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF));
     private static readonly Brush ChamberBrush = new SolidColorBrush(Color.FromRgb(0x64, 0xD2, 0xFF));
 
-    public DetailWindow(PrinterStore store, string serial)
+    private readonly Action _onBack;
+
+    public DetailView(PrinterStore store, string serial, Action onBack)
     {
         _store = store;
         _serial = serial;
+        _onBack = onBack;
         _pl = AppSettings.Polish;
         var printer = store.Printers.FirstOrDefault(p => p.Serial == serial);
         _kind = printer?.Kind ?? PrinterKind.Bambu;
 
-        Title = (_pl ? "Szczegóły — " : "Details — ") + (printer?.Name ?? serial);
-        Width = 480; Height = 720; MinWidth = 380; MinHeight = 480;
         Background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x18));
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var stack = new StackPanel { Margin = new Thickness(14) };
 
@@ -114,7 +114,7 @@ public sealed class DetailWindow : Window
             var lightOff = new Button { Content = _pl ? "Światło wył." : "Light off", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
             lightOff.Click += (_, _) => _store.SetChamberLight(false, _serial);
             var autoBtn = new Button { Content = _pl ? "Automatyzacje…" : "Automations…", Padding = new Thickness(10, 4, 10, 4) };
-            autoBtn.Click += (_, _) => new AutomationsWindow(_store, _serial) { Owner = this }.Show();
+            autoBtn.Click += (_, _) => new AutomationsWindow(_store, _serial) { Owner = Window.GetWindow(this) }.Show();
             var controls = new StackPanel { Orientation = Orientation.Horizontal, Children = { lightOn, lightOff, autoBtn } };
             stack.Children.Add(Draggable("control", Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } })));
         }
@@ -138,17 +138,33 @@ public sealed class DetailWindow : Window
             var frame = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = container };
             stack.Children.Add(Draggable("camera", Card(new StackPanel { Children = { SectionTitle(_pl ? "KAMERA" : "CAMERA"), frame } })));
             Loaded += (_, _) => StartCamera();
-            Closed += (_, _) => StopCamera();
+            Unloaded += (_, _) => StopCamera();
         }
 
         _cardPanel = stack;
         ApplyCardOrder();
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stack };
+
+        // Top bar with a Back button — the detail view replaces the panel content in place (like macOS),
+        // instead of opening a separate window.
+        var back = new Button
+        {
+            Content = _pl ? "‹ Wróć" : "‹ Back", Padding = new Thickness(10, 4, 12, 5), FontSize = 12,
+            Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left,
+            Background = System.Windows.Media.Brushes.Transparent, Foreground = White(), BorderThickness = new Thickness(0)
+        };
+        back.Click += (_, _) => _onBack();
+        var backBar = new Border { Padding = new Thickness(8, 8, 8, 2), Child = back };
+        DockPanel.SetDock(backBar, Dock.Top);
+
+        var root = new DockPanel();
+        root.Children.Add(backBar);
+        root.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stack });
+        Content = root;
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => Refresh();
         _timer.Start();
-        Closed += (_, _) => _timer.Stop();
+        Unloaded += (_, _) => _timer.Stop();
         Refresh();
     }
 
