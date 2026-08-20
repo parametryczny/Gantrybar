@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -39,6 +40,11 @@ public sealed class DetailWindow : Window
     private BambuCameraStream? _bambuCam;   // Bambu: native RTSPS/RTSP/JPEG client, ffmpeg used only to decode H.264
     private string? _cameraMode;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
+
+    // Reorderable cards
+    private StackPanel? _cardPanel;
+    private readonly Dictionary<string, FrameworkElement> _cardByKey = new();
+    private Point _cardDragStart;
 
     private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
     private static readonly Brush BedBrush = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF));
@@ -77,13 +83,13 @@ public sealed class DetailWindow : Window
         bottomRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bottomRow.Children.Add(_remaining);
         Grid.SetColumn(_layers, 1); bottomRow.Children.Add(_layers);
-        stack.Children.Add(Card(new StackPanel { Children = { _state, titleRow, _bar, bottomRow } }));
+        stack.Children.Add(Draggable("status", Card(new StackPanel { Children = { _state, titleRow, _bar, bottomRow } })));
 
         // --- Temperatures card (graph + readouts) ---
         _graph = new Canvas { Height = 110, Background = new SolidColorBrush(Color.FromArgb(0x50, 0x2C, 0x2C, 0x2E)) };
         _graph.SizeChanged += (_, _) => DrawGraph();
         _temps = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "TEMPERATURY" : "TEMPERATURES"), _graph, _temps } }));
+        stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(_pl ? "TEMPERATURY" : "TEMPERATURES"), _graph, _temps } })));
 
         // --- Fans + speed card ---
         _fans = new StackPanel { Orientation = Orientation.Horizontal };
@@ -94,11 +100,11 @@ public sealed class DetailWindow : Window
         infoRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         infoRow.Children.Add(_speed);
         Grid.SetColumn(_diameter, 1); infoRow.Children.Add(_diameter);
-        stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "WENTYLATORY I PRĘDKOŚĆ" : "FANS AND SPEED"), _fans, infoRow } }));
+        stack.Children.Add(Draggable("fans", Card(new StackPanel { Children = { SectionTitle(_pl ? "WENTYLATORY I PRĘDKOŚĆ" : "FANS AND SPEED"), _fans, infoRow } })));
 
         // --- AMS / filaments card ---
         _ams = new StackPanel();
-        stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "FILAMENTY / AMS" : "FILAMENTS / AMS"), _ams } }));
+        stack.Children.Add(Draggable("ams", Card(new StackPanel { Children = { SectionTitle(_pl ? "FILAMENTY / AMS" : "FILAMENTS / AMS"), _ams } })));
 
         // --- Control + automations card (developer mode only; Bambu/Klipper) ---
         if (AppSettings.DeveloperMode && printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
@@ -110,7 +116,7 @@ public sealed class DetailWindow : Window
             var autoBtn = new Button { Content = _pl ? "Automatyzacje…" : "Automations…", Padding = new Thickness(10, 4, 10, 4) };
             autoBtn.Click += (_, _) => new AutomationsWindow(_store, _serial) { Owner = this }.Show();
             var controls = new StackPanel { Orientation = Orientation.Horizontal, Children = { lightOn, lightOff, autoBtn } };
-            stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } }));
+            stack.Children.Add(Draggable("control", Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } })));
         }
 
         // --- Camera card (Bambu native RTSPS/RTSP/JPEG → ffmpeg decode, Klipper MJPEG snapshots) ---
@@ -130,11 +136,13 @@ public sealed class DetailWindow : Window
             container.Children.Add(_cameraStatus);
             container.Children.Add(_cameraBadge);
             var frame = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = container };
-            stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "KAMERA" : "CAMERA"), frame } }));
+            stack.Children.Add(Draggable("camera", Card(new StackPanel { Children = { SectionTitle(_pl ? "KAMERA" : "CAMERA"), frame } })));
             Loaded += (_, _) => StartCamera();
             Closed += (_, _) => StopCamera();
         }
 
+        _cardPanel = stack;
+        ApplyCardOrder();
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stack };
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -142,6 +150,72 @@ public sealed class DetailWindow : Window
         _timer.Start();
         Closed += (_, _) => _timer.Stop();
         Refresh();
+    }
+
+    // --- reorderable cards (drag the "⠿" grip; order persists across printers) ---
+
+    private FrameworkElement Draggable(string key, FrameworkElement card)
+    {
+        var grip = new TextBlock
+        {
+            Text = "⠿", FontSize = 12, Foreground = Muted(), Opacity = 0.55, Cursor = Cursors.SizeAll,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 11, 12, 0), ToolTip = _pl ? "Przeciągnij, aby zmienić kolejność" : "Drag to reorder"
+        };
+        grip.PreviewMouseLeftButtonDown += (_, e) => _cardDragStart = e.GetPosition(null);
+        grip.MouseMove += (_, e) =>
+        {
+            if (e.LeftButton != MouseButtonState.Pressed) return;
+            var p = e.GetPosition(null);
+            if (Math.Abs(p.X - _cardDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(p.Y - _cardDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            DragDrop.DoDragDrop(_cardByKey[key], key, DragDropEffects.Move);
+        };
+        var host = new Grid { Tag = key, AllowDrop = true };
+        host.Children.Add(card);
+        host.Children.Add(grip);
+        host.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.StringFormat) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+        host.Drop += (_, e) =>
+        {
+            if (e.Data.GetData(DataFormats.StringFormat) is string src && src != key) MoveCard(src, key);
+            e.Handled = true;
+        };
+        _cardByKey[key] = host;
+        return host;
+    }
+
+    private void MoveCard(string src, string target)
+    {
+        if (_cardPanel is null || !_cardByKey.TryGetValue(src, out var s) || !_cardByKey.TryGetValue(target, out var t)) return;
+        _cardPanel.Children.Remove(s);
+        int idx = _cardPanel.Children.IndexOf(t);
+        if (idx < 0) idx = _cardPanel.Children.Count;
+        _cardPanel.Children.Insert(idx, s);
+        SaveCardOrder();
+    }
+
+    private void SaveCardOrder()
+    {
+        if (_cardPanel is null) return;
+        var keys = new List<string>();
+        foreach (var child in _cardPanel.Children)
+            if (child is FrameworkElement fe && fe.Tag is string k) keys.Add(k);
+        AppSettings.DetailCardOrder = string.Join(",", keys);
+    }
+
+    private void ApplyCardOrder()
+    {
+        if (_cardPanel is null) return;
+        var saved = AppSettings.DetailCardOrder.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        int insertAt = 0;
+        foreach (var key in saved)
+        {
+            if (!_cardByKey.TryGetValue(key, out var el) || _cardPanel.Children.IndexOf(el) < 0) continue;
+            _cardPanel.Children.Remove(el);
+            if (insertAt > _cardPanel.Children.Count) insertAt = _cardPanel.Children.Count;
+            _cardPanel.Children.Insert(insertAt, el);
+            insertAt++;
+        }
     }
 
     private void Refresh()

@@ -218,6 +218,14 @@ public static class AppSettings
         set => Defaults.SetString("discovery-subnet-targets", value.Trim());
     }
 
+    /// Order of the cards in the printer detail window, as a comma-separated list of card keys.
+    /// Empty = default order. Shared across printers (like the macOS "detail-card-order").
+    public static string DetailCardOrder
+    {
+        get => Defaults.GetString("detail-card-order") ?? string.Empty;
+        set => Defaults.SetString("detail-card-order", value);
+    }
+
     public static string Text(string polish, string english) => Polish ? polish : english;
 
     private static string DefaultLanguage()
