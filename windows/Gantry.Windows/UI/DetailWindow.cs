@@ -8,7 +8,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using System.Diagnostics;
 using Gantry.Models;
 using Gantry.Services;
 
@@ -31,14 +30,14 @@ public sealed class DetailWindow : Window
 
     // Camera
     private readonly PrinterKind _kind;
-    private Image? _cameraImage;            // Bambu (ffmpeg→MJPEG) and Klipper (MJPEG snapshots)
-    private DispatcherTimer? _cameraTimer;  // Klipper snapshot polling / camera watchdog
+    private Image? _cameraImage;            // Bambu (native → ffmpeg decode) and Klipper (MJPEG snapshots)
+    private DispatcherTimer? _cameraTimer;  // Klipper snapshot polling
     private string? _snapshotUrl;
     private bool _cameraStarted;
     private TextBlock? _cameraStatus;
-    private Process? _ffmpeg;               // Bambu: decodes rtsps → MJPEG on stdout
-    private volatile string? _ffmpegErr;
-    private volatile bool _gotFrame;
+    private Border? _cameraBadge;           // shows the resolved mode + resolution (e.g. "RTSPS · 1920×1080")
+    private BambuCameraStream? _bambuCam;   // Bambu: native RTSPS/RTSP/JPEG client, ffmpeg used only to decode H.264
+    private string? _cameraMode;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
 
     private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
@@ -114,14 +113,22 @@ public sealed class DetailWindow : Window
             stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } }));
         }
 
-        // --- Camera card (Bambu via ffmpeg→MJPEG, Klipper MJPEG snapshots) ---
+        // --- Camera card (Bambu native RTSPS/RTSP/JPEG → ffmpeg decode, Klipper MJPEG snapshots) ---
         if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
         {
             var container = new Grid { Height = 230, Background = new SolidColorBrush(Colors.Black) };
             _cameraStatus = new TextBlock { Foreground = White(), FontSize = 11, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12) };
             _cameraImage = new Image { Stretch = Stretch.Uniform };
+            _cameraBadge = new Border
+            {
+                CornerRadius = new CornerRadius(5), Background = new SolidColorBrush(Color.FromArgb(0xB0, 0x00, 0x00, 0x00)),
+                Padding = new Thickness(7, 2, 7, 3), Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed,
+                Child = new TextBlock { Foreground = White(), FontSize = 10, FontWeight = FontWeights.SemiBold }
+            };
             container.Children.Add(_cameraImage);
             container.Children.Add(_cameraStatus);
+            container.Children.Add(_cameraBadge);
             var frame = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = container };
             stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "KAMERA" : "CAMERA"), frame } }));
             Loaded += (_, _) => StartCamera();
@@ -249,7 +256,14 @@ public sealed class DetailWindow : Window
         {
             var code = AccessCodeStore.AccessCode(_serial);
             if (string.IsNullOrEmpty(code)) { _cameraStatus.Text = _pl ? "Kamera niedostępna (brak kodu dostępu)" : "Camera unavailable (no access code)"; return; }
-            _ = StartBambuCameraAsync(host, code!);
+            // Native RTSPS/RTSP/JPEG client — we do the TLS ourselves (accepting the printer's self-signed
+            // cert), so ffmpeg only decodes H.264 from a pipe and never trips over the certificate.
+            var cam = new BambuCameraStream();
+            cam.FrameReady += ShowJpegFrame;
+            cam.ModeResolved += m => Dispatcher.Invoke(() => { _cameraMode = m; UpdateBadge(); });
+            cam.Failed += msg => Dispatcher.Invoke(() => { if (_cameraStatus is { Visibility: Visibility.Visible }) _cameraStatus.Text = msg; });
+            _bambuCam = cam;
+            cam.Start(host, code!);
         }
         else
         {
@@ -257,109 +271,15 @@ public sealed class DetailWindow : Window
         }
     }
 
-    private static string FfmpegPath()
+    private void UpdateBadge()
     {
-        var bundled = System.IO.Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
-        return File.Exists(bundled) ? bundled : "ffmpeg";
+        if (_cameraBadge?.Child is not TextBlock tb) return;
+        var res = _cameraImage?.Source is System.Windows.Media.Imaging.BitmapSource bs ? $" · {bs.PixelWidth}×{bs.PixelHeight}" : "";
+        tb.Text = (_cameraMode ?? "") + res;
+        _cameraBadge.Visibility = string.IsNullOrEmpty(_cameraMode) ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    // Bambu serves the chamber camera as RTSP-over-TLS (rtsps, port 322) with a self-signed cert and
-    // H.264 — which libVLC's bundled build won't even route to its RTSP module. ffmpeg opens it
-    // reliably; we run it to decode the stream into an MJPEG pipe and paint each JPEG frame into the
-    // camera Image (the same Image the Klipper snapshot path uses).
-    private async Task StartBambuCameraAsync(string host, string code)
-    {
-        var url = $"rtsps://bblp:{code}@{host}:322/streaming/live/1";
-        var psi = new ProcessStartInfo
-        {
-            FileName = FfmpegPath(),
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (var a in new[] { "-nostdin", "-loglevel", "verbose", "-rtsp_transport", "tcp",
-                                  "-i", url, "-an", "-f", "mjpeg", "-q:v", "6", "-r", "12", "pipe:1" })
-            psi.ArgumentList.Add(a);
-
-        Process proc;
-        try { proc = Process.Start(psi)!; }
-        catch (Exception ex) { if (_cameraStatus is not null) _cameraStatus.Text = (_pl ? "Nie mogę uruchomić ffmpeg: " : "Cannot start ffmpeg: ") + ex.Message; return; }
-        _ffmpeg = proc;
-
-        // Drain stderr so ffmpeg never blocks on a full pipe, and keep the last lines for diagnostics.
-        _ = Task.Run(async () =>
-        {
-            try { string? line; while ((line = await proc.StandardError.ReadLineAsync()) is not null) AddFfmpegLine(line); } catch { }
-        });
-
-        // Watchdog: if no frame arrives, surface why (LAN mode off / ffmpeg error) instead of a black box.
-        _cameraTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
-        _cameraTimer.Tick += (_, _) => { _cameraTimer!.Stop(); ShowCameraError(); };
-        _cameraTimer.Start();
-
-        await Task.Run(() => ReadMjpegPipe(proc));
-        // ffmpeg exited (stdout closed); if it never produced a frame, show why straight away.
-        if (!_gotFrame) Dispatcher.Invoke(() => { _cameraTimer?.Stop(); ShowCameraError(); });
-    }
-
-    private readonly List<string> _ffmpegLines = new();
-    private void AddFfmpegLine(string line)
-    {
-        if (string.IsNullOrWhiteSpace(line)) return;
-        lock (_ffmpegLines)
-        {
-            _ffmpegLines.Add(line.Trim());
-            if (_ffmpegLines.Count > 8) _ffmpegLines.RemoveAt(0);
-            _ffmpegErr = string.Join("\n", _ffmpegLines);
-        }
-    }
-
-    private void ShowCameraError()
-    {
-        if (_cameraStatus is { Visibility: Visibility.Visible })
-            _cameraStatus.Text = _ffmpegErr is not null
-                ? "ffmpeg:\n" + _ffmpegErr
-                : (_pl ? "Brak obrazu — włącz „LAN Mode Live View” w drukarce" : "No video — enable “LAN Mode Live View” on the printer");
-    }
-
-    // Splits ffmpeg's concatenated-JPEG output into whole frames (SOI FF D8 … EOI FF D9) and paints each.
-    private void ReadMjpegPipe(Process proc)
-    {
-        var stream = proc.StandardOutput.BaseStream;
-        var buffer = new List<byte>(1 << 20);
-        var chunk = new byte[1 << 16];
-        try
-        {
-            int n;
-            while ((n = stream.Read(chunk, 0, chunk.Length)) > 0)
-            {
-                for (int i = 0; i < n; i++) buffer.Add(chunk[i]);
-                while (true)
-                {
-                    int start = IndexOfMarker(buffer, 0xD8, 0);
-                    if (start < 0) { if (buffer.Count > 1) buffer.RemoveRange(0, buffer.Count - 1); break; }
-                    int end = IndexOfMarker(buffer, 0xD9, start + 2);
-                    if (end < 0) { if (start > 0) buffer.RemoveRange(0, start); break; }
-                    int len = end + 2 - start;
-                    var frame = new byte[len];
-                    buffer.CopyTo(start, frame, 0, len);
-                    buffer.RemoveRange(0, end + 2);
-                    ShowJpegFrame(frame);
-                }
-            }
-        }
-        catch { }
-    }
-
-    // Index of an FFxx marker (xx = marker byte) at/after `from`; returns the index of the FF, or -1.
-    private static int IndexOfMarker(List<byte> b, byte marker, int from)
-    {
-        for (int i = Math.Max(from, 0); i + 1 < b.Count; i++)
-            if (b[i] == 0xFF && b[i + 1] == marker) return i;
-        return -1;
-    }
-
+    // Paints one JPEG frame (from the Bambu native client or the Klipper poller) into the camera Image.
     private void ShowJpegFrame(byte[] jpeg)
     {
         try
@@ -371,11 +291,11 @@ public sealed class DetailWindow : Window
             bmp.StreamSource = ms;
             bmp.EndInit();
             bmp.Freeze();
-            _gotFrame = true;
             Dispatcher.Invoke(() =>
             {
                 if (_cameraImage is not null) _cameraImage.Source = bmp;
                 if (_cameraStatus is { Visibility: Visibility.Visible }) _cameraStatus.Visibility = Visibility.Collapsed;
+                UpdateBadge();
             });
         }
         catch { }
@@ -454,9 +374,8 @@ public sealed class DetailWindow : Window
     private void StopCamera()
     {
         _cameraTimer?.Stop();
-        try { if (_ffmpeg is { HasExited: false }) _ffmpeg.Kill(true); } catch { }
-        try { _ffmpeg?.Dispose(); } catch { }
-        _ffmpeg = null;
+        try { _bambuCam?.Stop(); } catch { }
+        _bambuCam = null;
     }
 
     // --- small builders ---
