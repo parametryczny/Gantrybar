@@ -896,6 +896,7 @@ public partial class DashboardWindow : Window
         }
 
         Item(AppSettings.Text("Szczegóły", "Details"), () => new DetailWindow(_store, serial) { Owner = this }.Show());
+        Item(AppSettings.Text("Zaawansowane…", "Advanced…"), () => new AdvancedWindow(_store, serial) { Owner = this }.Show());
 
         Item(AppSettings.Text("Połącz ponownie", "Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 

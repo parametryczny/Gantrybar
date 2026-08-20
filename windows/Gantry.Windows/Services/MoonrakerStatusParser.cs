@@ -9,7 +9,7 @@ namespace Gantry.Services;
 /// Happy Hare mmu object mapped to AMS slots. Mirrors the macOS MoonrakerStatusParser.</summary>
 public static class MoonrakerStatusParser
 {
-    public static PrinterTelemetry? Telemetry(byte[] data, PrinterTelemetry? previous = null)
+    public static PrinterTelemetry? Telemetry(byte[] data, PrinterTelemetry? previous = null, MoonrakerObjects? objects = null)
     {
         JsonElement root;
         try { using var doc = JsonDocument.Parse(data); root = doc.RootElement.Clone(); }
@@ -49,20 +49,24 @@ public static class MoonrakerStatusParser
             t.RemainingMinutes = (int)Math.Round(duration * (1 - pr) / pr / 60);
         }
 
-        if (Obj(status, "extruder", out var extruder))
+        objects ??= new MoonrakerObjects();
+        if (Obj(status, objects.Nozzle, out var extruder))
         {
             if (Num(extruder, "temperature") is { } temp) t.NozzleTemperature = temp;
             if (Num(extruder, "target") is { } target) t.NozzleTargetTemperature = target;
         }
-        if (Obj(status, "heater_bed", out var bed))
+        if (Obj(status, objects.Bed, out var bed))
         {
             if (Num(bed, "temperature") is { } temp) t.BedTemperature = temp;
             if (Num(bed, "target") is { } target) t.BedTargetTemperature = target;
         }
-        if (ChamberTemperature(status) is { } chamber) t.ChamberTemperature = chamber;
+        // Chamber: the overridden object if given, else auto-detect a *chamber* sensor.
+        if (!string.IsNullOrEmpty(objects.Chamber) && Obj(status, objects.Chamber!, out var chObj) && Num(chObj, "temperature") is { } chTemp)
+            t.ChamberTemperature = chTemp;
+        else if (ChamberTemperature(status) is { } chamber) t.ChamberTemperature = chamber;
 
         // Part-cooling fan (0-1) and the live speed factor (1.0 = 100%).
-        if (Obj(status, "fan", out var fan) && Num(fan, "speed") is { } fanSpeed)
+        if (Obj(status, objects.Fan, out var fan) && Num(fan, "speed") is { } fanSpeed)
             t.PartFanPercent = (int)Math.Round(fanSpeed * 100);
         if (Obj(status, "gcode_move", out var gm) && Num(gm, "speed_factor") is { } speedFactor)
             t.SpeedPercent = (int)Math.Round(speedFactor * 100);

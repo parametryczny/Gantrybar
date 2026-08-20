@@ -25,10 +25,13 @@ public sealed class MoonrakerClient : IPrinterConnection
     private readonly object _cfsLock = new();
     private List<FilamentGroup> _cfsGroups = new();
 
-    public MoonrakerClient(SavedPrinter printer, Action<MqttEvent> onEvent)
+    private readonly MoonrakerObjects _objects;
+
+    public MoonrakerClient(SavedPrinter printer, Action<MqttEvent> onEvent, MoonrakerObjects? objects = null)
     {
         _printer = printer;
         _onEvent = onEvent;
+        _objects = objects ?? new MoonrakerObjects();
     }
 
     public void Start()
@@ -58,7 +61,7 @@ public sealed class MoonrakerClient : IPrinterConnection
             try
             {
                 var data = await GetAsync(query);
-                var updated = MoonrakerStatusParser.Telemetry(data, _telemetry);
+                var updated = MoonrakerStatusParser.Telemetry(data, _telemetry, _objects);
                 if (updated is not null)
                 {
                     // A Creality CFS overrides the (absent) Happy Hare gates with its own modules.
@@ -82,7 +85,9 @@ public sealed class MoonrakerClient : IPrinterConnection
 
     private async Task<string?> BuildQueryUrlAsync()
     {
-        var wanted = new List<string> { "print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu", "fan", "gcode_move" };
+        var wanted = new List<string> { "print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move", _objects.Nozzle, _objects.Bed, _objects.Fan };
+        if (!string.IsNullOrEmpty(_objects.Chamber)) wanted.Add(_objects.Chamber!);
+        wanted = wanted.Distinct().ToList();
         try
         {
             var listData = await GetAsync($"{BaseUrl}/printer/objects/list");

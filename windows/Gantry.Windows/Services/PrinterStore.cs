@@ -369,7 +369,7 @@ public sealed class PrinterStore
 
         if (printer.Kind == PrinterKind.Klipper)
         {
-            var moonraker = new MoonrakerClient(HydratedWithSecret(printer), evt => _post(() => Handle(evt, printer.Serial)));
+            var moonraker = new MoonrakerClient(HydratedWithSecret(printer), evt => _post(() => Handle(evt, printer.Serial)), PrinterOverridesStore.For(printer.Serial).MoonrakerObjects);
             _clients[printer.Serial] = moonraker;
             moonraker.Start();
             RaiseUpdated();
@@ -544,9 +544,18 @@ public sealed class PrinterStore
         if (_clients.TryGetValue(serial, out var c) && c is MoonrakerClient m) m.SendGcode(script);
     }
 
-    /// Chamber LED on/off. Bambu uses ledctrl; Klipper a best-effort caselight pin.
+    /// Chamber LED on/off. Bambu uses ledctrl; Klipper a best-effort caselight pin. A per-printer
+    /// override wins: Bambu treats it as MQTT JSON, Klipper as a G-code line.
     public void SetChamberLight(bool on, string serial)
     {
+        var ov = PrinterOverridesStore.For(serial);
+        var custom = on ? ov.LedOn : ov.LedOff;
+        if (!string.IsNullOrEmpty(custom))
+        {
+            if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.Klipper) SendGcode(serial, custom);
+            else SendCommand(serial, custom);
+            return;
+        }
         if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.Klipper)
             SendGcode(serial, on ? "SET_PIN PIN=caselight VALUE=1" : "SET_PIN PIN=caselight VALUE=0");
         else
