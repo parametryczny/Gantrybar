@@ -40,6 +40,7 @@ public sealed class DetailWindow : Window
     private string? _snapshotUrl;
     private bool _cameraStarted;
     private TextBlock? _cameraStatus;
+    private string? _lastVlcError;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
     private static LibVLC? _libVlc;
     private static LibVLC Vlc { get { if (_libVlc is null) { Core.Initialize(); _libVlc = new LibVLC("--no-osd", "--network-caching=300"); } return _libVlc; } }
@@ -254,12 +255,27 @@ public sealed class DetailWindow : Window
             if (string.IsNullOrEmpty(code)) { _cameraStatus.Text = _pl ? "Kamera niedostępna (brak kodu dostępu)" : "Camera unavailable (no access code)"; return; }
             try
             {
+                Vlc.Log += OnVlcLog;
                 _player = new MediaPlayer(Vlc);
                 _videoView!.MediaPlayer = _player;
                 var media = new Media(Vlc, new Uri($"rtsps://bblp:{code}@{host}:322/streaming/live/1"));
                 media.AddOption(":rtsp-tcp");
-                _player.Playing += (_, _) => Dispatcher.Invoke(() => _cameraStatus.Visibility = Visibility.Collapsed);
+                media.AddOption(":network-caching=300");
+                _player.Playing += (_, _) => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Visibility = Visibility.Collapsed; });
+                _player.EncounteredError += (_, _) => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Text = "VLC: " + (_lastVlcError ?? (_pl ? "błąd odtwarzania" : "playback error")); });
                 _player.Play(media);   // the player retains the media; don't dispose it here
+
+                // If nothing plays in time, surface the last VLC error so we know why (TLS, LAN mode…).
+                _cameraTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+                _cameraTimer.Tick += (_, _) =>
+                {
+                    _cameraTimer!.Stop();
+                    if (_cameraStatus is { Visibility: Visibility.Visible })
+                        _cameraStatus.Text = _lastVlcError is not null
+                            ? "VLC: " + _lastVlcError
+                            : (_pl ? "Brak obrazu w 10 s — włącz „LAN Mode Live View” w drukarce" : "No video in 10 s — enable “LAN Mode Live View” on the printer");
+                };
+                _cameraTimer.Start();
             }
             catch (Exception ex) { _cameraStatus.Text = ex.Message; }
         }
@@ -339,9 +355,15 @@ public sealed class DetailWindow : Window
         catch { }
     }
 
+    private void OnVlcLog(object? sender, LogEventArgs e)
+    {
+        if (e.Level == LogLevel.Error && !string.IsNullOrWhiteSpace(e.Message)) _lastVlcError = e.Message;
+    }
+
     private void StopCamera()
     {
         _cameraTimer?.Stop();
+        try { Vlc.Log -= OnVlcLog; } catch { }
         try { _player?.Stop(); _player?.Dispose(); } catch { }
         try { _videoView?.Dispose(); } catch { }
         _player = null;
