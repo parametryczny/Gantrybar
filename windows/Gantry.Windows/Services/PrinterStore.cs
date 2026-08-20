@@ -454,6 +454,7 @@ public sealed class PrinterStore
                 if (_printersWithTelemetry.Contains(serial) && Printers.FirstOrDefault(p => p.Serial == serial) is { } printer)
                     NotifyChanges(printer, previous, value);
                 _printersWithTelemetry.Add(serial);
+                EvaluateAutomations(serial, previous, value);
                 break;
 
             case MqttEventType.Disconnected:
@@ -528,6 +529,79 @@ public sealed class PrinterStore
         cleared.JobName = null;
         return cleared;
     }
+
+    // --- Control (Phase 2): send commands to the printer ---
+
+    /// Raw JSON command to a Bambu printer over MQTT (chamber LED, pause, …).
+    public void SendCommand(string serial, string json)
+    {
+        if (_clients.TryGetValue(serial, out var c) && c is MqttClient mqtt) mqtt.SendCommand(json);
+    }
+
+    /// Raw G-code line to a Klipper printer over Moonraker.
+    public void SendGcode(string serial, string script)
+    {
+        if (_clients.TryGetValue(serial, out var c) && c is MoonrakerClient m) m.SendGcode(script);
+    }
+
+    /// Chamber LED on/off. Bambu uses ledctrl; Klipper a best-effort caselight pin.
+    public void SetChamberLight(bool on, string serial)
+    {
+        if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.Klipper)
+            SendGcode(serial, on ? "SET_PIN PIN=caselight VALUE=1" : "SET_PIN PIN=caselight VALUE=0");
+        else
+        {
+            var mode = on ? "on" : "off";
+            SendCommand(serial, $"{{\"system\":{{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"{mode}\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}}}");
+        }
+    }
+
+    /// Runs one automation's action now (Run button and the trigger engine).
+    public void RunAutomation(PrinterAutomation auto, string serial)
+    {
+        var printer = Printers.FirstOrDefault(p => p.Serial == serial);
+        var name = printer?.Name ?? serial;
+        bool isKlipper = printer?.Kind == PrinterKind.Klipper;
+        void PrintCmd(string bambu, string macro) { if (isKlipper) SendGcode(serial, macro); else SendCommand(serial, bambu); }
+
+        switch (auto.ActionKind)
+        {
+            case "lightOn": SetChamberLight(true, serial); break;
+            case "lightOff": SetChamberLight(false, serial); break;
+            case "pause": PrintCmd("{\"print\":{\"sequence_id\":\"2004\",\"command\":\"pause\"}}", "PAUSE"); break;
+            case "resume": PrintCmd("{\"print\":{\"sequence_id\":\"2004\",\"command\":\"resume\"}}", "RESUME"); break;
+            case "stop": PrintCmd("{\"print\":{\"sequence_id\":\"2004\",\"command\":\"stop\"}}", "CANCEL_PRINT"); break;
+            case "notify": NotificationService.Post(name, auto.ActionText); break;
+            case "command": if (isKlipper) SendGcode(serial, auto.ActionText); else SendCommand(serial, auto.ActionText); break;
+            case "script":
+                ScriptRunner.Run(auto.Id, auto.ActionText);
+                NotificationService.Post(name, AppSettings.Text($"Uruchomiono skrypt: {auto.Name}", $"Ran script: {auto.Name}"));
+                break;
+        }
+    }
+
+    private readonly Dictionary<string, HashSet<string>> _firedAutomations = new();
+
+    // Fires conditional automations once per print; re-arms only at a clear end-of-print state so
+    // Bambu's partial reports (which drop the job name) don't retrigger a rule mid-print.
+    private void EvaluateAutomations(string serial, PrinterTelemetry? previous, PrinterTelemetry current)
+    {
+        if (current.State is PrinterState.Idle or PrinterState.Finished) _firedAutomations[serial] = new();
+        foreach (var auto in AutomationStore.For(serial).Where(a => a.Enabled))
+        {
+            if (!ShouldFire(auto, previous, current)) continue;
+            if (!_firedAutomations.TryGetValue(serial, out var fired)) { fired = new(); _firedAutomations[serial] = fired; }
+            if (fired.Add(auto.Id)) RunAutomation(auto, serial);
+        }
+    }
+
+    private static bool ShouldFire(PrinterAutomation auto, PrinterTelemetry? prev, PrinterTelemetry cur) => auto.TriggerKind switch
+    {
+        "layer" => (cur.CurrentLayer ?? 0) >= auto.TriggerValue && (prev?.CurrentLayer ?? 0) < auto.TriggerValue,
+        "progress" => cur.Progress >= auto.TriggerValue && (prev?.Progress ?? -1) < auto.TriggerValue,
+        "state" => cur.State.ToString() == auto.TriggerState && prev?.State.ToString() != auto.TriggerState,
+        _ => false
+    };
 
     // Append the latest temperatures to the rolling history (throttled to one sample / 2 s).
     private void RecordTemperature(string serial, PrinterTelemetry value)

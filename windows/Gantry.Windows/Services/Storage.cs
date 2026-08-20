@@ -139,6 +139,13 @@ public static class AppSettings
         set => Defaults.SetString("app-language", value ? "pl" : "en");
     }
 
+    /// Developer mode: reveals the printer control + automations tile in the detail window.
+    public static bool DeveloperMode
+    {
+        get => Defaults.GetBool("developer-mode");
+        set => Defaults.SetBool("developer-mode", value);
+    }
+
     public static bool CompactMode
     {
         get => Defaults.GetBool("dashboard-compact-mode");

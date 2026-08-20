@@ -48,6 +48,17 @@ public sealed class MqttClient : IPrinterConnection
         try { _tcp?.Close(); } catch { }
     }
 
+    /// Publishes a raw JSON command to device/{serial}/request (chamber LED, pause, …).
+    /// No-op until the socket is connected.
+    public void SendCommand(string json)
+    {
+        _ = Task.Run(async () =>
+        {
+            try { await SendAsync(MqttCodec.Publish($"device/{_printer.Serial}/request", Encoding.UTF8.GetBytes(json))); }
+            catch { }
+        });
+    }
+
     private async Task RunAsync()
     {
         try

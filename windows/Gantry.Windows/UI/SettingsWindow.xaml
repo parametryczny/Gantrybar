@@ -93,6 +93,7 @@
                     </Grid>
                     <CheckBox x:Name="StartupCheckBox" Margin="0,10,0,4"/>
                     <CheckBox x:Name="SpoolbaseCheckBox" Margin="0,7,0,4"/>
+                    <CheckBox x:Name="DeveloperCheckBox" Margin="0,7,0,4"/>
                 </StackPanel>
             </Border>
 

@@ -114,6 +114,23 @@ public sealed class MoonrakerClient : IPrinterConnection
         return await response.Content.ReadAsByteArrayAsync(_cts.Token);
     }
 
+    /// Sends a raw G-code line (used by the detail card's controls and automations). Klipper macros
+    /// like PAUSE / RESUME / CANCEL_PRINT go through here too.
+    public void SendGcode(string script)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var url = $"{BaseUrl}/printer/gcode/script?script={Uri.EscapeDataString(script)}";
+                using var request = new HttpRequestMessage(HttpMethod.Post, url);
+                if (!string.IsNullOrEmpty(_printer.ApiKey)) request.Headers.Add("X-Api-Key", _printer.ApiKey);
+                using var response = await Http.SendAsync(request);
+            }
+            catch { }
+        });
+    }
+
     private List<FilamentGroup> CurrentCfsGroups()
     {
         lock (_cfsLock) return new List<FilamentGroup>(_cfsGroups);

@@ -83,6 +83,19 @@ public sealed class DetailWindow : Window
         _ams = new StackPanel();
         stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "FILAMENTY / AMS" : "FILAMENTS / AMS"), _ams } }));
 
+        // --- Control + automations card (developer mode only; Bambu/Klipper) ---
+        if (AppSettings.DeveloperMode && printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
+        {
+            var lightOn = new Button { Content = _pl ? "Światło wł." : "Light on", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
+            lightOn.Click += (_, _) => _store.SetChamberLight(true, _serial);
+            var lightOff = new Button { Content = _pl ? "Światło wył." : "Light off", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
+            lightOff.Click += (_, _) => _store.SetChamberLight(false, _serial);
+            var autoBtn = new Button { Content = _pl ? "Automatyzacje…" : "Automations…", Padding = new Thickness(10, 4, 10, 4) };
+            autoBtn.Click += (_, _) => new AutomationsWindow(_store, _serial) { Owner = this }.Show();
+            var controls = new StackPanel { Orientation = Orientation.Horizontal, Children = { lightOn, lightOff, autoBtn } };
+            stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } }));
+        }
+
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stack };
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };

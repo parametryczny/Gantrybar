@@ -27,6 +27,7 @@ public partial class SettingsWindow : Window
         };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
         SpoolbaseCheckBox.Click += (_, _) => AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;
+        DeveloperCheckBox.Click += (_, _) => AppSettings.DeveloperMode = DeveloperCheckBox.IsChecked == true;
         AutoUpdateCheckBox.Click += (_, _) => AppSettings.AutoUpdate = AutoUpdateCheckBox.IsChecked == true;
         PrintFinishedCheckBox.Click += (_, _) => AppSettings.NotifyPrintFinished = PrintFinishedCheckBox.IsChecked == true;
         PrinterErrorCheckBox.Click += (_, _) => AppSettings.NotifyPrinterError = PrinterErrorCheckBox.IsChecked == true;
@@ -72,6 +73,7 @@ public partial class SettingsWindow : Window
         TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
         SpoolbaseCheckBox.Content = AppSettings.Text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock");
+        DeveloperCheckBox.Content = AppSettings.Text("Tryb deweloperski (sterowanie + automatyzacje)", "Developer mode (control + automations)");
         AutoUpdateCheckBox.Content = AppSettings.Text("Automatycznie pobieraj i instaluj aktualizacje", "Download and install updates automatically");
 
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
@@ -102,6 +104,7 @@ public partial class SettingsWindow : Window
     {
         StartupCheckBox.IsChecked = LaunchAtLogin.IsEnabled;
         SpoolbaseCheckBox.IsChecked = AppSettings.SpoolbaseEnabled;
+        DeveloperCheckBox.IsChecked = AppSettings.DeveloperMode;
         AutoUpdateCheckBox.IsChecked = AppSettings.AutoUpdate;
         PrintFinishedCheckBox.IsChecked = AppSettings.NotifyPrintFinished;
         PrinterErrorCheckBox.IsChecked = AppSettings.NotifyPrinterError;
