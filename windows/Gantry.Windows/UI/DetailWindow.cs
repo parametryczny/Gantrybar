@@ -375,9 +375,16 @@ public sealed class DetailWindow : Window
         catch { }
     }
 
+    private readonly List<string> _vlcLog = new();
     private void OnVlcLog(object? sender, LogEventArgs e)
     {
-        if (e.Level == LogLevel.Error && !string.IsNullOrWhiteSpace(e.Message)) _lastVlcError = e.Message;
+        if (e.Level < LogLevel.Warning || string.IsNullOrWhiteSpace(e.Message)) return;
+        lock (_vlcLog)
+        {
+            _vlcLog.Add(e.Message);
+            if (_vlcLog.Count > 5) _vlcLog.RemoveAt(0);
+            _lastVlcError = string.Join("\n", _vlcLog);
+        }
     }
 
     private void StopCamera()
