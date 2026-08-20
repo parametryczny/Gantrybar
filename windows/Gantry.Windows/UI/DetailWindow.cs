@@ -50,7 +50,7 @@ public sealed class DetailWindow : Window
             if (_libVlc is null)
             {
                 Core.Initialize();
-                _libVlc = new LibVLC("--no-osd", "--network-caching=300");
+                _libVlc = new LibVLC("--no-osd", "--network-caching=300", "--verbose=2");
                 // The printer serves rtsps with a self-signed certificate; libvlc has no UI, so an
                 // unhandled "insecure certificate" question makes the MRL fail to open. Register dialog
                 // handlers and auto-accept so the stream can start.
@@ -275,6 +275,7 @@ public sealed class DetailWindow : Window
             if (string.IsNullOrEmpty(code)) { _cameraStatus.Text = _pl ? "Kamera niedostępna (brak kodu dostępu)" : "Camera unavailable (no access code)"; return; }
             try
             {
+                try { System.IO.File.WriteAllText(VlcLogPath, ""); } catch { }
                 Vlc.Log += OnVlcLog;
                 _player = new MediaPlayer(Vlc);
                 _videoView!.MediaPlayer = _player;
@@ -291,9 +292,13 @@ public sealed class DetailWindow : Window
                 {
                     _cameraTimer!.Stop();
                     if (_cameraStatus is { Visibility: Visibility.Visible })
-                        _cameraStatus.Text = _lastVlcError is not null
-                            ? "VLC: " + _lastVlcError
-                            : (_pl ? "Brak obrazu w 10 s — włącz „LAN Mode Live View” w drukarce" : "No video in 10 s — enable “LAN Mode Live View” on the printer");
+                    {
+                        var state = _player?.State.ToString() ?? "?";
+                        _cameraStatus.Text = (_pl ? "Brak obrazu 10 s. " : "No video 10 s. ")
+                            + $"stan={state}, logi={_vlcLogCount}\n"
+                            + (_lastVlcError ?? (_pl ? "(brak logów Warning+)" : "(no Warning+ logs)"))
+                            + "\nLog: %TEMP%\\gantry-vlc.log";
+                    }
                 };
                 _cameraTimer.Start();
             }
@@ -375,14 +380,18 @@ public sealed class DetailWindow : Window
         catch { }
     }
 
+    private static readonly string VlcLogPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "gantry-vlc.log");
     private readonly List<string> _vlcLog = new();
+    private int _vlcLogCount;
     private void OnVlcLog(object? sender, LogEventArgs e)
     {
+        System.Threading.Interlocked.Increment(ref _vlcLogCount);
+        try { System.IO.File.AppendAllText(VlcLogPath, $"[{e.Level}] {e.Module}: {e.Message}\n"); } catch { }
         if (e.Level < LogLevel.Warning || string.IsNullOrWhiteSpace(e.Message)) return;
         lock (_vlcLog)
         {
-            _vlcLog.Add(e.Message);
-            if (_vlcLog.Count > 5) _vlcLog.RemoveAt(0);
+            _vlcLog.Add($"{e.Module}: {e.Message}");
+            if (_vlcLog.Count > 6) _vlcLog.RemoveAt(0);
             _lastVlcError = string.Join("\n", _vlcLog);
         }
     }
