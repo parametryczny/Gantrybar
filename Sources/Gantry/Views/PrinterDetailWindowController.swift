@@ -20,7 +20,8 @@ final class PrinterDetailViewController: NSViewController {
     // Reorderable section cards
     private let contentStack = NSStackView()
     private var cardViews: [String: NSView] = [:]
-    private static let defaultCardOrder = ["status", "temps", "fans", "ams", "control", "camera"]
+    private let debugTextView = NSTextView()
+    private static let defaultCardOrder = ["status", "temps", "fans", "ams", "control", "camera", "debug"]
     private static let cardOrderKey = "detail-card-order"
 
     // Header
@@ -131,6 +132,8 @@ final class PrinterDetailViewController: NSViewController {
             if AppSettings.shared.developerMode { cardViews["control"] = makeControlCard() }
             cardViews["camera"] = makeCameraCard()
         }
+        // Raw AMS JSON, developer mode only (Bambu) — for diagnosing stale/remembered filament.
+        if AppSettings.shared.developerMode, kind == .bambu { cardViews["debug"] = makeDebugCard() }
         rebuildCards()
         view = root
     }
@@ -384,6 +387,28 @@ final class PrinterDetailViewController: NSViewController {
 
     @objc private func openAdvanced() { onOpenAdvanced() }
 
+    private func makeDebugCard() -> NSView {
+        let box = card()
+        debugTextView.isEditable = false
+        debugTextView.isSelectable = true
+        debugTextView.drawsBackground = false
+        debugTextView.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        debugTextView.textContainerInset = NSSize(width: 4, height: 4)
+        let scroll = NSScrollView()
+        scroll.documentView = debugTextView
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.heightAnchor.constraint(equalToConstant: 170).isActive = true
+        let stack = NSStackView(views: [sectionTitle("Surowy AMS (dev)"), scroll])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        pin(stack, in: box, inset: 11)
+        scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return box
+    }
+
     private func pin(_ inner: NSView, in outer: NSView, inset: CGFloat) {
         inner.translatesAutoresizingMaskIntoConstraints = false
         outer.addSubview(inner)
@@ -453,6 +478,10 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         renderAMS(t.filamentGroups)
+
+        if AppSettings.shared.developerMode, debugTextView.string != (t.debugAMS ?? "—") {
+            debugTextView.string = t.debugAMS ?? "—"
+        }
     }
 
     private func renderAMS(_ groups: [FilamentGroup]) {

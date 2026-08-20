@@ -88,6 +88,17 @@ enum BambuStatusParser {
         addExternal((amsObject?["vt_tray"] as? [String: Any]) ?? (report["vt_tray"] as? [String: Any]))
         if amsObject != nil || !externalTrays.isEmpty {
             let ams = amsObject ?? [:]
+            // Dev diagnostic: keep the raw AMS-related JSON so the detail card can show exactly what
+            // the printer reports — this distinguishes "printer still remembers the filament" from a
+            // display retention bug.
+            var raw: [String: Any] = [:]
+            if let amsObject { raw["ams"] = amsObject }
+            if let vt = report["vt_tray"] { raw["vt_tray"] = vt }
+            if let vir = report["vir_slot"] { raw["vir_slot"] = vir }
+            if let data = try? JSONSerialization.data(withJSONObject: raw, options: [.prettyPrinted, .sortedKeys]),
+               let string = String(data: data, encoding: .utf8) {
+                result.debugAMS = string
+            }
             // Partial status updates during a print often carry only `tray_now` without the tray
             // list. Rebuilding from that alone would blank the modules and drop the active ring, so
             // parseAMSGroups keeps the last known groups and preserves the active slot.
@@ -248,6 +259,8 @@ enum BambuStatusParser {
 
         let multipleExternals = externalTrays.count > 1
         for (externalIndex, external) in externalTrays.enumerated() {
+            // An empty external feeder reports `tray_type=""`; a loaded one (even a third-party spool
+            // without RFID) sets a real `tray_type`. So `tray_type` alone distinguishes empty vs loaded.
             let rawMaterial = string(external["tray_type"]) ?? string(external["tray_sub_brands"])
             let material = (rawMaterial?.isEmpty == false) ? rawMaterial : nil
             let trayID = string(external["id"]) ?? integer(external["id"]).map(String.init) ?? "254"

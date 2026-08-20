@@ -800,16 +800,20 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
         titleCluster.alignment = .firstBaseline
         titleCluster.spacing = 5
         // A small "bento" pill next to the name opens the detail view directly (also in the ⋯ menu).
+        // Quiet, secondary chip — a thin outline instead of a loud filled blue pill, so a wall of
+        // cards doesn't read as a wall of buttons.
         let detailsChip = NSView()
         detailsChip.wantsLayer = true
-        detailsChip.layer?.cornerRadius = 9
-        detailsChip.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        detailsChip.layer?.cornerRadius = 8
+        detailsChip.layer?.backgroundColor = NSColor.clear.cgColor
+        detailsChip.layer?.borderWidth = 1
+        detailsChip.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.8).cgColor
         let detailsIcon = NSImageView(image: NSImage(systemSymbolName: "chart.xyaxis.line", accessibilityDescription: nil) ?? NSImage())
-        detailsIcon.contentTintColor = .white
-        detailsIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        detailsIcon.contentTintColor = .secondaryLabelColor
+        detailsIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 9, weight: .medium)
         let detailsText = NSTextField(labelWithString: AppSettings.shared.text("Szczegóły", "Details"))
-        detailsText.font = .systemFont(ofSize: 10, weight: .bold)
-        detailsText.textColor = .white
+        detailsText.font = .systemFont(ofSize: 10, weight: .medium)
+        detailsText.textColor = .secondaryLabelColor
         let detailsInner = NSStackView(views: [detailsIcon, detailsText])
         detailsInner.orientation = .horizontal
         detailsInner.alignment = .centerY
@@ -1174,25 +1178,15 @@ private final class PrinterCardView: NSGlassEffectView, NSDraggingSource {
 
         switch state {
         case .error:
-            stateEmphasisLayer.backgroundColor = NSColor.systemRed.withAlphaComponent(0.075).cgColor
-            stateEmphasisLayer.borderColor = NSColor.systemRed.withAlphaComponent(0.55).cgColor
-            stateEmphasisLayer.borderWidth = 1
-            stateEmphasisLayer.opacity = 1
-            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-            let pulse = CABasicAnimation(keyPath: "opacity")
-            pulse.fromValue = 0.28
-            pulse.toValue = 1.0
-            pulse.duration = 1.2
-            pulse.autoreverses = true
-            pulse.repeatCount = .infinity
-            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            stateEmphasisLayer.add(pulse, forKey: "errorPulse")
-        case .finished:
-            stateEmphasisLayer.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.045).cgColor
-            stateEmphasisLayer.borderColor = NSColor.systemGreen.withAlphaComponent(0.28).cgColor
-            stateEmphasisLayer.borderWidth = 1
+            // Errors deserve attention, but a calm one: a thin static red edge, no full-card wash and
+            // no infinite pulse (that read as neon).
+            stateEmphasisLayer.backgroundColor = NSColor.clear.cgColor
+            stateEmphasisLayer.borderColor = NSColor.systemRed.withAlphaComponent(0.5).cgColor
+            stateEmphasisLayer.borderWidth = 1.5
             stateEmphasisLayer.opacity = 1
         default:
+            // No whole-card colour wash for finished/printing/etc. — the state dot, coloured progress
+            // bar and status text already carry the state without turning a wall of cards neon.
             stateEmphasisLayer.backgroundColor = NSColor.clear.cgColor
             stateEmphasisLayer.borderColor = NSColor.clear.cgColor
             stateEmphasisLayer.borderWidth = 0

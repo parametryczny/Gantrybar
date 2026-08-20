@@ -65,6 +65,8 @@ struct PrinterTelemetry: Equatable, Sendable {
     var amsSlots: [AMSSlot] = []
     var amsHumidity: Int?
     var amsTemperature: Double?
+    /// Dev diagnostic: the raw AMS-related JSON the printer last reported (developer mode only).
+    var debugAMS: String?
     var lastUpdated: Date?
 }
 
