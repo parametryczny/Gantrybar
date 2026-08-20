@@ -34,6 +34,19 @@ jobs:
       # pattern is the main trigger for Avast/SmartScreen false positives — see issue #20.
       - name: Publish self-contained app
         run: dotnet publish Gantry.Windows/Gantry.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
+      - name: Bundle ffmpeg (Bambu chamber camera)
+        shell: pwsh
+        # The Bambu camera is rtsps/H.264, which we decode with ffmpeg into an MJPEG pipe (see
+        # UI/DetailWindow.cs). Fetch a static win64 build and drop ffmpeg.exe next to the app so it
+        # lands in both the installer (publish\*) and the ZIP. GPL build — invoked as a separate process.
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip -UseBasicParsing
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-extract -Force
+          $exe = Get-ChildItem -Path ffmpeg-extract -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $exe) { throw "ffmpeg.exe not found in the downloaded archive." }
+          Copy-Item $exe.FullName -Destination publish\ffmpeg.exe -Force
+          Write-Host "Bundled ffmpeg: $((Get-Item publish\ffmpeg.exe).Length) bytes"
       - name: Install Inno Setup
         shell: pwsh
         run: |

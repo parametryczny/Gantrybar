@@ -19,10 +19,8 @@
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
-    <!-- Bambu chamber camera (RTSPS/H.264) playback via LibVLC. -->
-    <PackageReference Include="LibVLCSharp" Version="3.8.2" />
-    <PackageReference Include="LibVLCSharp.WPF" Version="3.8.2" />
-    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.20" />
+    <!-- Bambu chamber camera (rtsps/H.264) is decoded by a bundled ffmpeg.exe into an MJPEG pipe;
+         see UI/DetailWindow.cs. ffmpeg.exe is fetched and placed next to the app by CI (windows.yml). -->
   </ItemGroup>
 
   <!-- Bundled Spoolbase filament catalog, copied next to the exe (Assets/). -->

@@ -8,11 +8,9 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using LibVLCSharp.Shared;
-using LibVLCSharp.WPF;
+using System.Diagnostics;
 using Gantry.Models;
 using Gantry.Services;
-using MediaPlayer = LibVLCSharp.Shared.MediaPlayer;
 
 namespace Gantry.UI;
 
@@ -33,37 +31,14 @@ public sealed class DetailWindow : Window
 
     // Camera
     private readonly PrinterKind _kind;
-    private VideoView? _videoView;          // Bambu RTSPS/H.264 via LibVLC
-    private MediaPlayer? _player;
-    private Image? _cameraImage;            // Klipper MJPEG snapshots
-    private DispatcherTimer? _cameraTimer;
+    private Image? _cameraImage;            // Bambu (ffmpeg→MJPEG) and Klipper (MJPEG snapshots)
+    private DispatcherTimer? _cameraTimer;  // Klipper snapshot polling / camera watchdog
     private string? _snapshotUrl;
     private bool _cameraStarted;
     private TextBlock? _cameraStatus;
-    private string? _lastVlcError;
+    private Process? _ffmpeg;               // Bambu: decodes rtsps → MJPEG on stdout
+    private volatile string? _ffmpegErr;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
-    private static LibVLC? _libVlc;
-    private static LibVLC Vlc
-    {
-        get
-        {
-            if (_libVlc is null)
-            {
-                Core.Initialize();
-                _libVlc = new LibVLC("--no-osd", "--network-caching=300", "--verbose=2");
-                // The printer serves rtsps with a self-signed certificate; libvlc has no UI, so an
-                // unhandled "insecure certificate" question makes the MRL fail to open. Register dialog
-                // handlers and auto-accept so the stream can start.
-                _libVlc.SetDialogHandlers(
-                    (title, text) => Task.CompletedTask,
-                    (dialog, title, text, defaultUsername, askStore, token) => Task.CompletedTask,
-                    (dialog, title, text, type, cancel, action1, action2, token) => { try { dialog.PostAction(1); } catch { } return Task.CompletedTask; },
-                    (dialog, title, text, indeterminate, position, cancel, token) => Task.CompletedTask,
-                    (dialog, position, text) => Task.CompletedTask);
-            }
-            return _libVlc;
-        }
-    }
 
     private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
     private static readonly Brush BedBrush = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF));
@@ -138,13 +113,13 @@ public sealed class DetailWindow : Window
             stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } }));
         }
 
-        // --- Camera card (Bambu RTSPS via LibVLC, Klipper MJPEG snapshots) ---
+        // --- Camera card (Bambu via ffmpeg→MJPEG, Klipper MJPEG snapshots) ---
         if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
         {
             var container = new Grid { Height = 230, Background = new SolidColorBrush(Colors.Black) };
             _cameraStatus = new TextBlock { Foreground = White(), FontSize = 11, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12) };
-            if (_kind == PrinterKind.Bambu) { _videoView = new VideoView(); container.Children.Add(_videoView); }
-            else { _cameraImage = new Image { Stretch = Stretch.Uniform }; container.Children.Add(_cameraImage); }
+            _cameraImage = new Image { Stretch = Stretch.Uniform };
+            container.Children.Add(_cameraImage);
             container.Children.Add(_cameraStatus);
             var frame = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = container };
             stack.Children.Add(Card(new StackPanel { Children = { SectionTitle(_pl ? "KAMERA" : "CAMERA"), frame } }));
@@ -273,41 +248,120 @@ public sealed class DetailWindow : Window
         {
             var code = AccessCodeStore.AccessCode(_serial);
             if (string.IsNullOrEmpty(code)) { _cameraStatus.Text = _pl ? "Kamera niedostępna (brak kodu dostępu)" : "Camera unavailable (no access code)"; return; }
-            try
-            {
-                try { System.IO.File.WriteAllText(VlcLogPath, ""); } catch { }
-                Vlc.Log += OnVlcLog;
-                _player = new MediaPlayer(Vlc);
-                _videoView!.MediaPlayer = _player;
-                var media = new Media(Vlc, new Uri($"rtsps://bblp:{code}@{host}:322/streaming/live/1"));
-                media.AddOption(":rtsp-tcp");
-                media.AddOption(":network-caching=300");
-                _player.Playing += (_, _) => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Visibility = Visibility.Collapsed; });
-                _player.EncounteredError += (_, _) => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Text = "VLC: " + (_lastVlcError ?? (_pl ? "błąd odtwarzania" : "playback error")); });
-                _player.Play(media);   // the player retains the media; don't dispose it here
-
-                // If nothing plays in time, surface the last VLC error so we know why (TLS, LAN mode…).
-                _cameraTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
-                _cameraTimer.Tick += (_, _) =>
-                {
-                    _cameraTimer!.Stop();
-                    if (_cameraStatus is { Visibility: Visibility.Visible })
-                    {
-                        var state = _player?.State.ToString() ?? "?";
-                        _cameraStatus.Text = (_pl ? "Brak obrazu 10 s. " : "No video 10 s. ")
-                            + $"stan={state}, logi={_vlcLogCount}\n"
-                            + (_lastVlcError ?? (_pl ? "(brak logów Warning+)" : "(no Warning+ logs)"))
-                            + "\nLog: %TEMP%\\gantry-vlc.log";
-                    }
-                };
-                _cameraTimer.Start();
-            }
-            catch (Exception ex) { _cameraStatus.Text = ex.Message; }
+            _ = StartBambuCameraAsync(host, code!);
         }
         else
         {
             _ = StartKlipperCameraAsync(host);
         }
+    }
+
+    private static string FfmpegPath()
+    {
+        var bundled = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+        return File.Exists(bundled) ? bundled : "ffmpeg";
+    }
+
+    // Bambu serves the chamber camera as RTSP-over-TLS (rtsps, port 322) with a self-signed cert and
+    // H.264 — which libVLC's bundled build won't even route to its RTSP module. ffmpeg opens it
+    // reliably; we run it to decode the stream into an MJPEG pipe and paint each JPEG frame into the
+    // camera Image (the same Image the Klipper snapshot path uses).
+    private async Task StartBambuCameraAsync(string host, string code)
+    {
+        var url = $"rtsps://bblp:{code}@{host}:322/streaming/live/1";
+        var psi = new ProcessStartInfo
+        {
+            FileName = FfmpegPath(),
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var a in new[] { "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp",
+                                  "-i", url, "-an", "-f", "mjpeg", "-q:v", "6", "-r", "12", "pipe:1" })
+            psi.ArgumentList.Add(a);
+
+        Process proc;
+        try { proc = Process.Start(psi)!; }
+        catch (Exception ex) { if (_cameraStatus is not null) _cameraStatus.Text = (_pl ? "Nie mogę uruchomić ffmpeg: " : "Cannot start ffmpeg: ") + ex.Message; return; }
+        _ffmpeg = proc;
+
+        // Drain stderr so ffmpeg never blocks on a full pipe, and keep the last line for diagnostics.
+        _ = Task.Run(async () =>
+        {
+            try { string? line; while ((line = await proc.StandardError.ReadLineAsync()) is not null) if (line.Length > 0) _ffmpegErr = line; } catch { }
+        });
+
+        // Watchdog: if no frame arrives, surface why (LAN mode off / ffmpeg error) instead of a black box.
+        _cameraTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
+        _cameraTimer.Tick += (_, _) =>
+        {
+            _cameraTimer!.Stop();
+            if (_cameraStatus is { Visibility: Visibility.Visible })
+                _cameraStatus.Text = _ffmpegErr is not null
+                    ? "ffmpeg: " + _ffmpegErr
+                    : (_pl ? "Brak obrazu — włącz „LAN Mode Live View” w drukarce" : "No video — enable “LAN Mode Live View” on the printer");
+        };
+        _cameraTimer.Start();
+
+        await Task.Run(() => ReadMjpegPipe(proc));
+    }
+
+    // Splits ffmpeg's concatenated-JPEG output into whole frames (SOI FF D8 … EOI FF D9) and paints each.
+    private void ReadMjpegPipe(Process proc)
+    {
+        var stream = proc.StandardOutput.BaseStream;
+        var buffer = new List<byte>(1 << 20);
+        var chunk = new byte[1 << 16];
+        try
+        {
+            int n;
+            while ((n = stream.Read(chunk, 0, chunk.Length)) > 0)
+            {
+                for (int i = 0; i < n; i++) buffer.Add(chunk[i]);
+                while (true)
+                {
+                    int start = IndexOfMarker(buffer, 0xD8, 0);
+                    if (start < 0) { if (buffer.Count > 1) buffer.RemoveRange(0, buffer.Count - 1); break; }
+                    int end = IndexOfMarker(buffer, 0xD9, start + 2);
+                    if (end < 0) { if (start > 0) buffer.RemoveRange(0, start); break; }
+                    int len = end + 2 - start;
+                    var frame = new byte[len];
+                    buffer.CopyTo(start, frame, 0, len);
+                    buffer.RemoveRange(0, end + 2);
+                    ShowJpegFrame(frame);
+                }
+            }
+        }
+        catch { }
+    }
+
+    // Index of an FFxx marker (xx = marker byte) at/after `from`; returns the index of the FF, or -1.
+    private static int IndexOfMarker(List<byte> b, byte marker, int from)
+    {
+        for (int i = Math.Max(from, 0); i + 1 < b.Count; i++)
+            if (b[i] == 0xFF && b[i + 1] == marker) return i;
+        return -1;
+    }
+
+    private void ShowJpegFrame(byte[] jpeg)
+    {
+        try
+        {
+            var bmp = new BitmapImage();
+            using var ms = new MemoryStream(jpeg);
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.StreamSource = ms;
+            bmp.EndInit();
+            bmp.Freeze();
+            Dispatcher.Invoke(() =>
+            {
+                if (_cameraImage is not null) _cameraImage.Source = bmp;
+                if (_cameraStatus is { Visibility: Visibility.Visible }) _cameraStatus.Visibility = Visibility.Collapsed;
+            });
+        }
+        catch { }
     }
 
     private async Task StartKlipperCameraAsync(string host)
@@ -380,29 +434,12 @@ public sealed class DetailWindow : Window
         catch { }
     }
 
-    private static readonly string VlcLogPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "gantry-vlc.log");
-    private readonly List<string> _vlcLog = new();
-    private int _vlcLogCount;
-    private void OnVlcLog(object? sender, LogEventArgs e)
-    {
-        System.Threading.Interlocked.Increment(ref _vlcLogCount);
-        try { System.IO.File.AppendAllText(VlcLogPath, $"[{e.Level}] {e.Module}: {e.Message}\n"); } catch { }
-        if (e.Level < LogLevel.Warning || string.IsNullOrWhiteSpace(e.Message)) return;
-        lock (_vlcLog)
-        {
-            _vlcLog.Add($"{e.Module}: {e.Message}");
-            if (_vlcLog.Count > 6) _vlcLog.RemoveAt(0);
-            _lastVlcError = string.Join("\n", _vlcLog);
-        }
-    }
-
     private void StopCamera()
     {
         _cameraTimer?.Stop();
-        try { Vlc.Log -= OnVlcLog; } catch { }
-        try { _player?.Stop(); _player?.Dispose(); } catch { }
-        try { _videoView?.Dispose(); } catch { }
-        _player = null;
+        try { if (_ffmpeg is { HasExited: false }) _ffmpeg.Kill(true); } catch { }
+        try { _ffmpeg?.Dispose(); } catch { }
+        _ffmpeg = null;
     }
 
     // --- small builders ---
