@@ -112,12 +112,14 @@ public partial class DashboardWindow : Window
         HideCardMenu();
         DetailLayer.Child = new DetailView(_store, serial, HideDetail);
         DetailLayer.Visibility = Visibility.Visible;
+        FitHeightToContent();
     }
 
     private void HideDetail()
     {
         DetailLayer.Child = null;   // removing the view fires its Unloaded → stops the camera + timer
         DetailLayer.Visibility = Visibility.Collapsed;
+        FitHeightToContent();       // shrink back to the list height immediately, not after the next refresh
     }
 
     private DragAdorner? _dragAdorner;
