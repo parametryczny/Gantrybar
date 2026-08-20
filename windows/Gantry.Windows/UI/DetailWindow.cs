@@ -258,7 +258,7 @@ public sealed class DetailWindow : Window
 
     private static string FfmpegPath()
     {
-        var bundled = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+        var bundled = System.IO.Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
         return File.Exists(bundled) ? bundled : "ffmpeg";
     }
 
