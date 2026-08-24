@@ -517,8 +517,8 @@ public partial class DashboardWindow : Window
             // action, not something to hunt for in the "…" menu.
             var details = new Button
             {
-                Content = AppSettings.Text("Szczegóły", "Details"), FontSize = 10, Height = 22,
-                Padding = new Thickness(9, 0, 9, 0), Margin = new Thickness(0, 0, 6, 0),
+                Content = AppSettings.Text("Szczegóły", "Details"), FontSize = 9, Height = 18,
+                Padding = new Thickness(7, 0, 7, 0), Margin = new Thickness(0, 0, 5, 0),
                 VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
                 Background = System.Windows.Media.Brushes.Transparent, Foreground = Muted(),
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)), BorderThickness = new Thickness(1)
@@ -527,7 +527,7 @@ public partial class DashboardWindow : Window
             Grid.SetColumn(details, 3);
             header.Children.Add(details);
             // "…" menu in the header (macOS layout) instead of a separate row at the bottom — saves height.
-            var more = new Button { Content = "⋯", FontSize = 15, Width = 30, Height = 24, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Muted() };
+            var more = new Button { Content = "⋯", FontSize = 13, Width = 22, Height = 20, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Muted() };
             var menu = owner.BuildCardMenu(printer.Serial);
             more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
             Grid.SetColumn(more, 4);
@@ -987,7 +987,7 @@ public partial class DashboardWindow : Window
     {
         bool present = slot.IsPresent;
         var color = present ? ParseHex(slot.ColorHex ?? "8E8E93FF") : Color.FromArgb(0x28, 0x8E, 0x8E, 0x93);
-        const double SwatchHeight = 18;
+        const double SwatchHeight = 24;
         double frac = present && slot.RemainingPercent is { } fp ? Math.Clamp(fp / 100.0, 0, 1) : 1.0;
         var swatchGrid = new Grid();
         var swatch = new Border
@@ -1021,7 +1021,7 @@ public partial class DashboardWindow : Window
             swatchGrid.Children.Add(new TextBlock
             {
                 Text = $"{pct}%",
-                FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.Bold,
+                FontFamily = new FontFamily("Consolas"), FontSize = 10.5, FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(ink),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(3, 0, 3, 0)

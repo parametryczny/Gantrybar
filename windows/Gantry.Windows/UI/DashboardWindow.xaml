@@ -50,14 +50,14 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="GANTRY" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock Text="GANTRY" FontSize="16" FontWeight="Bold"/>
                         <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="ColumnsButton" Width="32" Height="30" Margin="4,0" FontSize="15" ToolTip="Kolumny / Columns"/>
-                        <Button x:Name="CompactButton" MinWidth="64" Height="30" Margin="4,0" Padding="8,0" Visibility="Collapsed"/>
-                        <Button x:Name="ScanButton" Content="⟳" Width="32" Height="30" Margin="4,0" ToolTip="Scan"/>
-                        <Button x:Name="AddButton" Content="+" Width="32" Height="30" Margin="4,0" FontSize="17" ToolTip="Add printer"/>
+                        <Button x:Name="ColumnsButton" Width="24" Height="24" Margin="3,0" FontSize="12" ToolTip="Kolumny / Columns"/>
+                        <Button x:Name="CompactButton" MinWidth="52" Height="24" Margin="3,0" Padding="6,0" FontSize="11" Visibility="Collapsed"/>
+                        <Button x:Name="ScanButton" Content="⟳" Width="24" Height="24" Margin="3,0" FontSize="12" ToolTip="Scan"/>
+                        <Button x:Name="AddButton" Content="+" Width="24" Height="24" Margin="3,0" FontSize="14" ToolTip="Add printer"/>
                     </StackPanel>
                 </Grid>
                 <TextBlock x:Name="FooterText" DockPanel.Dock="Bottom" HorizontalAlignment="Center"
