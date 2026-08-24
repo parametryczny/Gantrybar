@@ -187,6 +187,13 @@ public static class AppSettings
         set => Defaults.SetBool("dashboard-compact-mode-set", value);
     }
 
+    // Fleet grid columns in the expanded (card) view: 1 or 2, user-toggled (macOS parity).
+    public static int DashboardColumns
+    {
+        get => Math.Clamp(Defaults.GetInt("dashboard-columns", 2), 1, 2);
+        set => Defaults.SetInt("dashboard-columns", Math.Clamp(value, 1, 2));
+    }
+
     // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     public static bool SpoolbaseEnabled
     {
@@ -245,6 +252,13 @@ public static class AppSettings
     {
         get => Defaults.GetString("detail-card-order") ?? string.Empty;
         set => Defaults.SetString("detail-card-order", value);
+    }
+
+    // Hidden detail modules (CSV of keys: camera, ams, temps, fans, control) — the "Dostosuj" menu.
+    public static string DetailHiddenModules
+    {
+        get => Defaults.GetString("detail-hidden-modules") ?? string.Empty;
+        set => Defaults.SetString("detail-hidden-modules", value);
     }
 
     public static string Text(string polish, string english) => Polish ? polish : english;

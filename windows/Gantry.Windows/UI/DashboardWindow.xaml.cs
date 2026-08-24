@@ -27,6 +27,7 @@ public partial class DashboardWindow : Window
         ScanButton.Click += (_, _) => _store.Scan();
         AddButton.Click += (_, _) => OpenAddWindow();
         CompactButton.Click += (_, _) => ToggleCompact();
+        ColumnsButton.Click += (_, _) => { AppSettings.DashboardColumns = AppSettings.DashboardColumns == 2 ? 1 : 2; Rebuild(); };
         _store.Updated += OnStoreUpdated;
         Closed += (_, _) => _store.Updated -= OnStoreUpdated;
         // Popover behaviour: dismiss when the user clicks away, like the macOS menu-bar panel —
@@ -270,6 +271,7 @@ public partial class DashboardWindow : Window
     private List<string> _renderedSerials = new();
     private HashSet<string> _renderedWideSerials = new();
     private bool? _renderedCompact;
+    private int _renderedColumns = -1;
 
     // Full view fits up to 8 printers; above 8 defaults to a compact one-line list. A manual
     // toggle overrides and is remembered.
@@ -294,11 +296,17 @@ public partial class DashboardWindow : Window
         bool compact = UseCompactMode();
         CompactButton.Visibility = _store.Printers.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
         CompactButton.Content = compact ? AppSettings.Text("Rozwiń", "Expand") : AppSettings.Text("Zwiń", "Collapse");
+        // Columns toggle (1 ↔ 2) only makes sense in the card view; the icon shows the current layout.
+        ColumnsButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ColumnsButton.Content = AppSettings.DashboardColumns == 2 ? "▥" : "▭";
+        ColumnsButton.ToolTip = AppSettings.DashboardColumns == 2
+            ? AppSettings.Text("Jedna kolumna", "One column")
+            : AppSettings.Text("Dwie kolumny", "Two columns");
 
         var serials = _store.Printers.Select(p => p.Serial).ToList();
         var wideSerials = _store.Printers.Where(NeedsWideSpan).Select(p => p.Serial).ToHashSet();
         if (!serials.SequenceEqual(_renderedSerials) || _renderedCompact != compact ||
-            !_renderedWideSerials.SetEquals(wideSerials))
+            !_renderedWideSerials.SetEquals(wideSerials) || _renderedColumns != AppSettings.DashboardColumns)
         {
             HideCardMenu();
             CardsPanel.Children.Clear();
@@ -327,6 +335,7 @@ public partial class DashboardWindow : Window
             _views.Clear();
             foreach (var kv in live) _views[kv.Key] = kv.Value;
             _renderedSerials = serials; _renderedWideSerials = wideSerials; _renderedCompact = compact;
+            _renderedColumns = AppSettings.DashboardColumns;
 
             CardsPanel.ColumnDefinitions.Clear();
             CardsPanel.RowDefinitions.Clear();
@@ -345,16 +354,21 @@ public partial class DashboardWindow : Window
             }
             else
             {
-                // Shared Gantry contract: three equal columns. Normal cards span one; dual-nozzle
-                // and multi-AMS cards span two. Card count never changes an item's span.
-                Width = 840;
-                for (int i = 0; i < 3; i++)
+                // macOS contract: user picks 1 or 2 columns. A wide card (dual-nozzle / multi-AMS) spans
+                // the full width; a lone last card also stretches full width (the 2-2-1 rule).
+                int cols = AppSettings.DashboardColumns;
+                Width = cols == 1 ? 460 : 840;
+                for (int i = 0; i < cols; i++)
                     CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 int row = 0, column = 0;
-                foreach (var printer in _store.Printers)
+                var printers = _store.Printers;
+                for (int idx = 0; idx < printers.Count; idx++)
                 {
-                    int span = wideSerials.Contains(printer.Serial) ? 2 : 1;
-                    if (column + span > 3) { row++; column = 0; }
+                    var printer = printers[idx];
+                    int span = wideSerials.Contains(printer.Serial) ? cols : 1;
+                    if (column + span > cols) { row++; column = 0; }
+                    // Last card, alone at the start of a fresh row → let it fill the width.
+                    if (cols > 1 && column == 0 && span == 1 && idx == printers.Count - 1) span = cols;
                     while (CardsPanel.RowDefinitions.Count <= row)
                         CardsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                     var root = live[printer.Serial].Root;
@@ -366,7 +380,7 @@ public partial class DashboardWindow : Window
                     Grid.SetColumnSpan(root, span);
                     CardsPanel.Children.Add(root);
                     column += span;
-                    if (column == 3) { row++; column = 0; }
+                    if (column >= cols) { row++; column = 0; }
                 }
             }
         }

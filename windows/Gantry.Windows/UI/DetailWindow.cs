@@ -25,7 +25,7 @@ public sealed class DetailView : UserControl
     private readonly DispatcherTimer _timer;
 
     private readonly TextBlock _name, _state, _percent, _remaining, _layers, _speed, _diameter;
-    private readonly ProgressBar _bar;
+    private readonly Grid _bar;   // segmented progress bar (32 blocks), matching the dashboard/macOS
     private readonly Canvas _graph;
     private readonly StackPanel _temps, _fans, _ams;
 
@@ -61,7 +61,7 @@ public sealed class DetailView : UserControl
         var printer = store.Printers.FirstOrDefault(p => p.Serial == serial);
         _kind = printer?.Kind ?? PrinterKind.Bambu;
 
-        Background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x18));
+        Background = GTheme.Brush(GTheme.Canvas);
 
         var stack = new StackPanel { Margin = new Thickness(14) };
 
@@ -75,7 +75,13 @@ public sealed class DetailView : UserControl
         Grid.SetColumn(_percent, 1); titleRow.Children.Add(_percent);
 
         _state = Text(12, FontWeights.SemiBold);
-        _bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 7, Margin = new Thickness(0, 8, 0, 8), BorderThickness = new Thickness(0), Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)) };
+        _bar = new Grid { Height = 8, Margin = new Thickness(0, 8, 0, 8) };
+        for (int i = 0; i < 32; i++)
+        {
+            _bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var seg = new Border { CornerRadius = new CornerRadius(1), Margin = new Thickness(i == 0 ? 0 : 1, 0, 0, 0) };
+            Grid.SetColumn(seg, i); _bar.Children.Add(seg);
+        }
         _remaining = Text(13, FontWeights.Medium, Muted());
         _layers = Text(11, FontWeights.Normal, Muted());
         var bottomRow = new Grid();
@@ -141,8 +147,37 @@ public sealed class DetailView : UserControl
             Unloaded += (_, _) => StopCamera();
         }
 
+        // "Dostosuj" — hide/show modules (camera, AMS, temps, fans, control), like macOS.
+        var customize = new Button
+        {
+            Content = _pl ? "Dostosuj…" : "Customize…", Padding = new Thickness(12, 5, 12, 5),
+            Margin = new Thickness(0, 6, 0, 4), HorizontalAlignment = HorizontalAlignment.Left,
+            FontSize = 12, Cursor = Cursors.Hand
+        };
+        customize.Click += (s, _) =>
+        {
+            var menu = new ContextMenu();
+            var hidden = HiddenModules();
+            foreach (var key in HideableModules)
+            {
+                if (!_cardByKey.ContainsKey(key)) continue;
+                var item = new MenuItem { Header = ModuleTitle(key), IsCheckable = true, IsChecked = !hidden.Contains(key) };
+                var k = key;
+                item.Click += (_, _) => ToggleModule(k);
+                menu.Items.Add(item);
+            }
+            menu.Items.Add(new Separator());
+            var reset = new MenuItem { Header = _pl ? "Przywróć domyślny układ" : "Reset layout" };
+            reset.Click += (_, _) => ResetLayout();
+            menu.Items.Add(reset);
+            menu.PlacementTarget = (UIElement)s;
+            menu.IsOpen = true;
+        };
+        stack.Children.Add(customize);
+
         _cardPanel = stack;
         ApplyCardOrder();
+        ApplyHiddenModules();
 
         // Top bar with a Back button — the detail view replaces the panel content in place (like macOS),
         // instead of opening a separate window.
@@ -234,18 +269,70 @@ public sealed class DetailView : UserControl
         }
     }
 
+    // --- customizable modules ("Dostosuj") ---
+
+    private static readonly string[] HideableModules = { "camera", "ams", "temps", "fans", "control" };
+
+    private static HashSet<string> HiddenModules()
+        => AppSettings.DetailHiddenModules.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+
+    private static void SetHiddenModules(HashSet<string> set)
+        => AppSettings.DetailHiddenModules = string.Join(",", set);
+
+    private string ModuleTitle(string key) => key switch
+    {
+        "camera" => _pl ? "Kamera" : "Camera",
+        "ams" => _pl ? "Filamenty / AMS" : "Filaments / AMS",
+        "temps" => _pl ? "Temperatury" : "Temperatures",
+        "fans" => _pl ? "Wentylatory" : "Fans",
+        "control" => _pl ? "Sterowanie" : "Control",
+        _ => key
+    };
+
+    private void ApplyHiddenModules()
+    {
+        var hidden = HiddenModules();
+        foreach (var kv in _cardByKey)
+            kv.Value.Visibility = hidden.Contains(kv.Key) ? Visibility.Collapsed : Visibility.Visible;
+        if (hidden.Contains("camera")) StopCamera();
+        else if (IsLoaded && _cardByKey.ContainsKey("camera")) StartCamera();
+    }
+
+    private void ToggleModule(string key)
+    {
+        var hidden = HiddenModules();
+        if (!hidden.Add(key)) hidden.Remove(key);
+        SetHiddenModules(hidden);
+        ApplyHiddenModules();
+    }
+
+    private void ResetLayout()
+    {
+        AppSettings.DetailHiddenModules = string.Empty;
+        AppSettings.DetailCardOrder = string.Empty;
+        ApplyHiddenModules();
+    }
+
+    private static void SetSegments(Grid bar, int progress, Color accent)
+    {
+        int active = (int)Math.Round(Math.Clamp(progress, 0, 100) / 100.0 * bar.Children.Count);
+        for (int i = 0; i < bar.Children.Count; i++)
+            if (bar.Children[i] is Border seg)
+                seg.Background = new SolidColorBrush(i < active ? accent : Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF));
+    }
+
     private void Refresh()
     {
         var t = _store.Telemetry.TryGetValue(_serial, out var tel) ? tel : new PrinterTelemetry();
         var printer = _store.Printers.FirstOrDefault(p => p.Serial == _serial);
-        var accent = new SolidColorBrush(ParseHex(t.State.AccentHex() + "FF"));
+        // Neutral status contract: state is read from the text, colour stays neutral.
+        var accent = GTheme.Accent;
 
         _name.Text = printer?.Name ?? _serial;
         _state.Text = t.State.Label(_pl);
-        _state.Foreground = accent;
+        _state.Foreground = GTheme.Brush(GTheme.Secondary);
         _percent.Text = $"{t.Progress}%";
-        _bar.Value = t.Progress;
-        _bar.Foreground = accent;
+        SetSegments(_bar, t.Progress, accent);
 
         if (t.RemainingMinutes is { } m && m > 0 && (t.State is PrinterState.Printing or PrinterState.Paused))
         {
@@ -472,17 +559,19 @@ public sealed class DetailView : UserControl
 
     private static Border Card(UIElement child) => new()
     {
-        Background = new SolidColorBrush(Color.FromArgb(0x48, 0x3A, 0x3A, 0x3C)),
-        CornerRadius = new CornerRadius(12),
+        Background = GTheme.Brush(GTheme.CardTranslucent),
+        CornerRadius = new CornerRadius(GTheme.CardRadius),
+        BorderBrush = GTheme.Brush(GTheme.Line),
+        BorderThickness = new Thickness(1),
         Padding = new Thickness(11),
-        Margin = new Thickness(0, 0, 0, 8),
+        Margin = new Thickness(0, 0, 0, 6),
         Child = child
     };
 
     private static TextBlock SectionTitle(string text) => new()
     {
         Text = text, FontSize = 10, FontWeight = FontWeights.SemiBold,
-        Foreground = new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93)), Margin = new Thickness(0, 0, 0, 8)
+        Foreground = GTheme.Brush(GTheme.Muted), Margin = new Thickness(0, 0, 0, 8)
     };
 
     private static TextBlock Text(double size, FontWeight weight, Brush? color = null) => new()
