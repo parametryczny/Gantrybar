@@ -244,6 +244,9 @@ public sealed class TrayIcon : IDisposable
 
     public void ShowNotification(string title, string body, string? subtitle)
     {
+        // Native Action Center toast (shows in the Windows notification panel). Falls back to a tray
+        // balloon if the toast infrastructure is unavailable.
+        if (WindowsToast.Show(title, body, subtitle)) return;
         string text = string.IsNullOrEmpty(subtitle) ? body : $"{subtitle}\n{body}";
         _notifyIcon.ShowBalloonTip(5000, title, text, ToolTipIcon.Info);
     }
