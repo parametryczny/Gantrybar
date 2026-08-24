@@ -54,8 +54,9 @@
                         </StackPanel>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="box" Property="Background" Value="#FF0A84FF"/>
-                                <Setter TargetName="box" Property="BorderBrush" Value="#FF0A84FF"/>
+                                <Setter TargetName="box" Property="Background" Value="#FFD4D7D3"/>
+                                <Setter TargetName="box" Property="BorderBrush" Value="#FFD4D7D3"/>
+                                <Setter TargetName="check" Property="Foreground" Value="#FF151719"/>
                                 <Setter TargetName="check" Property="Opacity" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -69,11 +70,12 @@
     </Window.Resources>
 
     <Border CornerRadius="12" Background="#B3242426" SnapsToDevicePixels="True">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="760">
         <StackPanel Margin="24,20,24,20">
             <TextBlock x:Name="Heading" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4"/>
 
-            <TextBlock x:Name="GeneralHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FFAEAEB2" Margin="0,16,0,8"/>
-            <Border Background="#D83A3A3C" CornerRadius="12" Padding="16,12" BorderBrush="#20FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="GeneralHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,16,0,8"/>
+            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
                 <StackPanel>
                     <Grid Margin="0,4">
                         <Grid.ColumnDefinitions>
@@ -99,8 +101,8 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="NotificationsHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FFAEAEB2" Margin="0,18,0,8"/>
-            <Border Background="#D83A3A3C" CornerRadius="12" Padding="16,10" BorderBrush="#20FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="NotificationsHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
+            <Border Background="#80151719" CornerRadius="16" Padding="16,10" BorderBrush="#17FFFFFF" BorderThickness="1">
                 <StackPanel>
                     <CheckBox x:Name="PrintFinishedCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="PrinterErrorCheckBox" Margin="0,7"/>
@@ -118,8 +120,8 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="UpdatesHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FFAEAEB2" Margin="0,18,0,8"/>
-            <Border Background="#D83A3A3C" CornerRadius="12" Padding="16,12" BorderBrush="#20FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="UpdatesHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
+            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -135,5 +137,6 @@
 
             <Button x:Name="CloseButton" MinWidth="104" HorizontalAlignment="Right" Margin="0,20,0,0" IsDefault="True"/>
         </StackPanel>
+      </ScrollViewer>
     </Border>
 </Window>

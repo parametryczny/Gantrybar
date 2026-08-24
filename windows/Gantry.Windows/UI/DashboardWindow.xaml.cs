@@ -268,6 +268,7 @@ public partial class DashboardWindow : Window
 
     private readonly Dictionary<string, ICardView> _views = new();
     private List<string> _renderedSerials = new();
+    private HashSet<string> _renderedWideSerials = new();
     private bool? _renderedCompact;
 
     // Full view fits up to 8 printers; above 8 defaults to a compact one-line list. A manual
@@ -295,7 +296,9 @@ public partial class DashboardWindow : Window
         CompactButton.Content = compact ? AppSettings.Text("Rozwiń", "Expand") : AppSettings.Text("Zwiń", "Collapse");
 
         var serials = _store.Printers.Select(p => p.Serial).ToList();
-        if (!serials.SequenceEqual(_renderedSerials) || _renderedCompact != compact)
+        var wideSerials = _store.Printers.Where(NeedsWideSpan).Select(p => p.Serial).ToHashSet();
+        if (!serials.SequenceEqual(_renderedSerials) || _renderedCompact != compact ||
+            !_renderedWideSerials.SetEquals(wideSerials))
         {
             HideCardMenu();
             CardsPanel.Children.Clear();
@@ -308,7 +311,7 @@ public partial class DashboardWindow : Window
                     Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                     Margin = new Thickness(8)
                 });
-                _renderedSerials = serials; _renderedCompact = compact;
+                _renderedSerials = serials; _renderedWideSerials = wideSerials; _renderedCompact = compact;
                 FitHeightToContent();
                 return;
             }
@@ -320,25 +323,51 @@ public partial class DashboardWindow : Window
                     ? (existing as CompactRow) ?? new CompactRow(this, printer)
                     : (existing as PrinterCard) ?? (ICardView)new PrinterCard(this, printer);
                 live[printer.Serial] = view;
-                CardsPanel.Children.Add(view.Root);
             }
             _views.Clear();
             foreach (var kv in live) _views[kv.Key] = kv.Value;
-            _renderedSerials = serials; _renderedCompact = compact;
+            _renderedSerials = serials; _renderedWideSerials = wideSerials; _renderedCompact = compact;
 
-            // A lone printer (or the compact list) uses a single narrow column so the window isn't
-            // needlessly wide; two or more expanded cards use two columns like the macOS dock.
-            bool singleColumn = compact || _store.Printers.Count <= 1;
-            Width = singleColumn ? 540 : 640;
-
-            if (!compact)
+            CardsPanel.ColumnDefinitions.Clear();
+            CardsPanel.RowDefinitions.Clear();
+            if (compact)
             {
-                var roots = _store.Printers
-                    .Select(p => live[p.Serial].Root as FrameworkElement)
-                    .Where(r => r is { }).Select(r => r!).ToList();
-                for (int i = 0; i < roots.Count; i++)
-                    roots[i].Width = singleColumn ? 500
-                        : (i == roots.Count - 1 && roots.Count % 2 == 1) ? 594 : 290;
+                Width = 540;
+                CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                for (int row = 0; row < _store.Printers.Count; row++)
+                {
+                    CardsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                    var root = live[_store.Printers[row].Serial].Root;
+                    root.Width = double.NaN;
+                    Grid.SetRow(root, row);
+                    CardsPanel.Children.Add(root);
+                }
+            }
+            else
+            {
+                // Shared Gantry contract: three equal columns. Normal cards span one; dual-nozzle
+                // and multi-AMS cards span two. Card count never changes an item's span.
+                Width = 840;
+                for (int i = 0; i < 3; i++)
+                    CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                int row = 0, column = 0;
+                foreach (var printer in _store.Printers)
+                {
+                    int span = wideSerials.Contains(printer.Serial) ? 2 : 1;
+                    if (column + span > 3) { row++; column = 0; }
+                    while (CardsPanel.RowDefinitions.Count <= row)
+                        CardsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                    var root = live[printer.Serial].Root;
+                    root.Width = double.NaN;
+                    root.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    root.VerticalAlignment = VerticalAlignment.Stretch;
+                    Grid.SetRow(root, row);
+                    Grid.SetColumn(root, column);
+                    Grid.SetColumnSpan(root, span);
+                    CardsPanel.Children.Add(root);
+                    column += span;
+                    if (column == 3) { row++; column = 0; }
+                }
             }
         }
 
@@ -353,6 +382,14 @@ public partial class DashboardWindow : Window
         // Fit the window to the cards' real height — cards vary (multiple AMS units wrap onto extra
         // rows, expanded accordion cards), so a fixed per-card estimate clipped tall cards.
         FitHeightToContent();
+    }
+
+    private bool NeedsWideSpan(SavedPrinter printer)
+    {
+        if (!_store.Telemetry.TryGetValue(printer.Serial, out var telemetry)) return false;
+        bool dualNozzle = telemetry.Nozzles.Any(n => n.Position == NozzlePosition.Right);
+        int moduleCount = telemetry.FilamentGroups.Count(group => !group.IsExternal);
+        return dualNozzle || moduleCount >= 2;
     }
 
     private void ToggleCompact()
@@ -409,8 +446,8 @@ public partial class DashboardWindow : Window
         public string Serial { get; }
         private readonly DashboardWindow _owner;
         private Point _dragStart;
-        private readonly TextBlock _name, _pillText, _job, _percent, _eta, _layers, _message;
-        private readonly ProgressBar _bar;
+        private readonly TextBlock _name, _connection, _pillText, _job, _percent, _eta, _layers, _message;
+        private readonly Grid _bar;
         // Temperature rows (nozzle(s)/bed/chamber) and the filament dock are rebuilt per update.
         private readonly StackPanel _temps;
         private readonly StackPanel _ams;
@@ -420,10 +457,12 @@ public partial class DashboardWindow : Window
             _owner = owner;
             Serial = printer.Serial;
             var stack = new StackPanel();
+            var jobStack = new StackPanel();
 
             var header = new Grid();
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var grip = new TextBlock
@@ -445,6 +484,20 @@ public partial class DashboardWindow : Window
             _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_name, 1);
             header.Children.Add(_name);
+            _connection = new TextBlock
+            {
+                FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.SemiBold,
+                Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center
+            };
+            // Quiet "MQTT" pill next to the name, like the macOS manufacturer chip.
+            var connectionPill = new Border
+            {
+                Background = GTheme.Brush(GTheme.W(0.025)), CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(5, 0, 5, 0),
+                VerticalAlignment = VerticalAlignment.Center, Child = _connection
+            };
+            Grid.SetColumn(connectionPill, 2);
+            header.Children.Add(connectionPill);
             // Visible "Szczegóły" button (a subtle grey-outline chip) — the details view is a primary
             // action, not something to hunt for in the "…" menu.
             var details = new Button
@@ -456,51 +509,64 @@ public partial class DashboardWindow : Window
                 BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)), BorderThickness = new Thickness(1)
             };
             details.Click += (_, _) => _owner.ShowDetail(Serial);
-            Grid.SetColumn(details, 2);
+            Grid.SetColumn(details, 3);
             header.Children.Add(details);
             // "…" menu in the header (macOS layout) instead of a separate row at the bottom — saves height.
             var more = new Button { Content = "⋯", FontSize = 15, Width = 30, Height = 24, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Muted() };
             var menu = owner.BuildCardMenu(printer.Serial);
             more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
-            Grid.SetColumn(more, 3);
+            Grid.SetColumn(more, 4);
             header.Children.Add(more);
-            stack.Children.Add(header);
+            jobStack.Children.Add(header);
 
             // Status line (macOS layout): state text on the left, time + layers on the right.
             var statusLine = new Grid { Margin = new Thickness(0, 1, 0, 0) };
+            statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             _pillText = new TextBlock { FontSize = 10, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_pillText, 0);
             statusLine.Children.Add(_pillText);
-            var meta = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            _eta = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
-            _layers = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
-            meta.Children.Add(new TextBlock { Text = "⏱ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
-            meta.Children.Add(_eta);
-            meta.Children.Add(new TextBlock { Text = "   ⧉ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
-            meta.Children.Add(_layers);
-            Grid.SetColumn(meta, 1);
-            statusLine.Children.Add(meta);
-            stack.Children.Add(statusLine);
+            var separator = new TextBlock { Text = " · ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(separator, 1); statusLine.Children.Add(separator);
+            // Full-width file name now that layers moved to the progress row — no more truncation race.
+            _job = new TextBlock { Foreground = GTheme.Brush(GTheme.Text), FontSize = 10, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(_job, 2); Grid.SetColumnSpan(_job, 2); statusLine.Children.Add(_job);
+            jobStack.Children.Add(statusLine);
 
-            _job = new TextBlock { Foreground = Muted(), FontSize = 10, Margin = new Thickness(0, 2, 0, 3), TextTrimming = TextTrimming.CharacterEllipsis };
-            stack.Children.Add(_job);
-
-            var progressRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-            progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 5, Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)), BorderThickness = new Thickness(0) };
-            progressRow.Children.Add(_bar);
-            _percent = new TextBlock { FontSize = 10, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(_percent, 1);
+            var progressRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+            _bar = new Grid { Height = 8 };
+            for (int i = 0; i < 32; i++)
+            {
+                _bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var segment = new Border { CornerRadius = new CornerRadius(1), Margin = new Thickness(i == 0 ? 0 : 1, 0, 0, 0) };
+                Grid.SetColumn(segment, i); _bar.Children.Add(segment);
+            }
+            _percent = new TextBlock { FontSize = 22, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             progressRow.Children.Add(_percent);
-            stack.Children.Add(progressRow);
+            _eta = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            progressRow.Children.Add(_eta);
+            // Layers ride the progress line next to ETA (macOS layout) — dead space put to use.
+            var layersCluster = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            layersCluster.Children.Add(new TextBlock { Text = "⧉ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
+            _layers = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+            layersCluster.Children.Add(_layers);
+            progressRow.Children.Add(layersCluster);
+            jobStack.Children.Add(progressRow);
+            jobStack.Children.Add(_bar);
+            stack.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(GTheme.TileRadius),
+                Background = GTheme.Brush(GTheme.Surface),
+                BorderBrush = GTheme.Brush(GTheme.Line),
+                BorderThickness = new Thickness(1), Padding = new Thickness(9, 6, 9, 5), Child = jobStack
+            });
 
-            _temps = new StackPanel();
+            _temps = new StackPanel { Margin = new Thickness(0, 3, 0, 0) };
             stack.Children.Add(_temps);
 
-            _ams = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+            _ams = new StackPanel { Margin = new Thickness(0, 3, 0, 0) };
             stack.Children.Add(_ams);
 
             _message = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
@@ -508,12 +574,12 @@ public partial class DashboardWindow : Window
 
             Root = new Border
             {
-                Background = new SolidColorBrush(Color.FromArgb(0xD8, 0x3A, 0x3A, 0x3C)),
-                CornerRadius = new CornerRadius(14),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+                Background = GTheme.Brush(GTheme.CardTranslucent),
+                CornerRadius = new CornerRadius(GTheme.CardRadius),
+                BorderBrush = GTheme.Brush(GTheme.Line),
                 BorderThickness = new Thickness(1),
-                Padding = new Thickness(10),
-                Margin = new Thickness(6),
+                Padding = new Thickness(10, 6, 10, 6),
+                Margin = new Thickness(3),
                 Width = width,
                 Child = stack
             };
@@ -535,17 +601,30 @@ public partial class DashboardWindow : Window
         public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
         {
             _name.Text = printer.Name;
-            var accent = ParseHex(t.State.AccentHex() + "FF");
+            _connection.Text = printer.Kind switch
+            {
+                PrinterKind.Bambu => "MQTT",
+                PrinterKind.Klipper => "KLIPPER",
+                PrinterKind.Prusa => "PRUSALINK",
+                PrinterKind.Snapmaker => "HTTP",
+                _ => "LAN"
+            };
+            // Neutral card contract: state is carried by the label + icon, never by colour. Only the
+            // temperature value and the real filament colour carry hue.
+            var accent = GTheme.Accent;
             _pillText.Text = t.State.Label(pl);
-            _pillText.Foreground = new SolidColorBrush(accent);
+            _pillText.Foreground = GTheme.Brush(accent);
             _job.Text = string.IsNullOrEmpty(t.JobName) ? AppSettings.Text("Brak aktywnego zadania", "No active job") : t.JobName!;
-            _bar.Value = t.Progress;
-            _bar.Foreground = new SolidColorBrush(accent);
+            SetSegments(_bar, t.Progress, accent);
             _percent.Text = $"{t.Progress}%";
+            _percent.Foreground = GTheme.Brush(accent);
             _eta.Text = FormatEtaWithFinish(t.RemainingMinutes);
             _layers.Text = t.CurrentLayer is { } cl && t.TotalLayers is { } tl ? $"{cl}/{tl}" : "—";
+            Root.BorderBrush = GTheme.Brush(GTheme.Line);
+            Root.Background = GTheme.Brush(GTheme.CardTranslucent);
 
             // Temperature rows: single nozzle → [Nozzle, Bed, Chamber?]; dual nozzle → [L, P] + [Bed, Chamber?].
+            // Neutral tiles — the hue lives ONLY on the value (nozzle warm, bed gold, chamber violet).
             _temps.Children.Clear();
             var nozzles = t.Nozzles.Count > 0
                 ? t.Nozzles
@@ -553,24 +632,24 @@ public partial class DashboardWindow : Window
             bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
             string bedLabel = pl ? "Stół" : "Bed";
             string chamberLabel = pl ? "Komora" : "Chamber";
-            // One WrapPanel row: cells stay on one line on a wide card and wrap on a narrow one, so a
-            // dual-nozzle printer no longer forces a fixed second row.
+            var nozzleBrush = GTheme.Brush(GTheme.Nozzle);
             var cells = new List<(string, string, Brush?)>();
             if (dual)
             {
                 var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
                 var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
-                cells.Add(TempCell("L", left.CurrentTemperature, left.TargetTemperature));
-                cells.Add(TempCell(pl ? "P" : "R", right?.CurrentTemperature, right?.TargetTemperature));
+                cells.Add((pl ? "Dysze L" : "Nozzles L", FormatTemp(left.CurrentTemperature, left.TargetTemperature), nozzleBrush));
+                cells.Add(("P", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature), nozzleBrush));
             }
             else
             {
                 var single = nozzles[0];
-                cells.Add(TempCell(pl ? "Dysza" : "Nozzle", single.CurrentTemperature, single.TargetTemperature));
+                cells.Add((pl ? "Dysza" : "Nozzle", FormatTemp(single.CurrentTemperature, single.TargetTemperature), nozzleBrush));
             }
-            cells.Add(TempCell(bedLabel, t.BedTemperature, t.BedTargetTemperature));
+            cells.Add((bedLabel, FormatTemp(t.BedTemperature, t.BedTargetTemperature), GTheme.Brush(GTheme.Bed)));
+            // Chamber tile only when there is an actual reading (no empty "— / —" tile).
             if (t.ChamberTemperature is { } ch)
-                cells.Add((chamberLabel, ch.ToString("0", CultureInfo.InvariantCulture) + "°", TempColor(ch, null)));
+                cells.Add((chamberLabel, ch.ToString("0", CultureInfo.InvariantCulture) + "°", GTheme.Brush(GTheme.Chamber)));
             _temps.Children.Add(TempRow(cells.ToArray()));
 
             // Filament modules laid out in rows of up to two, side by side (macOS layout): an AMS is
@@ -587,6 +666,16 @@ public partial class DashboardWindow : Window
 
             if (string.IsNullOrEmpty(message)) _message.Visibility = Visibility.Collapsed;
             else { _message.Text = message; _message.Visibility = Visibility.Visible; }
+        }
+
+        private static void SetSegments(Grid bar, int progress, Color accent)
+        {
+            int active = (int)Math.Round(Math.Clamp(progress, 0, 100) / 100.0 * bar.Children.Count);
+            for (int i = 0; i < bar.Children.Count; i++)
+                if (bar.Children[i] is Border segment)
+                    segment.Background = new SolidColorBrush(i < active
+                        ? accent
+                        : Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF));
         }
     }
 
@@ -636,10 +725,10 @@ public partial class DashboardWindow : Window
             _dot = new Ellipse { Width = 9, Height = 9, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_dot, 1); grid.Children.Add(_dot);
 
-            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, Foreground = GTheme.Brush(GTheme.Text), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_name, 2); grid.Children.Add(_name);
 
-            _status = new TextBlock { FontSize = 11, Foreground = Muted(), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) };
+            _status = new TextBlock { FontSize = 11, Foreground = GTheme.Brush(GTheme.Secondary), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) };
             Grid.SetColumn(_status, 3); grid.Children.Add(_status);
 
             _percent = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
@@ -648,7 +737,7 @@ public partial class DashboardWindow : Window
             _chevron = new TextBlock { Text = "›", FontSize = 13, Foreground = Muted(), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_chevron, 5); grid.Children.Add(_chevron);
 
-            var line = new Border { CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 8, 10, 8), Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)), Cursor = Cursors.Hand, Child = grid };
+            var line = new Border { CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 8, 10, 8), Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)), Cursor = Cursors.Hand, Child = grid };
             line.MouseLeftButtonUp += (_, e) => { if (!ReferenceEquals(e.OriginalSource, grip)) ToggleExpand(); };
 
             _stack = new StackPanel();
@@ -686,7 +775,8 @@ public partial class DashboardWindow : Window
         public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
         {
             _printer = printer; _telemetry = t; _message = message; _pl = pl;
-            _dot.Fill = new SolidColorBrush(ParseHex(t.State.AccentHex() + "FF"));
+            // Neutral list: state read from text; only a real error carries the warm accent.
+            _dot.Fill = GTheme.Brush(GTheme.StatusColor(t.State == PrinterState.Error));
             _name.Text = printer.Name;
             bool printing = t.State is PrinterState.Printing or PrinterState.Paused;
             string job = string.IsNullOrEmpty(t.JobName) ? "" : t.JobName!;
@@ -739,21 +829,46 @@ public partial class DashboardWindow : Window
     private static (string Label, string Value, Brush? Colour) TempCell(string label, double? current, double? target)
         => (label, FormatTemp(current, target), TempColor(current, target));
 
-    private static Panel TempRow(params (string Label, string Value, Brush? Colour)[] cells)
+    private static UIElement TempRow(params (string Label, string Value, Brush? Colour)[] cells)
     {
-        // WrapPanel so cells flow onto a second line on narrow cards instead of clipping the last
-        // label (e.g. "Komora"); on a wide card everything stays on one line — issue reported on Windows.
-        var row = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 0) };
-        foreach (var (label, value, colour) in cells)
+        var row = new Grid();
+        for (int i = 0; i < cells.Length; i++)
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (int i = 0; i < cells.Length; i++)
         {
-            var cell = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 10, 1) };
-            cell.Children.Add(new TextBlock { Text = label + " ", FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = Muted() });
-            var valueBlock = new TextBlock { Text = value, FontSize = 10 };
-            if (colour is { }) valueBlock.Foreground = colour;
+            var (label, value, colour) = cells[i];
+            var cell = new Grid { Height = 34 };
+            cell.Children.Add(new TextBlock
+            {
+                Text = label.ToUpperInvariant(), FontFamily = new FontFamily("Consolas"), FontSize = 7,
+                FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Margin = new Thickness(6, 3, 4, 0),
+                VerticalAlignment = VerticalAlignment.Top, TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            var valueBlock = new TextBlock
+            {
+                Text = value, FontFamily = new FontFamily("Consolas"), FontSize = 14,
+                FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 6, 3, 0),
+                // The one spot of colour per zone: the live temperature carries its zone hue.
+                Foreground = colour ?? GTheme.Brush(GTheme.Text)
+            };
             cell.Children.Add(valueBlock);
-            row.Children.Add(cell);
+            // Neutral tile with a faint top-light; a thin line separates zones (no coloured washes).
+            var zone = new Border
+            {
+                Background = GTheme.Brush(GTheme.W(0.012)), Child = cell,
+                BorderBrush = GTheme.Brush(i == 0 ? Colors.Transparent : GTheme.Line),
+                BorderThickness = new Thickness(i == 0 ? 0 : 1, 0, 0, 0)
+            };
+            Grid.SetColumn(zone, i); row.Children.Add(zone);
         }
-        return row;
+        return new Border
+        {
+            CornerRadius = new CornerRadius(GTheme.TileRadius), ClipToBounds = true,
+            Background = GTheme.Brush(GTheme.Surface),
+            BorderBrush = GTheme.Brush(GTheme.Line),
+            BorderThickness = new Thickness(1), Child = row
+        };
     }
 
     /// <summary>A physical filament module: tonal block with a name + per-module humidity/temperature
@@ -763,23 +878,23 @@ public partial class DashboardWindow : Window
     /// wider, primary module. A lone external is a compact tile; a lone AMS fills the width.</summary>
     internal static UIElement FilamentRow(List<FilamentGroup> rowGroups)
     {
-        static double Weight(FilamentGroup g) => Math.Max(1, g.DeclaredCapacity) * (g.IsExternal ? 0.5 : 1.0);
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        static double Weight(FilamentGroup g) => Math.Max(1, g.DeclaredCapacity);
+        static double MinW(FilamentGroup g)
+        {
+            if (g.HumidityPercent is not null || g.TemperatureCelsius is not null) return 118; // header room
+            if (g.IsExternal) return 58;
+            return 0;
+        }
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
         if (rowGroups.Count == 1)
         {
-            var only = rowGroups[0];
-            var block = GroupBlock(only);
-            if (only.IsExternal)
-            {
-                block.HorizontalAlignment = HorizontalAlignment.Left;
-                block.Width = 150;   // lone external stays compact instead of ballooning full width
-            }
-            grid.Children.Add(block);
+            // A single module owns the full width; its lone slot is centred inside GroupBlock.
+            grid.Children.Add(GroupBlock(rowGroups[0]));
             return grid;
         }
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[0]), GridUnitType.Star), MinWidth = rowGroups[0].IsExternal ? 78 : 0 });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[1]), GridUnitType.Star), MinWidth = rowGroups[1].IsExternal ? 78 : 0 });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[0]), GridUnitType.Star), MinWidth = MinW(rowGroups[0]) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[1]), GridUnitType.Star), MinWidth = MinW(rowGroups[1]) });
         var b0 = GroupBlock(rowGroups[0]); Grid.SetColumn(b0, 0); grid.Children.Add(b0);
         var b1 = GroupBlock(rowGroups[1]); Grid.SetColumn(b1, 2); grid.Children.Add(b1);
         return grid;
@@ -794,38 +909,45 @@ public partial class DashboardWindow : Window
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var name = new TextBlock { Text = group.DisplayName, FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Colors.White), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        var name = new TextBlock { Text = ShortName(group.DisplayName), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         Grid.SetColumn(name, 0); header.Children.Add(name);
         var envPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         if (group.HumidityPercent is { } h)
         {
             bool humid = h <= 5 ? h >= 4 : h >= 40;
             envPanel.Children.Add(EnvCluster("💧", h <= 5 ? $"{h}/5" : $"{h}%",
-                humid ? new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)) : Muted()));
+                GTheme.Brush(humid ? GTheme.StatusPaused : GTheme.Humidity)));
         }
         if (group.TemperatureCelsius is { } tc)
-            envPanel.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°C", Muted()));
+            envPanel.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°", GTheme.Brush(GTheme.SensorTemp)));
         Grid.SetColumn(envPanel, 2); header.Children.Add(envPanel);
         inner.Children.Add(header);
 
-        // Slots fill the module width equally, labels beneath each swatch.
+        // Slots fill the module width equally; a single spool is centred at grid size (not a wide pill).
+        bool single = group.Slots.Count == 1;
         var slotGrid = new System.Windows.Controls.Primitives.UniformGrid
         {
             Rows = 1,
             Columns = Math.Max(1, group.Slots.Count),
-            Margin = new Thickness(0, 5, 0, 0)
+            Margin = new Thickness(0, 3, 0, 0),
+            HorizontalAlignment = single ? HorizontalAlignment.Center : HorizontalAlignment.Stretch
         };
-        foreach (var slot in group.Slots) slotGrid.Children.Add(SlotChip(slot, group.IsExternal));
+        foreach (var slot in group.Slots)
+        {
+            var chip = SlotChip(slot, group.IsExternal);
+            if (single) chip.MaxWidth = group.IsExternal ? 96 : 60;
+            slotGrid.Children.Add(chip);
+        }
         inner.Children.Add(slotGrid);
 
         return new Border
         {
-            CornerRadius = new CornerRadius(10),
-            Background = new SolidColorBrush(Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
+            CornerRadius = new CornerRadius(GTheme.TileRadius),
+            Background = GTheme.Brush(GTheme.W(0.075)),
+            BorderBrush = GTheme.Brush(GTheme.Line),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(9, 7, 9, 8),
-            Margin = new Thickness(0, 0, 0, 5),
+            Padding = new Thickness(6, 4, 6, 4),
+            Margin = new Thickness(0, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = inner
         };
@@ -845,49 +967,82 @@ public partial class DashboardWindow : Window
     {
         bool present = slot.IsPresent;
         var color = present ? ParseHex(slot.ColorHex ?? "8E8E93FF") : Color.FromArgb(0x28, 0x8E, 0x8E, 0x93);
+        const double SwatchHeight = 18;
+        double frac = present && slot.RemainingPercent is { } fp ? Math.Clamp(fp / 100.0, 0, 1) : 1.0;
+        var swatchGrid = new Grid();
         var swatch = new Border
         {
-            Background = new SolidColorBrush(color),
-            CornerRadius = new CornerRadius(6),
-            Height = 28,
-            MinWidth = 24,                    // never collapse to a sliver; fills its (narrow for EXT) column
+            // Dim base + a solid fill rising from the bottom by the remaining amount (matches macOS).
+            Background = present ? new SolidColorBrush(Color.FromArgb(0x33, color.R, color.G, color.B)) : GTheme.Brush(GTheme.W(0.018)),
+            CornerRadius = new CornerRadius(present ? 6 : 5),
+            Height = SwatchHeight,
+            MinWidth = 24,
             Margin = new Thickness(3, 0, 3, 0),
-            BorderThickness = new Thickness(slot.IsActive ? 2 : 0.5),
-            BorderBrush = new SolidColorBrush(slot.IsActive ? Colors.White : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
+            ClipToBounds = true,
+            BorderThickness = new Thickness(slot.IsActive ? 1.5 : 0.5),
+            BorderBrush = slot.IsActive ? GTheme.Brush(GTheme.W(0.8)) : GTheme.Brush(present ? Color.FromArgb(0x1F, 0x00, 0x00, 0x00) : GTheme.Line),
             ToolTip = $"{slot.Label} • {(slot.Material ?? "—")}" + (slot.RemainingPercent is { } r ? $" • {r}%" : "")
         };
-        var label = new TextBlock
+        if (present && slot.RemainingPercent is not null)
+            swatch.Child = new Border
+            {
+                Background = new SolidColorBrush(color),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Height = SwatchHeight * frac,
+                CornerRadius = new CornerRadius(0, 0, 5, 5)
+            };
+        swatchGrid.Children.Add(swatch);
+        // Remaining % lives INSIDE the colour chip, in a contrasting ink. The centred number is only
+        // over the SOLID fill once it reaches the middle; below that it sits over the dim (dark) part,
+        // which always wants light ink — so contrast follows what's actually behind the text.
+        if (present && slot.RemainingPercent is { } pct)
         {
-            Text = slot.Label,
-            FontSize = 10,
-            FontWeight = FontWeights.Medium,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 3, 0, 0),
-            Foreground = slot.IsActive ? new SolidColorBrush(Colors.White) : Muted()
-        };
-        // Low-filament marker (red corner dot) — only on real AMS/CFS slots; the external spool reports
-        // remain=0 as "unknown", so it never gets a false low warning (matches macOS).
-        FrameworkElement swatchElement = swatch;
+            var ink = frac >= 0.5 ? GTheme.ContrastInk(color) : Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF);
+            swatchGrid.Children.Add(new TextBlock
+            {
+                Text = $"{pct}%",
+                FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(ink),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(3, 0, 3, 0)
+            });
+        }
+        // Low-filament marker (red corner dot) — only on real AMS/CFS slots (external reports 0 = unknown).
+        FrameworkElement swatchElement = swatchGrid;
         if (present && !external && (slot.RemainingPercent ?? 100) <= 15)
         {
-            var overlay = new Grid();
-            overlay.Children.Add(swatch);
-            overlay.Children.Add(new Ellipse
+            swatchGrid.Children.Add(new Ellipse
             {
-                Width = 7, Height = 7,
+                Width = 6, Height = 6,
                 Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x3B, 0x30)),
-                Stroke = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)),
-                StrokeThickness = 1,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 3, 6, 0)
+                Stroke = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)), StrokeThickness = 1,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 2, 5, 0)
             });
-            swatchElement = overlay;
         }
+        // Caption under the swatch: slot id (quiet, leading) + material (primary, centred).
+        var meta = new Grid { Margin = new Thickness(0, 1, 0, 0) };
+        if (!external)
+            meta.Children.Add(new TextBlock { Text = slot.Label, FontFamily = new FontFamily("Consolas"), FontSize = 7, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center });
+        meta.Children.Add(new TextBlock
+        {
+            Text = present ? (slot.Material ?? "—") : "—",
+            FontSize = 10, FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = GTheme.Brush(present ? GTheme.Text : GTheme.Muted)
+        });
         var panel = new StackPanel();
         panel.Children.Add(swatchElement);
-        panel.Children.Add(label);
+        panel.Children.Add(meta);
         return panel;
+    }
+
+    /// <summary>Short group header that never truncates to "AM…": "AMS A" → "AMS", "AMS HT" → "HT".</summary>
+    private static string ShortName(string displayName)
+    {
+        if (!displayName.StartsWith("AMS ", StringComparison.Ordinal)) return displayName;
+        var suffix = displayName.Substring(4);
+        return suffix.Length == 1 ? "AMS" : suffix;
     }
 
     /// <summary>A dark, rounded menu for one printer card, mirroring the macOS "…" card menu:

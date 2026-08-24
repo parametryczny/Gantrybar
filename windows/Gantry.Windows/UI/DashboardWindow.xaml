@@ -1,7 +1,7 @@
 <Window x:Class="Gantry.UI.DashboardWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Gantry" Width="540" Height="560"
+        Title="Gantry" Width="840" Height="560"
         WindowStartupLocation="Manual"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         AllowsTransparency="False" Background="Transparent"
@@ -62,7 +62,7 @@
                 <TextBlock x:Name="FooterText" DockPanel.Dock="Bottom" HorizontalAlignment="Center"
                            FontSize="10" Foreground="#8A8A8E" Margin="0,4,0,6"/>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="9,2,9,10">
-                    <WrapPanel x:Name="CardsPanel" Orientation="Horizontal"/>
+                    <Grid x:Name="CardsPanel"/>
                 </ScrollViewer>
             </DockPanel>
             <!-- In-window detail view (replaces the list in place, like the macOS popover). -->

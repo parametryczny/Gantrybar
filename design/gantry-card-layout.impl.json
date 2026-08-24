@@ -1,0 +1,211 @@
+{
+  "meta": {
+    "name": "Gantry Card Layout — shipped macOS values",
+    "version": "1.0.0",
+    "date": "2026-08-24",
+    "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port. See GANTRY-CARD-LAYOUT-PORT.md. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
+  },
+
+  "tokens": {
+    "surface": {
+      "canvas": "#0C0D0E",
+      "card": "#151719",
+      "line": "rgba(255,255,255,0.09)",
+      "surface": "rgba(255,255,255,0.052)",
+      "text": "#F2F3F1",
+      "secondary": "#A7AAA6",
+      "muted": "#6D716E",
+      "accent": "#D4D7D3"
+    },
+    "thermal": {
+      "nozzle": "#FF8A61",
+      "bed": "#EFBD5F",
+      "chamber": "#BBA5EF",
+      "humidity": "#73CFAD",
+      "sensorTemp": "#EFA25F"
+    },
+    "status": {
+      "printing": "#FF6857",
+      "default": "#D4D7D3",
+      "paused": "#EBB55C"
+    },
+    "radius": { "card": 16, "tile": 10.5, "chip": 10, "swatchFill": 6, "swatchSolid": 5 },
+    "gap": 8
+  },
+
+  "fleet": {
+    "columns": { "min": 1, "max": 2, "default": 2, "userDefaultsKey": "gantry.dashboard.columns" },
+    "panelWidth": { "oneColumn": 380, "twoColumns": 563, "list": 512 },
+    "contentWidthInset": 24,
+    "columnGap": 8,
+    "rowGap": { "cards": 6, "list": 3 },
+    "headerHeight": 36,
+    "lastOddCardSpansFullWidth": true,
+    "maxPanelHeight": "screen.visibleFrame.height - 24"
+  },
+
+  "card": {
+    "background": "card @0.5",
+    "border": "line 1px",
+    "radius": 16,
+    "minHeight": 90,
+    "sectionSpacing": 3,
+    "contentInset": { "left": 10, "right": 10, "top": 6, "bottom": 6 },
+    "sections": ["jobSurface", "tempBento", "filamentDock"]
+  },
+
+  "jobSurface": {
+    "background": "surface",
+    "border": "line 1px",
+    "radius": 10.5,
+    "inset": { "left": 9, "right": 9, "top": 6, "bottom": 5 },
+    "itemSpacing": 1,
+    "order": ["header", "statusRow", "flexibleJobSpace", "progressSummary", "progress"]
+  },
+
+  "header": {
+    "spacing": 7,
+    "align": "centerY",
+    "order": ["stateDot", "titleCluster", "detailsChip", "spacer", "dragHandle", "actionsButton"],
+    "stateDot": { "size": 14, "tint": "accent" },
+    "titleCluster": { "align": "centerY", "spacing": 5 },
+    "nameLabel": { "size": 14, "weight": "semibold", "color": "text" },
+    "manufacturerPill": { "size": 10, "weight": "regular", "bg": "rgba(255,255,255,0.025)", "radius": 5 },
+    "detailsChip": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "icon": "chart.xyaxis.line", "iconSize": 11 },
+    "dragHandle": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "dots": "2x3", "dotDiameter": 2.4, "dotStep": 6 },
+    "actionsButton": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "icon": "ellipsis" }
+  },
+
+  "statusRow": {
+    "spacing": 5,
+    "align": "centerY",
+    "order": ["jobStateDot", "statusLabel", "jobSeparator", "jobLabel", "spacer"],
+    "jobStateDot": { "size": 6, "radius": 3, "color": "accent" },
+    "statusLabel": { "size": 10, "weight": "medium", "colorStale": "systemOrange", "color": "accent" },
+    "jobSeparator": { "size": 10, "weight": "semibold", "color": "tertiary" },
+    "jobLabel": { "size": 10, "weight": "semibold", "color": "text", "marquee": true }
+  },
+
+  "progressSummary": {
+    "spacing": 7,
+    "align": "centerY",
+    "order": ["percentLabel", "etaMetric", "layerMetric", "spacer"],
+    "percentLabel": { "size": 22, "mono": true, "weight": "semibold", "color": "accent" },
+    "etaMetric": { "icon": "clock", "chip": true, "format": "Xh Ym · HH:MM" },
+    "layerMetric": { "icon": "square.3.layers.3d", "chip": false, "format": "current/total" }
+  },
+
+  "progressBar": {
+    "height": 8,
+    "segments": 32,
+    "segmentGap": 2,
+    "segmentRadius": 1,
+    "activeColor": "tintColor(accent)",
+    "inactiveColor": "rgba(label,0.12)",
+    "activeCount": "round(value/100 * 32)"
+  },
+
+  "tempBento": {
+    "height": 34,
+    "background": "surface",
+    "border": "line 1px",
+    "radius": 10.5,
+    "distribution": "fillEqually",
+    "zoneOrderSingle": ["DYSZA", "STOL", "KOMORA?"],
+    "zoneOrderDual": ["DYSZE L", "P", "STOL", "KOMORA?"],
+    "chamberShownOnlyIfReading": true,
+    "zone": {
+      "bg": "rgba(255,255,255,0.012)",
+      "ambientGradient": ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.008)", "rgba(255,255,255,0)"],
+      "accentLine": "line",
+      "separator": "line 1px (from 2nd zone)",
+      "label": { "size": 7, "mono": true, "weight": "semibold", "color": "tertiary", "insetTop": 3, "insetLeft": 6 },
+      "value": { "size": 14, "mono": true, "weight": "semibold", "color": "zone-token" },
+      "target": { "size": 8, "mono": true, "weight": "regular", "color": "tertiary", "emptyText": "/ —" }
+    }
+  },
+
+  "statusColorContract": {
+    "card": "always accent (neutral); state read from text + icon",
+    "listRow": "neutral; error -> statusPrinting on icon + wash 0.08; stale -> systemOrange",
+    "printingColorApplied": false
+  },
+
+  "filamentDock": {
+    "rowGap": 6,
+    "groupGap": 6,
+    "maxGroupsPerRow": 2,
+    "groupWidthProportionalTo": "declaredCapacity",
+    "minWidthExternal": 58,
+    "minWidthWithBadge": 118
+  },
+
+  "filamentGroup": {
+    "background": "rgba(255,255,255,0.075)",
+    "border": "line 1px",
+    "radius": 10.5,
+    "inset": { "left": 6, "right": 6, "top": 4, "bottom": 4 },
+    "headerToSlotsSpacing": 3,
+    "shortName": { "AMS A": "AMS", "AMS HT": "HT", "CFS 1": "CFS 1", "MMU": "MMU", "EXT": "EXT" },
+    "name": { "size": 10, "weight": "semibold", "color": "text" },
+    "badge": {
+      "iconSize": 8,
+      "textSize": 9,
+      "humidity": { "icon": "drop.fill", "color": "humidity", "highColor": "statusPaused", "highThreshold": { "scale5": 4, "percent": 40 } },
+      "temperature": { "icon": "thermometer.medium", "color": "sensorTemp" }
+    },
+    "slots": {
+      "spacing": 5,
+      "multi": "fillEqually",
+      "singleCentered": true,
+      "singleChipMaxWidth": { "ams": 60, "ext": 96 }
+    }
+  },
+
+  "filamentSlot": {
+    "swatchHeight": 18,
+    "swatchMaxWidth": { "ams": 56, "ext": 92 },
+    "borderActive": { "color": "rgba(255,255,255,0.8)", "width": 1.5 },
+    "borderPresent": { "color": "rgba(0,0,0,0.12)", "width": 0.5 },
+    "borderEmpty": { "color": "separator", "width": 0.5 },
+    "meta": {
+      "height": 11,
+      "slotId": { "size": 7.5, "mono": true, "weight": "medium", "color": "muted", "align": "leading" },
+      "material": { "size": 10, "weight": "semibold", "color": "text", "align": "center", "truncate": true }
+    },
+    "percentInSwatch": {
+      "size": 9,
+      "mono": true,
+      "weight": "bold",
+      "shadow": { "blur": 1.5, "colorAlpha": 0.4, "colorOppositeOfInk": true },
+      "inkRule": "fill>=0.5 ? contrastingTextColor(color) : white@0.95"
+    },
+    "lowWarningDot": { "size": 6, "color": "systemRed", "condition": "present && !external && remaining<=15", "corner": "topTrailing" }
+  },
+
+  "contrast": {
+    "luminance": "0.299*R + 0.587*G + 0.114*B",
+    "threshold": 0.58,
+    "aboveIsBlack": true
+  },
+
+  "listRow": {
+    "radius": 12,
+    "height": 31,
+    "spacing": 7,
+    "inset": { "left": 9, "right": 10 },
+    "stateIcon": { "size": 14, "tint": "accent", "errorTint": "statusPrinting" },
+    "nameLabel": { "size": 11, "weight": "semibold", "color": "text", "width": 128 },
+    "statusLabel": { "size": 10, "weight": "medium", "align": "right", "stale": "systemOrange", "error": "statusPrinting", "default": "secondary" },
+    "rowTint": { "error": "statusPrinting @0.08", "default": "clear" }
+  },
+
+  "settingsWindow": {
+    "canvas": "#0C0D0E",
+    "sectionCard": { "bg": "card @0.5", "border": "line 1px", "radius": 16, "inset": { "x": 14, "y": 12 } },
+    "sectionTitle": { "size": 10, "weight": "semibold", "color": "muted", "uppercase": true },
+    "sections": ["APPEARANCE", "GENERAL", "PRINTER CARDS", "NOTIFICATIONS", "UPDATES"],
+    "scroll": true,
+    "window": { "width": 460, "height": 640, "resizable": true, "minWidth": 440, "minHeight": 360 }
+  }
+}
