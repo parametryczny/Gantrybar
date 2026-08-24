@@ -29,7 +29,13 @@ jobs:
       - name: Build
         run: dotnet build Gantry.Windows/Gantry.Windows.csproj -c Release --no-restore
       - name: Test Bambu Studio config import
-        run: .\Gantry.Windows\bin\Release\net8.0-windows\Gantry.exe --self-test
+        shell: pwsh
+        # TFM-independent: find the built Gantry.exe regardless of the net8.0-windows(10.0.x) folder.
+        run: |
+          $exe = Get-ChildItem -Path Gantry.Windows\bin\Release -Recurse -Filter Gantry.exe | Select-Object -First 1
+          if (-not $exe) { throw "Gantry.exe not found after build." }
+          & $exe.FullName --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # Self-contained FOLDER publish (not a self-extracting single-file exe). The self-extract
       # pattern is the main trigger for Avast/SmartScreen false positives — see issue #20.
       - name: Publish self-contained app
