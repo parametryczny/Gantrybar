@@ -560,7 +560,7 @@ public partial class DashboardWindow : Window
             }
             _percent = new TextBlock { FontSize = 22, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             _progressRow.Children.Add(_percent);
-            _eta = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            _eta = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Padding = new Thickness(0), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             _progressRow.Children.Add(_eta);
             // Layers ride the progress line next to ETA (macOS layout) — dead space put to use.
             var layersCluster = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -866,12 +866,22 @@ public partial class DashboardWindow : Window
             });
             var valueBlock = new TextBlock
             {
-                Text = value, FontFamily = new FontFamily("Consolas"), FontSize = 14,
+                FontFamily = new FontFamily("Consolas"), FontSize = 14,
                 FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 6, 3, 0),
-                // The one spot of colour per zone: the live temperature carries its zone hue.
-                Foreground = colour ?? GTheme.Brush(GTheme.Text)
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 6, 3, 0)
             };
+            // The one spot of colour per zone is the live value; the target "/ X°" stays small and faint.
+            int slash = value.IndexOf('/');
+            if (slash >= 0)
+            {
+                valueBlock.Inlines.Add(new System.Windows.Documents.Run(value.Substring(0, slash)) { Foreground = colour ?? GTheme.Brush(GTheme.Text) });
+                valueBlock.Inlines.Add(new System.Windows.Documents.Run(" " + value.Substring(slash)) { FontSize = 9, Foreground = GTheme.Brush(GTheme.Muted) });
+            }
+            else
+            {
+                valueBlock.Text = value;
+                valueBlock.Foreground = colour ?? GTheme.Brush(GTheme.Text);
+            }
             cell.Children.Add(valueBlock);
             // Neutral tile with a faint top-light; a thin line separates zones (no coloured washes).
             var zone = new Border
