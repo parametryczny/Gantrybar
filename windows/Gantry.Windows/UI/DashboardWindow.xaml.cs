@@ -1004,13 +1004,19 @@ public partial class DashboardWindow : Window
             ToolTip = $"{slot.Label} • {(slot.Material ?? "—")}" + (slot.RemainingPercent is { } r ? $" • {r}%" : "")
         };
         if (present && slot.RemainingPercent is not null)
-            swatch.Child = new Border
+        {
+            // Fill rises from the bottom with a gentle wavy top (like liquid), not a flat cut.
+            var fill = new System.Windows.Shapes.Path { Fill = new SolidColorBrush(color) };
+            double fillHeight = SwatchHeight * frac;
+            swatch.Child = fill;
+            swatch.SizeChanged += (_, _) =>
             {
-                Background = new SolidColorBrush(color),
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Height = SwatchHeight * frac,
-                CornerRadius = new CornerRadius(0, 0, 5, 5)
+                double w = swatch.ActualWidth;
+                if (w <= 0) return;
+                fill.Data = BuildWaveFill(w, SwatchHeight, fillHeight);
+                swatch.Clip = new RectangleGeometry(new Rect(0, 0, w, SwatchHeight), 6, 6);
             };
+        }
         swatchGrid.Children.Add(swatch);
         // Remaining % lives INSIDE the colour chip, in a contrasting ink. The centred number is only
         // over the SOLID fill once it reaches the middle; below that it sits over the dim (dark) part,
@@ -1055,6 +1061,30 @@ public partial class DashboardWindow : Window
         panel.Children.Add(swatchElement);
         panel.Children.Add(meta);
         return panel;
+    }
+
+    /// <summary>A filled shape from the bottom of the chip up to <paramref name="fillHeight"/>, whose
+    /// top edge is a gentle sine wave (liquid look) instead of a flat line.</summary>
+    private static Geometry BuildWaveFill(double w, double h, double fillHeight)
+    {
+        double topY = h - fillHeight;
+        double amp = Math.Min(1.6, fillHeight / 2);
+        const double waves = 1.5;
+        var figure = new PathFigure { StartPoint = new Point(0, h), IsClosed = true, IsFilled = true };
+        figure.Segments.Add(new LineSegment(new Point(0, topY), false));   // up the left edge
+        var pts = new PointCollection();
+        const int n = 28;
+        for (int i = 0; i <= n; i++)
+        {
+            double x = w * i / n;
+            double y = topY - amp * Math.Sin(2 * Math.PI * waves * i / n);
+            pts.Add(new Point(x, y));
+        }
+        figure.Segments.Add(new PolyLineSegment(pts, false));
+        figure.Segments.Add(new LineSegment(new Point(w, h), false));      // down the right edge
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        return geometry;
     }
 
     /// <summary>Short group header that never truncates to "AM…": "AMS A" → "AMS", "AMS HT" → "HT".</summary>
