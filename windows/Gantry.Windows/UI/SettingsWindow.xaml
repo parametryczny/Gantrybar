@@ -101,6 +101,16 @@
                 </StackPanel>
             </Border>
 
+            <TextBlock x:Name="CardsHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
+            <Border Background="#80151719" CornerRadius="16" Padding="16,10" BorderBrush="#17FFFFFF" BorderThickness="1">
+                <StackPanel>
+                    <CheckBox x:Name="CardFileNameCheckBox" Margin="0,6"/>
+                    <CheckBox x:Name="CardProgressCheckBox" Margin="0,6"/>
+                    <CheckBox x:Name="CardTempsCheckBox" Margin="0,6"/>
+                    <CheckBox x:Name="CardFilamentsCheckBox" Margin="0,6"/>
+                </StackPanel>
+            </Border>
+
             <TextBlock x:Name="NotificationsHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
             <Border Background="#80151719" CornerRadius="16" Padding="16,10" BorderBrush="#17FFFFFF" BorderThickness="1">
                 <StackPanel>

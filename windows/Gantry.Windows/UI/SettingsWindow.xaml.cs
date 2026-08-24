@@ -35,6 +35,10 @@ public partial class SettingsWindow : Window
         PrintPausedCheckBox.Click += (_, _) => AppSettings.NotifyPrintPaused = PrintPausedCheckBox.IsChecked == true;
         LowFilamentCheckBox.Click += (_, _) => AppSettings.NotifyLowFilament = LowFilamentCheckBox.IsChecked == true;
         HighHumidityCheckBox.Click += (_, _) => AppSettings.NotifyHighAmsHumidity = HighHumidityCheckBox.IsChecked == true;
+        CardFileNameCheckBox.Click += (_, _) => AppSettings.CardShowFileName = CardFileNameCheckBox.IsChecked == true;
+        CardProgressCheckBox.Click += (_, _) => AppSettings.CardShowProgress = CardProgressCheckBox.IsChecked == true;
+        CardTempsCheckBox.Click += (_, _) => AppSettings.CardShowTemperatures = CardTempsCheckBox.IsChecked == true;
+        CardFilamentsCheckBox.Click += (_, _) => AppSettings.CardShowFilaments = CardFilamentsCheckBox.IsChecked == true;
         CheckUpdatesButton.Click += async (_, _) => await CheckUpdatesAsync();
         QuietHoursCheckBox.Click += (_, _) => { QuietHours.Enabled = QuietHoursCheckBox.IsChecked == true; QuietTimesRow.IsEnabled = QuietHoursCheckBox.IsChecked == true; };
         QuietStartBox.LostFocus += (_, _) => SaveQuietTimes();
@@ -81,6 +85,12 @@ public partial class SettingsWindow : Window
             "Off by default for safety: stops a planted rule from silently running code. Each rule still asks for confirmation the first time it fires.");
         AutoUpdateCheckBox.Content = AppSettings.Text("Automatycznie pobieraj i instaluj aktualizacje", "Download and install updates automatically");
 
+        CardsHeading.Text = AppSettings.Text("KARTY DRUKAREK", "PRINTER CARDS");
+        CardFileNameCheckBox.Content = AppSettings.Text("Nazwa pliku", "File name");
+        CardProgressCheckBox.Content = AppSettings.Text("Postęp", "Progress");
+        CardTempsCheckBox.Content = AppSettings.Text("Temperatury", "Temperatures");
+        CardFilamentsCheckBox.Content = AppSettings.Text("Filamenty / AMS", "Filaments / AMS");
+
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
         PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished");
         PrinterErrorCheckBox.Content = AppSettings.Text("Błąd drukarki", "Printer error");
@@ -117,6 +127,10 @@ public partial class SettingsWindow : Window
         PrintPausedCheckBox.IsChecked = AppSettings.NotifyPrintPaused;
         LowFilamentCheckBox.IsChecked = AppSettings.NotifyLowFilament;
         HighHumidityCheckBox.IsChecked = AppSettings.NotifyHighAmsHumidity;
+        CardFileNameCheckBox.IsChecked = AppSettings.CardShowFileName;
+        CardProgressCheckBox.IsChecked = AppSettings.CardShowProgress;
+        CardTempsCheckBox.IsChecked = AppSettings.CardShowTemperatures;
+        CardFilamentsCheckBox.IsChecked = AppSettings.CardShowFilaments;
         QuietHoursCheckBox.IsChecked = QuietHours.Enabled;
         QuietStartBox.Text = MinutesToText(QuietHours.StartMinutes);
         QuietEndBox.Text = MinutesToText(QuietHours.EndMinutes);

@@ -194,6 +194,28 @@ public static class AppSettings
         set => Defaults.SetInt("dashboard-columns", Math.Clamp(value, 1, 2));
     }
 
+    // What each fleet card shows (Settings → "Karty drukarek"). All on by default.
+    public static bool CardShowFileName
+    {
+        get => Defaults.GetBool("card-show-filename", true);
+        set => Defaults.SetBool("card-show-filename", value);
+    }
+    public static bool CardShowProgress
+    {
+        get => Defaults.GetBool("card-show-progress", true);
+        set => Defaults.SetBool("card-show-progress", value);
+    }
+    public static bool CardShowTemperatures
+    {
+        get => Defaults.GetBool("card-show-temps", true);
+        set => Defaults.SetBool("card-show-temps", value);
+    }
+    public static bool CardShowFilaments
+    {
+        get => Defaults.GetBool("card-show-filaments", true);
+        set => Defaults.SetBool("card-show-filaments", value);
+    }
+
     // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     public static bool SpoolbaseEnabled
     {

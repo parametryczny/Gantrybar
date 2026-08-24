@@ -460,8 +460,9 @@ public partial class DashboardWindow : Window
         public string Serial { get; }
         private readonly DashboardWindow _owner;
         private Point _dragStart;
-        private readonly TextBlock _name, _connection, _pillText, _job, _percent, _eta, _layers, _message;
+        private readonly TextBlock _name, _connection, _pillText, _job, _jobSeparator, _percent, _eta, _layers, _message;
         private readonly Grid _bar;
+        private readonly StackPanel _progressRow;
         // Temperature rows (nozzle(s)/bed/chamber) and the filament dock are rebuilt per update.
         private readonly StackPanel _temps;
         private readonly StackPanel _ams;
@@ -481,7 +482,7 @@ public partial class DashboardWindow : Window
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var grip = new TextBlock
             {
-                Text = "⌵⌃", FontSize = 12, Foreground = Muted(), Margin = new Thickness(0, 0, 7, 0),
+                Text = "⠿", FontSize = 13, Foreground = Muted(), Margin = new Thickness(0, 0, 7, 0),
                 VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll,
                 ToolTip = "Przeciągnij, aby zmienić kolejność • Drag to reorder"
             };
@@ -542,14 +543,14 @@ public partial class DashboardWindow : Window
             _pillText = new TextBlock { FontSize = 10, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_pillText, 0);
             statusLine.Children.Add(_pillText);
-            var separator = new TextBlock { Text = " · ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(separator, 1); statusLine.Children.Add(separator);
+            _jobSeparator = new TextBlock { Text = " · ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(_jobSeparator, 1); statusLine.Children.Add(_jobSeparator);
             // Full-width file name now that layers moved to the progress row — no more truncation race.
             _job = new TextBlock { Foreground = GTheme.Brush(GTheme.Text), FontSize = 10, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_job, 2); Grid.SetColumnSpan(_job, 2); statusLine.Children.Add(_job);
             jobStack.Children.Add(statusLine);
 
-            var progressRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+            _progressRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
             _bar = new Grid { Height = 8 };
             for (int i = 0; i < 32; i++)
             {
@@ -558,16 +559,16 @@ public partial class DashboardWindow : Window
                 Grid.SetColumn(segment, i); _bar.Children.Add(segment);
             }
             _percent = new TextBlock { FontSize = 22, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-            progressRow.Children.Add(_percent);
+            _progressRow.Children.Add(_percent);
             _eta = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            progressRow.Children.Add(_eta);
+            _progressRow.Children.Add(_eta);
             // Layers ride the progress line next to ETA (macOS layout) — dead space put to use.
             var layersCluster = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             layersCluster.Children.Add(new TextBlock { Text = "⧉ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
             _layers = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
             layersCluster.Children.Add(_layers);
-            progressRow.Children.Add(layersCluster);
-            jobStack.Children.Add(progressRow);
+            _progressRow.Children.Add(layersCluster);
+            jobStack.Children.Add(_progressRow);
             jobStack.Children.Add(_bar);
             stack.Children.Add(new Border
             {
@@ -670,13 +671,18 @@ public partial class DashboardWindow : Window
             // wide and an EXT stays narrow, sized by slot count with the external counting for less.
             _ams.Children.Clear();
             var groups = t.FilamentGroups;
-            if (groups.Count > 0)
-            {
-                _ams.Visibility = Visibility.Visible;
+            bool hasGroups = groups.Count > 0;
+            if (hasGroups)
                 for (int i = 0; i < groups.Count; i += 2)
                     _ams.Children.Add(FilamentRow(groups.Skip(i).Take(2).ToList()));
-            }
-            else _ams.Visibility = Visibility.Collapsed;
+
+            // User-controlled card content (Settings → "Karty drukarek").
+            var collapse = Visibility.Collapsed;
+            var show = Visibility.Visible;
+            _job.Visibility = _jobSeparator.Visibility = AppSettings.CardShowFileName ? show : collapse;
+            _progressRow.Visibility = _bar.Visibility = AppSettings.CardShowProgress ? show : collapse;
+            _temps.Visibility = AppSettings.CardShowTemperatures ? show : collapse;
+            _ams.Visibility = hasGroups && AppSettings.CardShowFilaments ? show : collapse;
 
             if (string.IsNullOrEmpty(message)) _message.Visibility = Visibility.Collapsed;
             else { _message.Text = message; _message.Visibility = Visibility.Visible; }
