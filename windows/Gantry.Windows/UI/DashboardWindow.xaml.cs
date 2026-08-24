@@ -1068,7 +1068,7 @@ public partial class DashboardWindow : Window
     private static Geometry BuildWaveFill(double w, double h, double fillHeight)
     {
         double topY = h - fillHeight;
-        double amp = Math.Min(1.6, fillHeight / 2);
+        double amp = Math.Min(0.8, fillHeight / 2);
         const double waves = 1.5;
         var figure = new PathFigure { StartPoint = new Point(0, h), IsClosed = true, IsFilled = true };
         figure.Segments.Add(new LineSegment(new Point(0, topY), false));   // up the left edge
