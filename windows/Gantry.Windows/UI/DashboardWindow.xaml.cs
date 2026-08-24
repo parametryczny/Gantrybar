@@ -341,7 +341,7 @@ public partial class DashboardWindow : Window
             CardsPanel.RowDefinitions.Clear();
             if (compact)
             {
-                Width = 540;
+                Width = 500;
                 CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 for (int row = 0; row < _store.Printers.Count; row++)
                 {
@@ -357,7 +357,7 @@ public partial class DashboardWindow : Window
                 // macOS contract: user picks 1 or 2 columns. A wide card (dual-nozzle / multi-AMS) spans
                 // the full width; a lone last card also stretches full width (the 2-2-1 rule).
                 int cols = AppSettings.DashboardColumns;
-                Width = cols == 1 ? 460 : 840;
+                Width = cols == 1 ? 400 : 600;
                 for (int i = 0; i < cols; i++)
                     CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 int row = 0, column = 0;
