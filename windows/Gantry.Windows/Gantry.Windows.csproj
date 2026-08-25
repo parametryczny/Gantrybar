@@ -34,6 +34,8 @@
     <Content Include="Assets\filament-catalog.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Gantry wordmark logo (embedded resource, used in the dashboard header). -->
+    <Resource Include="Assets\wordmark.png" />
   </ItemGroup>
 
   <!-- WPF + WinForms both add implicit global usings; drop the WinForms ones so WPF types

@@ -529,11 +529,16 @@ public partial class DashboardWindow : Window
             };
             header.Children.Add(grip);
             _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(_name, 1);
-            header.Children.Add(_name);
+            // Printer glyph before the name, like the macOS card.
+            var printerIcon = new TextBlock { Text = "\uE749", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, Foreground = GTheme.Brush(GTheme.Accent), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+            var nameRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            nameRow.Children.Add(printerIcon);
+            nameRow.Children.Add(_name);
+            Grid.SetColumn(nameRow, 1);
+            header.Children.Add(nameRow);
             _connection = new TextBlock
             {
-                FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.SemiBold,
+                FontFamily = new FontFamily("Segoe UI"), FontSize = 9, FontWeight = FontWeights.SemiBold,
                 Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center
             };
             // Quiet "MQTT" pill next to the name, like the macOS manufacturer chip.
@@ -591,8 +596,9 @@ public partial class DashboardWindow : Window
                 Grid.SetColumn(segment, i); _bar.Children.Add(segment);
             }
             _percent = new TextBlock { FontSize = 22, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            Typography.SetNumeralAlignment(_percent, FontNumeralAlignment.Tabular);
             _progressRow.Children.Add(_percent);
-            _eta = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Padding = new Thickness(0), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            _eta = new TextBlock { FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Padding = new Thickness(0), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             _progressRow.Children.Add(_eta);
             // Layers ride the progress line next to ETA (macOS layout) — dead space put to use.
             var layersCluster = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -930,13 +936,13 @@ public partial class DashboardWindow : Window
             var cell = new Grid { Height = 34 };
             cell.Children.Add(new TextBlock
             {
-                Text = label.ToUpperInvariant(), FontFamily = new FontFamily("Consolas"), FontSize = 7,
+                Text = label.ToUpperInvariant(), FontFamily = new FontFamily("Segoe UI"), FontSize = 7,
                 FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Margin = new Thickness(6, 3, 4, 0),
                 VerticalAlignment = VerticalAlignment.Top, TextTrimming = TextTrimming.CharacterEllipsis
             });
             var valueBlock = new TextBlock
             {
-                FontFamily = new FontFamily("Consolas"), FontSize = 14,
+                FontFamily = new FontFamily("Segoe UI"), FontSize = 14,
                 FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 6, 3, 0)
             };
@@ -1121,7 +1127,7 @@ public partial class DashboardWindow : Window
             swatchGrid.Children.Add(new TextBlock
             {
                 Text = $"{pct}%",
-                FontFamily = new FontFamily("Consolas"), FontSize = 10.5, FontWeight = FontWeights.Bold,
+                FontFamily = new FontFamily("Segoe UI"), FontSize = 10.5, FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(ink),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(3, 0, 3, 0)
@@ -1143,7 +1149,7 @@ public partial class DashboardWindow : Window
         // Caption under the swatch: slot id (quiet, leading) + material (primary, centred).
         var meta = new Grid { Margin = new Thickness(0, 1, 0, 0) };
         if (!external)
-            meta.Children.Add(new TextBlock { Text = slot.Label, FontFamily = new FontFamily("Consolas"), FontSize = 7, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center });
+            meta.Children.Add(new TextBlock { Text = slot.Label, FontFamily = new FontFamily("Segoe UI"), FontSize = 7, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center });
         meta.Children.Add(new TextBlock
         {
             Text = present ? materialText : "—",
