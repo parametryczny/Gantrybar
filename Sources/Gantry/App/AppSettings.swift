@@ -57,6 +57,10 @@ final class AppSettings: ObservableObject {
     /// Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     @Published var spoolbaseEnabled: Bool { didSet { defaults.set(spoolbaseEnabled, forKey: "spoolbase-enabled") } }
 
+    /// Whether the read-only LAN web dashboard (http://<host>.local:8787) runs. Off keeps Gantry a
+    /// pure desktop app with no listening socket.
+    @Published var webDashboardEnabled: Bool { didSet { defaults.set(webDashboardEnabled, forKey: "web-dashboard-enabled") } }
+
     /// Download and install new releases automatically (verifying the signature) instead of only
     /// notifying that one is available.
     @Published var autoUpdate: Bool { didSet { defaults.set(autoUpdate, forKey: "auto-update") } }
@@ -64,6 +68,12 @@ final class AppSettings: ObservableObject {
     /// Developer mode: reveals the printer control + automations tile in the detail card. Off by
     /// default so casual users get a pure monitor without control surfaces.
     @Published var developerMode: Bool { didSet { defaults.set(developerMode, forKey: "developer-mode") } }
+
+    // What each fleet card shows (customisable in Settings).
+    @Published var cardShowFileName: Bool { didSet { defaults.set(cardShowFileName, forKey: "card-show-filename") } }
+    @Published var cardShowProgress: Bool { didSet { defaults.set(cardShowProgress, forKey: "card-show-progress") } }
+    @Published var cardShowTemperatures: Bool { didSet { defaults.set(cardShowTemperatures, forKey: "card-show-temps") } }
+    @Published var cardShowFilaments: Bool { didSet { defaults.set(cardShowFilaments, forKey: "card-show-filaments") } }
 
     /// Security kill switch for automation actions that execute code: `.script` (runs a program on this
     /// Mac) and `.command` (an arbitrary raw MQTT/G-code command). OFF by default so a tampered or planted
@@ -112,8 +122,13 @@ final class AppSettings: ObservableObject {
         theme = AppTheme(rawValue: defaults.string(forKey: "app-theme") ?? "dark") ?? .dark
         panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
         spoolbaseEnabled = defaults.object(forKey: "spoolbase-enabled") as? Bool ?? true
+        webDashboardEnabled = defaults.object(forKey: "web-dashboard-enabled") as? Bool ?? true
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
+        cardShowFileName = defaults.object(forKey: "card-show-filename") as? Bool ?? true
+        cardShowProgress = defaults.object(forKey: "card-show-progress") as? Bool ?? true
+        cardShowTemperatures = defaults.object(forKey: "card-show-temps") as? Bool ?? true
+        cardShowFilaments = defaults.object(forKey: "card-show-filaments") as? Bool ?? true
         allowScriptActions = defaults.object(forKey: "allow-script-actions") as? Bool ?? false
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true

@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gantry — szczegóły drukarki</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #0c0d0e;
+      --card: #151719;
+      --surface: rgba(255,255,255,.052);
+      --surface-strong: rgba(255,255,255,.075);
+      --line: rgba(255,255,255,.09);
+      --text: #f2f3f1;
+      --secondary: #a7aaa6;
+      --muted: #6d716e;
+      --accent: #d4d7d3;
+      --accent-soft: rgba(212,215,211,.12);
+      --nozzle: 255,138,97;
+      --bed: 239,189,95;
+      --chamber: 187,165,239;
+      --humidity: #73cfad;
+      --sensor-temp: #efa25f;
+      --radius-card: 16px;
+      --radius-tile: 10.5px;
+      --gap: 8px;
+      --ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 50% -12%, rgba(255,255,255,.055), transparent 31%), var(--canvas);
+      color: var(--text);
+      font-family: var(--ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { color: inherit; font: inherit; }
+    .page { width: min(100%, 640px); margin: 0 auto; padding: 12px 14px 24px; }
+
+    .topbar {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .back,
+    .icon-button,
+    .action {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      cursor: pointer;
+    }
+
+    .back { height: 30px; padding: 0 11px 0 8px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+    .back:hover, .icon-button:hover, .action:hover { background: var(--surface-strong); }
+
+    .printer-heading { min-width: 0; display: flex; align-items: center; gap: 7px; }
+    .printer-heading strong { overflow: hidden; font-size: 15px; letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
+    .connection {
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .12em;
+    }
+
+    .live-state { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--accent); font-size: 12px; font-weight: 750; }
+    .live-state::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 9px var(--accent-soft); content: ""; }
+    .icon-button { width: 30px; height: 30px; border-radius: 50%; color: var(--secondary); font-size: 15px; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-auto-flow: row dense;
+      grid-auto-rows: 1px;
+      align-items: start;
+      gap: var(--gap);
+    }
+    .card {
+      grid-column: 1 / -1;
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      background: var(--card);
+      box-shadow: 0 24px 70px rgba(0,0,0,.35), inset 0 1px rgba(255,255,255,.03);
+    }
+
+    .section-head { min-height: 22px; display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+    .section-head h2 { margin: 0; color: var(--secondary); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .section-head .meta { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 9px; }
+    .grip { width: 17px; height: 17px; display: grid; grid-template-columns: repeat(3,3px); gap: 2px; place-content: center; margin-left: auto; opacity: .55; }
+    .grip i { width: 3px; height: 3px; border-radius: 50%; background: var(--secondary); }
+
+    .hero { padding: 11px 12px 10px; }
+    .hero-line { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 12px; }
+    .state-label { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 11px; font-weight: 750; }
+    .state-label::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+    .file-name { display: block; overflow: hidden; margin-top: 3px; font-size: 15px; font-weight: 720; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
+    .percent { font-family: var(--mono); font-size: 34px; font-weight: 680; letter-spacing: -.09em; line-height: .9; }
+    .percent small { margin-left: 2px; color: var(--muted); font-size: 11px; letter-spacing: 0; }
+    .hero-meta { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
+    .eta {
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #c9ccc8;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 650;
+    }
+    .layers { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 9px; }
+    .progress { display: grid; grid-template-columns: repeat(32,1fr); gap: 3px; margin-top: 8px; }
+    .progress i { height: 6px; border-radius: 1.5px; background: rgba(255,255,255,.12); }
+    .progress i.active { background: var(--accent); }
+
+    .camera-card { padding-bottom: 9px; }
+    .hero { order: 1; }
+    .camera-card { order: 2; }
+    .material-card { order: 3; }
+    .temperature-card { order: 4; }
+    .fans-card { order: 5; }
+    .controls-card { order: 6; }
+    .customize { order: 7; }
+    .camera-feed {
+      position: relative;
+      overflow: hidden;
+      aspect-ratio: 16 / 8.7;
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: var(--radius-tile);
+      background-color: #080909;
+      background-image:
+        linear-gradient(180deg, transparent 70%, rgba(0,0,0,.34)),
+        url("file:///Users/kamilgrzegorczyk/Desktop/Zrzut%20ekranu%202026-08-22%20o%2010.11.21.png");
+      background-position: center, center 45%;
+      background-size: cover, 122% auto;
+    }
+    .camera-badge {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 7px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 7px;
+      background: rgba(7,8,8,.72);
+      backdrop-filter: blur(9px);
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 700;
+    }
+    .camera-badge::before { width: 5px; height: 5px; border-radius: 50%; background: #f45d5d; box-shadow: 0 0 7px rgba(244,93,93,.5); content: ""; }
+    .camera-info { position: absolute; right: 8px; bottom: 8px; padding: 3px 6px; border-radius: 6px; background: rgba(7,8,8,.68); color: #b9bcb8; font-family: var(--mono); font-size: 8px; }
+
+    .temperature-card { grid-column: span 3; padding-bottom: 9px; }
+    .chart {
+      position: relative;
+      height: 94px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.055);
+      border-radius: var(--radius-tile);
+      background: rgba(255,255,255,.025);
+    }
+    .chart svg { width: 100%; height: 100%; display: block; }
+    .chart text { fill: var(--muted); font-family: var(--mono); font-size: 8px; }
+    .grid-line { stroke: rgba(255,255,255,.11); stroke-width: 1; }
+    .line-nozzle { fill: none; stroke: rgb(var(--nozzle)); stroke-width: 2.2; }
+    .line-bed { fill: none; stroke: rgb(var(--bed)); stroke-width: 2; }
+    .line-chamber { fill: none; stroke: rgb(var(--chamber)); stroke-width: 2; }
+
+    .temp-zones { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; margin-top: 7px; }
+    .temp-zone {
+      --zone: 255,255,255;
+      position: relative;
+      min-width: 0;
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      isolation: isolate;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-tile);
+      background: var(--surface);
+    }
+    .temp-zone.nozzle { --zone: var(--nozzle); }
+    .temp-zone.bed { --zone: var(--bed); }
+    .temp-zone.chamber { --zone: var(--chamber); }
+    .temp-zone::before {
+      position: absolute;
+      top: 4px;
+      left: 6px;
+      padding-left: 8px;
+      color: rgba(255,255,255,.52);
+      background: radial-gradient(circle at 2px 50%, rgba(var(--zone),.95) 0 1.7px, transparent 1.9px);
+      font-family: var(--mono);
+      font-size: 7px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      content: attr(data-label);
+    }
+    .temp-zone::after { position: absolute; z-index: -1; pointer-events: none; content: ""; }
+    .temp-zone.nozzle::after {
+      inset: 0;
+      border-top: 1px solid rgba(var(--zone),.28);
+      background: radial-gradient(ellipse 44% 120% at 7% 100%, rgba(var(--zone),.18), transparent 72%);
+    }
+    .temp-zone.bed::after {
+      inset: 0;
+      border-top: 1px solid rgba(var(--zone),.28);
+      background: linear-gradient(0deg, rgba(var(--zone),.16) 0 16%, rgba(var(--zone),.035) 17%, transparent 70%);
+    }
+    .temp-zone.chamber::after {
+      inset: 5px 6px;
+      border: 1px solid rgba(var(--zone),.16);
+      border-radius: 5px;
+      background: radial-gradient(circle, rgba(var(--zone),.08), transparent 75%);
+    }
+    .temp-reading { display: flex; align-items: baseline; gap: 4px; transform: translateY(5px); white-space: nowrap; }
+    .temp-reading strong { font-family: var(--mono); font-size: 18px; letter-spacing: -.07em; }
+    .temp-reading span { color: var(--muted); font-family: var(--mono); font-size: 9px; }
+    .temp-reading span::before { margin-right: 3px; color: rgba(255,255,255,.2); content: "/"; }
+
+    .fans-card { grid-column: span 3; }
+    .controls-card { grid-column: span 3; }
+    .fan-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+    .fan {
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-tile);
+      background: var(--surface);
+    }
+    .fan span { display: block; overflow: hidden; color: var(--muted); font-size: 8px; font-weight: 750; letter-spacing: .04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+    .fan strong { display: block; margin-top: 4px; font-family: var(--mono); font-size: 17px; }
+    .fan-meter { display: grid; grid-template-columns: repeat(8,1fr); gap: 2px; margin-top: 6px; }
+    .fan-meter i { height: 3px; border-radius: 1px; background: rgba(255,255,255,.1); }
+    .fan-meter i.on { background: var(--accent); }
+    .speed-row { display: flex; align-items: baseline; gap: 7px; margin-top: 8px; color: var(--secondary); font-size: 10px; }
+    .speed-row strong { color: var(--text); font-size: 12px; }
+    .speed-row span:last-child { margin-left: auto; font-family: var(--mono); }
+
+    .control-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+    .action { min-height: 36px; border-radius: var(--radius-tile); font-size: 10px; font-weight: 750; }
+    .action.wide { grid-column: 1 / -1; }
+    .action.active { border-color: rgba(255,255,255,.17); background: var(--surface-strong); }
+
+    .customize {
+      grid-column: 1 / -1;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,.035);
+      color: var(--secondary);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .customize:hover { border-color: rgba(255,255,255,.2); background: var(--surface); color: var(--text); }
+
+    .material-card { grid-column: span 3; padding-bottom: 9px; }
+    .material-bento { display: flex; align-items: stretch; gap: 7px; }
+    .module {
+      min-width: 0;
+      flex: 4 1 0;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-tile);
+      background: var(--surface-strong);
+    }
+    .module.external { flex: 1.25 1 0; min-width: 64px; }
+    .module-head { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+    .module-head strong { font-size: 12px; }
+    .environment { display: flex; gap: 6px; margin-left: auto; color: var(--secondary); font-family: var(--mono); font-size: 9px; }
+    .environment i { color: var(--humidity); font-style: normal; }
+    .environment i + i { color: var(--sensor-temp); }
+    .slots { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; }
+    .external .slots { grid-template-columns: 1fr; }
+    .filament {
+      position: relative;
+      height: 24px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 5px;
+      background: var(--filament);
+    }
+    .slot.active .filament { box-shadow: inset 0 0 0 3px #f4f5f2; }
+    .filament::after { position: absolute; top: 0; right: 0; left: 0; height: calc(100% - var(--level)); background: rgba(8,9,9,.48); content: ""; }
+    .slot-meta { position: relative; min-height: 14px; display: grid; place-items: center; margin-top: 3px; }
+    .slot-meta small {
+      position: absolute;
+      top: -27px;
+      left: 3px;
+      padding: 1px 3px;
+      border-radius: 3px;
+      background: rgba(7,8,8,.38);
+      color: rgba(255,255,255,.72);
+      font-family: var(--mono);
+      font-size: 7px;
+    }
+    .slot-meta strong { font-size: 10px; }
+    .slot-level { display: block; margin-top: 2px; color: var(--muted); font-family: var(--mono); font-size: 8px; text-align: center; }
+    .external .slot-meta small { display: none; }
+
+    @media (max-width: 599px) {
+      .page { padding-inline: 9px; }
+      .printer-heading strong { max-width: 120px; }
+      .camera-feed { aspect-ratio: 16 / 10; }
+      .temperature-card, .material-card, .fans-card, .controls-card { grid-column: 1 / -1; }
+      .material-bento { flex-direction: column; }
+      .module.external { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <button class="back">‹ Wróć</button>
+      <div class="printer-heading"><strong>X1 Carbon</strong><span class="connection">MQTT</span></div>
+      <span class="live-state">Drukowanie</span>
+      <button class="icon-button" aria-label="Więcej">•••</button>
+    </header>
+
+    <section class="detail-grid">
+      <article class="card hero">
+        <div class="hero-line">
+          <div><span class="state-label">Drukowanie</span><strong class="file-name">słonecznik_twist_plate_1.3mf</strong></div>
+          <strong class="percent">39<small>%</small></strong>
+        </div>
+        <div class="hero-meta"><span class="eta">ETA 12:29 · 2h 18m</span><span class="layers">Warstwa 31 / 377</span></div>
+        <span class="progress" aria-label="Postęp 39%"></span>
+      </article>
+
+      <article class="card camera-card">
+        <header class="section-head"><h2>Kamera</h2><span class="meta">RTSPS · 1920×1080</span><span class="grip"></span></header>
+        <div class="camera-feed"><span class="camera-badge">LIVE</span><span class="camera-info">12 FPS · 36 ms</span></div>
+      </article>
+
+      <button class="customize">Dostosuj</button>
+
+      <article class="card temperature-card">
+        <header class="section-head"><h2>Temperatury</h2><span class="meta">ostatnie 15 min</span><span class="grip"></span></header>
+        <div class="chart">
+          <svg viewBox="0 0 600 126" preserveAspectRatio="none" aria-label="Wykres temperatur">
+            <line class="grid-line" x1="38" y1="15" x2="590" y2="15"/><line class="grid-line" x1="38" y1="45" x2="590" y2="45"/><line class="grid-line" x1="38" y1="75" x2="590" y2="75"/><line class="grid-line" x1="38" y1="105" x2="590" y2="105"/>
+            <text x="7" y="18">276°</text><text x="7" y="48">207°</text><text x="7" y="78">138°</text><text x="14" y="108">69°</text>
+            <polyline class="line-nozzle" points="38,30 82,29 112,30 148,28 184,30 222,29 260,30 300,28 340,29 382,30 424,29 470,30 510,29 550,30 590,29"/>
+            <polyline class="line-bed" points="38,93 88,93 138,92 188,93 238,93 288,92 338,93 388,93 438,92 488,93 538,93 590,92"/>
+            <polyline class="line-chamber" points="38,101 88,101 138,101 188,100 238,101 288,101 338,100 388,101 438,100 488,101 538,101 590,100"/>
+          </svg>
+        </div>
+        <div class="temp-zones">
+          <div class="temp-zone nozzle" data-label="DYSZA"><span class="temp-reading"><strong>254°</strong><span>255°</span></span></div>
+          <div class="temp-zone bed" data-label="STÓŁ"><span class="temp-reading"><strong>65°</strong><span>65°</span></span></div>
+          <div class="temp-zone chamber" data-label="KOMORA"><span class="temp-reading"><strong>45°</strong><span>—</span></span></div>
+        </div>
+      </article>
+
+      <article class="card fans-card">
+        <header class="section-head"><h2>Wentylatory i prędkość</h2><span class="grip"></span></header>
+        <div class="fan-grid">
+          <div class="fan"><span>Part</span><strong>27%</strong><div class="fan-meter" data-on="2"></div></div>
+          <div class="fan"><span>Aux</span><strong>0%</strong><div class="fan-meter" data-on="0"></div></div>
+          <div class="fan"><span>Chamber</span><strong>67%</strong><div class="fan-meter" data-on="5"></div></div>
+        </div>
+        <div class="speed-row"><span>Prędkość</span><strong>Standard · 100%</strong><span>Ø 0.4 mm</span></div>
+      </article>
+
+      <article class="card controls-card">
+        <header class="section-head"><h2>Sterowanie</h2><span class="grip"></span></header>
+        <div class="control-grid"><button class="action active">Światło wł.</button><button class="action">Światło wył.</button><button class="action wide">Automatyzacje…</button></div>
+      </article>
+
+      <article class="card material-card">
+        <header class="section-head"><h2>Filamenty / AMS</h2><span class="meta">AMS A + EXT</span><span class="grip"></span></header>
+        <div class="material-bento">
+          <section class="module">
+            <header class="module-head"><strong>AMS A</strong><span class="environment"><i>◌ 33%</i><i>♨ 35°</i></span></header>
+            <div class="slots">
+              <div class="slot"><div class="filament" style="--filament:#9da0a1;--level:35%"></div><div class="slot-meta"><small>A1</small><strong>PLA</strong></div><span class="slot-level">35%</span></div>
+              <div class="slot"><div class="filament" style="--filament:#f6d85f;--level:76%"></div><div class="slot-meta"><small>A2</small><strong>PLA</strong></div><span class="slot-level">76%</span></div>
+              <div class="slot"><div class="filament" style="--filament:#d9320b;--level:75%"></div><div class="slot-meta"><small>A3</small><strong>ABS</strong></div><span class="slot-level">75%</span></div>
+              <div class="slot active"><div class="filament" style="--filament:#0b0c0d;--level:97%"></div><div class="slot-meta"><small>A4</small><strong>PLA</strong></div><span class="slot-level">97%</span></div>
+            </div>
+          </section>
+          <section class="module external">
+            <header class="module-head"><strong>EXT</strong></header>
+            <div class="slots"><div class="slot"><div class="filament" style="--filament:#718052;--level:0%"></div><div class="slot-meta"><small>EXT</small><strong>PETG</strong></div><span class="slot-level">0%</span></div></div>
+          </section>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    document.querySelectorAll('.progress').forEach(track => {
+      const active = Math.round(39 * 32 / 100);
+      track.innerHTML = Array.from({length:32}, (_, index) => `<i${index < active ? ' class="active"' : ''}></i>`).join('');
+    });
+
+    document.querySelectorAll('.fan-meter').forEach(meter => {
+      const active = Number(meter.dataset.on || 0);
+      meter.innerHTML = Array.from({length:8}, (_, index) => `<i${index < active ? ' class="on"' : ''}></i>`).join('');
+    });
+
+    document.querySelectorAll('.grip').forEach(grip => {
+      grip.innerHTML = Array.from({length:6}, () => '<i></i>').join('');
+    });
+
+    const detailGrid = document.querySelector('.detail-grid');
+    const fitMasonryItem = item => {
+      const styles = getComputedStyle(detailGrid);
+      const row = parseFloat(styles.gridAutoRows) || 1;
+      const gap = parseFloat(styles.rowGap) || 0;
+      item.style.gridRowEnd = 'auto';
+      const height = item.getBoundingClientRect().height;
+      item.style.gridRowEnd = `span ${Math.ceil((height + gap) / (row + gap))}`;
+    };
+
+    const fitMasonry = () => requestAnimationFrame(() => {
+      [...detailGrid.children].forEach(fitMasonryItem);
+    });
+
+    const masonryObserver = new ResizeObserver(entries => {
+      requestAnimationFrame(() => entries.forEach(entry => fitMasonryItem(entry.target)));
+    });
+    [...detailGrid.children].forEach(item => masonryObserver.observe(item));
+    window.addEventListener('resize', fitMasonry);
+    window.addEventListener('load', fitMasonry);
+    fitMasonry();
+  </script>
+</body>
+</html>

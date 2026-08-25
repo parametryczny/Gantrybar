@@ -1,0 +1,305 @@
+{
+  "$schema": "./gantry-layout.schema.json",
+  "schemaVersion": 1,
+  "layoutVersion": "1.2.0",
+  "meta": {
+    "name": "Gantry Default Layout",
+    "note": "Cross-platform source of truth. Layout depends on available width and printer capabilities, never on the operating system."
+  },
+  "defaults": {
+    "density": "medium",
+    "temperatureStyle": "thermalZones",
+    "emptySpacePolicy": "preserve",
+    "detailPacking": "masonry"
+  },
+  "densityPresets": {
+    "small": {
+      "dashboardWidth": 480,
+      "printerCardWidth": 222,
+      "cardPadding": 6,
+      "cardGap": 4,
+      "typographyScale": 0.94
+    },
+    "medium": {
+      "dashboardWidth": 512,
+      "printerCardWidth": 238,
+      "cardPadding": 6,
+      "cardGap": 4,
+      "typographyScale": 1.0
+    },
+    "large": {
+      "dashboardWidth": 563,
+      "printerCardWidth": 264,
+      "cardPadding": 7,
+      "cardGap": 5,
+      "typographyScale": 1.06
+    }
+  },
+  "breakpoints": {
+    "expanded": {
+      "minWidth": 720,
+      "columns": 6
+    },
+    "wide": {
+      "minWidth": 480,
+      "columns": 6
+    },
+    "medium": {
+      "minWidth": 320,
+      "columns": 4
+    },
+    "narrow": {
+      "minWidth": 0,
+      "columns": 2
+    }
+  },
+  "dashboard": {
+    "outerPadding": 13,
+    "gridGap": 10,
+    "window": {
+      "resizable": true,
+      "minWidth": 320,
+      "maxWidth": 840,
+      "minHeight": 240,
+      "minHeightPolicy": "firstCompleteRow",
+      "maxHeight": 1000,
+      "preferredWidth": {
+        "small": 480,
+        "medium": 512,
+        "large": 563
+      },
+      "rememberSize": true,
+      "sizeScope": "platformLocal"
+    },
+    "placement": {
+      "mode": "anchorAware",
+      "anchor": "trayIcon",
+      "monitorSelection": "anchorCenter",
+      "workArea": "systemWorkArea",
+      "horizontalGrowth": "auto",
+      "verticalGrowth": "auto",
+      "autoStrategy": "mostAvailableSpace",
+      "keepAnchorFixed": true,
+      "screenMargin": 8,
+      "directionHysteresis": 32,
+      "recalculateOn": [
+        "anchorMoved",
+        "monitorChanged",
+        "workAreaChanged"
+      ],
+      "anchorGeometryFallback": [
+        "lastKnownAnchor",
+        "knownPanelEdge",
+        "pointerPosition"
+      ]
+    },
+    "reflow": {
+      "mode": "container",
+      "rowSizing": "maxContent",
+      "cardAlignment": "stretch",
+      "maxPrinterColumns": 3,
+      "columnLimitDefault": "auto",
+      "columnLimitOptions": ["auto", 1, 2, 3],
+      "threeColumnMinWidth": 720,
+      "twoColumnMinWidth": 480,
+      "oneColumnMinWidth": 320,
+      "snap": {
+        "enabled": true,
+        "width": "column",
+        "height": "completeRow",
+        "allowPartialCard": false,
+        "maxTrailingSpace": "outerPadding"
+      },
+      "animate": true,
+      "animationDurationMs": 180
+    },
+    "sort": "manual",
+    "printerCard": {
+      "headerPlacement": "jobBento",
+      "rowHeightAbsorber": "jobBento",
+      "jobIdentityRows": 2,
+      "statusAppearance": {
+        "mode": "cornerGlow",
+        "origin": "topLeading",
+        "surfacePolicy": "preserveNeutral",
+        "shape": {
+          "widthPercent": 125,
+          "heightPercent": 92,
+          "offsetXPercent": -10,
+          "offsetYPercent": -12
+        },
+        "stops": [
+          { "positionPercent": 0, "opacity": 0.24 },
+          { "positionPercent": 38, "opacity": 0.105 },
+          { "positionPercent": 62, "opacity": 0.035 },
+          { "positionPercent": 82, "opacity": 0 }
+        ],
+        "borderOpacity": 0.2,
+        "accentTargets": [
+          "statusDot",
+          "statusLabel",
+          "progressValue",
+          "progressActiveSegments"
+        ],
+        "tokenByStatus": {
+          "printing": "status.printing",
+          "fallback": "status.default"
+        }
+      },
+      "span": {
+        "expanded": 2,
+        "wide": 3,
+        "medium": 4,
+        "narrow": 2
+      },
+      "wideSpan": {
+        "expanded": 4,
+        "wide": 6,
+        "medium": 4,
+        "narrow": 2
+      },
+      "wideWhen": [
+        {
+          "field": "capabilities.dualNozzle",
+          "operator": "equals",
+          "value": true
+        },
+        {
+          "field": "materials.amsCount",
+          "operator": "greaterThanOrEqual",
+          "value": 2
+        }
+      ],
+      "neverStretchOddLastCard": true
+    },
+    "temperature": {
+      "style": "thermalZones",
+      "order": [
+        "nozzle",
+        "bed",
+        "chamber"
+      ],
+      "currentAndTarget": "inline",
+      "dualNozzleLabels": [
+        "P",
+        "L"
+      ]
+    },
+    "materials": {
+      "inlineModuleLimit": 2,
+      "overflowLayout": "grid",
+      "overflowColumns": 2,
+      "singleModuleFillsRow": true,
+      "singleSlotWidthPercent": 48,
+      "singleSlotMaxWidth": 120,
+      "externalShowsEnvironment": true
+    }
+  },
+  "detail": {
+    "idealWidth": 640,
+    "outerPadding": 14,
+    "gridGap": 8,
+    "packing": "masonry",
+    "height": "content",
+    "breakpoints": {
+      "wide": {
+        "minWidth": 600,
+        "columns": 6
+      },
+      "compact": {
+        "minWidth": 0,
+        "columns": 2
+      }
+    },
+    "fixedItems": [
+      "status",
+      "camera"
+    ],
+    "customizableItems": [
+      "materials",
+      "temperature",
+      "fans",
+      "controls"
+    ],
+    "items": [
+      {
+        "id": "status",
+        "order": 10,
+        "span": {
+          "wide": 6,
+          "compact": 2
+        },
+        "visible": true,
+        "movable": false
+      },
+      {
+        "id": "camera",
+        "order": 20,
+        "span": {
+          "wide": 6,
+          "compact": 2
+        },
+        "visible": true,
+        "movable": false,
+        "aspectRatio": "16:8.7"
+      },
+      {
+        "id": "materials",
+        "order": 30,
+        "span": {
+          "wide": 3,
+          "compact": 2
+        },
+        "visible": true,
+        "movable": true
+      },
+      {
+        "id": "temperature",
+        "order": 40,
+        "span": {
+          "wide": 3,
+          "compact": 2
+        },
+        "visible": true,
+        "movable": true,
+        "chartMinutes": 15
+      },
+      {
+        "id": "fans",
+        "order": 50,
+        "span": {
+          "wide": 3,
+          "compact": 2
+        },
+        "visible": true,
+        "movable": true
+      },
+      {
+        "id": "controls",
+        "order": 60,
+        "span": {
+          "wide": 3,
+          "compact": 2
+        },
+        "visible": true,
+        "movable": true
+      },
+      {
+        "id": "customize",
+        "order": 100,
+        "span": {
+          "wide": 6,
+          "compact": 2
+        },
+        "visible": true,
+        "movable": false
+      }
+    ]
+  },
+  "persistence": {
+    "strategy": "defaultsPlusOverrides",
+    "saveOnlyOverrides": true,
+    "scope": "user",
+    "resetKeepsPrinterData": true
+  }
+}

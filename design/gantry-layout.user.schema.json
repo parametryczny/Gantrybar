@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gantry.app/schemas/layout-user-v1.json",
+  "title": "Gantry user layout overrides",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "basedOnLayoutVersion",
+    "density",
+    "dashboard",
+    "detail"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "basedOnLayoutVersion": { "type": "string" },
+    "density": { "enum": ["small", "medium", "large"] },
+    "dashboard": {
+      "type": "object",
+      "required": ["columnLimit", "printerOrder", "hiddenPrinterIds", "perPrinter"],
+      "properties": {
+        "columnLimit": {
+          "oneOf": [
+            { "const": "auto" },
+            { "type": "integer", "minimum": 1, "maximum": 3 }
+          ]
+        },
+        "printerOrder": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "hiddenPrinterIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "perPrinter": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "detail": {
+      "type": "object",
+      "required": ["order", "hidden", "spanOverrides"],
+      "properties": {
+        "order": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "hidden": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "spanOverrides": {
+          "type": "object",
+          "additionalProperties": { "enum": [3, 6] }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

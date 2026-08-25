@@ -119,16 +119,23 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .header { padding: 12px 16px 8px; }
 .title { font-size: 18px; font-weight: 700; }
 .subtitle { color: %(secondary)s; font-size: 11px; }
-.card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.05); border-radius: 14px; padding: 11px; }
-.printer-icon { color: #0a9fff; margin-right: 2px; }
-.card.finished { background: #1e382d; border-color: #397b5a; }
-.card.error { background: #3b2428; border-color: #d64b55; }
-.printer-name { font-size: 14px; font-weight: 700; }
-.job { color: %(job)s; font-weight: 400; font-size: 11px; }
+.card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.08); border-radius: 16px; padding: 9px; }
+.card.printing { background-color: %(card)s; background-image: radial-gradient(farthest-side at left top, alpha(#ff6857, 0.22), alpha(#ff6857, 0.08) 42%%, alpha(#ff6857, 0.00) 82%%); border-color: alpha(#ff6857, 0.24); }
+.printer-icon { color: #d7d7d2; margin-right: 2px; }
+.printer-name { font-size: 13px; font-weight: 650; }
+.connection { color: %(secondary)s; border: 1px solid alpha(#ffffff, 0.12); border-radius: 6px; padding: 2px 6px; font-family: monospace; font-size: 9px; font-weight: 600; }
+.job-surface { background: alpha(#ffffff, 0.035); border: 1px solid alpha(#ffffff, 0.08); border-radius: 10px; padding: 5px 7px 6px; }
+.job { color: %(job)s; font-weight: 600; font-size: 10px; }
 .meta { color: %(secondary)s; font-size: 11px; }
-.status { color: #0a9fff; font-weight: 700; font-size: 11px; }
-.status.finished { color: #35d46a; }
-.status.error { color: #ff5360; }
+.status { color: #d7d7d2; font-weight: 700; font-size: 10px; }
+.card.printing .status, .card.printing .percent { color: #ff6857; }
+.percent { color: #d7d7d2; font-size: 22px; font-weight: 650; }
+.eta { color: #d7d7d2; border: 1px solid alpha(#ffffff, 0.10); border-radius: 8px; padding: 3px 7px; font-family: monospace; font-size: 10px; font-weight: 600; }
+.temp-bento { background: alpha(#ffffff, 0.035); border: 1px solid alpha(#ffffff, 0.08); border-radius: 10px; }
+.temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.08); }
+.temp-zone:first-child { border-left: none; }
+.temp-name { color: %(secondary)s; font-family: monospace; font-size: 7px; font-weight: 650; }
+.temp-value { color: #f5f5f7; font-family: monospace; font-size: 14px; font-weight: 650; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
 .ams-group { background: alpha(#ffffff, 0.07); border-radius: 12px; padding: 9px 11px; }
@@ -136,7 +143,7 @@ button { border-radius: 10px; padding: 7px 12px; }
 button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
-progressbar progress { border-radius: 5px; background: #0a9fff; }
+progressbar progress { border-radius: 2px; background: #ff6857; }
 .sb-tile { border-radius: 11px; padding: 6px 8px; }
 .sb-tile:hover { background: alpha(#ffffff, 0.08); }
 .sb-color { font-size: 11px; font-weight: 600; }
@@ -165,12 +172,19 @@ class PrinterCard(Gtk.Frame):
         self.get_style_context().add_class("card")
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         self.add(self.box)
+        self.job_surface = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.job_surface.get_style_context().add_class("job-surface")
+        self.box.pack_start(self.job_surface, False, False, 0)
         # Header: name + drag handle (chevrons, like macOS) + menu. The whole card is the drag source.
         top = Gtk.Box(spacing=6)
         icon = Gtk.Image.new_from_icon_name("printer-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         icon.get_style_context().add_class("printer-icon")
         self.name = Gtk.Label(label=printer.name, xalign=0)
         self.name.get_style_context().add_class("printer-name")
+        connection_text = {PrinterKind.BAMBU: "MQTT", PrinterKind.KLIPPER: "KLIPPER",
+                           PrinterKind.PRUSA: "PRUSALINK", PrinterKind.SNAPMAKER: "HTTP"}[printer.kind]
+        self.connection = Gtk.Label(label=connection_text)
+        self.connection.get_style_context().add_class("connection")
         top.pack_start(icon, False, False, 0)
         drag = Gtk.Label(label="⌄⌃")
         drag.get_style_context().add_class("meta")
@@ -179,30 +193,36 @@ class PrinterCard(Gtk.Frame):
         menu = Gtk.Button(label="⋯"); menu.set_relief(Gtk.ReliefStyle.NONE); menu.get_style_context().add_class("cardmenu")
         menu.connect("clicked", self._show_menu)
         top.pack_start(self.name, True, True, 0)
+        top.pack_start(self.connection, False, False, 0)
         top.pack_start(drag, False, False, 0)
         top.pack_start(menu, False, False, 0)
-        self.box.pack_start(top, False, False, 0)
+        self.job_surface.pack_start(top, False, False, 0)
         # Status line carries the state on the left and time + layers on the right (macOS layout).
         self.status_row = Gtk.Box(spacing=8)
         self.status = Gtk.Label(xalign=0)
         self.status.get_style_context().add_class("status")
         self.progress_meta = Gtk.Label(xalign=1)
         self.progress_meta.get_style_context().add_class("meta")
-        self.status_row.pack_start(self.status, True, True, 0)
-        self.status_row.pack_start(self.progress_meta, False, False, 0)
-        self.box.pack_start(self.status_row, False, False, 0)
         self.job = Gtk.Label(label="—", xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.job.get_style_context().add_class("job")
-        self.box.pack_start(self.job, False, False, 0)
-        progress_row = Gtk.Box(spacing=12)
+        self.status_row.pack_start(self.status, False, False, 0)
+        self.status_row.pack_start(Gtk.Label(label="·"), False, False, 0)
+        self.status_row.pack_start(self.job, True, True, 0)
+        self.status_row.pack_start(self.progress_meta, False, False, 0)
+        self.job_surface.pack_start(self.status_row, False, False, 0)
+        progress_row = Gtk.Box(spacing=7)
         self.progress = Gtk.ProgressBar(show_text=False)
         self.percent = Gtk.Label(label="0%")
-        progress_row.pack_start(self.progress, True, True, 0)
+        self.percent.get_style_context().add_class("percent")
+        self.eta = Gtk.Label(label="—")
+        self.eta.get_style_context().add_class("eta")
         progress_row.pack_start(self.percent, False, False, 0)
-        self.box.pack_start(progress_row, False, False, 0)
+        progress_row.pack_start(self.eta, False, False, 0)
+        self.job_surface.pack_start(progress_row, False, False, 0)
+        self.job_surface.pack_start(self.progress, False, False, 0)
         # Temperatures on their own row, coloured by activity (heating red / cooling blue).
-        self.temps = Gtk.Label(xalign=0)
-        self.temps.get_style_context().add_class("meta")
+        self.temps = Gtk.Box(spacing=0, homogeneous=True)
+        self.temps.get_style_context().add_class("temp-bento")
         self.box.pack_start(self.temps, False, False, 0)
         self.ams = Gtk.Box(spacing=6)
         self.box.pack_start(self.ams, False, False, 0)
@@ -255,7 +275,7 @@ class PrinterCard(Gtk.Frame):
 
     def set_compact(self, compact: bool, expanded: bool = False) -> None:
         hidden = compact and not expanded
-        for widget in (self.job, self.progress.get_parent(), self.temps, self.ams):
+        for widget in (self.status_row, self.percent.get_parent(), self.progress, self.temps, self.ams):
             widget.set_no_show_all(hidden)
             widget.set_visible(not hidden)
         if compact:
@@ -281,13 +301,11 @@ class PrinterCard(Gtk.Frame):
         self.status.set_text(status)
         context = self.status.get_style_context()
         card_context = self.get_style_context()
-        for name in ("finished", "error"):
+        for name in ("printing", "finished", "error"):
             context.remove_class(name)
             card_context.remove_class(name)
-        if telemetry.state == PrinterState.FINISHED:
-            context.add_class("finished"); card_context.add_class("finished")
-        elif telemetry.state == PrinterState.ERROR:
-            context.add_class("error"); card_context.add_class("error")
+        if telemetry.state == PrinterState.PRINTING:
+            card_context.add_class("printing")
         self.job.set_text(telemetry.job_name or "—")
         self.progress.set_fraction(telemetry.progress / 100)
         self.percent.set_text(f"{telemetry.progress}%")
@@ -300,7 +318,8 @@ class PrinterCard(Gtk.Frame):
         else:
             eta = "—"
         layers = "—" if telemetry.current_layer is None else f"{telemetry.current_layer}/{telemetry.total_layers or '—'}"
-        self.progress_meta.set_text(f"◷ {eta}   ▤ {layers}")
+        self.eta.set_text(f"ETA {eta}")
+        self.progress_meta.set_text(f"▤ {layers}")
 
         pl = self.app.language == "pl"
 
@@ -309,35 +328,37 @@ class PrinterCard(Gtk.Frame):
                 return "—"
             return f"{cur:.0f}/{tgt:.0f}°" if tgt else f"{cur:.0f}°"
 
-        def temp_span(label: str, cur: float | None, tgt: float | None) -> str:
-            text = GLib.markup_escape_text(fmt(cur, tgt))
-            colour = None
-            if cur is not None:
-                t = tgt or 0
-                if t > 5 and cur < t - 3:
-                    colour = "#d18c86"                      # heating — muted red
-                elif cur > max(t, 0) + 5 and cur > 30:
-                    colour = "#8ba9c7"                      # cooling — muted blue
-            value = f"<span foreground='{colour}'>{text}</span>" if colour else text
-            return f"{GLib.markup_escape_text(label)} <b>{value}</b>"
+        def temp_zone(label: str, cur: float | None, tgt: float | None) -> Gtk.Widget:
+            zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            zone.get_style_context().add_class("temp-zone")
+            name = Gtk.Label(label=label.upper(), xalign=0)
+            name.get_style_context().add_class("temp-name")
+            value = Gtk.Label(label=fmt(cur, tgt), xalign=0.5)
+            value.get_style_context().add_class("temp-value")
+            zone.pack_start(name, False, False, 0)
+            zone.pack_start(value, False, False, 0)
+            return zone
 
         # Nozzle(s) with explicit L/P (pl) or L/R (en) for dual-nozzle printers, plus chamber when real.
         nozzles = telemetry.nozzles
         dual = any(n.position == "right" for n in nozzles)
-        parts: list[str] = []
+        for child in self.temps.get_children():
+            self.temps.remove(child)
+        zones: list[Gtk.Widget] = []
         if dual:
             left = next((n for n in nozzles if n.position == "left"), nozzles[0])
             right = next((n for n in nozzles if n.position == "right"), None)
-            parts.append(temp_span("L", left.current, left.target))
-            parts.append(temp_span("P" if pl else "R", right.current if right else None, right.target if right else None))
+            zones.append(temp_zone("Dysze P" if pl else "Nozzles R", right.current if right else None, right.target if right else None))
+            zones.append(temp_zone("L", left.current, left.target))
         else:
             cur = nozzles[0].current if nozzles else telemetry.nozzle
             tgt = nozzles[0].target if nozzles else telemetry.nozzle_target
-            parts.append(temp_span("Dysza" if pl else "Nozzle", cur, tgt))
-        parts.append(temp_span("Stół" if pl else "Bed", telemetry.bed, telemetry.bed_target))
-        if telemetry.chamber is not None:
-            parts.append(temp_span("Komora" if pl else "Chamber", telemetry.chamber, None))
-        self.temps.set_markup("      ".join(parts))
+            zones.append(temp_zone("Dysza" if pl else "Nozzle", cur, tgt))
+        zones.append(temp_zone("Stół" if pl else "Bed", telemetry.bed, telemetry.bed_target))
+        zones.append(temp_zone("Komora" if pl else "Chamber", telemetry.chamber, None))
+        for zone in zones:
+            self.temps.pack_start(zone, True, True, 0)
+        self.temps.show_all()
 
         # Physical filament modules as side-by-side groups (name + per-module humidity/temp, then slots).
         for child in self.ams.get_children():
@@ -425,7 +446,7 @@ class Dashboard(Gtk.Window):
         # (no AppIndicator) fall back to a normal titled window so it stays reachable.
         self.tray_mode = AppIndicator is not None
         if self.tray_mode:
-            self.set_default_size(560, 640)
+            self.set_default_size(840, 640)
             self.set_decorated(False)
             self.set_skip_taskbar_hint(True)
             self.set_skip_pager_hint(True)
@@ -439,7 +460,7 @@ class Dashboard(Gtk.Window):
             self.connect("focus-out-event", self._on_focus_out)
         else:
             self.set_title("Gantry")
-            self.set_default_size(600, 720)
+            self.set_default_size(840, 720)
             self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("delete-event", self._hide)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -825,17 +846,34 @@ class Gantry:
         for child in self.window.grid.get_children(): self.window.grid.remove(child)
         self.cards = {}
         compact = self.is_compact()
-        columns = 3 if len(self.printers) > 8 else 2
-        for index, printer in enumerate(self.printers):
+        columns = 1 if compact else 3
+        row = 0
+        column = 0
+        for printer in self.printers:
             card = PrinterCard(self, printer)
             card.set_compact(compact, self.expanded_compact_serial == printer.serial)
+            card.set_hexpand(True)
+            card.set_vexpand(True)
             self.cards[printer.serial] = card
-            row, column = divmod(index, columns)
-            span = columns if index == len(self.printers) - 1 and len(self.printers) % columns == 1 else 1
+            telemetry = self.telemetry.get(printer.serial, Telemetry())
+            span = 2 if not compact and self._needs_wide(telemetry) else 1
+            if column + span > columns:
+                row += 1
+                column = 0
             self.window.grid.attach(card, column, row, span, 1)
             if printer.serial in self.telemetry: card.update(self.telemetry[printer.serial])
+            column += span
+            if column == columns:
+                row += 1
+                column = 0
         # Show the card widgets, but don't force the popover window open on every rebuild.
         self.window.update_header(); self.window.grid.show_all()
+
+    @staticmethod
+    def _needs_wide(telemetry: Telemetry) -> bool:
+        dual_nozzle = any(nozzle.position == "right" for nozzle in telemetry.nozzles)
+        ams_count = sum(1 for group in telemetry.filament_groups if not group.external)
+        return dual_nozzle or ams_count >= 2
 
     def toggle_compact_printer(self, serial: str) -> None:
         if not self.is_compact():
@@ -924,7 +962,10 @@ class Gantry:
         if event == "telemetry" and isinstance(value, Telemetry): self.telemetry[serial] = value
         elif event == "disconnected": self.telemetry[serial] = Telemetry(state=PrinterState.OFFLINE)
         current = self.telemetry[serial]
-        if card := self.cards.get(serial): card.update(current, str(value) if event == "disconnected" else None)
+        if self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact():
+            self.rebuild_cards()
+        elif card := self.cards.get(serial):
+            card.update(current, str(value) if event == "disconnected" else None)
         self.window.update_header()
         if quiet_hours_active(self.config): return False
         printer_name = next((p.name for p in self.printers if p.serial == serial), "Gantry")

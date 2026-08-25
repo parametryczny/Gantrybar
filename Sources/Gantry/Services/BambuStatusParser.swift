@@ -65,6 +65,9 @@ enum BambuStatusParser {
             result.currentStage = 255
         }
         if let value = string(report["subtask_name"]), !value.isEmpty { result.jobName = displayName(value) }
+        // The file being printed, e.g. "vase.gcode.3mf" — needed to fetch its per-filament used_g.
+        if let file = string(report["gcode_file"]), !file.isEmpty { result.gcodeFile = file }
+        else if let file = string(report["subtask_name"]), !file.isEmpty { result.gcodeFile = file }
         if let value = uint64(report["print_error"]) { result.errorCode = value }
         if let hms = report["hms"] as? [[String: Any]] {
             result.hmsCodes = hms.compactMap(hmsCode)

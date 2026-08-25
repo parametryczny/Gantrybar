@@ -6,7 +6,7 @@ import AppKit
 /// the standalone app used, so existing stock carries over.
 @MainActor
 final class SpoolbaseController {
-    private let store = FilamentStore()
+    private let store = SpoolbaseShared.filaments
     private let popover = NSPopover()
     private var built = false
 

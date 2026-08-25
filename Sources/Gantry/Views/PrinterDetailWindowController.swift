@@ -20,8 +20,9 @@ final class PrinterDetailViewController: NSViewController {
     // Reorderable section cards
     private let contentStack = NSStackView()
     private var cardViews: [String: NSView] = [:]
-    private let debugTextView = NSTextView()
-    private static let defaultCardOrder = ["status", "temps", "fans", "ams", "control", "camera", "debug"]
+    // Contract order (GANTRY-DESIGN-SYSTEM.md §Widok szczegółów): Status → Kamera → Filamenty/AMS →
+    // Temperatury → Wentylatory → Sterowanie.
+    private static let defaultCardOrder = ["status", "camera", "ams", "temps", "fans", "control"]
     private static let cardOrderKey = "detail-card-order"
 
     // Header
@@ -30,7 +31,9 @@ final class PrinterDetailViewController: NSViewController {
     private let stateLabel = NSTextField(labelWithString: "")
     private let nameLabel = NSTextField(labelWithString: "")
     private let percentLabel = NSTextField(labelWithString: "")
-    private let progress = NSProgressIndicator()
+    private let progress = BrutalistProgressView()
+    private let phaseStepper = PhaseStepperView()
+    private let fileLabel = NSTextField(labelWithString: "")
     private let remainingLabel = NSTextField(labelWithString: "")
     private let layerLabel = NSTextField(labelWithString: "")
 
@@ -132,8 +135,6 @@ final class PrinterDetailViewController: NSViewController {
             if AppSettings.shared.developerMode { cardViews["control"] = makeControlCard() }
             cardViews["camera"] = makeCameraCard()
         }
-        // Raw AMS JSON, developer mode only (Bambu) — for diagnosing stale/remembered filament.
-        if AppSettings.shared.developerMode, kind == .bambu { cardViews["debug"] = makeDebugCard() }
         rebuildCards()
         view = root
     }
@@ -153,9 +154,28 @@ final class PrinterDetailViewController: NSViewController {
         return arr
     }
 
+    // Movable/hideable sections (Status + Camera stay fixed, per the contract).
+    private static let hideableModules = ["camera", "ams", "temps", "fans", "control"]
+    private static let moduleTitles = ["camera": ("Kamera", "Camera"),
+                                       "ams": ("Filamenty / AMS", "Filaments / AMS"),
+                                       "temps": ("Temperatury", "Temperatures"),
+                                       "fans": ("Wentylatory i prędkość", "Fans & speed"),
+                                       "control": ("Sterowanie i automatyzacje", "Control & automations")]
+    private static let hiddenKey = "gantry.detail.hidden.v1"
+
+    private func hiddenModules() -> Set<String> {
+        guard let data = BambuDefaults.shared.data(forKey: Self.hiddenKey),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(arr)
+    }
+    private func setHiddenModules(_ set: Set<String>) {
+        if let data = try? JSONEncoder().encode(Array(set)) { BambuDefaults.shared.set(data, forKey: Self.hiddenKey) }
+    }
+
     private func rebuildCards() {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for id in orderedCardIDs() {
+        let hidden = hiddenModules()
+        for id in orderedCardIDs() where !hidden.contains(id) {
             guard let content = cardViews[id] else { continue }
             let container = DetailCardContainer(id: id, content: content) { [weak self] dragged, target, after in
                 self?.reorderCard(dragged: dragged, target: target, after: after)
@@ -163,6 +183,61 @@ final class PrinterDetailViewController: NSViewController {
             contentStack.addArrangedSubview(container)
             container.widthAnchor.constraint(equalTo: contentStack.widthAnchor, constant: -28).isActive = true
         }
+        let customize = makeCustomizeButton()
+        contentStack.addArrangedSubview(customize)
+        customize.widthAnchor.constraint(equalTo: contentStack.widthAnchor, constant: -28).isActive = true
+    }
+
+    private func makeCustomizeButton() -> NSView {
+        let button = NSButton(title: AppSettings.shared.text("Dostosuj", "Customize"), target: self, action: #selector(customizePressed(_:)))
+        button.bezelStyle = .regularSquare
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = GantryTheme.tileRadius
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = GantryTheme.line.cgColor
+        button.layer?.backgroundColor = GantryTheme.surface.cgColor
+        button.contentTintColor = GantryTheme.secondary
+        button.font = .systemFont(ofSize: 11, weight: .semibold)
+        button.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        return button
+    }
+
+    @objc private func customizePressed(_ sender: NSButton) {
+        let pl = AppSettings.shared.language == .pl
+        let hidden = hiddenModules()
+        let menu = NSMenu()
+        for id in Self.hideableModules where cardViews[id] != nil {
+            let titles = Self.moduleTitles[id]
+            let item = NSMenuItem(title: pl ? (titles?.0 ?? id) : (titles?.1 ?? id),
+                                  action: #selector(toggleModule(_:)), keyEquivalent: "")
+            item.state = hidden.contains(id) ? .off : .on
+            item.representedObject = id
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let reset = NSMenuItem(title: AppSettings.shared.text("Przywróć domyślny układ", "Restore default layout"),
+                               action: #selector(resetLayout), keyEquivalent: "")
+        reset.target = self
+        menu.addItem(reset)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc private func toggleModule(_ item: NSMenuItem) {
+        guard let id = item.representedObject as? String else { return }
+        var hidden = hiddenModules()
+        let nowHidden = !hidden.contains(id)
+        if nowHidden { hidden.insert(id) } else { hidden.remove(id) }
+        setHiddenModules(hidden)
+        if id == "camera" { nowHidden ? stopCamera() : startCamera() }
+        rebuildCards()
+    }
+
+    @objc private func resetLayout() {
+        setHiddenModules([])
+        BambuDefaults.shared.removeObject(forKey: Self.cardOrderKey)
+        rebuildCards()
     }
 
     private func reorderCard(dragged: String, target: String, after: Bool) {
@@ -236,8 +311,10 @@ final class PrinterDetailViewController: NSViewController {
     private func card() -> NSView {
         let box = NSView()
         box.wantsLayer = true
-        box.layer?.cornerRadius = 12
-        box.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.28).cgColor
+        box.layer?.cornerRadius = GantryTheme.cardRadius
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = GantryTheme.line.cgColor
+        box.layer?.backgroundColor = GantryTheme.card.withAlphaComponent(0.55).cgColor
         return box
     }
 
@@ -257,28 +334,35 @@ final class PrinterDetailViewController: NSViewController {
         remainingLabel.textColor = .secondaryLabelColor
         layerLabel.font = .systemFont(ofSize: 11)
         layerLabel.textColor = .secondaryLabelColor
-        progress.style = .bar
-        progress.isIndeterminate = false
-        progress.minValue = 0
-        progress.maxValue = 100
+        fileLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        fileLabel.textColor = GantryTheme.secondary
+        fileLabel.lineBreakMode = .byTruncatingTail
+        // Same segmented indicator as the dashboard cards.
         progress.translatesAutoresizingMaskIntoConstraints = false
-        progress.heightAnchor.constraint(equalToConstant: 8).isActive = true
+        progress.heightAnchor.constraint(equalToConstant: 11).isActive = true
+        phaseStepper.translatesAutoresizingMaskIntoConstraints = false
+        phaseStepper.heightAnchor.constraint(equalToConstant: 34).isActive = true
 
+        layerLabel.setContentHuggingPriority(.required, for: .horizontal)
         let topRow = NSStackView(views: [nameLabel, NSView(), percentLabel])
         topRow.orientation = .horizontal
         topRow.alignment = .centerY
-        let bottomRow = NSStackView(views: [remainingLabel, NSView(), layerLabel])
-        bottomRow.orientation = .horizontal
-        bottomRow.alignment = .centerY
+        // File name and layers share one line (name left, layers right).
+        let fileRow = NSStackView(views: [fileLabel, NSView(), layerLabel])
+        fileRow.orientation = .horizontal
+        fileRow.alignment = .centerY
+        fileRow.spacing = 8
 
-        let stack = NSStackView(views: [topRow, progress, bottomRow])
+        // A phase stepper (prep → printing → done) replaces the segmented bar here: the detail view has
+        // room for the nicer "transit line" with the glowing current node.
+        let stack = NSStackView(views: [topRow, fileRow, phaseStepper, remainingLabel])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
         pin(stack, in: box, inset: 11)
         topRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        progress.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        bottomRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        fileRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        phaseStepper.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
@@ -387,28 +471,6 @@ final class PrinterDetailViewController: NSViewController {
 
     @objc private func openAdvanced() { onOpenAdvanced() }
 
-    private func makeDebugCard() -> NSView {
-        let box = card()
-        debugTextView.isEditable = false
-        debugTextView.isSelectable = true
-        debugTextView.drawsBackground = false
-        debugTextView.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-        debugTextView.textContainerInset = NSSize(width: 4, height: 4)
-        let scroll = NSScrollView()
-        scroll.documentView = debugTextView
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.heightAnchor.constraint(equalToConstant: 170).isActive = true
-        let stack = NSStackView(views: [sectionTitle("Surowy AMS (dev)"), scroll])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        pin(stack, in: box, inset: 11)
-        scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return box
-    }
-
     private func pin(_ inner: NSView, in outer: NSView, inset: CGFloat) {
         inner.translatesAutoresizingMaskIntoConstraints = false
         outer.addSubview(inner)
@@ -432,7 +494,11 @@ final class PrinterDetailViewController: NSViewController {
         stateLabel.textColor = Self.color(for: t.state)
         nameLabel.stringValue = printer?.name ?? serial
         percentLabel.stringValue = "\(t.progress)%"
-        progress.doubleValue = Double(t.progress)
+        progress.value = t.progress
+        phaseStepper.update(progress: t.progress, state: t.state, settings: AppSettings.shared)
+        let file = t.jobName ?? ""
+        fileLabel.stringValue = file
+        fileLabel.isHidden = file.isEmpty
 
         if let minutes = t.remainingMinutes, minutes > 0, t.state == .printing || t.state == .paused {
             var text = formatRemaining(minutes)
@@ -478,10 +544,6 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         renderAMS(t.filamentGroups)
-
-        if AppSettings.shared.developerMode, debugTextView.string != (t.debugAMS ?? "—") {
-            debugTextView.string = t.debugAMS ?? "—"
-        }
     }
 
     private func renderAMS(_ groups: [FilamentGroup]) {
@@ -492,6 +554,7 @@ final class PrinterDetailViewController: NSViewController {
     // MARK: Camera
 
     private func startCamera() {
+        guard !hiddenModules().contains("camera") else { return }   // don't stream a hidden camera
         guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
         receivedFrame = false
         switch printer.kind {
@@ -617,9 +680,9 @@ final class PrinterDetailViewController: NSViewController {
         return "\(minutes)m"
     }
 
-    static let nozzleColor = NSColor.systemOrange
-    static let bedColor = NSColor.systemBlue
-    static let chamberColor = NSColor.systemTeal
+    static let nozzleColor = GantryTheme.nozzle
+    static let bedColor = GantryTheme.bed
+    static let chamberColor = GantryTheme.chamber
 
     static func color(for state: PrinterState) -> NSColor {
         switch state {
@@ -745,32 +808,36 @@ final class TempChipView: NSView {
     init(title: String) {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 9
-        layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5).cgColor
-        titleLabel.stringValue = title
-        titleLabel.font = .systemFont(ofSize: 9, weight: .medium)
-        titleLabel.textColor = .secondaryLabelColor
-        valueLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        layer?.cornerRadius = GantryTheme.tileRadius
+        layer?.borderWidth = 1
+        layer?.borderColor = GantryTheme.line.cgColor
+        layer?.backgroundColor = GantryTheme.surface.cgColor
+        titleLabel.stringValue = title.uppercased()
+        titleLabel.font = .systemFont(ofSize: 8, weight: .bold)
+        titleLabel.textColor = NSColor.white.withAlphaComponent(0.5)
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .medium)
+        valueLabel.textColor = GantryTheme.text
         dot.wantsLayer = true
-        dot.layer?.cornerRadius = 3
-        dot.widthAnchor.constraint(equalToConstant: 6).isActive = true
-        dot.heightAnchor.constraint(equalToConstant: 6).isActive = true
+        dot.layer?.cornerRadius = 2.5
+        dot.widthAnchor.constraint(equalToConstant: 5).isActive = true
+        dot.heightAnchor.constraint(equalToConstant: 5).isActive = true
+        heightAnchor.constraint(greaterThanOrEqualToConstant: 46).isActive = true
 
         let titleRow = NSStackView(views: [dot, titleLabel])
         titleRow.orientation = .horizontal
         titleRow.alignment = .centerY
         titleRow.spacing = 4
-        let stack = NSStackView(views: [titleRow, valueLabel])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 2
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        titleRow.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleRow)
+        addSubview(valueLabel)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
+            titleRow.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            titleRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            valueLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            valueLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
+            valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
+            valueLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4)
         ])
     }
 
@@ -778,6 +845,7 @@ final class TempChipView: NSView {
 
     func set(current: Double?, target: Double?, accent: NSColor) {
         dot.layer?.backgroundColor = accent.cgColor
+        layer?.backgroundColor = accent.withAlphaComponent(0.06).cgColor
         guard let current else { valueLabel.stringValue = "—"; return }
         if let target, target > 0 {
             valueLabel.stringValue = "\(Int(current))° / \(Int(target))°"
@@ -1016,6 +1084,16 @@ final class DetailCardContainer: NSView, NSDraggingSource {
         sender.draggingPasteboard.string(forType: detailCardType) != nil ? .move : []
     }
 
+    // Without draggingUpdated + prepareForDragOperation the drop is silently rejected on many macOS
+    // versions, so reordering never happens.
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingPasteboard.string(forType: detailCardType) != nil ? .move : []
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        sender.draggingPasteboard.string(forType: detailCardType) != nil
+    }
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard let dragged = sender.draggingPasteboard.string(forType: detailCardType) else { return false }
         // Non-flipped container coords: lower y = visually lower half → insert after (below).
@@ -1049,4 +1127,75 @@ final class CardDragHandle: NSView {
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
     override func mouseDragged(with event: NSEvent) { onDrag(event) }
+}
+
+/// A "transit line" progress: a neutral rail with named phase stops (prep → printing → done) and a
+/// glowing current node that glides along by print progress. Colour stays neutral (accent), matching
+/// the calm card palette rather than the vivid green of the inspiration.
+@MainActor
+final class PhaseStepperView: NSView {
+    private var fraction: CGFloat = 0
+    private var activeIndex = 0
+    private let labels = (0..<3).map { _ in NSTextField(labelWithString: "") }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        for label in labels {
+            label.font = .systemFont(ofSize: 8, weight: .medium)
+            label.textColor = GantryTheme.muted
+            label.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(label)
+            label.bottomAnchor.constraint(equalTo: bottomAnchor).isActive = true
+        }
+        labels[0].alignment = .left
+        labels[1].alignment = .center
+        labels[2].alignment = .right
+        NSLayoutConstraint.activate([
+            labels[0].leadingAnchor.constraint(equalTo: leadingAnchor),
+            labels[1].centerXAnchor.constraint(equalTo: centerXAnchor),
+            labels[2].trailingAnchor.constraint(equalTo: trailingAnchor)
+        ])
+    }
+    required init?(coder: NSCoder) { nil }
+
+    func update(progress: Int, state: PrinterState, settings: AppSettings) {
+        fraction = max(0, min(1, CGFloat(progress) / 100))
+        activeIndex = state == .finished ? 2 : (fraction < 0.02 ? 0 : (fraction >= 0.99 ? 2 : 1))
+        labels[0].stringValue = settings.text("Przygotowanie", "Prep")
+        labels[1].stringValue = settings.text("Drukowanie", "Printing")
+        labels[2].stringValue = settings.text("Zakończono", "Done")
+        for (index, label) in labels.enumerated() {
+            label.textColor = index == activeIndex ? GantryTheme.text : GantryTheme.muted
+        }
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let inset: CGFloat = 8
+        let trackY = bounds.height - 8
+        let x0 = inset, x1 = bounds.width - inset
+        let nodeX = x0 + fraction * (x1 - x0)
+
+        let track = NSBezierPath(roundedRect: NSRect(x: x0, y: trackY - 1.5, width: x1 - x0, height: 3), xRadius: 1.5, yRadius: 1.5)
+        GantryTheme.line.setFill(); track.fill()
+        if nodeX > x0 {
+            let fill = NSBezierPath(roundedRect: NSRect(x: x0, y: trackY - 1.5, width: nodeX - x0, height: 3), xRadius: 1.5, yRadius: 1.5)
+            GantryTheme.accent.setFill(); fill.fill()
+        }
+        for stopX in [x0, (x0 + x1) / 2, x1] {
+            let r: CGFloat = 2.5
+            let dot = NSBezierPath(ovalIn: NSRect(x: stopX - r, y: trackY - r, width: r * 2, height: r * 2))
+            (stopX <= nodeX + 0.5 ? GantryTheme.accent : GantryTheme.line).setFill(); dot.fill()
+        }
+        // Glowing current node: a soft ring, a solid core, and a small hole (the "donut" look).
+        NSBezierPath(ovalIn: NSRect(x: nodeX - 7, y: trackY - 7, width: 14, height: 14)).fill(with: GantryTheme.accent.withAlphaComponent(0.25))
+        NSBezierPath(ovalIn: NSRect(x: nodeX - 4, y: trackY - 4, width: 8, height: 8)).fill(with: GantryTheme.accent)
+        NSBezierPath(ovalIn: NSRect(x: nodeX - 1.5, y: trackY - 1.5, width: 3, height: 3)).fill(with: GantryTheme.card)
+    }
+}
+
+private extension NSBezierPath {
+    func fill(with color: NSColor) { color.setFill(); fill() }
 }

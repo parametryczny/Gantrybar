@@ -21,6 +21,8 @@ enum MoonrakerStatusParser {
                 if let current = integer(info["current_layer"]) { telemetry.currentLayer = current }
                 if let total = integer(info["total_layer"]) { telemetry.totalLayers = total }
             }
+            // Real measured filament consumed so far (mm) — the basis for spool decrement on finish.
+            if let used = number(printStats["filament_used"]) { telemetry.filamentUsedMM = used }
         }
 
         // Creality K1/K1Max leave print_stats.info.*_layer null and expose layers on virtual_sdcard.

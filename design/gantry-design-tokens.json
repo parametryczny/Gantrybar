@@ -1,0 +1,85 @@
+{
+  "$schema": "./gantry-design-tokens.schema.json",
+  "meta": {
+    "name": "Gantry Design Tokens",
+    "version": "0.2.0",
+    "note": "Single source of truth for the Gantry Bento layout. Swift, C# and Python read these values; the layout must never depend on the number of printers — only on available width."
+  },
+
+  "grid": {
+    "padding": 16,
+    "gap": 12,
+    "breakpoints": {
+      "wide":   { "minWidth": 600, "columns": 6 },
+      "medium": { "minWidth": 440, "columns": 4 },
+      "narrow": { "minWidth": 0,   "columns": 2 }
+    }
+  },
+
+  "rowUnit": 88,
+
+  "card": {
+    "radius": 14,
+    "padding": 16
+  },
+
+  "printerCard": {
+    "span": { "wide": 3, "medium": 4, "narrow": 2 },
+    "perRow": { "wide": 2, "medium": 1, "narrow": 1 }
+  },
+
+  "detail": {
+    "columns": 6,
+    "items": {
+      "camera":      { "colSpan": 6, "rowSpan": 3 },
+      "temperature": { "colSpan": 3, "rowSpan": 2 },
+      "fans":        { "colSpan": 3, "rowSpan": 1 },
+      "ams":         { "colSpan": 6, "rowSpan": 2 },
+      "control":     { "colSpan": 3, "rowSpan": 1 }
+    }
+  },
+
+  "fillers": ["stats", "spoolbase", "network", "queue"],
+
+  "radiusScale": { "sm": 7, "md": 10, "lg": 14, "pill": 999 },
+
+  "spacing": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24 },
+
+  "typography": {
+    "family": {
+      "ui": "system-ui, 'Segoe UI Variable', 'Segoe UI', -apple-system, sans-serif",
+      "mono": "'IBM Plex Mono', ui-monospace, monospace"
+    },
+    "size": { "label": 10, "meta": 11, "body": 13, "title": 20, "display": 28 },
+    "weight": { "regular": 400, "medium": 500, "semibold": 600, "bold": 700 },
+    "labelTracking": 0.6
+  },
+
+  "color": {
+    "bg":          "#0E0F12",
+    "panel":       "#17181B",
+    "card":        "#202226",
+    "cardBorder":  "#2E3138",
+    "textPrimary": "#F2F3F5",
+    "textMuted":   "#9AA0A8",
+    "accent":      "#0A84FF",
+    "nozzle":      "#FF9F0A",
+    "bed":         "#0A84FF",
+    "chamber":     "#64D2FF",
+    "ok":          "#30D158",
+    "warn":        "#FFD60A",
+    "error":       "#FF453A",
+    "idle":        "#8E8E93"
+  },
+
+  "status": {
+    "default": {
+      "accent": "#D4D7D3"
+    },
+    "printing": {
+      "accent": "#FF6857"
+    }
+  },
+
+  "opacity": { "muted": 0.6, "overlayScrim": 0.7, "hairline": 0.12 }
+}

@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gantry — pojedynczy kafel bento</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #0c0d0e;
+      --card: #151719;
+      --surface: rgba(255,255,255,.052);
+      --surface-strong: rgba(255,255,255,.075);
+      --line: rgba(255,255,255,.09);
+      --text: #f2f3f1;
+      --secondary: #a7aaa6;
+      --muted: #6d716e;
+      --accent: #d4d7d3;
+      --accent-soft: rgba(212,215,211,.12);
+      --hot-nozzle: #ff8a61;
+      --hot-bed: #efbd5f;
+      --hot-chamber: #bba5ef;
+      --sensor-humidity: #73cfad;
+      --sensor-temperature: #efa25f;
+      --radius-card: 16px;
+      --radius-tile: 10.5px;
+      --gap: 6px;
+      --dashboard-width: 512px;
+      --card-padding: 6px;
+      --card-stack-gap: 4px;
+      --font-title: 14px;
+      --font-body: 12px;
+      --font-secondary: 11px;
+      --font-meta: 10px;
+      --font-mini: 9px;
+      --ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+
+    body[data-size="small"] {
+      --dashboard-width: 480px;
+      --card-padding: 6px;
+      --card-stack-gap: 4px;
+      --radius-card: 15px;
+      --radius-tile: 10px;
+    }
+
+    body[data-size="large"] {
+      --dashboard-width: 563px;
+      --card-padding: 7px;
+      --card-stack-gap: 5px;
+      --radius-card: 18px;
+      --radius-tile: 11px;
+    }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: radial-gradient(circle at 50% -15%, rgba(255,255,255,.055), transparent 34%), var(--canvas);
+      color: var(--text);
+      font-family: var(--ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font: inherit; }
+
+    .page {
+      width: min(100%, 840px);
+      margin: 0 auto;
+      padding: 11px 13px 14px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      container: gantry-dashboard / inline-size;
+    }
+
+    .dashboard-scroll { min-height: 0; }
+
+    .page.has-fixed-height .dashboard-scroll {
+      flex: 1;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,.16) transparent;
+    }
+
+    .page.is-resizing,
+    .page.is-resizing * { user-select: none !important; }
+    .page.is-snapping { transition: width .16s ease-out, height .16s ease-out; }
+    .page.is-resizing-x,
+    .page.is-resizing-x * { cursor: ew-resize !important; }
+    .page.is-resizing-y,
+    .page.is-resizing-y * { cursor: ns-resize !important; }
+    .page.is-resizing-both,
+    .page.is-resizing-both * { cursor: nwse-resize !important; }
+
+    .resize-edge {
+      position: absolute;
+      z-index: 10;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      opacity: .42;
+      touch-action: none;
+      transition: opacity .14s ease;
+    }
+
+    .resize-edge:hover,
+    .resize-edge:focus-visible,
+    .page.is-resizing .resize-edge {
+      opacity: 1;
+      outline: none;
+    }
+
+    .resize-edge-x {
+      top: 48px;
+      right: 0;
+      bottom: 18px;
+      width: 9px;
+      cursor: ew-resize;
+    }
+
+    .resize-edge-x::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 4px;
+      width: 1px;
+      background: linear-gradient(transparent, rgba(255,255,255,.32) 12%, rgba(255,255,255,.32) 88%, transparent);
+    }
+
+    .resize-edge-y {
+      right: 18px;
+      bottom: -4px;
+      left: 18px;
+      height: 9px;
+      cursor: ns-resize;
+    }
+
+    .resize-edge-y::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      bottom: 4px;
+      left: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.32) 12%, rgba(255,255,255,.32) 88%, transparent);
+    }
+
+    .resize-corner {
+      right: 0;
+      bottom: -2px;
+      width: 20px;
+      height: 20px;
+      border-radius: 6px 0 0;
+      cursor: nwse-resize;
+      background:
+        linear-gradient(135deg, transparent 47%, rgba(255,255,255,.36) 48% 53%, transparent 54%) 5px 5px / 8px 8px no-repeat,
+        linear-gradient(135deg, transparent 47%, rgba(255,255,255,.58) 48% 53%, transparent 54%) 9px 9px / 8px 8px no-repeat;
+    }
+
+    .demo-bar {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .demo-title strong { display: block; font-size: var(--font-title); letter-spacing: -.03em; }
+    .demo-title span { display: block; margin-top: 2px; color: var(--muted); font-size: var(--font-meta); }
+
+    .config-switch {
+      display: flex;
+      max-width: 100%;
+      overflow-x: auto;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(255,255,255,.025);
+    }
+
+    .config-switch button {
+      height: 27px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: var(--font-meta);
+      font-weight: 750;
+    }
+
+    .config-switch button.active { background: rgba(255,255,255,.09); color: var(--text); }
+
+    .stage {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .printer-card {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--card-stack-gap);
+      padding: var(--card-padding);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      background: var(--card);
+      box-shadow: 0 28px 80px rgba(0,0,0,.45), inset 0 1px rgba(255,255,255,.035);
+      transition: padding .18s ease, gap .18s ease, border-radius .18s ease;
+    }
+
+    /* Eksperyment na jednym kaflu: światło statusu, nie kolor całej powierzchni. */
+    .printer-card.status-light[data-status="printing"] {
+      --accent: #ff6857;
+      --accent-soft: rgba(255,104,87,.2);
+      border-color: rgba(255,104,87,.2);
+      background:
+        radial-gradient(ellipse 125% 92% at -10% -12%, rgba(255,104,87,.24) 0%, rgba(255,104,87,.105) 38%, rgba(255,104,87,.035) 62%, transparent 82%),
+        var(--card);
+      box-shadow:
+        0 28px 80px rgba(0,0,0,.45),
+        inset 1px 1px rgba(255,180,168,.14),
+        inset 0 0 42px rgba(255,104,87,.035);
+    }
+
+    .printer-card.wide { grid-column: 1 / -1; }
+
+    .card-head {
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 1px;
+    }
+
+    .printer-icon {
+      width: 15px;
+      height: 15px;
+      color: var(--accent);
+      filter: drop-shadow(0 0 5px var(--accent-soft));
+    }
+
+    .printer-name {
+      min-width: 0;
+      font-size: var(--font-title);
+      font-weight: 740;
+      letter-spacing: -.045em;
+      line-height: 1;
+    }
+
+    .marquee {
+      position: relative;
+      display: block;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .marquee-content {
+      display: inline-block;
+      min-width: max-content;
+      transform: translateX(0);
+      will-change: transform;
+    }
+
+    .marquee.is-overflowing {
+      -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 14px), transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 14px), transparent 100%);
+    }
+
+    .marquee.is-overflowing:hover .marquee-content {
+      animation: marquee-pan var(--marquee-duration, 7s) linear .65s infinite alternate;
+    }
+
+    @keyframes marquee-pan {
+      to { transform: translateX(var(--marquee-offset, -40px)); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .marquee.is-overflowing:hover .marquee-content { animation: none; }
+    }
+
+    .connection-type {
+      height: 19px;
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      padding: 0 6px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 6px;
+      color: #858a86;
+      font-family: var(--mono);
+      font-size: var(--font-mini);
+      font-weight: 650;
+      letter-spacing: .08em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .connection-route {
+      width: 17px;
+      height: 19px;
+      display: inline-grid;
+      flex: 0 0 17px;
+      place-items: center;
+      color: #929793;
+    }
+
+    .connection-route svg { width: 11px; height: 11px; }
+
+    .details {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      flex: 0 0 24px;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,.065);
+      color: #d2d4d1;
+    }
+
+    .details span { display: none; }
+    .details svg { width: 11px; height: 11px; }
+
+    .head-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+
+    .tool {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,.065);
+      color: #d2d4d1;
+      cursor: pointer;
+      font-size: 10px;
+    }
+
+    .drag {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      flex: 0 0 24px;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255,255,255,.065);
+    }
+
+    .drag::after {
+      width: 11px;
+      height: 15px;
+      content: "";
+      background-image: radial-gradient(circle, #a5a9a5 1.15px, transparent 1.35px);
+      background-position: center;
+      background-size: 5px 5px;
+    }
+
+    .file-block {
+      padding: 5px 7px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-tile);
+      background: var(--surface);
+    }
+
+    .job-head {
+      min-height: 20px;
+      margin-bottom: 3px;
+      padding: 0;
+    }
+
+    .job-head .printer-icon { width: 14px; height: 14px; }
+    .job-head .connection-type { height: 18px; }
+    .job-head .details,
+    .job-head .tool,
+    .job-head .drag {
+      width: 20px;
+      height: 20px;
+      flex-basis: 20px;
+    }
+
+    .job-line {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .job-line .file-name {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .job-separator {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: var(--font-mini);
+    }
+
+    .state-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .state-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 7px var(--accent-soft);
+    }
+    .state { color: var(--accent); font-size: var(--font-meta); font-weight: 700; }
+    .job-meta { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: var(--font-mini); }
+
+    .file-name {
+      color: var(--text);
+      font-size: var(--font-body);
+      font-weight: 620;
+      letter-spacing: -.025em;
+    }
+
+    .progress-summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .progress-track {
+      height: 6px;
+      display: grid;
+      grid-template-columns: repeat(32, minmax(0, 1fr));
+      gap: 2px;
+      margin-top: 4px;
+      overflow: hidden;
+      border-radius: 2px;
+    }
+
+    .progress-track i {
+      min-width: 0;
+      border-radius: 1px;
+      background: rgba(255,255,255,.12);
+    }
+
+    .progress-track i.active { background: var(--accent); }
+
+    .printer-card.wide .file-block {
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto 1fr auto;
+      grid-template-areas:
+        "head head"
+        "job summary"
+        "track track";
+      column-gap: 12px;
+      align-items: center;
+    }
+
+    .printer-card.wide .job-head { grid-area: head; }
+    .printer-card.wide .job-line { grid-area: job; }
+    .printer-card.wide .job-meta { display: none; }
+    .printer-card.wide .progress-summary {
+      grid-area: summary;
+      min-width: 220px;
+      margin-top: 0;
+    }
+    .printer-card.wide .progress-track { grid-area: track; }
+
+    .percent {
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -.065em;
+    }
+
+    .percent small { margin-left: 1px; color: var(--muted); font-size: var(--font-mini); letter-spacing: 0; }
+
+    .progress-chip {
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #c9ccc8;
+      font-family: var(--mono);
+      font-size: var(--font-secondary);
+      font-weight: 600;
+      letter-spacing: -.02em;
+      white-space: nowrap;
+    }
+
+    .progress-layers,
+    .state-layers {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 9.5px;
+      white-space: nowrap;
+    }
+
+    .progress-layers svg,
+    .state-layers svg { width: 10px; height: 10px; }
+    .printer-card:not(.wide) .progress-layers { display: none; }
+    .printer-card.wide .state-layers { display: none; }
+
+    .temperature-bento {
+      display: grid;
+      grid-template-columns: repeat(3,minmax(0,1fr));
+      gap: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-tile);
+      background: var(--surface);
+    }
+
+    .temperature {
+      position: relative;
+      min-height: 30px;
+      display: grid;
+      place-items: center;
+      isolation: isolate;
+      overflow: hidden;
+      padding: 3px 8px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .temperature + .temperature { border-left: 1px solid var(--line); }
+
+    .temperature > svg { display: none; }
+
+    .temperature[data-kind="nozzle"] { --zone: 255,138,97; }
+    .temperature[data-kind="bed"] { --zone: 239,189,95; }
+    .temperature[data-kind="chamber"] { --zone: 187,165,239; }
+
+    .temperature::before,
+    .temperature::after {
+      position: absolute;
+      pointer-events: none;
+      content: "";
+    }
+
+    .temperature::before {
+      z-index: 0;
+      content: attr(data-label);
+      font-family: var(--mono);
+      font-weight: 700;
+    }
+
+    .temperature::after { z-index: -1; }
+    .temp-value,
+    .nozzle-row { z-index: 1; }
+
+    /* A — cienki nagłówek i lekka termiczna mgła. */
+    .temp-theme-a .temperature::before {
+      top: 2px;
+      left: 5px;
+      padding-left: 7px;
+      color: rgba(255,255,255,.46);
+      font-size: 6.5px;
+      letter-spacing: .08em;
+      background: radial-gradient(circle at 2px 50%, rgba(var(--zone),.9) 0 1.5px, transparent 1.7px);
+    }
+
+    .temp-theme-a .temperature::after {
+      inset: 0;
+      border-top: 1px solid rgba(var(--zone),.28);
+    }
+
+    .temp-theme-a .temperature[data-kind="nozzle"]::after {
+      background:
+        radial-gradient(ellipse 46% 115% at 8% 100%, rgba(var(--zone),.18), transparent 72%),
+        linear-gradient(180deg, rgba(var(--zone),.055), transparent 72%);
+    }
+
+    .temp-theme-a .temperature[data-kind="bed"]::after {
+      background:
+        repeating-linear-gradient(0deg, transparent 0 4px, rgba(var(--zone),.035) 4px 5px),
+        linear-gradient(0deg, rgba(var(--zone),.16) 0 18%, rgba(var(--zone),.045) 19%, transparent 70%);
+    }
+
+    .temp-theme-a .temperature[data-kind="chamber"]::after {
+      inset: 4px 5px;
+      border: 1px solid rgba(var(--zone),.16);
+      border-radius: 4px;
+      background: radial-gradient(circle at 50% 50%, rgba(var(--zone),.09), transparent 75%);
+    }
+
+    .temp-theme-a .temp-value {
+      flex-direction: row;
+      align-items: baseline;
+      gap: 3px;
+      transform: translateY(4px);
+    }
+
+    .temp-theme-a .temp-value span::before {
+      margin-right: 2px;
+      color: rgba(255,255,255,.2);
+      content: "/";
+    }
+
+    .temp-value {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 0;
+      margin: 0;
+      line-height: 1;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .temp-value strong { font-family: var(--mono); font-size: var(--font-title); font-weight: 650; letter-spacing: -.06em; }
+    .temp-value span { color: var(--muted); font-family: var(--mono); font-size: var(--font-mini); }
+    .temp-value span::before { content: none; }
+
+    .temperature-bento.dual-nozzle { grid-template-columns: 1.35fr 1fr 1fr; min-height: 30px; }
+
+    .temperature.dual-stack {
+      display: grid;
+      grid-template-rows: repeat(2, 1fr);
+      gap: 0;
+      place-items: stretch;
+      padding-block: 1px;
+    }
+
+    .nozzle-row {
+      position: relative;
+      width: 100%;
+      min-width: 0;
+      display: grid;
+      place-items: center;
+      padding-inline: 22px 4px;
+      white-space: nowrap;
+    }
+
+    .nozzle-row + .nozzle-row { border-top: 1px solid var(--line); }
+    .nozzle-row > svg { display: none; }
+    .nozzle-row > small { position: absolute; left: 7px; color: var(--secondary); font-size: var(--font-mini); font-weight: 800; }
+    .nozzle-values {
+      position: absolute;
+      left: 50%;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 3px;
+      transform: translateX(-50%);
+    }
+    .nozzle-values strong { font-family: var(--mono); font-size: var(--font-body); letter-spacing: -.06em; }
+    .nozzle-values span { color: var(--muted); font-family: var(--mono); font-size: var(--font-mini); }
+    .nozzle-values span::before { margin-right: 2px; color: rgba(255,255,255,.22); content: "/"; }
+
+    .printer-card.wide .temperature-bento.dual-nozzle {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .printer-card.wide .temperature.dual-stack {
+      grid-column: span 2;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: 1fr;
+      padding: 0;
+    }
+
+    .printer-card.wide .nozzle-row {
+      padding-inline: 30px 8px;
+    }
+
+    .printer-card.wide .nozzle-row + .nozzle-row {
+      border-top: 0;
+      border-left: 1px solid var(--line);
+    }
+
+    .printer-card.wide .nozzle-row > small { left: 8px; font-size: var(--font-mini); }
+    .printer-card.wide .nozzle-values strong { font-size: var(--font-title); }
+    .printer-card.wide .nozzle-values span { font-size: var(--font-mini); }
+
+    .material-bento {
+      min-height: 0;
+      display: flex;
+      align-items: stretch;
+      gap: var(--gap);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .material-bento::-webkit-scrollbar { display: none; }
+
+    .material-bento.multi-ams {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      overflow: visible;
+    }
+
+    .module {
+      min-width: 0;
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding: 5px 6px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-tile);
+      background: var(--surface-strong);
+    }
+
+    .module.ams { flex-grow: 4; }
+    .module.ams.compact { flex-grow: 2.25; }
+    .module.external { flex-grow: 1.25; min-width: 54px; }
+    .module.solo { flex: 1 1 100%; min-width: 0; }
+    .material-bento.balanced-pair .module { flex: 1 1 0; min-width: 0; }
+    .module.external.solo .slot,
+    .module.ams.compact.solo .slot {
+      width: 48%;
+      min-width: 72px;
+      max-width: 120px;
+      justify-self: center;
+    }
+
+    .module-head {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 3px;
+    }
+
+    .module-head strong { font-size: var(--font-secondary); font-weight: 700; }
+    .module.ams.compact .module-head { gap: 3px; }
+    .module.ams.compact .module-head strong { font-size: var(--font-secondary); white-space: nowrap; }
+    .module.ams.compact .environment { gap: 3px; font-size: var(--font-mini); }
+
+    .environment {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+      color: #c3c6c2;
+      font-family: var(--mono);
+      font-size: var(--font-mini);
+    }
+
+    .environment span { display: inline-flex; align-items: center; gap: 3px; }
+    .environment svg { width: 9px; height: 9px; }
+    .environment > span:first-child svg { color: var(--sensor-humidity); }
+    .environment > span:last-child svg { color: var(--sensor-temperature); }
+
+    .slots {
+      display: grid;
+      grid-template-columns: repeat(var(--slot-count),minmax(0,1fr));
+      gap: 5px;
+    }
+
+    .slot { min-width: 0; }
+
+    .filament {
+      height: 20px;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 5px;
+      background: var(--filament);
+    }
+
+    .slot.active .filament { box-shadow: inset 0 0 0 3px #f4f5f2; }
+
+    .slot.empty .filament {
+      border-color: rgba(255,255,255,.075);
+      background: repeating-linear-gradient(
+        135deg,
+        rgba(255,255,255,.035) 0 5px,
+        rgba(255,255,255,.012) 5px 10px
+      );
+    }
+
+    .slot.empty .slot-meta span { color: var(--muted); }
+
+    .slot-meta {
+      position: relative;
+      min-height: 11px;
+      display: grid;
+      place-items: center;
+      margin-top: 2px;
+    }
+
+    .slot-meta strong {
+      position: absolute;
+      left: 0;
+      color: #737773;
+      font-family: var(--mono);
+      font-size: 7.5px;
+      font-weight: 550;
+      letter-spacing: .06em;
+    }
+
+    .slot-meta span {
+      max-width: 100%;
+      overflow: hidden;
+      color: #fafbf9;
+      font-size: 10.5px;
+      font-weight: 760;
+      letter-spacing: .035em;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .external .slots { grid-template-columns: 1fr; }
+    .module.external .slot-meta strong { display: none; }
+
+    @media (max-width: 700px) {
+      .demo-title span { display: none; }
+      .config-switch button { padding-inline: 8px; }
+      .printer-card { min-height: 0; padding: var(--card-padding); border-radius: var(--radius-card); }
+      .printer-name { font-size: var(--font-title); }
+      .details span { display: none; }
+      .details { width: 23px; justify-content: center; padding: 0; }
+      .job-meta { display: none; }
+      .temperature { min-height: 30px; padding: 3px 5px; }
+      .temperature svg { width: 13px; height: 13px; }
+      .temp-value strong { font-size: var(--font-title); }
+      .material-bento { flex-wrap: nowrap; }
+      .module.ams,
+      .module.ams.compact { min-width: 0; }
+      .module.external { min-width: 54px; }
+      .module.solo { min-width: 0; }
+      .module { min-height: 0; }
+      .material-bento.multi-ams {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow: visible;
+      }
+      .multi-ams .module.ams,
+      .multi-ams .module.ams.compact,
+      .multi-ams .module.external { min-width: 0; }
+    }
+
+    @container gantry-dashboard (max-width: 453px) {
+      .stage { grid-template-columns: 1fr; }
+      .printer-card { width: 100%; justify-self: stretch; }
+      .printer-card.wide { grid-column: 1; }
+      .printer-card.wide .file-block { display: block; }
+      .printer-card.wide .progress-summary { min-width: 0; margin-top: 7px; }
+    }
+
+    @container gantry-dashboard (min-width: 694px) {
+      .stage { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .printer-card.wide { grid-column: span 2; }
+    }
+  </style>
+</head>
+<body data-size="medium">
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="printer-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8" d="M6 8V3h12v5M5 17H3V8h18v9h-2M6 13h12v8H6zM8 17h8M17.5 11h.01"/></symbol>
+    <symbol id="chart-icon" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3" d="M2 12V3m0 9h12M4 9l3-3 2 2 4-4"/></symbol>
+    <symbol id="nozzle-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7 3h10v5l-2 3v3H9v-3L7 8zM10 14h4l-1 4h-2zM12 20v1"/></symbol>
+    <symbol id="bed-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M4 15h16v4H4zM7 11c0-2 2-2 2-4M12 11c0-2 2-2 2-4M17 11c0-2 2-2 2-4M7 19v2m10-2v2"/></symbol>
+    <symbol id="chamber-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M4 4h16v16H4zM8 8h8v8H8zM12 10v4m-2-2h4"/></symbol>
+    <symbol id="humidity-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 3s6 6.4 6 11a6 6 0 1 1-12 0c0-4.6 6-11 6-11zM9 15c.5 1.3 1.5 2 3 2"/></symbol>
+    <symbol id="thermo-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M10 5a2 2 0 0 1 4 0v8.2a4 4 0 1 1-4 0zM12 8v7"/></symbol>
+    <symbol id="layers-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="m12 3 8 4-8 4-8-4 8-4Zm-8 9 8 4 8-4M4 17l8 4 8-4"/></symbol>
+    <symbol id="shield-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 3 20 6v5c0 5.1-3.2 8.5-8 10-4.8-1.5-8-4.9-8-10V6l8-3Zm-3 9 2 2 4-4"/></symbol>
+  </svg>
+
+  <main class="page">
+    <header class="demo-bar">
+      <div class="demo-title"><strong id="demo-size-title">Gantry · 5 drukarek · Średnie</strong><span id="demo-size-math">Dashboard 512 px · kafel 238 px · typografia 100%</span></div>
+      <nav class="config-switch" aria-label="Rozmiar kafli">
+        <button data-size="small">Małe</button>
+        <button class="active" data-size="medium">Średnie</button>
+        <button data-size="large">Duże</button>
+      </nav>
+    </header>
+
+    <div class="dashboard-scroll" id="dashboard-scroll">
+      <section class="stage temp-theme-a" id="dashboard-grid" aria-label="Podgląd pięciu drukarek"></section>
+    </div>
+    <button class="resize-edge resize-edge-x" data-resize-axis="x" type="button" aria-label="Zmień szerokość podglądu" title="Przeciągnij — szerokość dociągnie się do pełnych kolumn"></button>
+    <button class="resize-edge resize-edge-y" data-resize-axis="y" type="button" aria-label="Zmień wysokość podglądu" title="Przeciągnij — wysokość dociągnie się do pełnego rzędu"></button>
+    <button class="resize-edge resize-corner" data-resize-axis="both" type="button" aria-label="Zmień szerokość i wysokość podglądu" title="Przeciągnij narożnik — dociąganie do siatki"></button>
+  </main>
+
+  <script>
+    const configurations = {
+      'ams': [
+        {name:'AMS A',humidity:'31%',temperature:'35°',slots:[['A1','PLA','#9da0a1'],['A2','PLA','#f6d85f',true],['A3','ABS','#d9320b'],['A4','—',null,false,true]]}
+      ],
+      'ht': [
+        {name:'AMS HT',humidity:'42%',temperature:'33°',slots:[['A1','PA-CF','#0b0c0d',true]]}
+      ],
+      'ams-ext': [
+        {name:'AMS A',humidity:'31%',temperature:'35°',slots:[['A1','PLA','#8a8d8e'],['A2','PLA','#c9c9c5',true],['A3','ABS','#666866'],['A4','—',null,false,true]]},
+        {name:'EXT',external:true,humidity:'30%',temperature:'38°',slots:[['EXT','PLA','#747672']]}
+      ],
+      'x2': [
+        {name:'AMS A',humidity:'31%',temperature:'35°',slots:[['A1','PLA','#dda3c9'],['A2','PLA','#a28bd0',true],['A3','ABS','#718052'],['A4','—',null,false,true]]},
+        {name:'EXT',external:true,humidity:'30%',temperature:'38°',slots:[['EXT','PLA','#d7d8d5']]}
+      ],
+      'ext': [{name:'EXT',external:true,humidity:'30%',temperature:'38°',slots:[['EXT','PETG','#0c0d0e',true]]}],
+      'ext-green': [{name:'EXT',external:true,humidity:'30%',temperature:'38°',slots:[['EXT','PLA','#8be800',true]]}],
+      'ht-ext': [
+        {name:'AMS HT',humidity:'42%',temperature:'33°',slots:[['A1','PA-CF','#494b4a',true]]},
+        {name:'EXT',external:true,humidity:'30%',temperature:'38°',slots:[['EXT','PLA','#858783']]}
+      ],
+      'full': [
+        {name:'AMS A',humidity:'31%',temperature:'35°',slots:[['A1','PLA','#8a8d8e'],['A2','PLA','#c9c9c5',true],['A3','ABS','#666866'],['A4','—',null,false,true]]},
+        {name:'AMS HT',humidity:'42%',temperature:'33°',slots:[['A1','PA-CF','#494b4a',true]]},
+        {name:'EXT',external:true,humidity:'30%',temperature:'38°',slots:[['EXT','PLA','#747672']]},
+        {name:'EXT 2',external:true,humidity:'34%',temperature:'37°',slots:[['EXT 2','PETG','#858783']]}
+      ],
+      'three': [
+        {name:'AMS A',humidity:'31%',temperature:'35°',slots:[['A1','PLA','#8a8d8e'],['A2','PLA','#c9c9c5',true],['A3','ABS','#666866'],['A4','—',null,false,true]]},
+        {name:'AMS B',humidity:'28%',temperature:'34°',slots:[['B1','PLA','#737674'],['B2','PETG','#a9aaa6'],['B3','ASA','#5c5e5c'],['B4','—',null,false,true]]},
+        {name:'AMS HT',humidity:'42%',temperature:'33°',slots:[['A1','PA-CF','#494b4a',true]]},
+        {name:'EXT',external:true,humidity:'30%',temperature:'38°',slots:[['EXT','PLA','#858783']]}
+      ]
+    };
+
+    function moduleMarkup(module, solo) {
+      const slots = module.slots.map(([id,type,color,active,empty]) => `<article class="slot${active?' active':''}${empty?' empty':''}"><div class="filament"${color ? ` style="--filament:${color}"` : ''}></div><div class="slot-meta"><strong>${id}</strong><span>${type}</span></div></article>`).join('');
+      const environment = module.humidity || module.temperature ? `<span class="environment"><span><svg><use href="#humidity-icon"></use></svg>${module.humidity}</span><span><svg><use href="#thermo-icon"></use></svg>${module.temperature}</span></span>` : '';
+      const kind = module.external ? ' external' : ` ams${module.slots.length === 1 ? ' compact' : ''}`;
+      return `<article class="module${kind}${solo?' solo':''}"><header class="module-head"><strong>${module.name}</strong>${environment}</header><div class="slots" style="--slot-count:${module.slots.length}">${slots}</div></article>`;
+    }
+
+    const printers = [
+      {name:'X1',connection:'MQTT',config:'ams',status:'printing',statusLight:true,file:'słonecznik_twist_plate_1.3mf',progress:46,end:'11:24',remaining:'1h 45m',layers:'27 / 110',temps:['220°','220°','55°','55°','45°','—']},
+      {name:'P1',connection:'MQTT',config:'ht',file:'PORT 100 MM.3mf',progress:69,end:'14:36',remaining:'58m',layers:'106 / 326',temps:['255°','255°','65°','65°','32°','—']},
+      {name:'MINI',connection:'MQTT',config:'ext',file:'ADAPTER-PVC110-SPIRO120.3mf',progress:28,end:'17:16',remaining:'2h 2m',layers:'19 / 226',temps:['245°','245°','70°','70°','—','—']},
+      {name:'P2S',connection:'MQTT',config:'ext-green',file:'ADAPTER-PVC110-SPIRO100.3mf',progress:52,end:'11:01',remaining:'1h 27m',layers:'207 / 425',temps:['250°','250°','68°','68°','52°','—']},
+      {name:'X2D',connection:'MQTT',tunnel:'VPN',config:'x2',wide:true,dual:true,file:'magnetic_x2d.3mf',progress:48,end:'17:42',remaining:'2h 28m',layers:'26 / 115',temps:['220°','220°','215°','215°','46°','46°','41°','—']}
+    ];
+
+    function temperatureMarkup(printer) {
+      const t = printer.temps;
+      if (printer.dual) {
+        return `<section class="temperature-bento dual-nozzle" aria-label="Temperatury"><article class="temperature dual-stack" data-kind="nozzle" data-label="DYSZE" title="Dysze P i L"><span class="nozzle-row"><small>P</small><span class="nozzle-values"><strong>${t[0]}</strong><span>${t[1]}</span></span></span><span class="nozzle-row"><small>L</small><span class="nozzle-values"><strong>${t[2]}</strong><span>${t[3]}</span></span></span></article><article class="temperature" data-kind="bed" data-label="STÓŁ" title="Stół"><span class="temp-value"><strong>${t[4]}</strong><span>${t[5]}</span></span></article><article class="temperature" data-kind="chamber" data-label="KOMORA" title="Komora"><span class="temp-value"><strong>${t[6]}</strong><span>${t[7]}</span></span></article></section>`;
+      }
+      return `<section class="temperature-bento" aria-label="Temperatury"><article class="temperature" data-kind="nozzle" data-label="DYSZA" title="Dysza"><span class="temp-value"><strong>${t[0]}</strong><span>${t[1]}</span></span></article><article class="temperature" data-kind="bed" data-label="STÓŁ" title="Stół"><span class="temp-value"><strong>${t[2]}</strong><span>${t[3]}</span></span></article><article class="temperature" data-kind="chamber" data-label="KOMORA" title="Komora"><span class="temp-value"><strong>${t[4]}</strong><span>${t[5]}</span></span></article></section>`;
+    }
+
+    function cardMarkup(printer) {
+      const modules = configurations[printer.config];
+      const amsCount = modules.filter(module => !module.external).length;
+      const materialClasses = ['material-bento'];
+      if (amsCount >= 3) materialClasses.push('multi-ams');
+      if (modules.length === 2 && modules.some(module => !module.external && module.slots.length === 1)) materialClasses.push('balanced-pair');
+      const eta = printer.complete ? `Zakończono · ${printer.end}` : `ETA ${printer.end} · ${printer.remaining}`;
+      const wide = printer.wide || amsCount >= 2;
+      const activeSegments = Math.round(printer.progress * 32 / 100);
+      const progressSegments = Array.from({length: 32}, (_, index) => `<i${index < activeSegments ? ' class="active"' : ''}></i>`).join('');
+      const statusClass = printer.statusLight ? ' status-light' : '';
+      const statusAttribute = printer.statusLight ? ` data-status="${printer.status || 'printing'}"` : '';
+      return `<article class="printer-card${wide?' wide':''}${statusClass}"${statusAttribute}><section class="file-block"><header class="card-head job-head"><svg class="printer-icon"><use href="#printer-icon"></use></svg><strong class="printer-name marquee"><span class="marquee-content">${printer.name}</span></strong>${printer.connection ? `<span class="connection-type">${printer.connection}</span>` : ''}${printer.tunnel ? `<span class="connection-route" title="Połączenie przez ${printer.tunnel}" aria-label="Połączenie przez ${printer.tunnel}"><svg><use href="#shield-icon"></use></svg></span>` : ''}<span class="details"><svg><use href="#chart-icon"></use></svg><span>Szczegóły</span></span><span class="head-tools"><span class="drag" aria-label="Przeciągnij"></span><button class="tool" aria-label="Więcej">•••</button></span></header><div class="job-line"><i class="state-dot"></i><strong class="state">${printer.complete?'Zakończono':'Drukowanie'}</strong><span class="job-separator">·</span><strong class="file-name marquee"><span class="marquee-content">${printer.file}</span></strong><span class="state-layers"><svg><use href="#layers-icon"></use></svg>${printer.layers}</span></div><div class="progress-summary"><strong class="percent">${printer.progress}<small>%</small></strong><span class="progress-chip">${eta}</span><span class="progress-layers"><svg><use href="#layers-icon"></use></svg>${printer.layers}</span></div><span class="progress-track" aria-label="Postęp ${printer.progress}%">${progressSegments}</span></section>${temperatureMarkup(printer)}<section class="${materialClasses.join(' ')}" aria-label="Materiały">${modules.map(module => moduleMarkup(module, modules.length === 1)).join('')}</section></article>`;
+    }
+
+    const dashboardGrid = document.querySelector('#dashboard-grid');
+    const dashboardPage = document.querySelector('.page');
+    const resizeEdges = [...document.querySelectorAll('[data-resize-axis]')];
+    dashboardGrid.innerHTML = printers.map(cardMarkup).join('');
+
+    function updateMarquees() {
+      document.querySelectorAll('.marquee').forEach(marquee => {
+        const content = marquee.querySelector('.marquee-content');
+        const overflow = Math.max(0, content.scrollWidth - marquee.clientWidth);
+        marquee.classList.toggle('is-overflowing', overflow > 1);
+        marquee.style.setProperty('--marquee-offset', `${-(overflow + 14)}px`);
+        marquee.style.setProperty('--marquee-duration', `${Math.max(5, Math.min(14, (overflow + 28) / 16)).toFixed(2)}s`);
+      });
+    }
+
+    const sizePresets = {
+      small: {label:'Małe',dashboard:480,card:222},
+      medium: {label:'Średnie',dashboard:512,card:238},
+      large: {label:'Duże',dashboard:563,card:264}
+    };
+
+    function updateDemoMetrics() {
+      const width = Math.round(dashboardPage.getBoundingClientRect().width);
+      const columns = getComputedStyle(dashboardGrid).gridTemplateColumns.split(' ').length;
+      const cards = [...dashboardGrid.querySelectorAll('.printer-card')];
+      const rows = new Set(cards.map(card => Math.round(card.getBoundingClientRect().top))).size;
+      const firstCard = dashboardGrid.querySelector('.printer-card:not(.wide)');
+      const cardWidth = firstCard ? Math.round(firstCard.getBoundingClientRect().width) : 0;
+      const height = Math.round(dashboardPage.getBoundingClientRect().height);
+      const preset = sizePresets[document.body.dataset.size] || sizePresets.medium;
+      document.querySelector('#demo-size-title').textContent = `Gantry · ${printers.length} drukarek · ${preset.label}`;
+      const columnLabel = columns === 1 ? '1 kolumna' : `${columns} kolumny`;
+      const rowLabel = rows === 1 ? '1 rząd' : `${rows} rzędy`;
+      document.querySelector('#demo-size-math').textContent = `Okno ${width}×${height} px · ${columnLabel} × ${rowLabel} · kafel ${cardWidth} px`;
+      requestAnimationFrame(updateMarquees);
+    }
+
+    function applySize(size) {
+      document.body.dataset.size = size in sizePresets ? size : 'medium';
+      document.querySelectorAll('[data-size]').forEach(button => button.classList.toggle('active', button.dataset.size === document.body.dataset.size));
+      updateDemoMetrics();
+      try { localStorage.setItem('gantry-card-size', document.body.dataset.size); } catch {}
+    }
+
+    function setPreviewWidth(width) {
+      const maximum = Math.min(840, document.documentElement.clientWidth);
+      const minimum = Math.min(320, maximum);
+      dashboardPage.style.width = `${Math.max(minimum, Math.min(maximum, Math.round(width)))}px`;
+      updateDemoMetrics();
+    }
+
+    function setPreviewHeight(height) {
+      const maximum = 2000;
+      dashboardPage.classList.add('has-fixed-height');
+      dashboardPage.style.height = `${Math.max(240, Math.min(maximum, Math.round(height)))}px`;
+      updateDemoMetrics();
+    }
+
+    function widthForColumnCount(columns) {
+      const preset = sizePresets[document.body.dataset.size] || sizePresets.medium;
+      const contentWidth = columns * preset.card + Math.max(0, columns - 1) * 10;
+      const breakpointFloor = columns === 3 ? 720 : columns === 2 ? 480 : 320;
+      return Math.max(breakpointFloor, contentWidth + 26);
+    }
+
+    function currentColumnCount() {
+      return getComputedStyle(dashboardGrid).gridTemplateColumns.split(' ').length;
+    }
+
+    function rowHeightSnapPoints() {
+      const previousHeight = dashboardPage.style.height;
+      const wasFixed = dashboardPage.classList.contains('has-fixed-height');
+      const previousScroll = document.querySelector('#dashboard-scroll').scrollTop;
+      dashboardPage.style.removeProperty('height');
+      dashboardPage.classList.remove('has-fixed-height');
+      const pageTop = dashboardPage.getBoundingClientRect().top;
+      const paddingBottom = parseFloat(getComputedStyle(dashboardPage).paddingBottom) || 0;
+      const rows = new Map();
+      dashboardGrid.querySelectorAll('.printer-card').forEach(card => {
+        const rect = card.getBoundingClientRect();
+        const key = Math.round(rect.top);
+        rows.set(key, Math.max(rows.get(key) || 0, rect.bottom));
+      });
+      const points = [...rows.values()].sort((a, b) => a - b).map(bottom => Math.round(bottom - pageTop + paddingBottom));
+      if (previousHeight) dashboardPage.style.height = previousHeight;
+      if (wasFixed) dashboardPage.classList.add('has-fixed-height');
+      document.querySelector('#dashboard-scroll').scrollTop = previousScroll;
+      return points;
+    }
+
+    function closestValue(values, desired) {
+      return values.reduce((best, value) => Math.abs(value - desired) < Math.abs(best - desired) ? value : best, values[0]);
+    }
+
+    function snapPreview(axis, desiredHeight = dashboardPage.getBoundingClientRect().height) {
+      dashboardPage.classList.add('is-snapping');
+      if (axis === 'x' || axis === 'both') {
+        setPreviewWidth(widthForColumnCount(currentColumnCount()));
+      }
+      if (axis === 'y' || axis === 'both') {
+        const points = rowHeightSnapPoints();
+        if (points.length) setPreviewHeight(closestValue(points, desiredHeight));
+      }
+      window.setTimeout(() => dashboardPage.classList.remove('is-snapping'), 190);
+    }
+
+    let resizeState = null;
+
+    function beginPreviewResize(event) {
+      const handle = event.currentTarget;
+      const axis = handle.dataset.resizeAxis;
+      resizeState = {
+        axis,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startWidth: dashboardPage.getBoundingClientRect().width,
+        startHeight: dashboardPage.getBoundingClientRect().height
+      };
+      handle.setPointerCapture(event.pointerId);
+      dashboardPage.classList.add('is-resizing', `is-resizing-${axis}`);
+      event.preventDefault();
+    }
+
+    function continuePreviewResize(event) {
+      if (!resizeState || event.pointerId !== resizeState.pointerId) return;
+      if (resizeState.axis === 'x' || resizeState.axis === 'both') {
+        setPreviewWidth(resizeState.startWidth + (event.clientX - resizeState.startX) * 2);
+      }
+      if (resizeState.axis === 'y' || resizeState.axis === 'both') {
+        setPreviewHeight(resizeState.startHeight + event.clientY - resizeState.startY);
+      }
+    }
+
+    function finishPreviewResize(event) {
+      if (!resizeState || event.pointerId !== resizeState.pointerId) return;
+      const axis = resizeState.axis;
+      const desiredHeight = dashboardPage.getBoundingClientRect().height;
+      resizeState = null;
+      dashboardPage.classList.remove('is-resizing', `is-resizing-${axis}`);
+      snapPreview(axis, desiredHeight);
+    }
+
+    function resetPreviewAxis(event) {
+      const axis = event.currentTarget.dataset.resizeAxis;
+      if (axis === 'x' || axis === 'both') dashboardPage.style.removeProperty('width');
+      if (axis === 'y' || axis === 'both') {
+        dashboardPage.style.removeProperty('height');
+        dashboardPage.classList.remove('has-fixed-height');
+      }
+      updateDemoMetrics();
+    }
+
+    function resizePreviewWithKeyboard(event) {
+      const axis = event.currentTarget.dataset.resizeAxis;
+      if ((axis === 'x' || axis === 'both') && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const nextColumns = Math.max(1, Math.min(3, currentColumnCount() + direction));
+        dashboardPage.classList.add('is-snapping');
+        setPreviewWidth(widthForColumnCount(nextColumns));
+        window.setTimeout(() => dashboardPage.classList.remove('is-snapping'), 190);
+        event.preventDefault();
+      }
+      if ((axis === 'y' || axis === 'both') && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+        const points = rowHeightSnapPoints();
+        const currentHeight = dashboardPage.getBoundingClientRect().height;
+        const currentIndex = points.indexOf(closestValue(points, currentHeight));
+        const nextIndex = Math.max(0, Math.min(points.length - 1, currentIndex + (event.key === 'ArrowDown' ? 1 : -1)));
+        if (points[nextIndex]) setPreviewHeight(points[nextIndex]);
+        event.preventDefault();
+      }
+    }
+
+    resizeEdges.forEach(edge => {
+      edge.addEventListener('pointerdown', beginPreviewResize);
+      edge.addEventListener('pointermove', continuePreviewResize);
+      edge.addEventListener('pointerup', finishPreviewResize);
+      edge.addEventListener('pointercancel', finishPreviewResize);
+      edge.addEventListener('dblclick', resetPreviewAxis);
+      edge.addEventListener('keydown', resizePreviewWithKeyboard);
+    });
+
+    document.querySelectorAll('[data-size]').forEach(button => button.addEventListener('click', () => applySize(button.dataset.size)));
+    let savedSize = 'medium';
+    try { savedSize = localStorage.getItem('gantry-card-size') || 'medium'; } catch {}
+    applySize(savedSize);
+    try {
+      localStorage.removeItem('gantry-dashboard-width');
+      localStorage.removeItem('gantry-dashboard-height');
+    } catch {}
+    document.fonts?.ready.then(updateMarquees);
+    window.addEventListener('resize', () => {
+      if (dashboardPage.style.width) setPreviewWidth(dashboardPage.getBoundingClientRect().width);
+      if (dashboardPage.classList.contains('has-fixed-height')) setPreviewHeight(dashboardPage.getBoundingClientRect().height);
+      updateDemoMetrics();
+    });
+    new ResizeObserver(updateDemoMetrics).observe(dashboardPage);
+  </script>
+</body>
+</html>

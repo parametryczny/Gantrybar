@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Gantry — lokalny monitor stanu drukarek 3D dla macOS, Windows i GNU/Linux.">
+  <meta name="theme-color" content="#10120f">
+  <title>Gantry — wszystkie drukarki. Jeden widok.</title>
+  <link rel="icon" href="assets/gantry-icon.png">
+  <link rel="preload" href="assets/mac.png" as="image">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Gantry — strona główna">
+      <img src="assets/gantry-wordmark.png" alt="Gantry">
+    </a>
+    <nav aria-label="Główna nawigacja">
+      <a href="#features" data-i18n="navFeatures">Funkcje</a>
+      <a href="#platforms" data-i18n="navPlatforms">Systemy</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/parametryczny/gantrybar" target="_blank" rel="noreferrer">GitHub</a>
+    </nav>
+    <div class="header-actions">
+      <button class="language" type="button" aria-label="Zmień język">PL</button>
+      <a class="button button-small" href="https://github.com/parametryczny/gantrybar/releases/latest" target="_blank" rel="noreferrer" data-i18n="download">Pobierz</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero section-shell">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="live-dot"></span><span data-i18n="eyebrow">Twój warsztat. Na żywo.</span></p>
+        <h1><span data-i18n="heroLine1">Wszystkie drukarki.</span><br><em data-i18n="heroLine2">Jeden widok.</em></h1>
+        <p class="hero-lead" data-i18n="heroLead">Lokalny monitor floty drukarek 3D. Status, postęp, temperatury i filament — bez chmury, bez otwierania pięciu różnych aplikacji.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/parametryczny/gantrybar/releases/latest" target="_blank" rel="noreferrer"><span data-i18n="downloadFree">Pobierz bezpłatnie</span><b>↗</b></a>
+          <a class="text-link" href="#demo"><span data-i18n="seeAction">Zobacz w działaniu</span><span>↓</span></a>
+        </div>
+        <ul class="hero-meta" aria-label="Najważniejsze informacje">
+          <li><b>MIT</b><span>Open source</span></li>
+          <li><b>LOCAL</b><span data-i18n="noCloud">Bez chmury</span></li>
+          <li><b>3 OS</b><span>macOS · Windows · Linux</span></li>
+        </ul>
+      </div>
+
+      <div class="hero-stage" id="demo">
+        <div class="orb orb-a"></div><div class="orb orb-b"></div>
+        <div class="screen-card hero-screen" data-tilt>
+          <div class="screen-top"><span></span><span></span><span></span><small>GANTRY / MACOS</small></div>
+          <img src="assets/mac.png" alt="Gantry uruchomione na macOS">
+        </div>
+        <div class="telemetry telemetry-one"><span data-i18n="printing">Drukowanie</span><strong>79%</strong></div>
+        <div class="telemetry telemetry-two"><span>AMS HT</span><strong>33% · 36°C</strong></div>
+        <div class="status-radar" aria-hidden="true"><i></i><i></i><i></i><b>5/5</b></div>
+      </div>
+    </section>
+
+    <section class="marquee" aria-label="Obsługiwane platformy i protokoły">
+      <div class="marquee-track">
+        <span>BAMBU LAB</span><i></i><span>KLIPPER</span><i></i><span>PRUSALINK</span><i></i><span>MOONRAKER</span><i></i><span>MACOS</span><i></i><span>WINDOWS</span><i></i><span>GNU/LINUX</span><i></i>
+        <span>BAMBU LAB</span><i></i><span>KLIPPER</span><i></i><span>PRUSALINK</span><i></i><span>MOONRAKER</span><i></i><span>MACOS</span><i></i><span>WINDOWS</span><i></i><span>GNU/LINUX</span><i></i>
+      </div>
+    </section>
+
+    <section class="statement section-shell reveal">
+      <p class="section-index">01 / <span data-i18n="overview">PODGLĄD</span></p>
+      <h2 data-i18n="statement">Nie pilnuj drukarek.<br><em>Niech Gantry pilnuje ich za Ciebie.</em></h2>
+      <div class="statement-copy">
+        <p data-i18n="statementCopy">Jedno lekkie narzędzie zbiera najważniejsze dane z całego warsztatu i pokazuje je dokładnie tam, gdzie ich potrzebujesz.</p>
+        <div class="privacy-badge"><span>⌁</span><b data-i18n="localFirst">Local first</b><small data-i18n="staysLan">Dane pozostają w Twojej sieci LAN</small></div>
+      </div>
+    </section>
+
+    <section class="features section-shell" id="features">
+      <div class="section-heading reveal"><p class="section-index">02 / <span data-i18n="capabilities">MOŻLIWOŚCI</span></p><h2 data-i18n="everything">Wszystko, co ważne.<br><em>Bez szumu.</em></h2></div>
+      <div class="feature-grid">
+        <article class="feature feature-large reveal">
+          <p class="feature-number">01</p><div class="feature-icon progress-icon"><i></i><b>68%</b></div>
+          <h3 data-i18n="liveStatus">Status na żywo</h3><p data-i18n="liveStatusCopy">Postęp, ETA, warstwy, temperatury i stan zadania odświeżane w jednym spokojnym widoku.</p>
+        </article>
+        <article class="feature reveal">
+          <p class="feature-number">02</p><div class="feature-icon spool-icon"><i></i><i></i><i></i><i></i></div>
+          <h3>AMS · CFS · MMU</h3><p data-i18n="filamentCopy">Kolory, aktywne sloty, wilgotność i temperatura modułów filamentu.</p>
+        </article>
+        <article class="feature reveal">
+          <p class="feature-number">03</p><div class="feature-icon alert-icon">!</div>
+          <h3 data-i18n="notifications">Powiadomienia</h3><p data-i18n="notificationsCopy">Błędy, zakończenie zadania i problemy z materiałem — bez patrzenia na ekran drukarki.</p>
+        </article>
+        <article class="feature feature-wide reveal">
+          <p class="feature-number">04</p><div class="feature-copy"><h3 data-i18n="fleetScale">Od jednej drukarki do całej farmy</h3><p data-i18n="fleetScaleCopy">Adaptacyjny układ, tryb kompaktowy i trwała kolejność kart. Pięć czy piętnaście urządzeń — interfejs pozostaje czytelny.</p></div>
+          <div class="fleet-mini" aria-hidden="true"><i style="--p:82%"></i><i style="--p:46%"></i><i style="--p:100%"></i><i style="--p:21%"></i><i style="--p:68%"></i></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="platforms" id="platforms">
+      <div class="section-shell">
+        <div class="section-heading reveal"><p class="section-index">03 / <span data-i18n="everywhere">WSZĘDZIE</span></p><h2 data-i18n="nativePlace">Na swoim miejscu.<br><em>Na każdym systemie.</em></h2></div>
+        <div class="platform-tabs" role="tablist" aria-label="Platformy">
+          <button class="active" type="button" data-platform="mac" role="tab">macOS</button>
+          <button type="button" data-platform="win" role="tab">Windows</button>
+          <button type="button" data-platform="linux" role="tab">GNU/Linux</button>
+          <button type="button" data-platform="pi" role="tab">Raspberry Pi</button>
+        </div>
+        <div class="platform-showcase reveal">
+          <div class="platform-copy">
+            <p class="platform-kicker">GANTRY / <span id="platform-label">MACOS</span></p>
+            <h3 id="platform-title" data-i18n="macTitle">Zawsze pod ręką.</h3>
+            <p id="platform-description" data-i18n="macCopy">Natywne okno przy pasku menu. Jedno kliknięcie i widzisz cały warsztat.</p>
+            <ul id="platform-points"><li>Menu bar popover</li><li>macOS Keychain</li><li>Launch at login</li></ul>
+          </div>
+          <div class="device-scene">
+            <div class="device-frame"><img id="platform-image" src="assets/mac.png" alt="Gantry na macOS"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow section-shell">
+      <div class="section-heading reveal"><p class="section-index">04 / START</p><h2 data-i18n="minutes">Twój warsztat w Gantry.<br><em>W kilka minut.</em></h2></div>
+      <ol class="steps">
+        <li class="reveal"><b>01</b><span class="step-mark">↓</span><h3 data-i18n="stepDownload">Pobierz aplikację</h3><p data-i18n="stepDownloadCopy">Wybierz wersję dla swojego systemu z najnowszego wydania.</p></li>
+        <li class="reveal"><b>02</b><span class="step-mark">⌁</span><h3 data-i18n="stepDiscover">Wykryj urządzenia</h3><p data-i18n="stepDiscoverCopy">Gantry skanuje sieć lokalną lub importuje konfigurację z Bambu Studio.</p></li>
+        <li class="reveal"><b>03</b><span class="step-mark">●</span><h3 data-i18n="stepMonitor">Drukuj spokojnie</h3><p data-i18n="stepMonitorCopy">Statusy, filament i alerty pojawiają się automatycznie.</p></li>
+      </ol>
+    </section>
+
+    <section class="open-source">
+      <div class="section-shell source-inner reveal">
+        <div><p class="section-index">05 / OPEN SOURCE</p><h2 data-i18n="builtOpen">Zbudowane otwarcie.<br><em>Dla społeczności.</em></h2></div>
+        <div class="source-card"><div class="terminal"><span>$ git clone</span><strong>github.com/parametryczny/gantrybar</strong><i></i></div><p data-i18n="sourceCopy">Kod na licencji MIT. Bez ukrytej telemetrii. Bez konta. Bez blokowania funkcji za subskrypcją.</p><a class="button button-light" href="https://github.com/parametryczny/gantrybar" target="_blank" rel="noreferrer">View on GitHub ↗</a></div>
+      </div>
+    </section>
+
+    <section class="faq section-shell" id="faq">
+      <div class="section-heading reveal"><p class="section-index">06 / FAQ</p><h2 data-i18n="questions">Pytania.<br><em>Krótkie odpowiedzi.</em></h2></div>
+      <div class="accordion reveal">
+        <details><summary data-i18n="faqCloud">Czy Gantry wymaga konta lub chmury?<span>+</span></summary><p data-i18n="faqCloudA">Nie. Gantry komunikuje się z drukarkami bezpośrednio w sieci lokalnej.</p></details>
+        <details><summary data-i18n="faqPrinters">Jakie drukarki są obsługiwane?<span>+</span></summary><p data-i18n="faqPrintersA">Bambu Lab, urządzenia Klipper/Moonraker oraz PrusaLink. Obsługa kolejnych systemów jest rozwijana.</p></details>
+        <details><summary data-i18n="faqCodes">Gdzie są przechowywane kody dostępu?<span>+</span></summary><p data-i18n="faqCodesA">W macOS możesz użyć systemowego pęku kluczy. Windows korzysta z DPAPI, a Linux z Secret Service.</p></details>
+        <details><summary data-i18n="faqPrice">Ile kosztuje Gantry?<span>+</span></summary><p data-i18n="faqPriceA">Nic. Projekt jest darmowy i dostępny na licencji MIT.</p></details>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="cta-grid" aria-hidden="true"></div>
+      <div class="section-shell reveal"><img src="assets/gantry-wordmark.png" alt="Gantry"><h2 data-i18n="cta">Mniej zaglądania.<br><em>Więcej drukowania.</em></h2><p data-i18n="ctaCopy">Twój warsztat zasługuje na jeden dobry ekran.</p><a class="button button-primary button-huge" href="https://github.com/parametryczny/gantrybar/releases/latest" target="_blank" rel="noreferrer"><span data-i18n="downloadGantry">Pobierz Gantry</span><b>↗</b></a></div>
+    </section>
+  </main>
+
+  <footer class="site-footer section-shell">
+    <div><img src="assets/gantry-wordmark.png" alt="Gantry"><p data-i18n="footerTag">Lokalny monitor stanu drukarek 3D.</p></div>
+    <div><b>PROJECT</b><a href="https://github.com/parametryczny/gantrybar" target="_blank" rel="noreferrer">GitHub</a><a href="https://github.com/parametryczny/gantrybar/releases/latest" target="_blank" rel="noreferrer">Releases</a><a href="https://github.com/parametryczny/gantrybar/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a></div>
+    <div><b>AUTHOR</b><a href="https://github.com/parametryczny" target="_blank" rel="noreferrer">Kamil Grzegorczyk</a><a href="https://x.com/parametryczny" target="_blank" rel="noreferrer">X / @parametryczny</a><a href="https://suppi.pl/parametryczny" target="_blank" rel="noreferrer" data-i18n="support">Wesprzyj projekt</a></div>
+    <p class="copyright">© 2026 Kamil Grzegorczyk · MIT License</p>
+  </footer>
+</body>
+</html>

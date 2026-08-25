@@ -446,7 +446,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
             onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) })
         detailViewController = detail
-        swapPopoverContent(to: detail, size: NSSize(width: 480, height: 700))
+        swapPopoverContent(to: detail, size: NSSize(width: 600, height: 720))
     }
 
     /// Opens (or re-focuses) the per-printer automations editor window.

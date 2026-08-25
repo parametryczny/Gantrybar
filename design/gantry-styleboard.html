@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gantry — styleboard karty</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ui: "Helvetica Neue", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Code", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; font-family: var(--ui); -webkit-font-smoothing: antialiased; }
+    button { font: inherit; }
+
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      padding: 16px 22px 22px;
+      background: #b9b8b4;
+      transition: background 220ms ease;
+    }
+
+    .page[data-theme="coral"] { background: #ff887f; }
+    .page[data-theme="carbon"] { background: #171a18; }
+    .page[data-theme="ember"] { background: #121311; }
+    .page[data-theme="modular"] { background: #9c9c99; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+
+    .title strong { display: block; color: #0d0e0e; font-size: 20px; letter-spacing: -.035em; }
+    .title span { display: block; margin-top: 3px; color: rgba(0,0,0,.5); font-size: 11px; }
+    .page[data-theme="carbon"] .title strong,
+    .page[data-theme="ember"] .title strong { color: #f3f3ef; }
+    .page[data-theme="carbon"] .title span,
+    .page[data-theme="ember"] .title span { color: rgba(255,255,255,.42); }
+
+    .themes {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.14);
+      backdrop-filter: blur(18px);
+    }
+
+    .themes button {
+      height: 34px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: rgba(255,255,255,.68);
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 760;
+    }
+
+    .themes button.active { background: #111313; color: white; }
+
+    .stage { display: grid; place-items: center; min-height: 0; }
+
+    .printer-card {
+      --shell: #171719;
+      --tile: #c6ae9e;
+      --tile-2: #bca79d;
+      --tile-3: #3a3d42;
+      --ink: #161616;
+      --soft: rgba(0,0,0,.54);
+      --line: rgba(0,0,0,.09);
+      --accent: #ff7869;
+      width: min(100%, 900px);
+      height: min(520px, calc(100vh - 112px));
+      min-height: 450px;
+      display: grid;
+      grid-template-rows: 56px minmax(0, 1fr);
+      gap: 9px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 42px;
+      background: var(--shell);
+      box-shadow: 0 32px 80px rgba(0,0,0,.33), inset 0 1px rgba(255,255,255,.06);
+      transition: background 220ms ease, border-radius 220ms ease;
+    }
+
+    .page[data-theme="carbon"] .printer-card {
+      --shell: #1a1d1b;
+      --tile: #202320;
+      --tile-2: #181b19;
+      --tile-3: #222522;
+      --ink: #f2f2ee;
+      --soft: #8e938d;
+      --line: rgba(255,255,255,.09);
+      --accent: #adce62;
+      border-radius: 28px;
+    }
+
+    .page[data-theme="ember"] .printer-card {
+      --shell: #171719;
+      --tile: rgba(255,255,255,.065);
+      --tile-2: rgba(255,255,255,.045);
+      --tile-3: rgba(255,255,255,.085);
+      --ink: #f8f7f3;
+      --soft: #979690;
+      --line: rgba(255,255,255,.08);
+      --accent: #ff704d;
+      border-radius: 34px;
+    }
+
+    .page[data-theme="modular"] .printer-card {
+      --shell: #080909;
+      --tile: #121313;
+      --tile-2: #0d0e0e;
+      --tile-3: #161717;
+      --ink: #f4f3ef;
+      --soft: #747671;
+      --line: rgba(255,255,255,.075);
+      --accent: #ef624f;
+      border-radius: 25px;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 8px;
+      color: white;
+    }
+
+    .printer-icon { width: 25px; height: 25px; color: var(--accent); }
+    .printer-name { font-size: 30px; font-weight: 690; letter-spacing: -.055em; }
+
+    .details {
+      height: 31px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 11px;
+      border: 1px solid rgba(255,255,255,.32);
+      border-radius: 999px;
+      color: rgba(255,255,255,.7);
+      font-size: 11px;
+    }
+
+    .details svg { width: 14px; height: 14px; }
+    .head-meta { margin-left: auto; color: rgba(255,255,255,.48); font-family: var(--mono); font-size: 10px; }
+    .head-tool { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.08); color: white; }
+
+    .bento {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      grid-template-rows: 1.18fr .72fr 1fr;
+      gap: 9px;
+    }
+
+    .tile {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 25px;
+      background: var(--tile);
+      color: var(--ink);
+      transition: background 220ms ease, color 220ms ease, border-radius 220ms ease;
+    }
+
+    .page[data-theme="carbon"] .tile { border-radius: 15px; }
+    .page[data-theme="ember"] .tile { border-radius: 22px; }
+    .page[data-theme="modular"] .tile { border-radius: 14px; }
+
+    .job {
+      grid-column: span 8;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 20px 23px;
+    }
+
+    .state { color: var(--accent); font-size: 13px; font-weight: 760; }
+    .job-name { margin-top: 8px; overflow: hidden; font-size: clamp(20px,2.3vw,29px); font-weight: 610; letter-spacing: -.035em; text-overflow: ellipsis; white-space: nowrap; }
+    .job-meta { margin-top: 7px; color: var(--soft); font-family: var(--mono); font-size: 10px; }
+
+    .progress {
+      grid-column: span 4;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 18px 20px;
+      background: var(--tile-2);
+    }
+
+    .page[data-theme="ember"] .progress::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 50%;
+      background: linear-gradient(0deg, color-mix(in srgb,var(--accent) 32%,transparent), transparent);
+    }
+
+    .progress-label { position: relative; z-index: 1; color: var(--soft); font-size: 9px; font-weight: 760; letter-spacing: .12em; text-transform: uppercase; }
+    .percent { position: relative; z-index: 1; margin-top: 10px; font-size: clamp(58px,7vw,90px); font-weight: 570; letter-spacing: -.09em; line-height: .78; }
+    .percent small { margin-left: 4px; color: var(--accent); font-size: 18px; letter-spacing: 0; }
+
+    .temp {
+      grid-column: span 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 19px;
+      background: var(--tile-3);
+    }
+
+    .temp-copy strong { display: block; font-family: var(--mono); font-size: clamp(26px,3vw,38px); font-weight: 600; letter-spacing: -.06em; }
+    .temp-copy span { display: block; margin-top: 4px; color: var(--soft); font-size: 9px; font-weight: 720; letter-spacing: .1em; text-transform: uppercase; }
+    .temp i { width: 40px; height: 40px; border-radius: 50%; background: color-mix(in srgb,var(--accent) 12%,transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--accent) 32%,transparent); }
+
+    .ams { grid-column: span 9; padding: 14px 18px; background: var(--tile-2); }
+    .ext { grid-column: span 3; padding: 14px 16px; background: var(--tile-3); }
+
+    .material-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .material-head strong { font-size: 13px; }
+    .material-head span { margin-left: auto; color: var(--soft); font-family: var(--mono); font-size: 9px; }
+
+    .swatches { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+    .ext .swatches { grid-template-columns: 1fr; }
+    .swatch { height: clamp(42px,6vh,65px); display: grid; place-items: center; border: 1px solid rgba(255,255,255,.15); border-radius: 15px; background: var(--filament); color: rgba(255,255,255,.8); font-family: var(--mono); font-size: 10px; font-weight: 760; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+    .swatch.active { box-shadow: inset 0 0 0 3px white; }
+
+    .timeline { position: absolute; inset: auto 23px 18px; height: 7px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb,var(--ink) 12%,transparent); }
+    .timeline i { display: block; width: 46%; height: 100%; border-radius: inherit; background: var(--accent); }
+
+    @media (max-width: 760px) {
+      .page { padding: 10px; }
+      .title span { display: none; }
+      .themes { overflow-x: auto; }
+      .themes button { padding-inline: 10px; }
+      .printer-card { min-height: 570px; height: auto; }
+      .bento { grid-template-rows: 150px 95px 95px 130px; }
+      .job { grid-column: span 12; }
+      .progress { grid-column: span 12; }
+      .temp { grid-column: span 4; }
+      .ams { grid-column: span 9; }
+      .ext { grid-column: span 3; }
+      .head-meta { display: none; }
+    }
+
+    /* Fleet preview: six complete printer bentos. */
+    .stage { display: block; }
+
+    .fleet {
+      width: min(100%, 1180px);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .fleet .printer-card {
+      width: 100%;
+      height: clamp(260px, calc((100dvh - 146px) / 2), 286px);
+      min-height: 0;
+      grid-template-rows: 31px minmax(0, 1fr);
+      gap: 6px;
+      padding: 8px;
+      border-radius: 26px;
+    }
+
+    .page[data-theme="coral"] .fleet .printer-card { border-radius: 28px; }
+    .page[data-theme="carbon"] .fleet .printer-card { border-radius: 21px; }
+    .page[data-theme="ember"] .fleet .printer-card { border-radius: 24px; }
+    .page[data-theme="modular"] .fleet .printer-card { border-radius: 18px; }
+
+    .fleet .card-head { gap: 6px; padding: 0 3px; }
+    .fleet .printer-icon { width: 18px; height: 18px; }
+    .fleet .printer-name { font-size: 21px; }
+    .fleet .details { height: 25px; padding: 0 8px; font-size: 8px; }
+    .fleet .details svg { width: 11px; height: 11px; }
+    .fleet .head-meta { display: none; }
+    .fleet .head-tool { width: 26px; height: 26px; font-size: 9px; }
+
+    .fleet .bento {
+      grid-template-rows: minmax(70px, 1.02fr) minmax(47px, .62fr) minmax(70px, .95fr);
+      gap: 6px;
+    }
+
+    .fleet .tile { border-radius: 16px; }
+    .page[data-theme="carbon"] .fleet .tile { border-radius: 12px; }
+    .page[data-theme="ember"] .fleet .tile { border-radius: 15px; }
+    .page[data-theme="modular"] .fleet .tile { border-radius: 10px; }
+
+    .fleet .job { padding: 9px 11px; }
+    .fleet .state { font-size: 9px; }
+    .fleet .job-name { margin-top: 4px; font-size: 12px; }
+    .fleet .job-meta { margin-top: 4px; font-size: 7px; }
+    .fleet .timeline { inset: auto 11px 9px; height: 5px; }
+
+    .fleet .progress { padding: 9px 10px; }
+    .fleet .progress-label { font-size: 7px; }
+    .fleet .percent { margin-top: 6px; font-size: 38px; }
+    .fleet .percent small { font-size: 10px; }
+    .fleet .percent.ready { font-size: 11px; letter-spacing: .08em; }
+
+    .fleet .temp { padding: 7px 9px; }
+    .fleet .temp-copy strong { font-size: 18px; }
+    .fleet .temp-copy span { margin-top: 2px; font-size: 6px; }
+    .fleet .temp i { width: 21px; height: 21px; }
+
+    .fleet .ams,
+    .fleet .ext { padding: 8px 10px; }
+    .fleet .material-head { margin-bottom: 5px; }
+    .fleet .material-head strong { font-size: 9px; }
+    .fleet .material-head span { font-size: 7px; }
+    .fleet .swatches { gap: 5px; }
+    .fleet .swatch { height: clamp(28px, 4vh, 41px); border-radius: 9px; font-size: 7px; }
+    .fleet .material-solo { grid-column: span 12; }
+
+    @media (max-width: 980px) {
+      .fleet { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 620px) {
+      .fleet { grid-template-columns: 1fr; }
+      .fleet .printer-card { height: 286px; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="printer" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8" d="M6 8V3h12v5M5 17H3V8h18v9h-2M6 13h12v8H6zM8 17h8M17.5 11h.01"/></symbol>
+    <symbol id="chart" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3" d="M2 12V3m0 9h12M4 9l3-3 2 2 4-4"/></symbol>
+  </svg>
+
+  <main class="page" data-theme="coral">
+    <header class="topbar">
+      <div class="title"><strong>Pełna flota · 6 kart bento</strong><span>Te same dane · cztery interpretacje Twoich referencji</span></div>
+      <nav class="themes" aria-label="Wariant wizualny">
+        <button class="active" data-theme="coral">01 Coral</button>
+        <button data-theme="carbon">02 Carbon</button>
+        <button data-theme="ember">03 Ember</button>
+        <button data-theme="modular">04 Modular</button>
+      </nav>
+    </header>
+
+    <section class="stage"><div class="fleet" id="fleet"></div></section>
+  </main>
+
+  <script>
+    const printers = [
+      {name:'X1',state:'Drukowanie',job:'słonecznik · twist plate 1',progress:46,time:'1h 45m · 11:24',layer:'27 / 110',temps:[['220°','Dysza'],['55°','Stół'],['45°','Komora']],ams:{name:'AMS A',env:'31% · 35°',slots:[['A1','#9da0a1'],['A2','#f4d45a',true],['A3','#d52f08'],['A4','#846f62']]},ext:{name:'EXT',slots:[['EXT','#3b7900']]}},
+      {name:'P2S',state:'Drukowanie',job:'ADAPTER · PVC110 / SPIRO100',progress:52,time:'1h 27m · 11:01',layer:'207 / 425',temps:[['250°','Dysza'],['68°','Stół'],['52°','Komora']],ams:{name:'AMS HT',env:'42% · 33°',slots:[['A1','#080909',true]]},ext:{name:'EXT',slots:[['EXT','#090a0a']]}},
+      {name:'MINI',state:'Drukowanie',job:'ADAPTER · PVC110 / SPIRO120',progress:28,time:'1h 10m · 10:45',layer:'18 / 200',temps:[['245°','Dysza'],['70°','Stół'],['—','Komora']],ams:{name:'EXT',env:'PLA',slots:[['PLA','#080909',true]]}},
+      {name:'P1S',state:'Drukowanie',job:'PORT · 100 MM',progress:47,time:'1h 37m · 11:14',layer:'45 / 326',temps:[['256°','Dysza'],['65°','Stół'],['32°','Komora']],ams:{name:'AMS HT',env:'40% · 32°',slots:[['A1','#080909',true]]}},
+      {name:'X2D',state:'Gotowe',job:'magnetic · x2d',progress:100,time:'3h 18m · 12:55',layer:'115 / 115',temps:[['220°','Lewa'],['49°','Prawa'],['46°','Stół']],ams:{name:'AMS A',env:'30% · 38°',slots:[['A1','#dda2c8'],['A2','#9d86c7'],['A3','#6d7850'],['A4','#d7d7d7',true]]},ext:{name:'EXT 2',slots:[['EXT','#9da0a1']]}},
+      {name:'MK4S',state:'Gotowa',job:'oczekuje na zadanie',progress:0,time:'online · 06:42',layer:'—',temps:[['27°','Dysza'],['25°','Stół'],['—','Komora']],ams:{name:'EXT',env:'PETG',slots:[['PETG','#587aa2',true]]}}
+    ];
+
+    function swatches(module) {
+      return module.slots.map(([label,color,active]) => `<span class="swatch${active?' active':''}" style="--filament:${color}">${label}</span>`).join('');
+    }
+
+    function printerCard(printer) {
+      const percent = printer.progress ? `${printer.progress}<small>%</small>` : 'READY';
+      const temps = printer.temps.map(([value,label]) => `<section class="tile temp"><span class="temp-copy"><strong>${value}</strong><span>${label}</span></span><i></i></section>`).join('');
+      const solo = !printer.ext;
+      return `<article class="printer-card">
+        <header class="card-head">
+          <svg class="printer-icon"><use href="#printer"></use></svg><strong class="printer-name">${printer.name}</strong>
+          <span class="details"><svg><use href="#chart"></use></svg>Szczegóły</span>
+          <span class="head-meta">◷ ${printer.time} · ▱ ${printer.layer}</span><span class="head-tool">⌃<br>⌄</span><span class="head-tool">•••</span>
+        </header>
+        <div class="bento">
+          <section class="tile job"><strong class="state">${printer.state}</strong><strong class="job-name">${printer.job}</strong><span class="job-meta">◷ ${printer.time} · ▱ ${printer.layer}</span><span class="timeline"><i style="width:${printer.progress}%"></i></span></section>
+          <section class="tile progress"><span class="progress-label">Postęp</span><strong class="percent${printer.progress?'':' ready'}">${percent}</strong></section>
+          ${temps}
+          <section class="tile ams${solo?' material-solo':''}"><div class="material-head"><strong>${printer.ams.name}</strong><span>${printer.ams.env||''}</span></div><div class="swatches" style="grid-template-columns:repeat(${printer.ams.slots.length},minmax(0,1fr))">${swatches(printer.ams)}</div></section>
+          ${printer.ext?`<section class="tile ext"><div class="material-head"><strong>${printer.ext.name}</strong></div><div class="swatches">${swatches(printer.ext)}</div></section>`:''}
+        </div>
+      </article>`;
+    }
+
+    const page = document.querySelector('.page');
+    document.querySelector('#fleet').innerHTML = printers.map(printerCard).join('');
+    document.querySelectorAll('[data-theme]').forEach(button => {
+      if (button === page) return;
+      button.addEventListener('click', () => {
+        page.dataset.theme = button.dataset.theme;
+        document.querySelectorAll('.themes button').forEach(item => item.classList.toggle('active', item === button));
+      });
+    });
+  </script>
+</body>
+</html>

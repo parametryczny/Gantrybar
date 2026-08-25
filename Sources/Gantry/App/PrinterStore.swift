@@ -531,6 +531,8 @@ final class PrinterStore: ObservableObject {
             connectionMessages[serial] = nil
             if printersWithTelemetry.contains(serial), let printer = printers.first(where: { $0.serial == serial }) {
                 notifyChanges(printer: printer, previous: previous, current: value)
+                // Decrement the assigned physical spool on a real finish (idempotent per job).
+                FilamentConsumption.onUpdate(printer: printer, previous: previous, current: value)
             }
             printersWithTelemetry.insert(serial)
             evaluateAutomations(serial: serial, previous: previous, current: value)

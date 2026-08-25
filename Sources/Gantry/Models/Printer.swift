@@ -54,6 +54,12 @@ struct PrinterTelemetry: Equatable, Sendable {
     var nozzleDiameter: Double?
     var currentStage: Int?
     var jobName: String?
+    /// Klipper/Moonraker `print_stats.filament_used` (mm, cumulative for the current print). Used to
+    /// subtract real grams from the assigned spool on finish. Bambu has no equivalent (grams come from
+    /// the sliced 3mf instead).
+    var filamentUsedMM: Double?
+    /// Bambu: the file currently being printed (for fetching the 3mf's per-filament used_g later).
+    var gcodeFile: String?
     var errorCode: UInt64 = 0
     var hmsCodes: [String] = []
     // Physical filament modules (AMS / AMS HT / CFS / MMU / external). Replaces the flat slot list

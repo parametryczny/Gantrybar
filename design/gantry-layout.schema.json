@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gantry.app/schemas/layout-defaults-v1.json",
+  "title": "Gantry default layout",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "layoutVersion",
+    "defaults",
+    "densityPresets",
+    "breakpoints",
+    "dashboard",
+    "detail",
+    "persistence"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "layoutVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "meta": { "type": "object" },
+    "defaults": { "type": "object" },
+    "densityPresets": {
+      "type": "object",
+      "required": ["small", "medium", "large"],
+      "additionalProperties": { "$ref": "#/$defs/density" }
+    },
+    "breakpoints": { "type": "object" },
+    "dashboard": { "type": "object" },
+    "detail": {
+      "type": "object",
+      "required": ["packing", "items"],
+      "properties": {
+        "packing": { "enum": ["grid", "masonry"] },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/layoutItem" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "persistence": { "type": "object" }
+  },
+  "$defs": {
+    "density": {
+      "type": "object",
+      "required": ["dashboardWidth", "printerCardWidth", "cardPadding", "cardGap", "typographyScale"],
+      "properties": {
+        "dashboardWidth": { "type": "number", "exclusiveMinimum": 0 },
+        "printerCardWidth": { "type": "number", "exclusiveMinimum": 0 },
+        "cardPadding": { "type": "number", "minimum": 0 },
+        "cardGap": { "type": "number", "minimum": 0 },
+        "typographyScale": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "layoutItem": {
+      "type": "object",
+      "required": ["id", "order", "span", "visible", "movable"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer" },
+        "span": {
+          "type": "object",
+          "required": ["wide", "compact"],
+          "properties": {
+            "wide": { "type": "integer", "minimum": 1, "maximum": 6 },
+            "compact": { "type": "integer", "minimum": 1, "maximum": 2 }
+          },
+          "additionalProperties": false
+        },
+        "visible": { "type": "boolean" },
+        "movable": { "type": "boolean" },
+        "aspectRatio": { "type": "string" },
+        "chartMinutes": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

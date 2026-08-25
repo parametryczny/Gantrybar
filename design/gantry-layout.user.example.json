@@ -1,0 +1,22 @@
+{
+  "$schema": "./gantry-layout.user.schema.json",
+  "schemaVersion": 1,
+  "basedOnLayoutVersion": "1.2.0",
+  "density": "medium",
+  "dashboard": {
+    "columnLimit": "auto",
+    "printerOrder": [],
+    "hiddenPrinterIds": [],
+    "perPrinter": {}
+  },
+  "detail": {
+    "order": [
+      "materials",
+      "temperature",
+      "fans",
+      "controls"
+    ],
+    "hidden": [],
+    "spanOverrides": {}
+  }
+}

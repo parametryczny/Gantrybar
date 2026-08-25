@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gantry — Carbon Bento</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #111210;
+      --shell: #151615;
+      --card: #1b1c1c;
+      --tile: rgba(255, 255, 255, .055);
+      --tile-strong: rgba(255, 255, 255, .075);
+      --line: rgba(255, 255, 255, .095);
+      --text: #f7f6f2;
+      --secondary: #b4b3ae;
+      --muted: #74746f;
+      --accent: #ff7356;
+      --success: #73d5a4;
+      --idle: #9b9d99;
+      --warning: #ffb15a;
+      --danger: #ff6468;
+      --gap: 8px;
+      --outer-radius: 32px;
+      --card-radius: 25px;
+      --tile-radius: 17px;
+      --ui: "Helvetica Neue", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 50% -10%, rgba(255,115,86,.055), transparent 32%),
+        var(--canvas);
+      color: var(--text);
+      font-family: var(--ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font: inherit; }
+
+    .demo {
+      width: min(100%, 1240px);
+      margin: 0 auto;
+      padding: 6px 16px 16px;
+    }
+
+    .demo-bar {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 7px;
+    }
+
+    .demo-copy strong {
+      display: block;
+      font-size: 18px;
+      font-weight: 620;
+      letter-spacing: -.035em;
+    }
+
+    .demo-copy span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .mode-switch {
+      display: flex;
+      gap: 3px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(0,0,0,.22);
+    }
+
+    .mode-switch button {
+      min-width: 76px;
+      height: 31px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 9px;
+      font-weight: 760;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .mode-switch button.active {
+      background: rgba(255,255,255,.095);
+      color: var(--text);
+    }
+
+    .stage { display: flex; justify-content: center; }
+
+    .gantry {
+      width: 100%;
+      max-width: 1120px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--outer-radius);
+      background: rgba(10,11,10,.72);
+      box-shadow: 0 32px 90px rgba(0,0,0,.5), inset 0 1px rgba(255,255,255,.03);
+      transition: max-width 220ms ease;
+    }
+
+    .gantry[data-mode="medium"] { max-width: 760px; }
+    .gantry[data-mode="narrow"] { max-width: 420px; }
+
+    .app-header {
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 6px 11px;
+    }
+
+    .brand { min-width: 0; }
+
+    .brand-logo {
+      position: relative;
+      width: 152px;
+      height: 29px;
+      display: block;
+      overflow: hidden;
+    }
+
+    .brand-logo img {
+      position: absolute;
+      top: -51px;
+      left: -24px;
+      width: 196px;
+      max-width: none;
+      mix-blend-mode: screen;
+    }
+
+    .fleet-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 1px;
+      color: #8e8e89;
+      font-size: 10px;
+    }
+
+    .fleet-status i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .app-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .action {
+      height: 34px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: rgba(255,255,255,.055);
+      color: #c9c8c3;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 700;
+      transition: transform 150ms ease, background 150ms ease;
+    }
+
+    .action.icon { width: 34px; padding: 0; border-radius: 50%; }
+    .action:hover { background: rgba(255,255,255,.11); transform: translateY(-1px); }
+
+    .fleet-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: var(--gap);
+    }
+
+    .printer-card {
+      --state: var(--accent);
+      grid-column: span 4;
+      min-width: 0;
+      height: clamp(260px, calc((100dvh - 156px) / 2), 286px);
+      display: grid;
+      grid-template-rows: 30px minmax(0, 1fr);
+      gap: 7px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--card-radius);
+      background: var(--card);
+      box-shadow: inset 0 1px rgba(255,255,255,.035);
+      outline: none;
+      animation: card-in 420ms cubic-bezier(.2,.76,.25,1) both;
+      animation-delay: calc(var(--order) * 45ms);
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .printer-card[data-state="complete"] { --state: var(--success); }
+    .printer-card[data-state="idle"] { --state: var(--idle); }
+    .printer-card[data-state="error"] { --state: var(--danger); }
+
+    .printer-card:hover,
+    .printer-card:focus-visible {
+      border-color: rgba(255,255,255,.18);
+      background: #1e1f1f;
+      transform: translateY(-2px);
+    }
+
+    .gantry[data-mode="medium"] .printer-card { grid-column: span 6; }
+    .gantry[data-mode="narrow"] .printer-card { grid-column: span 12; }
+
+    .card-header {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 3px;
+    }
+
+    .printer-icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      color: var(--state);
+    }
+
+    .printer-name {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 22px;
+      font-weight: 680;
+      letter-spacing: -.045em;
+      line-height: 1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .details {
+      width: 27px;
+      height: 27px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      color: #8d8d89;
+    }
+
+    .details svg { width: 12px; height: 12px; }
+
+    .card-tools {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .reorder {
+      color: #666762;
+      font-size: 11px;
+      line-height: .58;
+      text-align: center;
+    }
+
+    .more {
+      width: 27px;
+      height: 27px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,.075);
+      color: #d7d6d1;
+      cursor: pointer;
+      font-size: 10px;
+      letter-spacing: 1px;
+    }
+
+    .card-bento {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      grid-template-rows: minmax(70px, .95fr) minmax(46px, .58fr) minmax(70px, .9fr);
+      gap: 6px;
+    }
+
+    .tile {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.045);
+      border-radius: var(--tile-radius);
+      background: var(--tile);
+    }
+
+    .job-tile {
+      grid-column: span 4;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 9px 11px;
+    }
+
+    .status-row {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .status {
+      flex: 0 0 auto;
+      color: var(--state);
+      font-size: 10px;
+      font-weight: 760;
+    }
+
+    .meta {
+      margin-left: auto;
+      overflow: hidden;
+      color: #74746f;
+      font-family: var(--mono);
+      font-size: 7px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .job-name {
+      display: block;
+      margin-top: 5px;
+      overflow: hidden;
+      color: #d0cfca;
+      font-size: 12px;
+      font-weight: 560;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress-track {
+      height: 5px;
+      margin-top: auto;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,.09);
+    }
+
+    .progress-track i {
+      display: block;
+      width: var(--progress);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--state);
+      transform-origin: left;
+      animation: progress-in 680ms cubic-bezier(.2,.8,.2,1) both;
+      animation-delay: calc(160ms + var(--order) * 45ms);
+    }
+
+    .progress-tile {
+      position: relative;
+      grid-column: span 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 9px 10px;
+      background: linear-gradient(160deg, rgba(255,255,255,.075), rgba(255,255,255,.035));
+    }
+
+    .progress-tile::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      height: 46%;
+      background: linear-gradient(0deg, color-mix(in srgb, var(--state) 22%, transparent), transparent);
+      pointer-events: none;
+    }
+
+    .progress-label {
+      position: relative;
+      z-index: 1;
+      color: #858580;
+      font-size: 7px;
+      font-weight: 760;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .percent {
+      position: relative;
+      z-index: 1;
+      margin-top: 4px;
+      color: var(--text);
+      font-size: clamp(31px, 3.3vw, 42px);
+      font-weight: 600;
+      letter-spacing: -.075em;
+      line-height: .9;
+    }
+
+    .percent small {
+      margin-left: 2px;
+      color: var(--state);
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+
+    .percent.ready {
+      color: var(--state);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .09em;
+    }
+
+    .temp-tile {
+      grid-column: span 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+    }
+
+    .temp-copy { min-width: 0; }
+
+    .temp-value {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 17px;
+      font-weight: 650;
+      letter-spacing: -.04em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .temp-label {
+      display: block;
+      margin-top: 2px;
+      color: #71716d;
+      font-size: 7px;
+      font-weight: 760;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .temp-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--state) 12%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state) 28%, transparent);
+    }
+
+    .material-tile {
+      grid-column: span 4;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 8px 10px;
+      background: var(--tile-strong);
+    }
+
+    .material-tile.external { grid-column: span 2; }
+    .material-tile.solo { grid-column: span 6; }
+
+    .material-head {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+
+    .material-head strong {
+      overflow: hidden;
+      color: #d9d8d3;
+      font-size: 9px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .material-head span {
+      margin-left: auto;
+      overflow: hidden;
+      color: #74746f;
+      font-family: var(--mono);
+      font-size: 7px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .material-head span.warning { color: var(--warning); }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(var(--slots), minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .swatch {
+      position: relative;
+      min-width: 0;
+      height: clamp(26px, 3.8vh, 43px);
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 10px;
+      background: var(--filament);
+      color: rgba(255,255,255,.74);
+      font-family: var(--mono);
+      font-size: 7px;
+      font-weight: 760;
+      text-shadow: 0 1px 2px rgba(0,0,0,.7);
+    }
+
+    .swatch.active { box-shadow: inset 0 0 0 2px white; }
+
+    .swatch.marked::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      width: 5px;
+      height: 5px;
+      border: 1px solid #111;
+      border-radius: 50%;
+      background: #ff4c57;
+    }
+
+    .gantry[data-collapsed="true"] .printer-card {
+      height: 49px;
+      display: block;
+      padding: 9px;
+    }
+
+    .gantry[data-collapsed="true"] .card-bento { display: none; }
+
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes progress-in {
+      from { transform: scaleX(0); }
+      to { transform: scaleX(1); }
+    }
+
+    @media (max-width: 720px) {
+      .demo { padding-inline: 9px; }
+      .demo-copy span { display: none; }
+      .mode-switch button { min-width: 61px; }
+      .gantry { padding: 10px; border-radius: 24px; }
+      .action.text { display: none; }
+    }
+
+    @media (max-height: 800px) {
+      .demo-copy span { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="refresh-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" d="M20 11a8 8 0 1 0-2.3 6.7M20 5v6h-6"/></symbol>
+    <symbol id="printer-icon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8" d="M6 8V3h12v5M5 17H3V8h18v9h-2M6 13h12v8H6zM8 17h8M17.5 11h.01"/></symbol>
+    <symbol id="chart-icon" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3" d="M2 12V3m0 9h12M4 9l3-3 2 2 4-4"/></symbol>
+  </svg>
+
+  <main class="demo">
+    <header class="demo-bar">
+      <div class="demo-copy"><strong>Gantry / Carbon Bento</strong><span>3×2 wide · pełna telemetria · ciepły kontrast</span></div>
+      <nav class="mode-switch" aria-label="Tryb szerokości">
+        <button class="active" type="button" data-mode="wide">Wide 3×2</button>
+        <button type="button" data-mode="medium">Medium 2×3</button>
+        <button type="button" data-mode="narrow">Narrow 1×6</button>
+      </nav>
+    </header>
+
+    <section class="stage" aria-label="Podgląd Gantry Carbon Bento">
+      <div class="gantry" data-mode="wide" data-collapsed="false">
+        <header class="app-header">
+          <div class="brand">
+            <span class="brand-logo"><img src="../docs/branding/gantry-wordmark-white.png" alt="Gantry"></span>
+            <span class="fleet-status"><i></i>6 drukarek · 6 online</span>
+          </div>
+          <div class="app-actions">
+            <button class="action text" id="collapse-button" type="button">Zwiń</button>
+            <button class="action text" type="button">Wyczyść</button>
+            <button class="action icon" type="button" aria-label="Odśwież"><svg width="17" height="17"><use href="#refresh-icon"></use></svg></button>
+            <button class="action icon" type="button" aria-label="Dodaj drukarkę">+</button>
+          </div>
+        </header>
+        <div class="fleet-grid" id="fleet-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const printers = [
+      {
+        name: 'X1', state: 'printing', status: 'Drukowanie', job: 'słonecznik · twist plate 1', progress: 46,
+        time: '1h 45m · 11:24', layer: '27 / 110', temps: [['220°','dysza'],['55°','stół'],['45°','komora']],
+        modules: [
+          {name:'AMS A',env:'31% · 35°',slots:[['A1','#9da0a1'],['A2','#f4d45a',true],['A3','#d52f08'],['A4','#846f62']]},
+          {name:'EXT',external:true,slots:[['EXT','#3b7900']]}
+        ]
+      },
+      {
+        name: 'P2S', state: 'printing', status: 'Drukowanie', job: 'ADAPTER · PVC110 / SPIRO100', progress: 52,
+        time: '1h 27m · 11:01', layer: '207 / 425', temps: [['250°','dysza'],['68°','stół'],['52°','komora']],
+        modules: [
+          {name:'AMS HT',env:'42% · 33°',warning:true,slots:[['A1','#080909',true]]},
+          {name:'EXT',external:true,slots:[['EXT','#090a0a']]}
+        ]
+      },
+      {
+        name: 'MINI', state: 'printing', status: 'Drukowanie', job: 'ADAPTER · PVC110 / SPIRO120', progress: 28,
+        time: '1h 10m · 10:45', layer: '18 / 200', temps: [['245°','dysza'],['70°','stół'],['—','komora']],
+        modules: [{name:'EXT',slots:[['PLA','#080909',true]]}]
+      },
+      {
+        name: 'P1S', state: 'printing', status: 'Drukowanie', job: 'PORT · 100 MM', progress: 47,
+        time: '1h 37m · 11:14', layer: '45 / 326', temps: [['256°','dysza'],['65°','stół'],['32°','komora']],
+        modules: [{name:'AMS HT',env:'40% · 32°',warning:true,slots:[['A1','#080909',true,true]]}]
+      },
+      {
+        name: 'X2D', state: 'complete', status: 'Gotowe', job: 'magnetic · x2d', progress: 100,
+        time: '3h 18m · 12:55', layer: '115 / 115', temps: [['220°','lewa'],['49°','prawa'],['46°','stół']],
+        modules: [
+          {name:'AMS A',env:'30% · 38°',slots:[['A1','#dda2c8'],['A2','#9d86c7'],['A3','#6d7850',false,true],['A4','#d7d7d7',true,true]]},
+          {name:'EXT 2',external:true,slots:[['EXT','#9da0a1']]}
+        ]
+      },
+      {
+        name: 'MK4S', state: 'idle', status: 'Gotowa', job: 'oczekuje na zadanie', progress: 0,
+        time: 'online · 06:42', layer: '—', temps: [['27°','dysza'],['25°','stół'],['—','komora']],
+        modules: [{name:'EXT',env:'PETG',slots:[['PETG','#587aa2',true]]}]
+      }
+    ];
+
+    function materialMarkup(module, solo) {
+      const slots = module.slots.map(([label,color,active,marked]) => `<span class="swatch${active?' active':''}${marked?' marked':''}" style="--filament:${color}">${label}</span>`).join('');
+      return `<div class="tile material-tile${module.external?' external':''}${solo?' solo':''}">
+        <div class="material-head"><strong>${module.name}</strong><span class="${module.warning?'warning':''}">${module.env||''}</span></div>
+        <div class="swatches" style="--slots:${module.slots.length}">${slots}</div>
+      </div>`;
+    }
+
+    function cardMarkup(printer, index) {
+      const percent = printer.progress > 0 ? `${printer.progress}<small>%</small>` : 'READY';
+      const tempTiles = printer.temps.map(([value,label]) => `<div class="tile temp-tile"><span class="temp-copy"><b class="temp-value">${value}</b><span class="temp-label">${label}</span></span><i class="temp-dot"></i></div>`).join('');
+      const materials = printer.modules.map(module => materialMarkup(module, printer.modules.length === 1)).join('');
+
+      return `<article class="printer-card" data-state="${printer.state}" style="--order:${index};--progress:${printer.progress}%" tabindex="0" aria-label="${printer.name}, ${printer.status}">
+        <div class="card-header">
+          <svg class="printer-icon" aria-hidden="true"><use href="#printer-icon"></use></svg>
+          <strong class="printer-name">${printer.name}</strong>
+          <span class="details" title="Szczegóły"><svg aria-hidden="true"><use href="#chart-icon"></use></svg></span>
+          <span class="card-tools"><span class="reorder" aria-hidden="true">⌃<br>⌄</span><button class="more" type="button" aria-label="Opcje ${printer.name}">•••</button></span>
+        </div>
+        <div class="card-bento">
+          <div class="tile job-tile">
+            <div class="status-row"><strong class="status">${printer.status}</strong><span class="meta">◷ ${printer.time} · ▱ ${printer.layer}</span></div>
+            <strong class="job-name">${printer.job}</strong>
+            <span class="progress-track"><i></i></span>
+          </div>
+          <div class="tile progress-tile"><span class="progress-label">Postęp</span><strong class="percent${printer.progress===0?' ready':''}">${percent}</strong></div>
+          ${tempTiles}
+          ${materials}
+        </div>
+      </article>`;
+    }
+
+    const panel = document.querySelector('.gantry');
+    const grid = document.querySelector('#fleet-grid');
+    const collapseButton = document.querySelector('#collapse-button');
+    grid.innerHTML = printers.map(cardMarkup).join('');
+
+    document.querySelectorAll('[data-mode]').forEach(button => {
+      button.addEventListener('click', () => {
+        panel.dataset.mode = button.dataset.mode;
+        document.querySelectorAll('[data-mode]').forEach(item => item.classList.toggle('active', item === button));
+      });
+    });
+
+    collapseButton.addEventListener('click', () => {
+      const collapsed = panel.dataset.collapsed === 'true';
+      panel.dataset.collapsed = String(!collapsed);
+      collapseButton.textContent = collapsed ? 'Zwiń' : 'Rozwiń';
+    });
+  </script>
+</body>
+</html>

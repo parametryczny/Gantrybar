@@ -1,10 +1,13 @@
 import AppKit
+import Combine
 
 @main
 @MainActor
 final class GantryApp: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
     private var permissionPrompter: LocalNetworkPermissionPrompter?
+    private var webServer: GantryWebServer?
+    private var webServerSub: AnyCancellable?
 
     static func main() {
         if CommandLine.arguments.contains("--self-test") {
@@ -105,6 +108,13 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         let store = PrinterStore()
         menuBarController = MenuBarController(store: store)
         store.reconnectAll()
+        // Read-only web dashboard on the LAN (http://<host>.local:8787), toggled in Settings.
+        webServer = GantryWebServer(store: store)
+        webServerSub = AppSettings.shared.$webDashboardEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                if enabled { self?.webServer?.start() } else { self?.webServer?.stop() }
+            }
         let prompter = LocalNetworkPermissionPrompter {
             Task { @MainActor in store.retryAfterLocalNetworkPermission() }
         }
