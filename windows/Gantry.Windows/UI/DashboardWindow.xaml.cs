@@ -30,6 +30,9 @@ public partial class DashboardWindow : Window
         ColumnsButton.Click += (_, _) => { AppSettings.DashboardColumns = AppSettings.DashboardColumns == 2 ? 1 : 2; Rebuild(); };
         _store.Updated += OnStoreUpdated;
         Closed += (_, _) => _store.Updated -= OnStoreUpdated;
+        // A spool assignment should reflect on the cards immediately.
+        SpoolbaseShared.Spools.Changed += OnSpoolsChanged;
+        Closed += (_, _) => SpoolbaseShared.Spools.Changed -= OnSpoolsChanged;
         // Popover behaviour: dismiss when the user clicks away, like the macOS menu-bar panel —
         // but stay open while one of our own dialogs (add printer) sits on top.
         Deactivated += (_, _) =>
@@ -48,6 +51,29 @@ public partial class DashboardWindow : Window
 
     private DateTime _lastHidden = DateTime.MinValue;
     private FrameworkElement? _cardMenu;
+
+    private Grid? _spoolLayer;
+    private void OnSpoolsChanged() => Dispatcher.Invoke(Rebuild);
+
+    /// <summary>Shows the spool-assignment panel for a slot as a dimmed in-window overlay.</summary>
+    internal void ShowSpoolAssign(SpoolLocation location, string title, string? material, string? colorHex)
+    {
+        if (MenuLayer.Parent is not Grid host) return;
+        CloseSpoolAssign();
+        var backdrop = new Border { Background = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)) };
+        backdrop.MouseLeftButtonDown += (_, _) => CloseSpoolAssign();
+        var layer = new Grid();
+        layer.Children.Add(backdrop);
+        layer.Children.Add(SpoolAssignPanel.Build(location, title, material, colorHex, CloseSpoolAssign));
+        _spoolLayer = layer;
+        host.Children.Add(layer);
+    }
+
+    internal void CloseSpoolAssign()
+    {
+        if (_spoolLayer is not null && MenuLayer.Parent is Grid host) host.Children.Remove(_spoolLayer);
+        _spoolLayer = null;
+    }
 
     private void ShowCardMenu(FrameworkElement anchor, FrameworkElement menu)
     {
@@ -674,7 +700,8 @@ public partial class DashboardWindow : Window
             bool hasGroups = groups.Count > 0;
             if (hasGroups)
                 for (int i = 0; i < groups.Count; i += 2)
-                    _ams.Children.Add(FilamentRow(groups.Skip(i).Take(2).ToList()));
+                    _ams.Children.Add(FilamentRow(groups.Skip(i).Take(2).ToList(), Serial, i,
+                        (loc, title, mat, col) => _owner.ShowSpoolAssign(loc, title, mat, col)));
 
             // User-controlled card content (Settings → "Karty drukarek").
             var collapse = Visibility.Collapsed;
@@ -906,7 +933,8 @@ public partial class DashboardWindow : Window
     /// <summary>Lay up to two filament modules side by side, like the macOS dock: each column's width
     /// is proportional to its slot count, with an external spool counting for half so an AMS stays the
     /// wider, primary module. A lone external is a compact tile; a lone AMS fills the width.</summary>
-    internal static UIElement FilamentRow(List<FilamentGroup> rowGroups)
+    internal static UIElement FilamentRow(List<FilamentGroup> rowGroups, string? serial = null,
+        int groupBaseIndex = 0, Action<SpoolLocation, string, string?, string?>? onSlotClick = null)
     {
         static double Weight(FilamentGroup g) => Math.Max(1, g.DeclaredCapacity);
         static double MinW(FilamentGroup g)
@@ -918,19 +946,19 @@ public partial class DashboardWindow : Window
         var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
         if (rowGroups.Count == 1)
         {
-            // A single module owns the full width; its lone slot is centred inside GroupBlock.
-            grid.Children.Add(GroupBlock(rowGroups[0]));
+            grid.Children.Add(GroupBlock(rowGroups[0], serial, groupBaseIndex, onSlotClick));
             return grid;
         }
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[0]), GridUnitType.Star), MinWidth = MinW(rowGroups[0]) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[1]), GridUnitType.Star), MinWidth = MinW(rowGroups[1]) });
-        var b0 = GroupBlock(rowGroups[0]); Grid.SetColumn(b0, 0); grid.Children.Add(b0);
-        var b1 = GroupBlock(rowGroups[1]); Grid.SetColumn(b1, 2); grid.Children.Add(b1);
+        var b0 = GroupBlock(rowGroups[0], serial, groupBaseIndex, onSlotClick); Grid.SetColumn(b0, 0); grid.Children.Add(b0);
+        var b1 = GroupBlock(rowGroups[1], serial, groupBaseIndex + 1, onSlotClick); Grid.SetColumn(b1, 2); grid.Children.Add(b1);
         return grid;
     }
 
-    private static Border GroupBlock(FilamentGroup group)
+    private static Border GroupBlock(FilamentGroup group, string? serial = null, int groupIndex = 0,
+        Action<SpoolLocation, string, string?, string?>? onSlotClick = null)
     {
         var inner = new StackPanel();
 
@@ -962,9 +990,14 @@ public partial class DashboardWindow : Window
             Margin = new Thickness(0, 3, 0, 0),
             HorizontalAlignment = single ? HorizontalAlignment.Center : HorizontalAlignment.Stretch
         };
-        foreach (var slot in group.Slots)
+        for (int si = 0; si < group.Slots.Count; si++)
         {
-            var chip = SlotChip(slot, group.IsExternal);
+            var slot = group.Slots[si];
+            SpoolLocation? location = serial != null
+                ? SpoolLocation.At(serial, group.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, groupIndex, si)
+                : null;
+            string title = group.IsExternal ? group.DisplayName : $"{ShortName(group.DisplayName)} {slot.Label}";
+            var chip = SlotChip(slot, group.IsExternal, location, title, onSlotClick);
             if (single) chip.MaxWidth = group.IsExternal ? 96 : 60;
             slotGrid.Children.Add(chip);
         }
@@ -993,12 +1026,21 @@ public partial class DashboardWindow : Window
 
     /// <summary>One filament slot: a big colour swatch that fills its share of the module, with the
     /// label beneath it. Active slot gets a white ring; empty slots stay grey and keep their spot.</summary>
-    private static StackPanel SlotChip(FilamentSlot slot, bool external)
+    private static StackPanel SlotChip(FilamentSlot slot, bool external, SpoolLocation? location = null,
+        string title = "", Action<SpoolLocation, string, string?, string?>? onClick = null)
     {
-        bool present = slot.IsPresent;
-        var color = present ? ParseHex(slot.ColorHex ?? "8E8E93FF") : Color.FromArgb(0x28, 0x8E, 0x8E, 0x93);
+        // A manually-assigned physical spool (Spoolbase) wins over the AMS reading for %/colour/grams.
+        var assignedSpool = location != null ? SpoolbaseShared.Spools.SpoolAt(location) : null;
+        var assignedDef = assignedSpool != null
+            ? SpoolbaseShared.Filaments.Filaments.FirstOrDefault(f => f.Id == assignedSpool.FilamentDefinitionId) : null;
+        bool present = slot.IsPresent || assignedSpool != null;
+        int? effPct = assignedSpool?.Percent ?? slot.RemainingPercent;
+        var color = assignedDef != null ? ParseHex(assignedDef.ColorHex)
+            : slot.IsPresent ? ParseHex(slot.ColorHex ?? "8E8E93FF")
+            : Color.FromArgb(0x28, 0x8E, 0x8E, 0x93);
+        string materialText = slot.IsPresent ? (slot.Material ?? "—") : (assignedDef?.Type ?? "—");
         const double SwatchHeight = 24;
-        double frac = present && slot.RemainingPercent is { } fp ? Math.Clamp(fp / 100.0, 0, 1) : 1.0;
+        double frac = present && effPct is { } fp ? Math.Clamp(fp / 100.0, 0, 1) : 1.0;
         var swatchGrid = new Grid();
         var swatch = new Border
         {
@@ -1013,7 +1055,7 @@ public partial class DashboardWindow : Window
             BorderBrush = slot.IsActive ? GTheme.Brush(GTheme.W(0.8)) : GTheme.Brush(present ? Color.FromArgb(0x1F, 0x00, 0x00, 0x00) : GTheme.Line),
             ToolTip = $"{slot.Label} • {(slot.Material ?? "—")}" + (slot.RemainingPercent is { } r ? $" • {r}%" : "")
         };
-        if (present && slot.RemainingPercent is not null)
+        if (present && effPct is not null)
         {
             // Fill rises from the bottom with a gentle wavy top (like liquid), not a flat cut.
             var fill = new System.Windows.Shapes.Path { Fill = new SolidColorBrush(color) };
@@ -1031,7 +1073,7 @@ public partial class DashboardWindow : Window
         // Remaining % lives INSIDE the colour chip, in a contrasting ink. The centred number is only
         // over the SOLID fill once it reaches the middle; below that it sits over the dim (dark) part,
         // which always wants light ink — so contrast follows what's actually behind the text.
-        if (present && slot.RemainingPercent is { } pct)
+        if (present && effPct is { } pct)
         {
             var ink = frac >= 0.5 ? GTheme.ContrastInk(color) : Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF);
             swatchGrid.Children.Add(new TextBlock
@@ -1045,7 +1087,7 @@ public partial class DashboardWindow : Window
         }
         // Low-filament marker (red corner dot) — only on real AMS/CFS slots (external reports 0 = unknown).
         FrameworkElement swatchElement = swatchGrid;
-        if (present && !external && (slot.RemainingPercent ?? 100) <= 15)
+        if (present && !external && (effPct ?? 100) <= 15)
         {
             swatchGrid.Children.Add(new Ellipse
             {
@@ -1062,7 +1104,7 @@ public partial class DashboardWindow : Window
             meta.Children.Add(new TextBlock { Text = slot.Label, FontFamily = new FontFamily("Consolas"), FontSize = 7, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center });
         meta.Children.Add(new TextBlock
         {
-            Text = present ? (slot.Material ?? "—") : "—",
+            Text = present ? materialText : "—",
             FontSize = 10, FontWeight = FontWeights.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = GTheme.Brush(present ? GTheme.Text : GTheme.Muted)
@@ -1070,6 +1112,21 @@ public partial class DashboardWindow : Window
         var panel = new StackPanel();
         panel.Children.Add(swatchElement);
         panel.Children.Add(meta);
+        if (assignedSpool is not null)
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"{(int)assignedSpool.RemainingWeightGrams} g",
+                FontSize = 8.5, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted),
+                HorizontalAlignment = HorizontalAlignment.Center
+            });
+        // Click a slot to open its spool-assignment panel (Spoolbase).
+        if (onClick is not null && location is not null)
+        {
+            panel.Background = System.Windows.Media.Brushes.Transparent;
+            panel.Cursor = Cursors.Hand;
+            panel.ToolTip = AppSettings.Text("Kliknij, aby przypisać rolkę", "Click to assign a spool");
+            panel.MouseLeftButtonUp += (_, _) => onClick(location, title, slot.Material, slot.ColorHex);
+        }
         return panel;
     }
 
@@ -1078,7 +1135,7 @@ public partial class DashboardWindow : Window
     private static Geometry BuildWaveFill(double w, double h, double fillHeight)
     {
         double topY = h - fillHeight;
-        double amp = Math.Min(0.8, fillHeight / 2);
+        double amp = Math.Min(0.4, fillHeight / 2);
         const double waves = 1.5;
         var figure = new PathFigure { StartPoint = new Point(0, h), IsClosed = true, IsFilled = true };
         figure.Segments.Add(new LineSegment(new Point(0, topY), false));   // up the left edge
