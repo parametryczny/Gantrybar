@@ -452,7 +452,11 @@ public sealed class PrinterStore
                 RecordTemperature(serial, value);
                 ConnectionMessages[serial] = null;
                 if (_printersWithTelemetry.Contains(serial) && Printers.FirstOrDefault(p => p.Serial == serial) is { } printer)
+                {
                     NotifyChanges(printer, previous, value);
+                    // Decrement the assigned physical spool on a real finish (idempotent per job).
+                    FilamentConsumption.OnUpdate(printer, previous, value);
+                }
                 _printersWithTelemetry.Add(serial);
                 EvaluateAutomations(serial, previous, value);
                 break;

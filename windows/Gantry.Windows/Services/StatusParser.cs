@@ -95,6 +95,9 @@ public static class StatusParser
             result.CurrentStage = 255;
 
         if (Str(report, "subtask_name") is { Length: > 0 } job) result.JobName = DisplayName(job);
+        // The file being printed (for fetching its per-filament used_g from the 3mf).
+        if (Str(report, "gcode_file") is { Length: > 0 } gf) result.GcodeFile = gf;
+        else if (Str(report, "subtask_name") is { Length: > 0 } sn) result.GcodeFile = sn;
         if (UInt64Value(report, "print_error") is { } err) result.ErrorCode = err;
 
         if (report.TryGetProperty("hms", out var hms) && hms.ValueKind == JsonValueKind.Array)

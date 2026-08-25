@@ -1,0 +1,141 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Gantry.Models;
+
+namespace Gantry.Services;
+
+/// <summary>Shared Spoolbase stores so the inventory window, the AMS assign popover and the consumption
+/// tracker all read/write one source of truth.</summary>
+public static class SpoolbaseShared
+{
+    public static FilamentStore Filaments { get; } = new();
+    public static PhysicalSpoolStore Spools { get; } = new();
+}
+
+/// <summary>Persists physical spools + consumption history to %AppData%\Spoolbase\ (JSON, keys shared
+/// with macOS/Linux). Mirrors the Swift PhysicalSpoolStore.</summary>
+public sealed class PhysicalSpoolStore
+{
+    private readonly List<PhysicalSpool> _spools;
+    private readonly List<SpoolUsageEvent> _usage;
+    private readonly string _spoolsPath;
+    private readonly string _usagePath;
+
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
+
+    public event Action? Changed;
+
+    public IReadOnlyList<PhysicalSpool> Spools => _spools;
+
+    public PhysicalSpoolStore()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Spoolbase");
+        _spoolsPath = Path.Combine(dir, "spools-v1.json");
+        _usagePath = Path.Combine(dir, "usage-v1.json");
+        _spools = Load<List<PhysicalSpool>>(_spoolsPath) ?? new();
+        _usage = Load<List<SpoolUsageEvent>>(_usagePath) ?? new();
+    }
+
+    // Lookup
+
+    public PhysicalSpool? Spool(string id) => _spools.FirstOrDefault(s => s.Id == id);
+
+    public PhysicalSpool? SpoolAt(SpoolLocation location) =>
+        location.IsStorage ? null : _spools.FirstOrDefault(s => s.Location.SameSlot(location));
+
+    public string NextSpoolId()
+    {
+        var max = _spools
+            .Where(s => s.Id.StartsWith("SP-", StringComparison.Ordinal))
+            .Select(s => int.TryParse(s.Id.AsSpan(3), out var n) ? n : 0)
+            .DefaultIfEmpty(0).Max();
+        return $"SP-{max + 1:00000}";
+    }
+
+    // Mutations
+
+    public void Add(PhysicalSpool spool) { _spools.Add(spool); ChangedInternal(SaveSpools); }
+
+    public void Delete(string id) { _spools.RemoveAll(s => s.Id == id); ChangedInternal(SaveSpools); }
+
+    public void SetRemaining(string id, double grams)
+    {
+        var s = Spool(id);
+        if (s is null) return;
+        s.RemainingWeightGrams = Math.Max(0, Math.Min(grams, s.NominalWeightGrams));
+        if (s.RemainingWeightGrams <= 0) s.Status = SpoolStatus.Empty;
+        s.UpdatedAt = DateTime.UtcNow;
+        ChangedInternal(SaveSpools);
+    }
+
+    /// <summary>Move a spool to a slot, freeing whatever slot it or the target held (single location).</summary>
+    public void Assign(string spoolId, SpoolLocation location)
+    {
+        var spool = Spool(spoolId);
+        if (spool is null) return;
+        if (!location.IsStorage)
+            foreach (var other in _spools.Where(o => o.Id != spoolId && o.Location.SameSlot(location)))
+            {
+                other.Location = SpoolLocation.Storage();
+                if (other.Status != SpoolStatus.Empty) other.Status = SpoolStatus.Stored;
+                other.UpdatedAt = DateTime.UtcNow;
+            }
+        spool.Location = location;
+        if (!location.IsStorage)
+        {
+            spool.Status = spool.RemainingWeightGrams <= 0 ? SpoolStatus.Empty : SpoolStatus.Active;
+            spool.OpenedAt ??= DateTime.UtcNow;
+        }
+        else if (spool.Status == SpoolStatus.Active) spool.Status = SpoolStatus.Stored;
+        spool.UpdatedAt = DateTime.UtcNow;
+        ChangedInternal(SaveSpools);
+    }
+
+    /// <summary>Idempotent per print job: a job id already recorded is ignored (no double-count).</summary>
+    public bool Consume(string spoolId, double grams, string printerSerial, string printJobId)
+    {
+        if (grams <= 0) return false;
+        if (_usage.Any(u => u.PrintJobId == printJobId && u.SpoolId == spoolId)) return false;
+        var s = Spool(spoolId);
+        if (s is null) return false;
+        s.RemainingWeightGrams = Math.Max(0, s.RemainingWeightGrams - grams);
+        s.TotalConsumedGrams += grams;
+        s.LastUsedAt = DateTime.UtcNow;
+        s.UpdatedAt = DateTime.UtcNow;
+        if (s.RemainingWeightGrams <= 0) { s.Status = SpoolStatus.Empty; s.EmptiedAt = DateTime.UtcNow; }
+        _usage.Add(new SpoolUsageEvent { SpoolId = spoolId, PrinterSerial = printerSerial, PrintJobId = printJobId, ConsumedGrams = grams });
+        Save(_usagePath, _usage);
+        ChangedInternal(SaveSpools);
+        return true;
+    }
+
+    // Persistence
+
+    private void ChangedInternal(Action save) { save(); Changed?.Invoke(); }
+    private void SaveSpools() => Save(_spoolsPath, _spools);
+
+    private static T? Load<T>(string path)
+    {
+        try { return File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : default; }
+        catch { return default; }
+    }
+
+    private static void Save<T>(string path, T value)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(value, Options));
+        }
+        catch { /* best effort */ }
+    }
+}

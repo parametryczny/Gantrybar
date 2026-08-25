@@ -64,6 +64,9 @@ public sealed class PrinterTelemetry
     public double? NozzleDiameter { get; set; }
     public int? CurrentStage { get; set; }
     public string? JobName { get; set; }
+    // Klipper measured filament (mm) + Bambu current print file — sources for spool decrement on finish.
+    public double? FilamentUsedMM { get; set; }
+    public string? GcodeFile { get; set; }
     public ulong ErrorCode { get; set; }
     public List<string> HmsCodes { get; set; } = new();
     // Physical filament modules (AMS / AMS HT / CFS / MMU / external). Primary source for the
@@ -100,6 +103,8 @@ public sealed class PrinterTelemetry
             NozzleDiameter = NozzleDiameter,
             CurrentStage = CurrentStage,
             JobName = JobName,
+            FilamentUsedMM = FilamentUsedMM,
+            GcodeFile = GcodeFile,
             ErrorCode = ErrorCode,
             HmsCodes = new List<string>(HmsCodes),
             FilamentGroups = FilamentGroups.Select(g => g.Clone()).ToList(),

@@ -29,6 +29,8 @@ public static class MoonrakerStatusParser
                 if (Int(info, "current_layer") is { } cl) t.CurrentLayer = cl;
                 if (Int(info, "total_layer") is { } tl) t.TotalLayers = tl;
             }
+            // Real measured filament consumed so far (mm) — basis for spool decrement on finish.
+            if (Num(printStats, "filament_used") is { } used) t.FilamentUsedMM = used;
         }
 
         // Creality K1/K1Max leave print_stats.info.*_layer null and expose layers on virtual_sdcard.
