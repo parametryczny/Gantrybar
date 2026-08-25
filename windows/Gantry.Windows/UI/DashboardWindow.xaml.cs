@@ -489,6 +489,12 @@ public partial class DashboardWindow : Window
         private readonly TextBlock _name, _connection, _pillText, _job, _jobSeparator, _percent, _eta, _layers, _message;
         private readonly Grid _bar;
         private readonly StackPanel _progressRow;
+        // Signature of the last-rendered filament dock, so it's only rebuilt when something actually
+        // changed (rebuilding every tick made the AMS chips flicker).
+        private string? _lastAmsSig;
+        // Flat layout: thin rules separate the sections; an offline scrim dims the card.
+        private readonly Border _tempDivider, _amsDivider, _offlineOverlay;
+        private readonly TextBlock _offlineText;
         // Temperature rows (nozzle(s)/bed/chamber) and the filament dock are rebuilt per update.
         private readonly StackPanel _temps;
         private readonly StackPanel _ams;
@@ -596,22 +602,31 @@ public partial class DashboardWindow : Window
             _progressRow.Children.Add(layersCluster);
             jobStack.Children.Add(_progressRow);
             jobStack.Children.Add(_bar);
-            stack.Children.Add(new Border
-            {
-                CornerRadius = new CornerRadius(GTheme.TileRadius),
-                Background = GTheme.Brush(GTheme.Surface),
-                BorderBrush = GTheme.Brush(GTheme.Line),
-                BorderThickness = new Thickness(1), Padding = new Thickness(9, 6, 9, 5), Child = jobStack
-            });
-
-            _temps = new StackPanel { Margin = new Thickness(0, 3, 0, 0) };
+            // Flat: no box around the job section; long thin rules separate the sections instead.
+            stack.Children.Add(new Border { Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 2, 2, 2), Child = jobStack });
+            _tempDivider = SectionDivider();
+            stack.Children.Add(_tempDivider);
+            _temps = new StackPanel { Margin = new Thickness(0, 3, 0, 3) };
             stack.Children.Add(_temps);
-
-            _ams = new StackPanel { Margin = new Thickness(0, 3, 0, 0) };
+            _amsDivider = SectionDivider();
+            stack.Children.Add(_amsDivider);
+            _ams = new StackPanel();
             stack.Children.Add(_ams);
 
             _message = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
             stack.Children.Add(_message);
+
+            // Offline scrim (dims the card + shows the connection error), on top of the content.
+            _offlineText = new TextBlock { FontSize = 11, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Secondary), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(16) };
+            _offlineOverlay = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0xA8, 0x0C, 0x0D, 0x0E)),
+                CornerRadius = new CornerRadius(GTheme.CardRadius), Visibility = Visibility.Collapsed,
+                Child = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Children = { new TextBlock { Text = "⚠", FontSize = 16, Foreground = GTheme.Brush(GTheme.Secondary), HorizontalAlignment = HorizontalAlignment.Center }, _offlineText } }
+            };
+            var rootGrid = new Grid();
+            rootGrid.Children.Add(stack);
+            rootGrid.Children.Add(_offlineOverlay);
 
             Root = new Border
             {
@@ -622,7 +637,7 @@ public partial class DashboardWindow : Window
                 Padding = new Thickness(10, 6, 10, 6),
                 Margin = new Thickness(3),
                 Width = width,
-                Child = stack
+                Child = rootGrid
             };
 
             Root.AllowDrop = true;
@@ -695,13 +710,32 @@ public partial class DashboardWindow : Window
 
             // Filament modules laid out in rows of up to two, side by side (macOS layout): an AMS is
             // wide and an EXT stays narrow, sized by slot count with the external counting for less.
-            _ams.Children.Clear();
             var groups = t.FilamentGroups;
             bool hasGroups = groups.Count > 0;
-            if (hasGroups)
-                for (int i = 0; i < groups.Count; i += 2)
-                    _ams.Children.Add(FilamentRow(groups.Skip(i).Take(2).ToList(), Serial, i,
-                        (loc, title, mat, col) => _owner.ShowSpoolAssign(loc, title, mat, col)));
+            // Only rebuild the dock when the AMS data or an assigned spool actually changed (no flicker).
+            var sig = new System.Text.StringBuilder();
+            for (int gi = 0; gi < groups.Count; gi++)
+            {
+                var g = groups[gi];
+                sig.Append(g.DisplayName).Append(g.HumidityPercent).Append('/').Append(g.TemperatureCelsius).Append('|');
+                for (int si = 0; si < g.Slots.Count; si++)
+                {
+                    var s = g.Slots[si];
+                    var sp = SpoolbaseShared.Spools.SpoolAt(SpoolLocation.At(Serial, g.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si));
+                    sig.Append(s.Material).Append(s.ColorHex).Append(s.RemainingPercent).Append(s.IsActive)
+                       .Append(sp?.Id).Append((int?)sp?.RemainingWeightGrams).Append(';');
+                }
+            }
+            var amsSig = sig.ToString();
+            if (amsSig != _lastAmsSig)
+            {
+                _lastAmsSig = amsSig;
+                _ams.Children.Clear();
+                if (hasGroups)
+                    for (int i = 0; i < groups.Count; i += 2)
+                        _ams.Children.Add(FilamentRow(groups.Skip(i).Take(2).ToList(), Serial, i,
+                            (loc, title, mat, col) => _owner.ShowSpoolAssign(loc, title, mat, col)));
+            }
 
             // User-controlled card content (Settings → "Karty drukarek").
             var collapse = Visibility.Collapsed;
@@ -710,6 +744,15 @@ public partial class DashboardWindow : Window
             _progressRow.Visibility = _bar.Visibility = AppSettings.CardShowProgress ? show : collapse;
             _temps.Visibility = AppSettings.CardShowTemperatures ? show : collapse;
             _ams.Visibility = hasGroups && AppSettings.CardShowFilaments ? show : collapse;
+            // Section rules only show when their section does (no orphan lines).
+            _tempDivider.Visibility = _temps.Visibility;
+            _amsDivider.Visibility = _ams.Visibility;
+
+            // Offline: dim the whole card and surface the connection error over it.
+            bool offline = t.State == PrinterState.Offline;
+            _offlineOverlay.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
+            if (offline) _offlineText.Text = string.IsNullOrEmpty(message)
+                ? AppSettings.Text("Brak połączenia z drukarką", "No connection to the printer") : message!;
 
             if (string.IsNullOrEmpty(message)) _message.Visibility = Visibility.Collapsed;
             else { _message.Text = message; _message.Visibility = Visibility.Visible; }
@@ -919,13 +962,8 @@ public partial class DashboardWindow : Window
             };
             Grid.SetColumn(zone, i); row.Children.Add(zone);
         }
-        return new Border
-        {
-            CornerRadius = new CornerRadius(GTheme.TileRadius), ClipToBounds = true,
-            Background = GTheme.Brush(GTheme.Surface),
-            BorderBrush = GTheme.Brush(GTheme.Line),
-            BorderThickness = new Thickness(1), Child = row
-        };
+        // Flat: no box around temperatures (the zone separators still read the columns).
+        return new Border { ClipToBounds = true, Background = System.Windows.Media.Brushes.Transparent, Child = row };
     }
 
     /// <summary>A physical filament module: tonal block with a name + per-module humidity/temperature
@@ -933,6 +971,10 @@ public partial class DashboardWindow : Window
     /// <summary>Lay up to two filament modules side by side, like the macOS dock: each column's width
     /// is proportional to its slot count, with an external spool counting for half so an AMS stays the
     /// wider, primary module. A lone external is a compact tile; a lone AMS fills the width.</summary>
+    /// <summary>A 1px full-width rule separating flat card sections.</summary>
+    private static Border SectionDivider() => new()
+    { Height = 1, Background = GTheme.Brush(GTheme.Line), Margin = new Thickness(0, 4, 0, 4) };
+
     internal static UIElement FilamentRow(List<FilamentGroup> rowGroups, string? serial = null,
         int groupBaseIndex = 0, Action<SpoolLocation, string, string?, string?>? onSlotClick = null)
     {
@@ -954,6 +996,9 @@ public partial class DashboardWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Weight(rowGroups[1]), GridUnitType.Star), MinWidth = MinW(rowGroups[1]) });
         var b0 = GroupBlock(rowGroups[0], serial, groupBaseIndex, onSlotClick); Grid.SetColumn(b0, 0); grid.Children.Add(b0);
         var b1 = GroupBlock(rowGroups[1], serial, groupBaseIndex + 1, onSlotClick); Grid.SetColumn(b1, 2); grid.Children.Add(b1);
+        // A thin vertical rule between the two devices (AMS / HT / EXT), like macOS.
+        var vsep = new Border { Width = 1, Background = GTheme.Brush(GTheme.Line), Margin = new Thickness(0, 2, 0, 2), HorizontalAlignment = HorizontalAlignment.Center };
+        Grid.SetColumn(vsep, 1); grid.Children.Add(vsep);
         return grid;
     }
 
@@ -1003,14 +1048,11 @@ public partial class DashboardWindow : Window
         }
         inner.Children.Add(slotGrid);
 
+        // Flat: no box around a filament group (chips + header read on their own).
         return new Border
         {
-            CornerRadius = new CornerRadius(GTheme.TileRadius),
-            Background = GTheme.Brush(GTheme.W(0.075)),
-            BorderBrush = GTheme.Brush(GTheme.Line),
-            BorderThickness = new Thickness(1),
+            Background = System.Windows.Media.Brushes.Transparent,
             Padding = new Thickness(6, 4, 6, 4),
-            Margin = new Thickness(0, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = inner
         };
