@@ -104,8 +104,9 @@ public sealed class PhysicalSpoolStore
     /// assigned Spoolbase spool, the assignment is stale (that roll was taken out) - send it back to
     /// storage so the slot shows the inserted NFC roll's own data. Fires only on the insert transition
     /// (the slot gains an NFC reading), so a deliberate later assignment is left alone.</summary>
-    public void DetachAssignmentsReplacedByNfc(string printerSerial, List<FilamentGroup> previous, List<FilamentGroup> current)
+    public List<(string SpoolId, string Slot)> DetachAssignmentsReplacedByNfc(string printerSerial, List<FilamentGroup> previous, List<FilamentGroup> current)
     {
+        var detached = new List<(string, string)>();
         for (int gi = 0; gi < current.Count; gi++)
         {
             var group = current[gi];
@@ -116,9 +117,15 @@ public sealed class PhysicalSpoolStore
                     && previous[gi].Slots[si].RemainingWeightGrams is not null;
                 if (hadNfc) continue;
                 var location = SpoolLocation.At(printerSerial, group.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si);
-                if (SpoolAt(location) is { } assigned) Assign(assigned.Id, SpoolLocation.Storage());
+                if (SpoolAt(location) is { } assigned)
+                {
+                    string slotLabel = group.IsExternal ? group.DisplayName : $"{group.DisplayName} {group.Slots[si].Label}";
+                    Assign(assigned.Id, SpoolLocation.Storage());
+                    detached.Add((assigned.Id, slotLabel));
+                }
             }
         }
+        return detached;
     }
 
     /// <summary>Idempotent per print job: a job id already recorded is ignored (no double-count).</summary>

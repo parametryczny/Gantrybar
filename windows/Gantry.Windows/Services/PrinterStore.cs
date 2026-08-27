@@ -17,6 +17,9 @@ public sealed class PrinterStore
     public Dictionary<string, List<TemperatureSample>> TemperatureHistory { get; } = new();
     private const int MaxTemperatureSamples = 240;
     public Dictionary<string, string?> ConnectionMessages { get; } = new();
+    /// <summary>Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool
+    /// auto-detached because an NFC roll was inserted into its slot).</summary>
+    public Dictionary<string, List<string>> SpoolNotices { get; } = new();
     public List<DiscoveredPrinter> Discovered { get; private set; } = new();
     public bool IsScanning { get; private set; }
     public string? GlobalMessage { get; set; }
@@ -360,6 +363,9 @@ public sealed class PrinterStore
         foreach (var printer in Printers.ToList()) Reconnect(printer);
     }
 
+    /// <summary>Clears the card notices for a printer (the user pressed "OK" on the on-card message).</summary>
+    public void DismissSpoolNotices(string serial) => SpoolNotices.Remove(serial);
+
     public void Reconnect(SavedPrinter printer)
     {
         if (_reconnectTasks.Remove(printer.Serial, out var task)) task.Cancel();
@@ -449,8 +455,14 @@ public sealed class PrinterStore
                 else if (value.JobName != (_dismissedJobs.TryGetValue(serial, out var d) ? d : null))
                     _dismissedJobs.Remove(serial);
                 Telemetry[serial] = value;
-                // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment.
-                SpoolbaseShared.Spools.DetachAssignmentsReplacedByNfc(serial, previous?.FilamentGroups ?? new(), value.FilamentGroups);
+                // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment;
+                // surface a dismissible notice on the card so the change is not silent.
+                foreach (var (spoolId, slot) in SpoolbaseShared.Spools.DetachAssignmentsReplacedByNfc(serial, previous?.FilamentGroups ?? new(), value.FilamentGroups))
+                {
+                    if (!SpoolNotices.TryGetValue(serial, out var list)) SpoolNotices[serial] = list = new();
+                    list.Add(AppSettings.Text($"{spoolId} wróciła do magazynu (wykryto tag NFC w {slot})",
+                                              $"{spoolId} returned to storage (NFC tag detected in {slot})"));
+                }
                 RecordTemperature(serial, value);
                 ConnectionMessages[serial] = null;
                 if (_printersWithTelemetry.Contains(serial) && Printers.FirstOrDefault(p => p.Serial == serial) is { } printer)

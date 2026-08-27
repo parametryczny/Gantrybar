@@ -479,6 +479,12 @@ public partial class DashboardWindow : Window
                 var t = _store.Telemetry.TryGetValue(printer.Serial, out var tel) ? tel : new PrinterTelemetry();
                 _store.ConnectionMessages.TryGetValue(printer.Serial, out var msg);
                 view.Update(printer, t, msg, pl);
+                if (view is PrinterCard card)
+                {
+                    var serial = printer.Serial;
+                    var notices = _store.SpoolNotices.TryGetValue(serial, out var n) ? n : null;
+                    card.ShowNotices(notices, () => { _store.DismissSpoolNotices(serial); Rebuild(); });
+                }
             }
 
         // Fit the window to the cards' real height — cards vary (multiple AMS units wrap onto extra
@@ -549,6 +555,9 @@ public partial class DashboardWindow : Window
         private readonly DashboardWindow _owner;
         private Point _dragStart;
         private readonly TextBlock _name, _connection, _pillText, _job, _jobSeparator, _percent, _eta, _layers, _message;
+        private readonly Border _noticeBanner;
+        private readonly TextBlock _noticeText;
+        private Action? _onDismissNotice;
         private readonly Grid _bar;
         private readonly StackPanel _progressRow;
         // Signature of the last-rendered filament dock, so it's only rebuilt when something actually
@@ -697,9 +706,28 @@ public partial class DashboardWindow : Window
                 CornerRadius = new CornerRadius(GTheme.CardRadius), Visibility = Visibility.Collapsed,
                 Child = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Children = { new TextBlock { Text = "⚠", FontSize = 16, Foreground = GTheme.Brush(GTheme.Secondary), HorizontalAlignment = HorizontalAlignment.Center }, _offlineText } }
             };
+            // Small dismissible notice at the bottom of the card (e.g. a Spoolbase spool auto-detached
+            // because an NFC roll was inserted into its slot).
+            _noticeText = new TextBlock { FontSize = 10.5, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Text), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+            var noticeOk = new Button { Content = "OK", MinWidth = 40, Height = 24, Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(10, 0, 10, 0), FontSize = 11, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Background = GTheme.Brush(GTheme.Accent), Foreground = GTheme.Brush(GTheme.Canvas) };
+            noticeOk.Click += (_, _) => { _noticeBanner.Visibility = Visibility.Collapsed; _onDismissNotice?.Invoke(); };
+            var noticeGrid = new Grid();
+            noticeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            noticeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(_noticeText, 0); noticeGrid.Children.Add(_noticeText);
+            Grid.SetColumn(noticeOk, 1); noticeGrid.Children.Add(noticeOk);
+            _noticeBanner = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0xFA, 0x29, 0x24, 0x17)),
+                BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 6, 8, 6),
+                Margin = new Thickness(4, 0, 4, 4), VerticalAlignment = VerticalAlignment.Bottom,
+                Visibility = Visibility.Collapsed, Child = noticeGrid
+            };
             var rootGrid = new Grid();
             rootGrid.Children.Add(stack);
             rootGrid.Children.Add(_offlineOverlay);
+            rootGrid.Children.Add(_noticeBanner);
 
             Root = new Border
             {
@@ -725,6 +753,15 @@ public partial class DashboardWindow : Window
                 bool insertAfter = e.GetPosition(Root).X > Root.ActualWidth / 2;
                 _owner._store.MovePrinter(sourceSerial, Serial, insertAfter);
             };
+        }
+
+        /// <summary>Shows a dismissible notice at the bottom of the card, or hides it when empty.</summary>
+        public void ShowNotices(List<string>? texts, Action onDismiss)
+        {
+            if (texts is null || texts.Count == 0) { _noticeBanner.Visibility = Visibility.Collapsed; return; }
+            _noticeText.Text = string.Join("\n", texts);
+            _onDismissNotice = onDismiss;
+            _noticeBanner.Visibility = Visibility.Visible;
         }
 
         public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
