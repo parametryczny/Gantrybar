@@ -378,8 +378,8 @@ public partial class DashboardWindow : Window
                                            "Print in peace — everything under control");
         StatusLine.Text = _store.IsScanning
             ? AppSettings.Text("Skanowanie…", "Scanning…")
-            : (_store.GlobalMessage ?? AppSettings.Text($"{_store.Printers.Count} drukarek • {_store.ActivePrintCount} drukuje",
-                                                        $"{_store.Printers.Count} printers • {_store.ActivePrintCount} printing"));
+            : (_store.GlobalMessage ?? AppSettings.Text($"{_store.Printers.Count} drukarek · {_store.ActivePrintCount} pracuje",
+                                                        $"{_store.Printers.Count} printers · {_store.ActivePrintCount} working"));
 
         bool compact = UseCompactMode();
         CompactButton.Visibility = _store.Printers.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
@@ -569,19 +569,59 @@ public partial class DashboardWindow : Window
             var jobStack = new StackPanel();
 
             var header = new Grid();
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var grip = new TextBlock
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // left cluster
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // gap
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // grip chip
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // more chip
+
+            // Left cluster (macOS layout): printer glyph + name + MQTT pill + a small line-chart icon
+            // for the details view - same order and grouping as the macOS card header.
+            var printerIcon = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, Foreground = GTheme.Brush(GTheme.Accent), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 150 };
+            _connection = new TextBlock
             {
-                Text = "⠿", FontSize = 13, Foreground = Muted(), Margin = new Thickness(0, 0, 7, 0),
-                VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll,
-                ToolTip = "Przeciągnij, aby zmienić kolejność • Drag to reorder"
+                FontFamily = new FontFamily("Segoe UI"), FontSize = 9, FontWeight = FontWeights.SemiBold,
+                Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center
             };
-            grip.PreviewMouseLeftButtonDown += (_, e) => _dragStart = e.GetPosition(null);
-            grip.MouseMove += (_, e) =>
+            var connectionPill = new Border
+            {
+                Background = GTheme.Brush(GTheme.W(0.025)), CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(5, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center, Child = _connection
+            };
+            // Details = a small drawn line-chart icon (no font-glyph risk), like the macOS chart icon.
+            var detailsIcon = new Polyline
+            {
+                Points = new PointCollection { new Point(0, 8), new Point(3, 4), new Point(6, 5.5), new Point(10, 1) },
+                Stroke = Muted(), StrokeThickness = 1.4, StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Center
+            };
+            var details = new Button
+            {
+                Content = detailsIcon, Width = 24, Height = 18, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
+                Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0),
+                ToolTip = AppSettings.Text("Szczegóły", "Details")
+            };
+            details.Click += (_, _) => _owner.ShowDetail(Serial);
+            var leftCluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            leftCluster.Children.Add(printerIcon);
+            leftCluster.Children.Add(_name);
+            leftCluster.Children.Add(connectionPill);
+            leftCluster.Children.Add(details);
+            Grid.SetColumn(leftCluster, 0);
+            header.Children.Add(leftCluster);
+
+            // Right cluster (macOS layout): drag grip + "..." menu, each in a faint rounded chip.
+            var grip = new TextBlock { Text = "⠿", FontSize = 13, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll };
+            var gripChip = new Border
+            {
+                Background = GTheme.Brush(GTheme.W(0.025)), CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(0, 0, 5, 0),
+                VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll,
+                ToolTip = "Przeciągnij, aby zmienić kolejność • Drag to reorder", Child = grip
+            };
+            gripChip.PreviewMouseLeftButtonDown += (_, e) => _dragStart = e.GetPosition(null);
+            gripChip.MouseMove += (_, e) =>
             {
                 if (e.LeftButton != MouseButtonState.Pressed) return;
                 var p = e.GetPosition(null);
@@ -589,47 +629,12 @@ public partial class DashboardWindow : Window
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
                 _owner.BeginCardDrag(Root, Serial);
             };
-            header.Children.Add(grip);
-            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            // Printer glyph before the name, like the macOS card.
-            var printerIcon = new TextBlock { Text = "\uE749", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, Foreground = GTheme.Brush(GTheme.Accent), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-            var nameRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            nameRow.Children.Add(printerIcon);
-            nameRow.Children.Add(_name);
-            Grid.SetColumn(nameRow, 1);
-            header.Children.Add(nameRow);
-            _connection = new TextBlock
-            {
-                FontFamily = new FontFamily("Segoe UI"), FontSize = 9, FontWeight = FontWeights.SemiBold,
-                Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center
-            };
-            // Quiet "MQTT" pill next to the name, like the macOS manufacturer chip.
-            var connectionPill = new Border
-            {
-                Background = GTheme.Brush(GTheme.W(0.025)), CornerRadius = new CornerRadius(5),
-                Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(5, 0, 5, 0),
-                VerticalAlignment = VerticalAlignment.Center, Child = _connection
-            };
-            Grid.SetColumn(connectionPill, 2);
-            header.Children.Add(connectionPill);
-            // Visible "Szczegóły" button (a subtle grey-outline chip) — the details view is a primary
-            // action, not something to hunt for in the "…" menu.
-            var details = new Button
-            {
-                Content = AppSettings.Text("Szczegóły", "Details"), FontSize = 9, Height = 18,
-                Padding = new Thickness(7, 0, 7, 0), Margin = new Thickness(0, 0, 5, 0),
-                VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
-                Background = System.Windows.Media.Brushes.Transparent, Foreground = Muted(),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)), BorderThickness = new Thickness(1)
-            };
-            details.Click += (_, _) => _owner.ShowDetail(Serial);
-            Grid.SetColumn(details, 3);
-            header.Children.Add(details);
-            // "…" menu in the header (macOS layout) instead of a separate row at the bottom — saves height.
-            var more = new Button { Content = "⋯", FontSize = 13, Width = 22, Height = 20, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0), Foreground = Muted() };
+            Grid.SetColumn(gripChip, 2);
+            header.Children.Add(gripChip);
+            var more = new Button { Content = "⋯", FontSize = 13, Width = 24, Height = 20, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = GTheme.Brush(GTheme.W(0.025)), BorderThickness = new Thickness(0), Foreground = Muted() };
             var menu = owner.BuildCardMenu(printer.Serial);
             more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
-            Grid.SetColumn(more, 4);
+            Grid.SetColumn(more, 3);
             header.Children.Add(more);
             jobStack.Children.Add(header);
 
@@ -773,7 +778,7 @@ public partial class DashboardWindow : Window
             cells.Add((bedLabel, FormatTemp(t.BedTemperature, t.BedTargetTemperature), GTheme.Brush(GTheme.Bed)));
             // Chamber tile only when there is an actual reading (no empty "— / —" tile).
             if (t.ChamberTemperature is { } ch)
-                cells.Add((chamberLabel, ch.ToString("0", CultureInfo.InvariantCulture) + "°", GTheme.Brush(GTheme.Chamber)));
+                cells.Add((chamberLabel, FormatTemp(ch, null), GTheme.Brush(GTheme.Chamber)));
             _temps.Children.Add(TempRow(cells.ToArray()));
 
             // Filament modules laid out in rows of up to two, side by side (macOS layout): an AMS is
@@ -822,7 +827,9 @@ public partial class DashboardWindow : Window
             if (offline) _offlineText.Text = string.IsNullOrEmpty(message)
                 ? AppSettings.Text("Brak połączenia z drukarką", "No connection to the printer") : message!;
 
-            if (string.IsNullOrEmpty(message)) _message.Visibility = Visibility.Collapsed;
+            // When offline the message is already shown by the scrim overlay, so don't also repeat it in
+            // the orange in-card line (that duplicated the text on the offline card).
+            if (offline || string.IsNullOrEmpty(message)) _message.Visibility = Visibility.Collapsed;
             else { _message.Text = message; _message.Visibility = Visibility.Visible; }
         }
 
@@ -1363,7 +1370,9 @@ public partial class DashboardWindow : Window
     {
         if (current is not { } c) return "—";
         string value = c.ToString("0", CultureInfo.InvariantCulture) + "°";
-        if (target is { } t && t > 0) value += "/" + t.ToString("0", CultureInfo.InvariantCulture) + "°";
+        // Always show the target slot, with "/ —" when there is no target reading — matches macOS,
+        // where chamber and the right (idle) nozzle read e.g. "39° / —" rather than a bare "39°".
+        value += "/" + (target is { } t && t > 0 ? t.ToString("0", CultureInfo.InvariantCulture) + "°" : "—");
         return value;
     }
 
