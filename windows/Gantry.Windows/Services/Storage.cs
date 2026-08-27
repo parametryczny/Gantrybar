@@ -215,6 +215,12 @@ public static class AppSettings
         get => Defaults.GetBool("card-show-filaments", true);
         set => Defaults.SetBool("card-show-filaments", value);
     }
+    /// <summary>Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).</summary>
+    public static bool CardShowSpoolGrams
+    {
+        get => Defaults.GetBool("card-show-spool-grams", false);
+        set => Defaults.SetBool("card-show-spool-grams", value);
+    }
 
     // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     public static bool SpoolbaseEnabled

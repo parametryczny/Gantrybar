@@ -1118,7 +1118,8 @@ public partial class DashboardWindow : Window
                 : null;
             string title = group.IsExternal ? group.DisplayName : $"{ShortName(group.DisplayName)} {slot.Label}";
             var chip = SlotChip(slot, group.IsExternal, location, title, onSlotClick);
-            if (single) chip.MaxWidth = group.IsExternal ? 96 : 60;
+            // A single slot (e.g. AMS HT) reads as a wide, legible pill like the EXT, not a tiny square.
+            if (single) chip.MaxWidth = 96;
             slotGrid.Children.Add(chip);
         }
         inner.Children.Add(slotGrid);
@@ -1186,6 +1187,11 @@ public partial class DashboardWindow : Window
                 swatch.Clip = new RectangleGeometry(new Rect(0, 0, w, SwatchHeight), 6, 6);
             };
         }
+        else if (!present)
+        {
+            // Empty slot: fine diagonal hatch (like the macOS empty slot), so it reads as "no spool".
+            swatch.Child = new System.Windows.Shapes.Rectangle { Fill = HatchBrush() };
+        }
         swatchGrid.Children.Add(swatch);
         // Remaining % lives INSIDE the colour chip, in a contrasting ink. The centred number is only
         // over the SOLID fill once it reaches the middle; below that it sits over the dim (dark) part,
@@ -1229,13 +1235,19 @@ public partial class DashboardWindow : Window
         var panel = new StackPanel();
         panel.Children.Add(swatchElement);
         panel.Children.Add(meta);
-        if (assignedSpool is not null)
-            panel.Children.Add(new TextBlock
-            {
-                Text = $"{(int)assignedSpool.RemainingWeightGrams} g",
-                FontSize = 8.5, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted),
-                HorizontalAlignment = HorizontalAlignment.Center
-            });
+        // Grams on the spool: the assigned Spoolbase weight, or the AMS NFC weight - only when the user
+        // turned on "grams on spool" for the cards (Settings).
+        if (AppSettings.CardShowSpoolGrams)
+        {
+            double? grams = assignedSpool?.RemainingWeightGrams ?? slot.RemainingWeightGrams;
+            if (grams is { } g && g > 0)
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"{(int)g} g",
+                    FontSize = 8.5, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted),
+                    HorizontalAlignment = HorizontalAlignment.Center
+                });
+        }
         // Click a slot to open its spool-assignment panel (Spoolbase).
         if (onClick is not null && location is not null)
         {
@@ -1377,6 +1389,27 @@ public partial class DashboardWindow : Window
     }
 
     private static SolidColorBrush Muted() => new(Color.FromRgb(0x9A, 0x9A, 0x9E));
+
+    /// <summary>A fine 45° diagonal hatch, tiled — the empty-slot pattern that matches the macOS card.</summary>
+    private static DrawingBrush HatchBrush()
+    {
+        var line = new GeometryDrawing
+        {
+            Pen = new Pen(new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)), 1),
+            Geometry = new LineGeometry(new Point(0, 5), new Point(5, 0))
+        };
+        var brush = new DrawingBrush(line)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, 5, 5),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewbox = new Rect(0, 0, 5, 5),
+            ViewboxUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
+        brush.Freeze();
+        return brush;
+    }
 
     private static Color ParseHex(string hex)
     {
