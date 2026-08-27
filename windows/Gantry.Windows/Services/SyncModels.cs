@@ -113,7 +113,9 @@ public static class SyncJson
 
     private static JsonSerializerOptions Build()
     {
-        var o = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var o = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
+        // Enums as lowercase strings ("active", "ams", ...) to match the macOS Codable String enums.
+        o.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         o.Converters.Add(new Iso8601DateTimeConverter());
         o.Converters.Add(new Iso8601NullableDateTimeConverter());
         return o;
