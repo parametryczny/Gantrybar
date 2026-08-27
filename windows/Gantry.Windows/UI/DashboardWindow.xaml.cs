@@ -1053,7 +1053,9 @@ public partial class DashboardWindow : Window
     internal static UIElement FilamentRow(List<FilamentGroup> rowGroups, string? serial = null,
         int groupBaseIndex = 0, Action<SpoolLocation, string, string?, string?>? onSlotClick = null)
     {
-        static double Weight(FilamentGroup g) => Math.Max(1, g.DeclaredCapacity);
+        // A multi-slot module (AMS) gets a column three times as wide as a single-slot one (EXT / HT),
+        // so an AMS beside EXT reads ~3:1; two single groups (AMS HT + EXT) stay 50/50.
+        static double Weight(FilamentGroup g) => g.DeclaredCapacity > 1 ? 3 : 1;
         static double MinW(FilamentGroup g)
         {
             if (g.HumidityPercent is not null || g.TemperatureCelsius is not null) return 118; // header room
@@ -1101,28 +1103,44 @@ public partial class DashboardWindow : Window
         Grid.SetColumn(envPanel, 2); header.Children.Add(envPanel);
         inner.Children.Add(header);
 
-        // Slots fill the module width equally. A single spool is a wider chip centred in its tile
-        // (the same width whether HT or EXT) - not a small square, not an edge-to-edge pill.
-        bool single = group.Slots.Count == 1;
-        var slotGrid = new System.Windows.Controls.Primitives.UniformGrid
+        SpoolLocation? SlotLoc(int si) => serial != null
+            ? SpoolLocation.At(serial, group.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, groupIndex, si)
+            : null;
+        string SlotTitle(FilamentSlot s) => group.IsExternal ? group.DisplayName : $"{ShortName(group.DisplayName)} {s.Label}";
+
+        FrameworkElement slotArea;
+        if (group.Slots.Count == 1)
         {
-            Rows = 1,
-            Columns = Math.Max(1, group.Slots.Count),
-            Margin = new Thickness(0, 3, 0, 0),
-            HorizontalAlignment = single ? HorizontalAlignment.Center : HorizontalAlignment.Stretch
-        };
-        for (int si = 0; si < group.Slots.Count; si++)
-        {
-            var slot = group.Slots[si];
-            SpoolLocation? location = serial != null
-                ? SpoolLocation.At(serial, group.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, groupIndex, si)
-                : null;
-            string title = group.IsExternal ? group.DisplayName : $"{ShortName(group.DisplayName)} {slot.Label}";
-            var chip = SlotChip(slot, group.IsExternal, location, title, onSlotClick);
-            if (single) chip.MaxWidth = 112;
-            slotGrid.Children.Add(chip);
+            // Single slot: 35% of the module width, but at least 60px, centred - matches the macOS card
+            // (scales with the card; next to a wide AMS it stays legible, alone it is a wide rectangle).
+            var g = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.325, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.35, GridUnitType.Star), MinWidth = 60 });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.325, GridUnitType.Star) });
+            var slot = group.Slots[0];
+            var chip = SlotChip(slot, group.IsExternal, SlotLoc(0), SlotTitle(slot), onSlotClick);
+            chip.HorizontalAlignment = HorizontalAlignment.Stretch;
+            Grid.SetColumn(chip, 1);
+            g.Children.Add(chip);
+            slotArea = g;
         }
-        inner.Children.Add(slotGrid);
+        else
+        {
+            var slotGrid = new System.Windows.Controls.Primitives.UniformGrid
+            {
+                Rows = 1,
+                Columns = Math.Max(1, group.Slots.Count),
+                Margin = new Thickness(0, 3, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            for (int si = 0; si < group.Slots.Count; si++)
+            {
+                var slot = group.Slots[si];
+                slotGrid.Children.Add(SlotChip(slot, group.IsExternal, SlotLoc(si), SlotTitle(slot), onSlotClick));
+            }
+            slotArea = slotGrid;
+        }
+        inner.Children.Add(slotArea);
 
         // Flat: no box around a filament group (chips + header read on their own).
         return new Border
