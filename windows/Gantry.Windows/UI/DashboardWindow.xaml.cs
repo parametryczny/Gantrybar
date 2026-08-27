@@ -1226,9 +1226,12 @@ public partial class DashboardWindow : Window
                 Margin = new Thickness(3, 0, 3, 0)
             });
         }
-        // Low-filament marker (red corner dot) — only on real AMS/CFS slots (external reports 0 = unknown).
+        // Low-filament marker (red corner dot). Only when the level is trustworthy: an external spool
+        // and a chipless AMS spool both report remain 0 = "unknown", so warn only for an RFID tag
+        // (weight) or an assigned Spoolbase spool (issue #27).
         FrameworkElement swatchElement = swatchGrid;
-        if (present && !external && (effPct ?? 100) <= 15)
+        bool trustedLevel = slot.RemainingWeightGrams != null || assignedSpool != null;
+        if (present && !external && trustedLevel && (effPct ?? 100) <= 15)
         {
             swatchGrid.Children.Add(new Ellipse
             {

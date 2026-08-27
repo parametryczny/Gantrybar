@@ -129,6 +129,9 @@ public sealed class AmsSlot
     public int? RemainingPercent { get; set; }
     public bool IsActive { get; set; }
     public bool IsExternal { get; set; }
+    /// <summary>RFID/NFC remaining weight (grams); null for a chipless spool whose RemainingPercent is
+    /// not trustworthy - used to suppress false "low filament" warnings (issue #27).</summary>
+    public double? RemainingWeightGrams { get; set; }
 
     public AmsSlot Clone() => (AmsSlot)MemberwiseClone();
 }
@@ -170,7 +173,8 @@ public sealed class FilamentGroup
         ColorHex = s.ColorHex ?? "8E8E93FF",
         RemainingPercent = s.RemainingPercent,
         IsActive = s.IsActive,
-        IsExternal = IsExternal
+        IsExternal = IsExternal,
+        RemainingWeightGrams = s.RemainingWeightGrams
     });
 }
 

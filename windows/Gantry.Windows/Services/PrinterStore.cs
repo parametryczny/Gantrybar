@@ -689,8 +689,11 @@ public sealed class PrinterStore
                 current.JobName ?? AppSettings.Text("Drukarka oczekuje na działanie.", "The printer needs attention."), printer.Name);
         }
 
-        var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(s => (s.RemainingPercent ?? 100) <= 15).Select(s => s.Id));
-        var newLow = current.AmsSlots.Where(s => (s.RemainingPercent ?? 100) <= 15 && !previousLow.Contains(s.Id)).ToList();
+        // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
+        // so RemainingPercent reads as 0 and must not raise a false "low filament" alert (issue #27).
+        bool LowAndTrusted(AmsSlot s) => s.RemainingWeightGrams != null && (s.RemainingPercent ?? 100) <= 15;
+        var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(LowAndTrusted).Select(s => s.Id));
+        var newLow = current.AmsSlots.Where(s => LowAndTrusted(s) && !previousLow.Contains(s.Id)).ToList();
         if (AppSettings.NotifyLowFilament && newLow.FirstOrDefault() is { } slot)
             NotificationService.Post(AppSettings.Text("Niski poziom filamentu", "Low filament"),
                 $"{slot.Label} • {slot.Material} • {slot.RemainingPercent ?? 0}%", printer.Name);
