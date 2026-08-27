@@ -449,6 +449,8 @@ public sealed class PrinterStore
                 else if (value.JobName != (_dismissedJobs.TryGetValue(serial, out var d) ? d : null))
                     _dismissedJobs.Remove(serial);
                 Telemetry[serial] = value;
+                // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment.
+                SpoolbaseShared.Spools.DetachAssignmentsReplacedByNfc(serial, previous?.FilamentGroups ?? new(), value.FilamentGroups);
                 RecordTemperature(serial, value);
                 ConnectionMessages[serial] = null;
                 if (_printersWithTelemetry.Contains(serial) && Printers.FirstOrDefault(p => p.Serial == serial) is { } printer)

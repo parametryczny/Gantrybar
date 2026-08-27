@@ -100,6 +100,27 @@ public sealed class PhysicalSpoolStore
         ChangedInternal(SaveSpools);
     }
 
+    /// <summary>When a real RFID/NFC spool is newly inserted into a slot that still holds a manually
+    /// assigned Spoolbase spool, the assignment is stale (that roll was taken out) - send it back to
+    /// storage so the slot shows the inserted NFC roll's own data. Fires only on the insert transition
+    /// (the slot gains an NFC reading), so a deliberate later assignment is left alone.</summary>
+    public void DetachAssignmentsReplacedByNfc(string printerSerial, List<FilamentGroup> previous, List<FilamentGroup> current)
+    {
+        for (int gi = 0; gi < current.Count; gi++)
+        {
+            var group = current[gi];
+            for (int si = 0; si < group.Slots.Count; si++)
+            {
+                if (group.Slots[si].RemainingWeightGrams is null) continue;
+                bool hadNfc = gi < previous.Count && si < previous[gi].Slots.Count
+                    && previous[gi].Slots[si].RemainingWeightGrams is not null;
+                if (hadNfc) continue;
+                var location = SpoolLocation.At(printerSerial, group.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si);
+                if (SpoolAt(location) is { } assigned) Assign(assigned.Id, SpoolLocation.Storage());
+            }
+        }
+    }
+
     /// <summary>Idempotent per print job: a job id already recorded is ignored (no double-count).</summary>
     public bool Consume(string spoolId, double grams, string printerSerial, string printJobId)
     {
