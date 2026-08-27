@@ -148,6 +148,26 @@ public sealed class PhysicalSpoolStore
 
     // Persistence
 
+    public IReadOnlyList<SpoolUsageEvent> UsageEvents => _usage;
+
+    /// <summary>Merges a peer's spools and usage history (LAN sync). Spools reconcile by UpdatedAt (newest
+    /// wins, new ids added); usage events union by id and stay idempotent per (printJobID, spoolID).</summary>
+    public bool MergeRemote(List<PhysicalSpool> remoteSpools, List<SpoolUsageEvent> remoteEvents)
+    {
+        bool changed = false;
+        foreach (var e in remoteEvents)
+            if (!_usage.Any(u => u.Id == e.Id || (u.PrintJobId == e.PrintJobId && u.SpoolId == e.SpoolId)))
+            { _usage.Add(e); changed = true; }
+        foreach (var r in remoteSpools)
+        {
+            var local = _spools.FirstOrDefault(s => s.Id == r.Id);
+            if (local is null) { _spools.Add(r); changed = true; }
+            else if (r.UpdatedAt > local.UpdatedAt) { _spools[_spools.IndexOf(local)] = r; changed = true; }
+        }
+        if (changed) { SaveSpools(); Save(_usagePath, _usage); Changed?.Invoke(); }
+        return changed;
+    }
+
     private void ChangedInternal(Action save) { save(); Changed?.Invoke(); }
     private void SaveSpools() => Save(_spoolsPath, _spools);
 

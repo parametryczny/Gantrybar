@@ -49,7 +49,67 @@ public partial class SettingsWindow : Window
         QuietHoursCheckBox.Click += (_, _) => { QuietHours.Enabled = QuietHoursCheckBox.IsChecked == true; QuietTimesRow.IsEnabled = QuietHoursCheckBox.IsChecked == true; };
         QuietStartBox.LostFocus += (_, _) => SaveQuietTimes();
         QuietEndBox.LostFocus += (_, _) => SaveQuietTimes();
+        WebDashboardCheckBox.Click += (_, _) =>
+        {
+            AppSettings.WebDashboardEnabled = WebDashboardCheckBox.IsChecked == true;
+            if (AppSettings.WebDashboardEnabled) App.WebServerShared?.Start(); else App.WebServerShared?.Stop();
+            RefreshWebSync();
+        };
+        SyncNewTokenButton.Click += (_, _) => { SyncService.Shared?.RegenerateToken(); RefreshWebSync(); };
+        SyncAddPeerButton.Click += (_, _) => { SyncService.Shared?.AddPeer(SyncPeerBox.Text); SyncPeerBox.Text = ""; RefreshWebSync(); };
+        SyncSetTokenButton.Click += (_, _) => { SyncService.Shared?.SetToken(SyncSetTokenBox.Text); SyncSetTokenBox.Text = ""; RefreshWebSync(); };
+        SyncNowButton.Click += (_, _) => SyncService.Shared?.SyncNow();
+        // The user may have changed synced settings; let the newer side win on the next merge.
+        Closed += (_, _) => SyncService.Shared?.NoteSettingsChanged();
         CloseButton.Click += (_, _) => Close();
+    }
+
+    private void RefreshWebSync()
+    {
+        WebHeading.Text = AppSettings.Text("PODGLĄD W PRZEGLĄDARCE", "WEB DASHBOARD");
+        WebDashboardCheckBox.Content = AppSettings.Text("Serwer podglądu (sieć lokalna)", "Preview server (local network)");
+        WebDashboardCheckBox.IsChecked = AppSettings.WebDashboardEnabled;
+        var ip = GantryWebServer.LocalIPv4();
+        WebAddressLabel.Text = ip != null ? $"http://{ip}:{GantryWebServer.Port}" : AppSettings.Text("brak adresu IP", "no IP address");
+
+        SyncHeading.Text = AppSettings.Text("SYNCHRONIZACJA MIĘDZY KOMPUTERAMI", "SYNC BETWEEN COMPUTERS");
+        SyncTokenLabel.Text = AppSettings.Text("Wspólny token (skopiuj na drugi komputer)", "Shared token (copy to the other computer)");
+        SyncNewTokenButton.Content = AppSettings.Text("Nowy", "New");
+        SyncAddPeerButton.Content = AppSettings.Text("Dodaj", "Add");
+        SyncSetTokenButton.Content = AppSettings.Text("Ustaw token", "Set token");
+        SyncNowButton.Content = AppSettings.Text("Synchronizuj teraz", "Sync now");
+        SyncHint.Text = AppSettings.Text(
+            "Na drugim komputerze wklej powyższy token („Ustaw token”), potem dodaj adres tego komputera. Tylko sieć lokalna. Kody dostępu do drukarek nie są przesyłane.",
+            "On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.");
+
+        var sync = SyncService.Shared;
+        SyncTokenBox.Text = sync?.Token ?? "";
+        SyncAddressLabel.Text = ip != null ? $"http://{ip}:{GantryWebServer.Port}" : "";
+        SyncPeersList.Children.Clear();
+        if (sync != null)
+        {
+            if (sync.Peers.Count == 0)
+                SyncPeersList.Children.Add(new System.Windows.Controls.TextBlock { Text = AppSettings.Text("Brak sparowanych komputerów.", "No paired computers."), FontSize = 11, Foreground = GTheme.Brush(GTheme.Muted), Margin = new System.Windows.Thickness(0, 2, 0, 4) });
+            foreach (var peer in sync.Peers.ToList())
+            {
+                var grid = new System.Windows.Controls.Grid { Margin = new System.Windows.Thickness(0, 2, 0, 2) };
+                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
+                string status = peer.LastError != null ? AppSettings.Text($"Błąd: {peer.LastError}", $"Error: {peer.LastError}")
+                    : peer.LastSyncAt is { } ls ? AppSettings.Text($"ostatnio: {ls.ToLocalTime():HH:mm}", $"last: {ls.ToLocalTime():HH:mm}")
+                    : AppSettings.Text("jeszcze nie zsynchronizowano", "not synced yet");
+                var info = new System.Windows.Controls.StackPanel();
+                info.Children.Add(new System.Windows.Controls.TextBlock { Text = peer.Address, FontFamily = new System.Windows.Media.FontFamily("Consolas"), FontSize = 11, Foreground = GTheme.Brush(GTheme.Text) });
+                info.Children.Add(new System.Windows.Controls.TextBlock { Text = status, FontSize = 10, Foreground = peer.LastError != null ? GTheme.Brush(GTheme.StatusPrinting) : GTheme.Brush(GTheme.Secondary) });
+                grid.Children.Add(info);
+                var remove = new System.Windows.Controls.Button { Content = AppSettings.Text("Usuń", "Remove"), MinWidth = 60, Height = 24, FontSize = 11 };
+                string peerId = peer.Id;
+                remove.Click += (_, _) => { SyncService.Shared?.RemovePeer(peerId); RefreshWebSync(); };
+                System.Windows.Controls.Grid.SetColumn(remove, 1);
+                grid.Children.Add(remove);
+                SyncPeersList.Children.Add(grid);
+            }
+        }
     }
 
     private void SaveQuietTimes()
@@ -143,6 +203,7 @@ public partial class SettingsWindow : Window
         QuietStartBox.Text = MinutesToText(QuietHours.StartMinutes);
         QuietEndBox.Text = MinutesToText(QuietHours.EndMinutes);
         QuietTimesRow.IsEnabled = QuietHours.Enabled;
+        RefreshWebSync();
     }
 
     private async Task CheckUpdatesAsync()

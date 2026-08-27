@@ -10,6 +10,11 @@ public partial class App : Application
 {
     private PrinterStore? _store;
     private TrayIcon? _tray;
+    private GantryWebServer? _webServer;
+    private SyncService? _syncService;
+    /// <summary>Set at startup so the Settings window can start/stop the LAN web server live.</summary>
+    internal static GantryWebServer? WebServerShared { get; private set; }
+    private System.Windows.Threading.DispatcherTimer? _syncTimer;
 
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Gantry", "error.log");
@@ -68,6 +73,16 @@ public partial class App : Application
         if (LaunchAtLogin.IsEnabled) LaunchAtLogin.SetEnabled(true); // refresh path
 
         _store.ReconnectAll();
+
+        // Read-only LAN web dashboard + two-way sync between the user's own computers.
+        _syncService = new SyncService(_store);
+        _webServer = new GantryWebServer(_store) { Sync = _syncService };
+        WebServerShared = _webServer;
+        if (AppSettings.WebDashboardEnabled) _webServer.Start();
+        _syncService.SyncNow();
+        _syncTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(45) };
+        _syncTimer.Tick += (_, _) => _syncService.SyncNow();
+        _syncTimer.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)

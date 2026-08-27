@@ -229,6 +229,13 @@ public static class AppSettings
         set => Defaults.SetBool("spoolbase-enabled", value);
     }
 
+    /// <summary>Whether the read-only LAN web dashboard (http://&lt;ip&gt;:8787) runs.</summary>
+    public static bool WebDashboardEnabled
+    {
+        get => Defaults.GetBool("web-dashboard-enabled", true);
+        set => Defaults.SetBool("web-dashboard-enabled", value);
+    }
+
     // Download and install new releases automatically instead of only notifying about them.
     public static bool AutoUpdate
     {
