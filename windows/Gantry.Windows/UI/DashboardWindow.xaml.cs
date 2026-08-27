@@ -1101,14 +1101,14 @@ public partial class DashboardWindow : Window
         Grid.SetColumn(envPanel, 2); header.Children.Add(envPanel);
         inner.Children.Add(header);
 
-        // Slots fill the module width equally; a single spool is centred at grid size (not a wide pill).
-        bool single = group.Slots.Count == 1;
+        // Slots fill the module width equally. A single spool stretches to a wide rectangle across the
+        // module (like the macOS EXT), not a small centred square, so an AMS HT reads clearly.
         var slotGrid = new System.Windows.Controls.Primitives.UniformGrid
         {
             Rows = 1,
             Columns = Math.Max(1, group.Slots.Count),
             Margin = new Thickness(0, 3, 0, 0),
-            HorizontalAlignment = single ? HorizontalAlignment.Center : HorizontalAlignment.Stretch
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
         for (int si = 0; si < group.Slots.Count; si++)
         {
@@ -1118,8 +1118,6 @@ public partial class DashboardWindow : Window
                 : null;
             string title = group.IsExternal ? group.DisplayName : $"{ShortName(group.DisplayName)} {slot.Label}";
             var chip = SlotChip(slot, group.IsExternal, location, title, onSlotClick);
-            // A single slot (e.g. AMS HT) reads as a wide, legible pill like the EXT, not a tiny square.
-            if (single) chip.MaxWidth = 96;
             slotGrid.Children.Add(chip);
         }
         inner.Children.Add(slotGrid);
