@@ -780,7 +780,11 @@ public partial class DashboardWindow : Window
             var accent = GTheme.Accent;
             _pillText.Text = t.State.Label(pl);
             _pillText.Foreground = GTheme.Brush(accent);
-            _job.Text = string.IsNullOrEmpty(t.JobName) ? AppSettings.Text("Brak aktywnego zadania", "No active job") : t.JobName!;
+            // Only a running/paused print has a job to show; finished/idle still echoes the last file
+            // name, so treat those as "no active job" (matches macOS).
+            bool hasActiveJob = (t.State is PrinterState.Printing or PrinterState.Paused) && !string.IsNullOrEmpty(t.JobName);
+            _job.Text = hasActiveJob ? t.JobName! : AppSettings.Text("BRAK AKTYWNEGO ZADANIA", "NO ACTIVE JOB");
+            _job.ToolTip = hasActiveJob ? t.JobName : null;
             SetSegments(_bar, t.Progress, accent);
             _percent.Text = $"{t.Progress}%";
             _percent.Foreground = GTheme.Brush(accent);
@@ -824,6 +828,7 @@ public partial class DashboardWindow : Window
             bool hasGroups = groups.Count > 0;
             // Only rebuild the dock when the AMS data or an assigned spool actually changed (no flicker).
             var sig = new System.Text.StringBuilder();
+            sig.Append(AppSettings.CardShowSpoolGrams ? "g1" : "g0").Append('|');   // grams toggle changes the dock
             for (int gi = 0; gi < groups.Count; gi++)
             {
                 var g = groups[gi];
@@ -833,6 +838,7 @@ public partial class DashboardWindow : Window
                     var s = g.Slots[si];
                     var sp = SpoolbaseShared.Spools.SpoolAt(SpoolLocation.At(Serial, g.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si));
                     sig.Append(s.Material).Append(s.ColorHex).Append(s.RemainingPercent).Append(s.IsActive)
+                       .Append((int?)s.RemainingWeightGrams)
                        .Append(sp?.Id).Append((int?)sp?.RemainingWeightGrams).Append(';');
                 }
             }
