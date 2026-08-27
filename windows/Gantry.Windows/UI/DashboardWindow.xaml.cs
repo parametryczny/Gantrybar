@@ -252,30 +252,92 @@ public partial class DashboardWindow : Window
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MARGINS
+    {
+        public int cxLeftWidth;
+        public int cxRightWidth;
+        public int cyTopHeight;
+        public int cyBottomHeight;
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
+
+    // DWM attribute + backdrop constants used below.
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    private const int DWMSBT_TRANSIENTWINDOW = 3;   // Desktop Acrylic (transient flyout)
+
+    /// <summary>Turns the flyout into a real Desktop Acrylic (frosted glass) panel: a transparent WPF
+    /// composition surface with the DWM frame extended across the whole window, so the acrylic backdrop
+    /// shows the blurred desktop behind PanelBody's dark tint. No AllowsTransparency, no Window.Opacity.</summary>
     private void ApplyModernChrome()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
+
+        // Let the DWM backdrop show through WPF: the composition surface must not paint an opaque bg.
+        var source = HwndSource.FromHwnd(hwnd);
+        if (source?.CompositionTarget != null)
+            source.CompositionTarget.BackgroundColor = Colors.Transparent;
+
+        // Extend the DWM frame across the entire client area (sheet of glass) so acrylic fills the window.
+        var margins = new MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
+        try { DwmExtendFrameIntoClientArea(hwnd, ref margins); } catch { }
+
         int dark = 1, round = 2;
         try
         {
-            DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));    // DWMWA_USE_IMMERSIVE_DARK_MODE
-            DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));   // DWMWA_WINDOW_CORNER_PREFERENCE
+            DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
         }
         catch { /* older Windows without these attributes — plain window is fine */ }
+
+        int acrylic = DWMSBT_TRANSIENTWINDOW;
+        try { DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref acrylic, sizeof(int)); } catch { }
+
         ApplyPanelTransparency();
     }
 
-    /// <summary>Applies the Panel-transparency setting to the BACKDROP only (the panel body alpha and
-    /// the DWM backdrop type) — the cards keep their own opaque background, so text stays readable.</summary>
+    /// <summary>Applies the Transparency setting to the PanelBody tint only. Desktop Acrylic stays on for
+    /// all three levels — only the alpha of the dark tint over it changes, so more transparency means a
+    /// more visible blurred backdrop. The cards keep their own opaque background, so text stays readable.
+    /// If acrylic is unavailable (transparency effects off), the tint alone remains a readable dark panel.</summary>
     public void ApplyPanelTransparency()
     {
-        byte alpha = AppSettings.PanelTransparency switch { 0 => 0xE6, 2 => 0x80, _ => 0xB3 };
+        // 0 = Low (Mała) → most opaque; 1 = Medium (Średnia); 2 = High (Duża) → most see-through.
+        byte alpha = AppSettings.PanelTransparency switch
+        {
+            0 => 0x70,   // Mała    ≈ 44% tint
+            2 => 0x30,   // Duża    ≈ 19% tint
+            _ => 0x40,   // Średnia ≈ 25% tint (default)
+        };
+        // Fallback: if the OS has transparency effects off (or acrylic is unavailable), a translucent
+        // tint would sit over a flat backdrop and look washed out — use a solid dark panel instead.
+        if (!TransparencyEffectsEnabled()) alpha = 0xF2;
         PanelBody.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x24, 0x24, 0x26));
+
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
-        int backdrop = AppSettings.PanelTransparency == 0 ? 2 : 3; // low → Mica (subtle), else Acrylic
-        try { DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int)); } catch { }
+        // Desktop Acrylic is the same for every level — the tint alpha above is what varies.
+        int acrylic = DWMSBT_TRANSIENTWINDOW;
+        try { DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref acrylic, sizeof(int)); } catch { }
+    }
+
+    /// <summary>Whether Windows has transparency effects enabled (Settings → Personalisation → Colours).
+    /// When off, Desktop Acrylic does not blur, so the flyout falls back to a solid dark panel.</summary>
+    private static bool TransparencyEffectsEnabled()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            if (key?.GetValue("EnableTransparency") is int enabled) return enabled != 0;
+        }
+        catch { /* can't read — assume enabled */ }
+        return true;
     }
 
     // Cards (and their cached "…" menus) are built in the target language, so recreate them all on

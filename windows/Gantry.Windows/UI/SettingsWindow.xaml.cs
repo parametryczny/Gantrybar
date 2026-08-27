@@ -8,6 +8,10 @@ namespace Gantry.UI;
 
 public partial class SettingsWindow : Window
 {
+    /// Raised when the Transparency setting changes, so the tray owner can refresh the live flyout
+    /// without a restart. Set by TrayIcon to re-apply the dashboard's acrylic tint immediately.
+    public Action? OnTransparencyChanged;
+
     public SettingsWindow()
     {
         InitializeComponent();
@@ -24,6 +28,7 @@ public partial class SettingsWindow : Window
         {
             AppSettings.PanelTransparency = (AppSettings.PanelTransparency + 1) % 3;
             TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
+            OnTransparencyChanged?.Invoke();   // live-refresh the open flyout's acrylic tint
         };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
         SpoolbaseCheckBox.Click += (_, _) => AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;

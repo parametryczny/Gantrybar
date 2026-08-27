@@ -41,7 +41,7 @@
 
     <!-- Rounded, translucent panel body; the acrylic/mica backdrop (set via DWM) shows through.
          PanelBody.Background alpha is set from the Panel-transparency setting (backdrop only). -->
-    <Border x:Name="PanelBody" CornerRadius="12" Background="#B3242426" SnapsToDevicePixels="True">
+    <Border x:Name="PanelBody" CornerRadius="12" Background="#40242426" SnapsToDevicePixels="True">
         <Grid>
             <DockPanel Margin="2">
                 <Grid DockPanel.Dock="Top" Margin="16,14,12,8">
