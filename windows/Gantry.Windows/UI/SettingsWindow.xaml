@@ -108,6 +108,7 @@
                     <CheckBox x:Name="CardProgressCheckBox" Margin="0,6"/>
                     <CheckBox x:Name="CardTempsCheckBox" Margin="0,6"/>
                     <CheckBox x:Name="CardFilamentsCheckBox" Margin="0,6"/>
+                    <CheckBox x:Name="CardSpoolGramsCheckBox" Margin="0,6"/>
                 </StackPanel>
             </Border>
 
@@ -142,6 +143,40 @@
                         <Button Grid.Column="1" x:Name="CheckUpdatesButton" MinWidth="120" Margin="10,0,0,0"/>
                     </Grid>
                     <CheckBox x:Name="AutoUpdateCheckBox" Margin="0,12,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="WebHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
+            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
+                <StackPanel>
+                    <CheckBox x:Name="WebDashboardCheckBox" Margin="0,0,0,8"/>
+                    <TextBlock x:Name="WebAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="#FFC7C7CC" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="SyncHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
+            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock x:Name="SyncTokenLabel" FontSize="11" Foreground="#FF9A9A9E"/>
+                    <Grid Margin="0,3,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="SyncTokenBox" IsReadOnly="True" FontFamily="Consolas" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                        <Button Grid.Column="1" x:Name="SyncNewTokenButton" MinWidth="60" Margin="8,0,0,0"/>
+                    </Grid>
+                    <TextBlock x:Name="SyncAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="#FFC7C7CC" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="SyncPeerBox" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                        <Button Grid.Column="1" x:Name="SyncAddPeerButton" MinWidth="70" Margin="8,0,0,0"/>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="SyncSetTokenBox" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                        <Button Grid.Column="1" x:Name="SyncSetTokenButton" MinWidth="90" Margin="8,0,0,0"/>
+                    </Grid>
+                    <StackPanel x:Name="SyncPeersList"/>
+                    <Button x:Name="SyncNowButton" MinWidth="150" HorizontalAlignment="Left" Margin="0,6,0,0"/>
+                    <TextBlock x:Name="SyncHint" FontSize="10" Foreground="#FF9A9A9E" TextWrapping="Wrap" Margin="0,8,0,0"/>
                 </StackPanel>
             </Border>
 

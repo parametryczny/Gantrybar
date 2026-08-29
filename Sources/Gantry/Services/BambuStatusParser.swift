@@ -183,6 +183,14 @@ enum BambuStatusParser {
         number(value).map(Int.init)
     }
 
+    /// Remaining grams from an AMS NFC/RFID tray: the tag's `tray_weight` (nominal grams for the spool)
+    /// scaled by `remain` (%). Nil when the tag carries no weight (non-RFID / third-party spool).
+    private static func nfcWeightGrams(_ tray: [String: Any]) -> Double? {
+        guard let nominal = number(tray["tray_weight"]), nominal > 0 else { return nil }
+        let remain = integer(tray["remain"]) ?? 100
+        return nominal * Double(max(0, min(remain, 100))) / 100.0
+    }
+
     private static func uint64(_ value: Any?) -> UInt64? {
         if let number = value as? NSNumber { return number.uint64Value }
         if let string = value as? String {
@@ -241,7 +249,8 @@ enum BambuStatusParser {
                         material: material,
                         colorHex: material != nil ? (string(tray["tray_color"]) ?? "8E8E93FF") : nil,
                         remainingPercent: material != nil ? integer(tray["remain"]) : nil,
-                        isActive: resolveActive(id: slotID, matches: matches)
+                        isActive: resolveActive(id: slotID, matches: matches),
+                        remainingWeightGrams: material != nil ? nfcWeightGrams(tray) : nil
                     ))
                 }
                 // Mid-print reports often omit the unit's humidity/temperature. Keep the last known
@@ -289,7 +298,8 @@ enum BambuStatusParser {
                     material: material,
                     colorHex: material != nil ? (string(external["tray_color"]) ?? "E8E8E8FF") : nil,
                     remainingPercent: material != nil ? integer(external["remain"]) : nil,
-                    isActive: resolveActive(id: slotID, matches: matches)
+                    isActive: resolveActive(id: slotID, matches: matches),
+                    remainingWeightGrams: material != nil ? nfcWeightGrams(external) : nil
                 )]
             ))
         }

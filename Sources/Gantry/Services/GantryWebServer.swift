@@ -13,6 +13,9 @@ final class GantryWebServer {
     static let port: UInt16 = 8787
 
     private weak var store: PrinterStore?
+    /// Set by GantryApp so the /api/sync endpoint can serve and receive snapshots. Optional so the
+    /// dashboard still runs if sync is not wired.
+    weak var syncService: SyncService?
     private var listener: NWListener?
     private nonisolated let queue = DispatchQueue(label: "gantry.webserver")
     private var mdnsService: DNSServiceRef?
@@ -60,45 +63,99 @@ final class GantryWebServer {
 
     // MARK: Connection handling
 
+    /// A fully-read HTTP request: start line + headers + (for POST) the body.
+    private struct ParsedRequest: Sendable {
+        var method: String
+        var path: String
+        var headers: [String: String]   // lowercased header names
+        var body: Data
+    }
+
     private nonisolated func handle(_ conn: NWConnection) {
         conn.start(queue: queue)
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, _ in
-            let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            let path = Self.requestPath(request)
-            let wsKey = Self.headerValue(request, "sec-websocket-key")
-            Task { @MainActor in
-                guard let self else { conn.cancel(); return }
-                if path.hasPrefix("/ws"), let wsKey {
-                    self.acceptWebSocket(conn, key: wsKey)
-                } else {
-                    let (body, type) = self.response(for: path)
-                    let header = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
-                    var out = Data(header.utf8); out.append(body)
-                    conn.send(content: out, completion: .contentProcessed { _ in conn.cancel() })
+        receiveRequest(conn, buffer: Data())
+    }
+
+    /// Accumulates bytes until the full request (headers, and any Content-Length body) has arrived, so
+    /// POST /api/sync with a large JSON body that spans several TCP reads is assembled correctly.
+    private nonisolated func receiveRequest(_ conn: NWConnection, buffer: Data) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self else { conn.cancel(); return }
+            var buf = buffer
+            if let data { buf.append(data) }
+            if let parsed = Self.parseRequest(buf) {
+                let wsKey = parsed.headers["sec-websocket-key"]
+                Task { @MainActor in self.respond(conn, parsed, wsKey: wsKey) }
+            } else if isComplete || error != nil {
+                conn.cancel()
+            } else {
+                self.receiveRequest(conn, buffer: buf)
+            }
+        }
+    }
+
+    private nonisolated static func parseRequest(_ data: Data) -> ParsedRequest? {
+        let terminator = Data("\r\n\r\n".utf8)
+        guard let headerRange = data.range(of: terminator) else { return nil }
+        let headerData = data.subdata(in: data.startIndex..<headerRange.lowerBound)
+        guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
+        let lines = headerText.components(separatedBy: "\r\n")
+        guard let requestLine = lines.first else { return nil }
+        let parts = requestLine.split(separator: " ")
+        guard parts.count >= 2 else { return nil }
+        let method = String(parts[0]).uppercased()
+        let path = String(parts[1])
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let name = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            headers[name] = value
+        }
+        let bodyStart = headerRange.upperBound
+        if let lengthText = headers["content-length"], let length = Int(lengthText), length > 0 {
+            guard data.distance(from: bodyStart, to: data.endIndex) >= length else { return nil }   // need more
+            let body = data.subdata(in: bodyStart..<data.index(bodyStart, offsetBy: length))
+            return ParsedRequest(method: method, path: path, headers: headers, body: body)
+        }
+        return ParsedRequest(method: method, path: path, headers: headers, body: Data())
+    }
+
+    private func respond(_ conn: NWConnection, _ request: ParsedRequest, wsKey: String?) {
+        if request.path.hasPrefix("/ws"), let wsKey, request.method == "GET" {
+            acceptWebSocket(conn, key: wsKey)
+            return
+        }
+        let (status, body, type) = route(request)
+        let reason = status == 200 ? "OK" : (status == 401 ? "Unauthorized" : "Bad Request")
+        let header = "HTTP/1.1 \(status) \(reason)\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
+        var out = Data(header.utf8); out.append(body)
+        conn.send(content: out, completion: .contentProcessed { _ in conn.cancel() })
+    }
+
+    /// Routes a request to a response tuple (status, body, contentType). The dashboard endpoints are
+    /// open (read-only view); /api/sync requires the shared bearer token.
+    private func route(_ request: ParsedRequest) -> (Int, Data, String) {
+        if request.path.hasPrefix("/api/sync") {
+            guard let sync = syncService, sync.authorize(bearer: request.headers["authorization"]) else {
+                return (401, Data("{\"error\":\"unauthorized\"}".utf8), "application/json")
+            }
+            switch request.method {
+            case "GET":
+                let data = (try? SyncService.encoder.encode(sync.localSnapshot())) ?? Data("{}".utf8)
+                return (200, data, "application/json")
+            case "POST":
+                if let snapshot = try? SyncService.decoder.decode(SyncSnapshot.self, from: request.body) {
+                    sync.apply(snapshot)
+                    return (200, Data("{\"ok\":true}".utf8), "application/json")
                 }
+                return (400, Data("{\"error\":\"bad snapshot\"}".utf8), "application/json")
+            default:
+                return (400, Data("{\"error\":\"method\"}".utf8), "application/json")
             }
         }
-    }
-
-    private static func requestPath(_ request: String) -> String {
-        guard let line = request.split(separator: "\r\n").first else { return "/" }
-        let parts = line.split(separator: " ")
-        return parts.count >= 2 ? String(parts[1]) : "/"
-    }
-
-    private nonisolated static func headerValue(_ request: String, _ name: String) -> String? {
-        for line in request.split(separator: "\r\n") {
-            let pair = line.split(separator: ":", maxSplits: 1)
-            if pair.count == 2, pair[0].lowercased().trimmingCharacters(in: .whitespaces) == name {
-                return pair[1].trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return nil
-    }
-
-    private func response(for path: String) -> (Data, String) {
-        if path.hasPrefix("/api/printers") { return (fleetJSON(), "application/json") }
-        return (Data(Self.html.utf8), "text/html; charset=utf-8")
+        if request.path.hasPrefix("/api/printers") { return (200, fleetJSON(), "application/json") }
+        return (200, Data(Self.html.utf8), "text/html; charset=utf-8")
     }
 
     // MARK: WebSocket (server -> client push, view-only)

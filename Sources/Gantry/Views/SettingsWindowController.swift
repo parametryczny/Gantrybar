@@ -37,6 +37,7 @@ final class SettingsWindowController: NSWindowController {
     private let cardProgressCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let cardTempsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let cardFilamentsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let cardSpoolGramsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notificationsLabel = NSTextField(labelWithString: "")
     private let notifyFinishedCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notifyErrorCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
@@ -54,6 +55,19 @@ final class SettingsWindowController: NSWindowController {
     private let webHint = NSTextField(wrappingLabelWithString: "")
     private let webQRImage = NSImageView()
     private let webContentRow = NSStackView()
+    private let syncSectionLabel = NSTextField(labelWithString: "")
+    private let syncTokenTitle = NSTextField(labelWithString: "")
+    private let syncTokenValue = NSTextField(labelWithString: "")
+    private let syncTokenRegenButton = NSButton()
+    private let syncAddressTitle = NSTextField(labelWithString: "")
+    private let syncAddressValue = NSTextField(labelWithString: "")
+    private let syncPeerField = NSTextField()
+    private let syncAddPeerButton = NSButton()
+    private let syncTokenField = NSTextField()
+    private let syncSetTokenButton = NSButton()
+    private let syncNowButton = NSButton()
+    private let syncPeersStack = NSStackView()
+    private let syncHint = NSTextField(wrappingLabelWithString: "")
     private var settingsSubscription: AnyCancellable?
 
     init() {
@@ -235,7 +249,7 @@ final class SettingsWindowController: NSWindowController {
         updatesBody.alignment = .leading
         updatesBody.spacing = 8
 
-        let cardChecks = [cardFileNameCheck, cardProgressCheck, cardTempsCheck, cardFilamentsCheck]
+        let cardChecks = [cardFileNameCheck, cardProgressCheck, cardTempsCheck, cardFilamentsCheck, cardSpoolGramsCheck]
         for check in cardChecks {
             check.target = self
             check.action = #selector(cardContentToggled)
@@ -334,6 +348,45 @@ final class SettingsWindowController: NSWindowController {
         let cardsCard = sectionCard(title: cardsLabel, body: cardsBody)
         let notificationsCard = sectionCard(title: notificationsLabel, body: notificationsBody)
         let webCard = sectionCard(title: webSectionLabel, body: webBody)
+
+        // Synchronizacja: token + address to pair, a field to paste the shared token, the peer list.
+        syncTokenValue.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
+        syncTokenValue.textColor = GantryTheme.text
+        syncTokenValue.isSelectable = true
+        syncAddressValue.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        syncAddressValue.textColor = GantryTheme.secondary
+        syncAddressValue.isSelectable = true
+        [syncTokenTitle, syncAddressTitle].forEach { $0.font = .systemFont(ofSize: 11); $0.textColor = GantryTheme.muted }
+        configureTextButton(syncTokenRegenButton, action: #selector(syncRegenToken))
+        configureTextButton(syncAddPeerButton, action: #selector(syncAddPeer))
+        configureTextButton(syncSetTokenButton, action: #selector(syncSetToken))
+        configureTextButton(syncNowButton, action: #selector(syncNow))
+        for field in [syncPeerField, syncTokenField] {
+            field.font = .systemFont(ofSize: 12)
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
+        }
+        syncHint.font = .systemFont(ofSize: 11)
+        syncHint.textColor = GantryTheme.muted
+
+        let tokenRow = NSStackView(views: [syncTokenValue, NSView(), syncTokenRegenButton])
+        tokenRow.orientation = .horizontal; tokenRow.alignment = .centerY; tokenRow.spacing = 8
+        let tokenBlock = NSStackView(views: [syncTokenTitle, tokenRow])
+        tokenBlock.orientation = .vertical; tokenBlock.alignment = .leading; tokenBlock.spacing = 3
+        let addressBlock = NSStackView(views: [syncAddressTitle, syncAddressValue])
+        addressBlock.orientation = .vertical; addressBlock.alignment = .leading; addressBlock.spacing = 3
+        let addPeerRow = NSStackView(views: [syncPeerField, syncAddPeerButton])
+        addPeerRow.orientation = .horizontal; addPeerRow.alignment = .centerY; addPeerRow.spacing = 8
+        let setTokenRow = NSStackView(views: [syncTokenField, syncSetTokenButton])
+        setTokenRow.orientation = .horizontal; setTokenRow.alignment = .centerY; setTokenRow.spacing = 8
+        syncPeersStack.orientation = .vertical; syncPeersStack.alignment = .leading; syncPeersStack.spacing = 6
+        let syncBody = NSStackView(views: [tokenBlock, addressBlock, addPeerRow, setTokenRow, syncPeersStack, syncNowButton, syncHint])
+        syncBody.orientation = .vertical; syncBody.alignment = .leading; syncBody.spacing = 12
+        for row in [tokenRow, tokenBlock, addressBlock, addPeerRow, setTokenRow, syncPeersStack] {
+            row.widthAnchor.constraint(equalTo: syncBody.widthAnchor).isActive = true
+        }
+        let syncCard = sectionCard(title: syncSectionLabel, body: syncBody)
+
         let updatesCard = sectionCard(title: updatesTitleLabel, body: updatesBody)
 
         let header = NSStackView(views: [titleLabel, authorLabel, profileRow])
@@ -341,7 +394,7 @@ final class SettingsWindowController: NSWindowController {
         header.alignment = .leading
         header.spacing = 8
 
-        let sectionCards = [appearanceCard, generalCard, cardsCard, notificationsCard, webCard, updatesCard]
+        let sectionCards = [appearanceCard, generalCard, cardsCard, notificationsCard, webCard, syncCard, updatesCard]
         let stack = NSStackView(views: [header] + sectionCards + [actionRow, supportStack])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -430,10 +483,12 @@ final class SettingsWindowController: NSWindowController {
         cardProgressCheck.title = settings.text("Postęp", "Progress")
         cardTempsCheck.title = settings.text("Temperatury", "Temperatures")
         cardFilamentsCheck.title = settings.text("Filamenty / AMS", "Filaments / AMS")
+        cardSpoolGramsCheck.title = settings.text("Gramy na rolce (AMS NFC / Spoolbase)", "Grams on spool (AMS NFC / Spoolbase)")
         cardFileNameCheck.state = settings.cardShowFileName ? .on : .off
         cardProgressCheck.state = settings.cardShowProgress ? .on : .off
         cardTempsCheck.state = settings.cardShowTemperatures ? .on : .off
         cardFilamentsCheck.state = settings.cardShowFilaments ? .on : .off
+        cardSpoolGramsCheck.state = settings.cardShowSpoolGrams ? .on : .off
         notificationsLabel.stringValue = settings.text("POWIADOMIENIA", "NOTIFICATIONS")
         notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished")
         notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error")
@@ -460,6 +515,7 @@ final class SettingsWindowController: NSWindowController {
             "I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
         closeButton.title = settings.text("Gotowe", "Done")
         refreshWebSection(settings)
+        refreshSyncSection(settings)
         updatesTitleLabel.stringValue = settings.text("AKTUALIZACJE", "UPDATES")
         updateButton.title = settings.text("Sprawdź aktualizacje", "Check for updates")
         autoUpdateCheck.title = settings.text("Automatycznie pobieraj i instaluj aktualizacje",
@@ -591,6 +647,7 @@ final class SettingsWindowController: NSWindowController {
         settings.cardShowProgress = cardProgressCheck.state == .on
         settings.cardShowTemperatures = cardTempsCheck.state == .on
         settings.cardShowFilaments = cardFilamentsCheck.state == .on
+        settings.cardShowSpoolGrams = cardSpoolGramsCheck.state == .on
     }
 
     @objc private func checkForUpdates() {
@@ -699,6 +756,99 @@ final class SettingsWindowController: NSWindowController {
         button.isBordered = false
         button.font = .systemFont(ofSize: 12, weight: .medium)
         button.contentTintColor = .linkColor
+    }
+
+    private func configureTextButton(_ button: NSButton, action: Selector) {
+        button.target = self
+        button.action = action
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11, weight: .medium)
+    }
+
+    // MARK: LAN sync section
+
+    private func refreshSyncSection(_ settings: AppSettings) {
+        syncSectionLabel.stringValue = settings.text("SYNCHRONIZACJA MIĘDZY KOMPUTERAMI", "SYNC BETWEEN COMPUTERS")
+        syncTokenTitle.stringValue = settings.text("Wspólny token (skopiuj na drugi komputer)", "Shared token (copy to the other computer)")
+        syncAddressTitle.stringValue = settings.text("Adres tego komputera", "This computer's address")
+        syncTokenRegenButton.title = settings.text("Nowy", "New")
+        syncAddPeerButton.title = settings.text("Dodaj", "Add")
+        syncSetTokenButton.title = settings.text("Ustaw token", "Set token")
+        syncNowButton.title = settings.text("Synchronizuj teraz", "Sync now")
+        syncPeerField.placeholderString = settings.text("adres drugiego komputera, np. gantry.local", "other computer address, e.g. gantry.local")
+        syncTokenField.placeholderString = settings.text("wklej token z drugiego komputera", "paste token from the other computer")
+        syncHint.stringValue = settings.text(
+            "Na drugim komputerze wklej powyższy token („Ustaw token”), potem dodaj adres tego komputera. Tylko sieć lokalna. Kody dostępu do drukarek nie są przesyłane.",
+            "On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.")
+
+        guard let sync = SyncService.shared else {
+            syncTokenValue.stringValue = "—"
+            syncAddressValue.stringValue = "—"
+            return
+        }
+        syncTokenValue.stringValue = sync.token
+        syncAddressValue.stringValue = GantryWebServer.primaryURL().replacingOccurrences(of: "http://", with: "")
+
+        // Rebuild the peers list.
+        syncPeersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if sync.peers.isEmpty {
+            let none = NSTextField(labelWithString: settings.text("Brak sparowanych komputerów.", "No paired computers."))
+            none.font = .systemFont(ofSize: 11); none.textColor = GantryTheme.muted
+            syncPeersStack.addArrangedSubview(none)
+        }
+        for (index, peer) in sync.peers.enumerated() {
+            let name = NSTextField(labelWithString: peer.address)
+            name.font = .monospacedSystemFont(ofSize: 11, weight: .regular); name.textColor = GantryTheme.text
+            let status = NSTextField(labelWithString: syncPeerStatus(peer, settings: settings))
+            status.font = .systemFont(ofSize: 10); status.textColor = peer.lastError == nil ? GantryTheme.secondary : GantryTheme.statusPrinting
+            let remove = NSButton(title: settings.text("Usuń", "Remove"), target: self, action: #selector(syncRemovePeer(_:)))
+            configureTextButton(remove, action: #selector(syncRemovePeer(_:)))
+            remove.tag = index
+            let info = NSStackView(views: [name, status]); info.orientation = .vertical; info.alignment = .leading; info.spacing = 1
+            let row = NSStackView(views: [info, NSView(), remove]); row.orientation = .horizontal; row.alignment = .centerY
+            row.translatesAutoresizingMaskIntoConstraints = false
+            syncPeersStack.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: syncPeersStack.widthAnchor).isActive = true
+        }
+    }
+
+    private func syncPeerStatus(_ peer: SyncPeer, settings: AppSettings) -> String {
+        if let error = peer.lastError { return settings.text("Błąd: \(error)", "Error: \(error)") }
+        guard let last = peer.lastSyncAt else { return settings.text("jeszcze nie zsynchronizowano", "not synced yet") }
+        let formatter = DateFormatter(); formatter.dateStyle = .none; formatter.timeStyle = .short
+        return settings.text("ostatnio: \(formatter.string(from: last))", "last: \(formatter.string(from: last))")
+    }
+
+    @objc private func syncRegenToken() {
+        SyncService.shared?.regenerateToken()
+        refresh()
+    }
+
+    @objc private func syncAddPeer() {
+        let address = syncPeerField.stringValue
+        guard !address.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        SyncService.shared?.addPeer(address: address)
+        syncPeerField.stringValue = ""
+        refresh()
+    }
+
+    @objc private func syncSetToken() {
+        let token = syncTokenField.stringValue
+        guard !token.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        SyncService.shared?.setToken(token)
+        syncTokenField.stringValue = ""
+        refresh()
+    }
+
+    @objc private func syncNow() {
+        SyncService.shared?.syncNow()
+    }
+
+    @objc private func syncRemovePeer(_ sender: NSButton) {
+        guard let sync = SyncService.shared, sender.tag >= 0, sender.tag < sync.peers.count else { return }
+        sync.removePeer(sync.peers[sender.tag].id)
+        refresh()
     }
 
     @objc private func closeSettings() {

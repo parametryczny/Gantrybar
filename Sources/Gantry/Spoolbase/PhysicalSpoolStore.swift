@@ -107,6 +107,32 @@ final class PhysicalSpoolStore {
         assign(spoolID: spool.id, to: .storage)
     }
 
+    /// When a real RFID/NFC spool is newly inserted into a slot that still holds a manually-assigned
+    /// Spoolbase spool, the assignment is stale (that physical roll was taken out) — send the assigned
+    /// spool back to storage so the slot shows the inserted NFC roll's own data. Only fires on the
+    /// insert transition (the slot gains an NFC reading), so a deliberate later assignment is left alone.
+    /// Returns a short description of each detached spool (id + slot label), so the UI can tell the user.
+    @discardableResult
+    func detachAssignmentsReplacedByNFC(printerSerial: String, previous: [FilamentGroup], current: [FilamentGroup]) -> [(spoolID: String, slot: String)] {
+        var detached: [(spoolID: String, slot: String)] = []
+        for (gi, group) in current.enumerated() {
+            for (si, slot) in group.slots.enumerated() where slot.remainingWeightGrams != nil {
+                let hadNFC = previous.indices.contains(gi)
+                    && previous[gi].slots.indices.contains(si)
+                    && previous[gi].slots[si].remainingWeightGrams != nil
+                guard !hadNFC else { continue }
+                let location = SpoolLocation(printerSerial: printerSerial,
+                                             feeder: group.isExternal ? .ext : .ams, amsIndex: gi, slot: si)
+                if let assigned = spool(at: location) {
+                    let slotLabel = group.isExternal ? group.displayName : "\(group.displayName) \(slot.label)"
+                    clearSlot(location)
+                    detached.append((assigned.id, slotLabel))
+                }
+            }
+        }
+        return detached
+    }
+
     // MARK: Consumption (ETAP 4 — idempotent per print job)
 
     /// Subtracts filament for a finished job. Idempotent: a job id already recorded is ignored, so a
@@ -130,6 +156,30 @@ final class PhysicalSpoolStore {
         saveUsage()
         changed()
         return true
+    }
+
+    // MARK: LAN sync merge (two-way, last-write-wins)
+
+    /// Merges a peer's spools and usage history into this store. Spools reconcile by `updatedAt`
+    /// (newest wins, new ids added); usage events union by id and stay idempotent per (printJobID,
+    /// spoolID) so a shared finished print never double-subtracts once the ledgers have synced.
+    /// Deletions are not propagated in v1 (union only) to avoid tombstone complexity.
+    @discardableResult
+    func mergeRemote(spools remoteSpools: [PhysicalSpool], usageEvents remoteEvents: [SpoolUsageEvent]) -> Bool {
+        var didChange = false
+        for event in remoteEvents {
+            let known = usageEvents.contains { $0.id == event.id || ($0.printJobID == event.printJobID && $0.spoolID == event.spoolID) }
+            if !known { usageEvents.append(event); didChange = true }
+        }
+        for remote in remoteSpools {
+            if let index = spools.firstIndex(where: { $0.id == remote.id }) {
+                if remote.updatedAt > spools[index].updatedAt { spools[index] = remote; didChange = true }
+            } else {
+                spools.append(remote); didChange = true
+            }
+        }
+        if didChange { save(); saveUsage(); onChange?() }
+        return didChange
     }
 
     // MARK: Persistence

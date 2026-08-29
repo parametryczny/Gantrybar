@@ -76,6 +76,10 @@ def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry |
     filename = str(stats.get("filename") or "").replace("\\", "/").rsplit("/", 1)[-1]
     if filename:
         telemetry.job_name = filename
+    # Real measured filament consumed so far (mm) — the basis for the spool decrement on finish.
+    used = stats.get("filament_used")
+    if isinstance(used, (int, float)):
+        telemetry.filament_used_mm = float(used)
     info = stats.get("info") if isinstance(stats.get("info"), dict) else {}
     telemetry.current_layer = _integer(info.get("current_layer")) or telemetry.current_layer
     telemetry.total_layers = _integer(info.get("total_layer")) or telemetry.total_layers
@@ -105,6 +109,15 @@ def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry |
         if "chamber" in lowered and lowered.startswith(("temperature_sensor", "heater_generic")) and isinstance(value, dict):
             telemetry.chamber = _number(value.get("temperature"))
             break
+    # Part fan (0..1 -> %) and speed factor (gcode_move.speed_factor, 1.0 == 100%) for the Details view.
+    fan = status.get("fan") if isinstance(status.get("fan"), dict) else {}
+    fan_speed = _number(fan.get("speed"))
+    if fan_speed is not None:
+        telemetry.part_fan = int(round(min(max(fan_speed, 0.0), 1.0) * 100))
+    move = status.get("gcode_move") if isinstance(status.get("gcode_move"), dict) else {}
+    factor = _number(move.get("speed_factor"))
+    if factor is not None:
+        telemetry.speed_percent = int(round(factor * 100))
     mmu = status.get("mmu") if isinstance(status.get("mmu"), dict) else None
     if mmu and mmu.get("enabled", True):
         # Happy Hare is one dynamic module: num_gates gates T0..Tn, never split into fours.
@@ -293,8 +306,23 @@ class HttpConnection:
                 raise ConnectionError(f"HTTP {response.status}")
             return response.read()
 
+    def send_gcode(self, script: str) -> bool:
+        """Run a G-code line on the Klipper printer via Moonraker (chamber light, pause, custom).
+        Used by automations. Returns True on HTTP 200."""
+        query = urllib.parse.urlencode({"script": script})
+        url = f"http://{self.printer.host}:{self.printer.port}/printer/gcode/script?{query}"
+        request = urllib.request.Request(url, data=b"", method="POST")
+        if self.api_key:
+            request.add_header("X-Api-Key", self.api_key)
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                return response.status == 200
+        except (OSError, urllib.error.URLError):
+            return False
+
     def _moonraker_path(self) -> str:
-        wanted = ["print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu"]
+        wanted = ["print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu",
+                  "fan", "gcode_move"]
         try:
             root = json.loads(self._get("/printer/objects/list"))
             objects = root.get("result", {}).get("objects", [])

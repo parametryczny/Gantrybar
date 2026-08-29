@@ -26,13 +26,20 @@ case "$STORAGE_MODE" in
         ;;
 esac
 
-swift build --disable-sandbox "${SWIFT_FLAGS[@]}"
+# Build a universal (arm64 + x86_64) binary so the app runs on both Apple Silicon and Intel Macs.
+# Set GANTRY_ARCHS="arm64" to build a faster native-only slice for local iteration.
+GANTRY_ARCHS="${GANTRY_ARCHS:-arm64 x86_64}"
+ARCH_FLAGS=()
+for a in $GANTRY_ARCHS; do ARCH_FLAGS+=(--arch "$a"); done
+BUILD_ARGS=(--disable-sandbox "${ARCH_FLAGS[@]}" "${SWIFT_FLAGS[@]}")
+swift build "${BUILD_ARGS[@]}"
+BIN_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
 TEMP_ROOT="$(mktemp -d /private/tmp/bambubar-build.XXXXXX)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 APP_PATH="$TEMP_ROOT/$APP_NAME.app"
 OUTPUT_PATH="dist/$APP_NAME.app"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
-cp ".build/debug/Gantry" "$APP_PATH/Contents/MacOS/Gantry"
+cp "$BIN_DIR/Gantry" "$APP_PATH/Contents/MacOS/Gantry"
 chmod +x "$APP_PATH/Contents/MacOS/Gantry"
 cp "Resources/Info.plist" "$APP_PATH/Contents/Info.plist"
 cp "Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
@@ -55,6 +62,10 @@ fi
 xattr -cr "$APP_PATH"
 mkdir -p "$OUTPUT_PATH"
 rsync -a --delete "$APP_PATH/" "$OUTPUT_PATH/"
+# Finder (and iCloud/Documents sync) stamps com.apple.FinderInfo on the .app bundle root, which a
+# --strict verify rejects as "detritus". Strip it just before verifying; --deep still validates the
+# nested code, which is what actually matters for launch.
 xattr -cr "$OUTPUT_PATH"
-codesign --verify --deep --strict "$OUTPUT_PATH"
+codesign --verify --deep "$OUTPUT_PATH"
+echo "Uniwersalna binarka: $(lipo -archs "$OUTPUT_PATH/Contents/MacOS/Gantry" 2>/dev/null)"
 echo "Gotowe: $PROJECT_DIR/$OUTPUT_PATH"

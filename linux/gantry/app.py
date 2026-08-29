@@ -14,6 +14,7 @@ import gi
 # loaded".  Pin every namespace used by the GTK 3 UI before the first
 # gi.repository import so import order cannot change the selected ABI.
 gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("Pango", "1.0")
@@ -113,8 +114,8 @@ def css_for(theme: str, window_alpha: float = 1.0) -> bytes:
     # Only the window backdrop gets the transparency; cards keep their solid background so their
     # text stays readable at every level (matches the macOS/Windows behaviour).
     return ("""
-window { background: alpha(%(background)s, %(walpha).2f); color: %(foreground)s; }
-window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
+window { background: %(background)s; color: %(foreground)s; }
+window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); border: 1px solid %(border)s; border-radius: 14px; }
 .popover-window .header { padding: 12px 16px 8px; }
 .header { padding: 12px 16px 8px; }
 .title { font-size: 18px; font-weight: 700; }
@@ -125,6 +126,11 @@ window.popover-window { border: 1px solid %(border)s; border-radius: 14px; }
 .printer-name { font-size: 13px; font-weight: 650; }
 .connection { color: %(secondary)s; border: 1px solid alpha(#ffffff, 0.12); border-radius: 6px; padding: 2px 6px; font-family: monospace; font-size: 9px; font-weight: 600; }
 .job-surface { background: alpha(#ffffff, 0.035); border: 1px solid alpha(#ffffff, 0.08); border-radius: 10px; padding: 5px 7px 6px; }
+.card-notice { background: alpha(#ff6857, 0.16); border: 1px solid alpha(#ff6857, 0.34); border-radius: 9px; padding: 5px 6px 5px 9px; }
+.card-notice label { color: #f0d9d5; font-size: 10px; }
+.card-notice-ok { color: #ff8a7c; font-weight: 700; font-size: 10px; padding: 1px 8px; }
+.detail-body { padding: 10px 12px 14px; }
+.detail-body .status { font-size: 12px; }
 .job { color: %(job)s; font-weight: 600; font-size: 10px; }
 .meta { color: %(secondary)s; font-size: 11px; }
 .status { color: #d7d7d2; font-weight: 700; font-size: 10px; }
@@ -172,6 +178,18 @@ class PrinterCard(Gtk.Frame):
         self.get_style_context().add_class("card")
         self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         self.add(self.box)
+        # Small on-card notice (e.g. a Spoolbase roll auto-detached when an NFC spool was inserted).
+        self.notice = Gtk.Box(spacing=8)
+        self.notice.get_style_context().add_class("card-notice")
+        self.notice_label = Gtk.Label(xalign=0, wrap=True)
+        self._notice_ok = Gtk.Button(label="OK")
+        self._notice_ok.set_relief(Gtk.ReliefStyle.NONE)
+        self._notice_ok.get_style_context().add_class("card-notice-ok")
+        self._notice_ok.connect("clicked", lambda _b: self.notice.hide())
+        self.notice.pack_start(self.notice_label, True, True, 0)
+        self.notice.pack_start(self._notice_ok, False, False, 0)
+        self.notice.set_no_show_all(True)
+        self.box.pack_start(self.notice, False, False, 0)
         self.job_surface = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         self.job_surface.get_style_context().add_class("job-surface")
         self.box.pack_start(self.job_surface, False, False, 0)
@@ -190,11 +208,15 @@ class PrinterCard(Gtk.Frame):
         drag.get_style_context().add_class("meta")
         drag.set_tooltip_text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek"
                               if self.app.language == "pl" else "Drag up/down to reorder printers")
+        chart = Gtk.Button(label="▁▄▇"); chart.set_relief(Gtk.ReliefStyle.NONE); chart.get_style_context().add_class("cardmenu")
+        chart.set_tooltip_text("Szczegóły" if self.app.language == "pl" else "Details")
+        chart.connect("clicked", lambda *_: self.app.open_details(self.printer.serial))
         menu = Gtk.Button(label="⋯"); menu.set_relief(Gtk.ReliefStyle.NONE); menu.get_style_context().add_class("cardmenu")
         menu.connect("clicked", self._show_menu)
         top.pack_start(self.name, True, True, 0)
         top.pack_start(self.connection, False, False, 0)
         top.pack_start(drag, False, False, 0)
+        top.pack_start(chart, False, False, 0)
         top.pack_start(menu, False, False, 0)
         self.job_surface.pack_start(top, False, False, 0)
         # Status line carries the state on the left and time + layers on the right (macOS layout).
@@ -235,6 +257,17 @@ class PrinterCard(Gtk.Frame):
 
     def _show_menu(self, button: Gtk.Button) -> None:
         menu = Gtk.Menu()
+        details = Gtk.MenuItem(label="Szczegóły" if self.app.language == "pl" else "Details")
+        details.connect("activate", lambda *_: self.app.open_details(self.printer.serial))
+        menu.append(details)
+        autos = Gtk.MenuItem(label="Automatyzacje" if self.app.language == "pl" else "Automations")
+        autos.connect("activate", lambda *_: self.app.open_automations(self.printer.serial))
+        menu.append(autos)
+        if self.printer.kind in (PrinterKind.BAMBU, PrinterKind.KLIPPER):
+            cam = Gtk.MenuItem(label="Kamera na żywo" if self.app.language == "pl" else "Live camera")
+            cam.connect("activate", lambda *_: self.app.open_camera(self.printer.serial))
+            menu.append(cam)
+        menu.append(Gtk.SeparatorMenuItem())
         slicers = installed_slicers()
         bambu_studio = next((slicer for slicer in slicers if slicer.name == "Bambu Studio"), None)
         if self.printer.kind == PrinterKind.BAMBU and bambu_studio:
@@ -306,7 +339,10 @@ class PrinterCard(Gtk.Frame):
             card_context.remove_class(name)
         if telemetry.state == PrinterState.PRINTING:
             card_context.add_class("printing")
-        self.job.set_text(telemetry.job_name or "—")
+        # Only a running/paused print has a job to show; finished/idle still echoes the last file name,
+        # so treat those as "no active job" (matches macOS/Windows).
+        has_active_job = telemetry.state in {PrinterState.PRINTING, PrinterState.PAUSED} and bool(telemetry.job_name)
+        self.job.set_text(telemetry.job_name if has_active_job else "—")
         self.progress.set_fraction(telemetry.progress / 100)
         self.percent.set_text(f"{telemetry.progress}%")
         if telemetry.remaining_minutes:
@@ -363,7 +399,9 @@ class PrinterCard(Gtk.Frame):
         # Physical filament modules as side-by-side groups (name + per-module humidity/temp, then slots).
         for child in self.ams.get_children():
             self.ams.remove(child)
-        for group in telemetry.filament_groups:
+        spoolbase_on = bool(self.app.config.data.get("spoolbase_enabled", True))
+        store = getattr(self.app, "physical_spools", None) if spoolbase_on else None
+        for group_index, group in enumerate(telemetry.filament_groups):
             gbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             gbox.get_style_context().add_class("ams-group")
             env: list[str] = []
@@ -376,7 +414,17 @@ class PrinterCard(Gtk.Frame):
             header.set_markup(f"<b>{GLib.markup_escape_text(group.display_name)}</b>{suffix}")
             gbox.pack_start(header, False, False, 0)
             srow = Gtk.Box(spacing=4)
-            for slot in group.slots:
+            for slot_index, slot in enumerate(group.slots):
+                # A manually-assigned Spoolbase roll fills in colour/grams for a slot the printer cannot
+                # read itself (chipless spool), matching macOS/Windows.
+                assigned = None
+                if store is not None:
+                    from .physicalspool import location_for
+                    assigned = store.spool_at(location_for(self.printer.serial, group.external, group_index, slot_index))
+                assigned_def = None
+                if assigned is not None and getattr(self.app, "filament_store", None) is not None:
+                    assigned_def = next((f for f in self.app.filament_store.filaments
+                                         if f.id == assigned.get("filamentDefinitionID")), None)
                 sbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
                 swatch = Gtk.Label(label="")
                 swatch.set_size_request(56, 38)
@@ -384,8 +432,10 @@ class PrinterCard(Gtk.Frame):
                 ctx.add_class("ams")
                 if slot.active:
                     ctx.add_class("active")
-                present = slot.present
-                color = (slot.color or "8E8E93FF").lstrip("#")[:6] if present else "5A5A5E"
+                present = slot.present or assigned is not None
+                color = (slot.color or "8E8E93FF").lstrip("#")[:6] if slot.present else "5A5A5E"
+                if not slot.present and assigned_def is not None:
+                    color = assigned_def.colorHex
                 # Set the colour through a per-widget CSS provider rather than the deprecated
                 # override_background_color(), which paints a flat fill over the CSS border and hides
                 # the white ring on the active slot.
@@ -395,9 +445,11 @@ class PrinterCard(Gtk.Frame):
                     ctx.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
                 except Exception:
                     pass
-                # Low-filament marker (red corner dot) — only on real AMS/CFS slots; the external spool
-                # reports remain=0 as "unknown", so it never gets a false low warning.
-                low = present and not group.external and (slot.remaining if slot.remaining is not None else 100) <= 15
+                # Low-filament marker (red corner dot) — only when the level is trustworthy. External
+                # spools and chipless AMS spools both report remain=0 as "unknown", so warn only for a
+                # real RFID/NFC tag (weight known), never a chipless spool (issue #27).
+                trusted_level = slot.remaining_weight_g is not None
+                low = present and not group.external and trusted_level and (slot.remaining if slot.remaining is not None else 100) <= 15
                 if low:
                     overlay = Gtk.Overlay()
                     overlay.add(swatch)
@@ -424,10 +476,42 @@ class PrinterCard(Gtk.Frame):
                 caption.set_markup(f"<b>{GLib.markup_escape_text(slot.label)}</b>" if slot.active else GLib.markup_escape_text(slot.label))
                 sbox.pack_start(swatch_widget, False, False, 0)
                 sbox.pack_start(caption, False, False, 0)
-                srow.pack_start(sbox, False, False, 0)
+                # Grams on the spool: the AMS NFC/RFID tag, or a manually-assigned Spoolbase roll.
+                grams_value = slot.remaining_weight_g
+                if grams_value is None and assigned is not None:
+                    grams_value = assigned.get("remainingWeightGrams")
+                if grams_value and self.app.config.data.get("card_show_spool_grams"):
+                    grams = Gtk.Label(xalign=0.5)
+                    grams.get_style_context().add_class("meta")
+                    grams.set_text(f"{int(grams_value)} g")
+                    sbox.pack_start(grams, False, False, 0)
+                # Click a slot to assign / edit / detach its physical roll (Spoolbase only).
+                if store is not None:
+                    event_box = Gtk.EventBox()
+                    event_box.add(sbox)
+                    event_box.connect("button-press-event",
+                                      lambda _w, _e, g=group, gi=group_index, s=slot, si=slot_index:
+                                      self._open_slot_assign(g, gi, s, si))
+                    srow.pack_start(event_box, False, False, 0)
+                else:
+                    srow.pack_start(sbox, False, False, 0)
             gbox.pack_start(srow, False, False, 0)
             self.ams.pack_start(gbox, False, False, 0)
         self.ams.show_all()
+
+    def show_notice(self, text: str) -> None:
+        self.notice_label.set_text(text)
+        self.notice.show()
+        self.notice_label.show()
+        self._notice_ok.show()
+
+    def _open_slot_assign(self, group: Any, group_index: int, slot: Any, slot_index: int) -> bool:
+        try:
+            from .spoolassign import open_assign_dialog
+            open_assign_dialog(self.app, self.printer.serial, group, group_index, slot, slot_index)
+        except Exception:
+            pass
+        return True
 
 
 class Dashboard(Gtk.Window):
@@ -458,6 +542,12 @@ class Dashboard(Gtk.Window):
                 pass
             self.get_style_context().add_class("popover-window")
             self.connect("focus-out-event", self._on_focus_out)
+            # Request a compositor blur behind the popover once it has a native window, and again each
+            # time it is shown (a compositor can drop the property when the surface changes). Best-effort:
+            # real blur only happens on KDE/KWin X11; elsewhere the RGBA transparency alone remains.
+            self._backdrop_mode = "transparency"
+            self.connect("realize", lambda *_: self._apply_backdrop())
+            self.connect("map", lambda *_: self._apply_backdrop())
         else:
             self.set_title("Gantry")
             self.set_default_size(840, 720)
@@ -487,6 +577,15 @@ class Dashboard(Gtk.Window):
         footer.get_style_context().add_class("subtitle")
         footer.set_margin_top(2); footer.set_margin_bottom(8)
         root.pack_start(footer, False, False, 0)
+
+    def _apply_backdrop(self, *_args: object) -> None:
+        # Ask the compositor to blur behind the popover (KDE/KWin X11). Safe no-op everywhere else, so
+        # the RGBA-translucent background stays intact. Never raises.
+        try:
+            from .backdrop import apply_backdrop
+            self._backdrop_mode = apply_backdrop(self)
+        except Exception:
+            self._backdrop_mode = "transparency"
 
     def _hide(self, *_args: object) -> bool:
         self.hide(); return True
@@ -714,6 +813,37 @@ class SettingsDialog(Gtk.Dialog):
         self.spoolbase = Gtk.CheckButton(label="Spoolbase — magazyn filamentów" if app.language == "pl" else "Spoolbase — filament stock")
         self.spoolbase.set_active(bool(app.config.data.get("spoolbase_enabled", True)))
         box.pack_start(self.spoolbase, False, False, 0)
+        self.spool_grams = Gtk.CheckButton(label="Gramy na rolce (AMS NFC / Spoolbase)" if app.language == "pl" else "Grams on spool (AMS NFC / Spoolbase)")
+        self.spool_grams.set_active(bool(app.config.data.get("card_show_spool_grams", False)))
+        box.pack_start(self.spool_grams, False, False, 0)
+        # Security: allow automations whose action runs code (raw command / shell script). Off by default.
+        self.allow_scripts = Gtk.CheckButton(label="Zezwól automatyzacjom na komendy i skrypty" if _pl else "Allow command and script automations")
+        self.allow_scripts.set_active(bool(app.config.data.get("allow_script_actions", False)))
+        box.pack_start(self.allow_scripts, False, False, 0)
+        # Web dashboard (LAN) + sync between the user's own computers.
+        self.web_dashboard = Gtk.CheckButton(label="Serwer podglądu w przeglądarce (sieć lokalna)" if _pl else "Web preview server (local network)")
+        self.web_dashboard.set_active(bool(app.config.data.get("web_dashboard_enabled", True)))
+        box.pack_start(self.web_dashboard, False, False, 0)
+        from .webserver import local_ipv4
+        _ip = local_ipv4()
+        _addr = f"http://{_ip}:8787" if _ip else ("brak adresu IP" if _pl else "no IP address")
+        _web_addr = Gtk.Label(label=_addr, xalign=0); _web_addr.get_style_context().add_class("meta"); box.pack_start(_web_addr, False, False, 0)
+        _sync = getattr(app, "sync_service", None)
+        if _sync is not None:
+            box.pack_start(Gtk.Label(label=("Synchronizacja między komputerami" if _pl else "Sync between computers"), xalign=0), False, False, 0)
+            self.sync_token = Gtk.Entry(text=_sync.token); box.pack_start(self.sync_token, False, False, 0)
+            _peer_row = Gtk.Box(spacing=8)
+            self.sync_peer = Gtk.Entry(); self.sync_peer.set_placeholder_text("adres drugiego komputera, np. 192.168.1.20" if _pl else "other computer address, e.g. 192.168.1.20")
+            _add = Gtk.Button(label="Dodaj" if _pl else "Add"); _add.connect("clicked", lambda *_: (_sync.add_peer(self.sync_peer.get_text()), self.sync_peer.set_text("")))
+            _peer_row.pack_start(self.sync_peer, True, True, 0); _peer_row.pack_start(_add, False, False, 0); box.pack_start(_peer_row, False, False, 0)
+            _btn_row = Gtk.Box(spacing=8)
+            _newtok = Gtk.Button(label="Nowy token" if _pl else "New token"); _newtok.connect("clicked", lambda *_: (_sync.regenerate_token(), self.sync_token.set_text(_sync.token)))
+            _settok = Gtk.Button(label="Ustaw token" if _pl else "Set token"); _settok.connect("clicked", lambda *_: _sync.set_token(self.sync_token.get_text()))
+            _syncnow = Gtk.Button(label="Synchronizuj teraz" if _pl else "Sync now"); _syncnow.connect("clicked", lambda *_: _sync.sync_now())
+            _btn_row.pack_start(_newtok, False, False, 0); _btn_row.pack_start(_settok, False, False, 0); _btn_row.pack_start(_syncnow, False, False, 0); box.pack_start(_btn_row, False, False, 0)
+            _peers = _sync.peers()
+            _plist = (", ".join(p.get("address", "") for p in _peers)) if _peers else ("brak sparowanych" if _pl else "no paired computers")
+            _peer_lbl = Gtk.Label(label=_plist, xalign=0); _peer_lbl.get_style_context().add_class("meta"); box.pack_start(_peer_lbl, False, False, 0)
         box.pack_start(Gtk.Label(label=app.text["notifications"], xalign=0), False, False, 0)
         self.notices: dict[str, Gtk.CheckButton] = {}
         for key, config_key in (("finished_notice", "notify_finished"), ("error_notice", "notify_error"),
@@ -744,7 +874,17 @@ class SettingsDialog(Gtk.Dialog):
                                     quiet_hours_end=self.quiet_end.get_text().strip())
         for key, widget in self.notices.items(): self.app.config.data[key] = widget.get_active()
         self.app.config.data["spoolbase_enabled"] = self.spoolbase.get_active()
-        self.app.config.save(); set_autostart(self.autostart.get_active()); return True
+        self.app.config.data["card_show_spool_grams"] = self.spool_grams.get_active()
+        self.app.config.data["allow_script_actions"] = self.allow_scripts.get_active()
+        self.app.config.data["web_dashboard_enabled"] = self.web_dashboard.get_active()
+        web_server = getattr(self.app, "web_server", None)
+        if web_server is not None:
+            web_server.start() if self.web_dashboard.get_active() else web_server.stop()
+        self.app.config.save(); set_autostart(self.autostart.get_active())
+        sync = getattr(self.app, "sync_service", None)
+        if sync is not None:
+            sync.note_settings_changed()
+        return True
 
 
 class Gantry:
@@ -754,16 +894,44 @@ class Gantry:
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
         self.connections: dict[str, MqttConnection | HttpConnection] = {}; self.cards: dict[str, PrinterCard] = {}
+        # Rolling temperature history per printer (time, nozzle, bed, chamber), drawn by the Details graph.
+        self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
+        self.detail_window: DetailWindow | None = None
         self.expanded_compact_serial: str | None = None
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         self.reconnect_all()
+        # Read-only LAN web dashboard + two-way sync between the user's own computers.
+        from .webserver import GantryWebServer
+        from .sync import SyncService
+        from .physicalspool import PhysicalSpoolStore
+        from .spoolbase import FilamentStore
+        self.physical_spools = PhysicalSpoolStore()
+        self.filament_store = FilamentStore()   # shared inventory (also synced as the catalog)
+        from .automation import AutomationEngine
+        self.automations = AutomationEngine(self)
+        self.sync_service = SyncService(self)
+        self.web_server = GantryWebServer(self)
+        self.web_server.sync = self.sync_service
+        if bool(self.config.data.get("web_dashboard_enabled", True)):
+            self.web_server.start()
+        self.sync_service.sync_now()
+        GLib.timeout_add_seconds(45, self._sync_tick)
+
+    def _sync_tick(self) -> bool:
+        try:
+            self.sync_service.sync_now()
+        except Exception:
+            pass
+        return True  # keep the periodic timer running
         # With a tray, start hidden like a menu-bar app — the panel opens from the tray. Without a
         # tray there is no other entry point, so show the (regular) window.
         if AppIndicator is None: self.window.show_all()
 
     def apply_theme(self) -> None:
         settings = Gtk.Settings.get_default(); settings.set_property("gtk-application-prefer-dark-theme", self.config.data.get("theme") == "dark")
-        alpha = {"low": 1.0, "medium": 0.9, "high": 0.72}.get(str(self.config.data.get("panel_transparency", "low")), 1.0)
+        # Background-only alpha for the frosted-glass popover (cards stay solid). Lower = more see-through:
+        # low is the most opaque glass, high shows the compositor blur most. Not a whole-window opacity.
+        alpha = {"low": 0.82, "medium": 0.68, "high": 0.52}.get(str(self.config.data.get("panel_transparency", "low")), 0.82)
         # Give the panel window an RGBA visual so the translucent backdrop shows the desktop through
         # (needs a running compositor; falls back to opaque otherwise). Cards stay solid.
         window = getattr(self, "window", None)
@@ -811,6 +979,103 @@ class Gantry:
 
     def _toggle_quiet(self, enabled: bool) -> None:
         self.config.data["quiet_hours_enabled"] = enabled; self.config.save()
+
+    def _record_temperature(self, serial: str, tel: Telemetry) -> None:
+        if tel.nozzle is None and tel.bed is None and tel.chamber is None:
+            return
+        now = datetime.now().timestamp()
+        history = self.temp_history.setdefault(serial, [])
+        if history and now - history[-1][0] < 2:
+            return
+        history.append((now, tel.nozzle, tel.bed, tel.chamber))
+        if len(history) > 240:
+            del history[:len(history) - 240]
+
+    def send_command(self, serial: str, json_str: str) -> bool:
+        """Publish a raw MQTT command to a Bambu printer (chamber light, pause, custom)."""
+        connection = self.connections.get(serial)
+        sender = getattr(connection, "send_command", None)
+        return bool(sender(json_str)) if callable(sender) else False
+
+    def send_gcode(self, serial: str, script: str) -> bool:
+        """Run a G-code line on a Klipper printer via Moonraker."""
+        connection = self.connections.get(serial)
+        sender = getattr(connection, "send_gcode", None)
+        return bool(sender(script)) if callable(sender) else False
+
+    def set_chamber_light(self, serial: str, on: bool) -> None:
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is not None and printer.kind == PrinterKind.KLIPPER:
+            self.send_gcode(serial, "SET_PIN PIN=caselight VALUE=1" if on else "SET_PIN PIN=caselight VALUE=0")
+        else:
+            from .automation import light_payload
+            self.send_command(serial, light_payload(on))
+
+    def confirm_code_action(self, rule: dict) -> bool:
+        """One-time consent for a command/script automation, shown on the main thread. Returns the
+        approval synchronously (the engine may call from a worker thread)."""
+        from gi.repository import GLib
+        result: dict[str, bool] = {}
+        done = threading.Event()
+
+        def ask() -> bool:
+            pl = self.language == "pl"
+            action = rule.get("action", {})
+            is_script = action.get("type") == "script"
+            preview = (action.get("text", "") or "").strip()[:700]
+            what = ("skrypt na tym komputerze" if is_script else "komendę drukarki") if pl else \
+                   ("a script on this computer" if is_script else "a printer command")
+            body = (f"Automatyzacja „{rule.get('name')}” chce wykonać {what}:\n\n{preview}\n\nZezwolić i zapamiętać?"
+                    if pl else
+                    f"Automation \"{rule.get('name')}\" wants to run {what}:\n\n{preview}\n\nAllow and remember?")
+            dialog = Gtk.MessageDialog(transient_for=self.window, modal=True,
+                                       message_type=Gtk.MessageType.WARNING, buttons=Gtk.ButtonsType.NONE,
+                                       text=("Potwierdź automatyzację" if pl else "Confirm automation"))
+            dialog.format_secondary_text(body)
+            dialog.add_button("Odmów" if pl else "Deny", Gtk.ResponseType.CANCEL)
+            dialog.add_button("Zezwól" if pl else "Allow", Gtk.ResponseType.OK)
+            approved = dialog.run() == Gtk.ResponseType.OK
+            dialog.destroy()
+            result["ok"] = approved
+            done.set()
+            return False
+
+        GLib.idle_add(ask)
+        done.wait(120)
+        return result.get("ok", False)
+
+    def open_camera(self, serial: str) -> None:
+        from .camera import CameraWindow
+        access = None
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is not None and printer.kind == PrinterKind.BAMBU:
+            try:
+                access = self.secrets.get(serial)
+            except Exception:
+                access = None
+        window = CameraWindow(self, serial, access)
+        window.show_all()
+        window.present()
+        window.start()
+
+    def open_automations(self, serial: str) -> None:
+        from .automations import AutomationsWindow
+        window = AutomationsWindow(self, serial)
+        window.show_all()
+        window.present()
+
+    def open_details(self, serial: str) -> None:
+        from .details import DetailWindow
+        tel = self.telemetry.get(serial, Telemetry())
+        if self.detail_window is not None:
+            try:
+                self.detail_window.destroy()
+            except Exception:
+                pass
+            self.detail_window = None
+        self.detail_window = DetailWindow(self, serial)
+        self.detail_window.update(tel)
+        self.detail_window.present_panel()
 
     def toggle_spoolbase(self) -> None:
         window = getattr(self, "spoolbase_window", None)
@@ -962,6 +1227,23 @@ class Gantry:
         if event == "telemetry" and isinstance(value, Telemetry): self.telemetry[serial] = value
         elif event == "disconnected": self.telemetry[serial] = Telemetry(state=PrinterState.OFFLINE)
         current = self.telemetry[serial]
+        if event == "telemetry":
+            self._record_temperature(serial, current)
+            if self.detail_window is not None and self.detail_window.serial == serial:
+                self.detail_window.update(current)
+            if getattr(self, "automations", None) is not None:
+                self.automations.evaluate(serial, previous, current)
+        # Inserting an RFID/NFC roll supersedes a stale manual Spoolbase assignment in that slot.
+        if event == "telemetry" and getattr(self, "physical_spools", None) is not None:
+            for spool_id, slot_label in self.physical_spools.detach_assignments_replaced_by_nfc(
+                    serial, previous.filament_groups, current.filament_groups):
+                name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
+                msg = (f"{spool_id} wróciła do magazynu (wykryto tag NFC w {slot_label})" if self.language == "pl"
+                       else f"{spool_id} returned to storage (NFC tag in {slot_label})")
+                self.notify(name, msg)
+                card = self.cards.get(serial)
+                if card is not None:
+                    card.show_notice(msg)
         if self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact():
             self.rebuild_cards()
         elif card := self.cards.get(serial):
@@ -973,8 +1255,13 @@ class Gantry:
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key): self.notify(printer_name, self.text[current.state.value])
+            if event == "telemetry" and getattr(self, "physical_spools", None) is not None:
+                from .consumption import on_finish
+                on_finish(self, serial, previous, current)
         previous_remaining = {slot.slot_id: slot.remaining for slot in previous.ams_slots}
-        low = next((slot for slot in current.ams_slots if slot.remaining is not None and slot.remaining <= 10
+        # Only warn for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain (issue #27).
+        low = next((slot for slot in current.ams_slots if slot.remaining_weight_g is not None
+                    and slot.remaining is not None and slot.remaining <= 10
                     and (previous_remaining.get(slot.slot_id) is None or previous_remaining[slot.slot_id] > 10)), None)
         if low and self.config.data.get("notify_low_filament"):
             body = f"Niski poziom filamentu: {low.label} ({low.remaining}%)" if self.language == "pl" else f"Low filament: {low.label} ({low.remaining}%)"

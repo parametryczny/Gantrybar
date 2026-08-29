@@ -17,6 +17,9 @@ public sealed class PrinterStore
     public Dictionary<string, List<TemperatureSample>> TemperatureHistory { get; } = new();
     private const int MaxTemperatureSamples = 240;
     public Dictionary<string, string?> ConnectionMessages { get; } = new();
+    /// <summary>Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool
+    /// auto-detached because an NFC roll was inserted into its slot).</summary>
+    public Dictionary<string, List<string>> SpoolNotices { get; } = new();
     public List<DiscoveredPrinter> Discovered { get; private set; } = new();
     public bool IsScanning { get; private set; }
     public string? GlobalMessage { get; set; }
@@ -360,6 +363,25 @@ public sealed class PrinterStore
         foreach (var printer in Printers.ToList()) Reconnect(printer);
     }
 
+    /// <summary>Clears the card notices for a printer (the user pressed "OK" on the on-card message).</summary>
+    public void DismissSpoolNotices(string serial) => SpoolNotices.Remove(serial);
+
+    /// <summary>Merges peer printers from LAN sync: adds any printer we do not already have (by serial).
+    /// Secrets are never synced (Bambu access codes stay in this machine's store, apiKey is dropped), so
+    /// a new printer appears but needs its access code entered once here before it connects.</summary>
+    public bool MergeRemote(List<SyncPrinter> remote)
+    {
+        bool changed = false;
+        foreach (var r in remote)
+            if (!Printers.Any(p => p.Serial == r.Serial))
+            {
+                Printers.Add(new SavedPrinter { Serial = r.Serial, Name = r.Name, Model = r.Model, Host = r.Host, Kind = SyncPrinter.KindFromString(r.Kind), Port = r.Port });
+                changed = true;
+            }
+        if (changed) { SavedPrinterStore.Save(Printers); ReconnectAll(); }
+        return changed;
+    }
+
     public void Reconnect(SavedPrinter printer)
     {
         if (_reconnectTasks.Remove(printer.Serial, out var task)) task.Cancel();
@@ -449,6 +471,14 @@ public sealed class PrinterStore
                 else if (value.JobName != (_dismissedJobs.TryGetValue(serial, out var d) ? d : null))
                     _dismissedJobs.Remove(serial);
                 Telemetry[serial] = value;
+                // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment;
+                // surface a dismissible notice on the card so the change is not silent.
+                foreach (var (spoolId, slot) in SpoolbaseShared.Spools.DetachAssignmentsReplacedByNfc(serial, previous?.FilamentGroups ?? new(), value.FilamentGroups))
+                {
+                    if (!SpoolNotices.TryGetValue(serial, out var list)) SpoolNotices[serial] = list = new();
+                    list.Add(AppSettings.Text($"{spoolId} wróciła do magazynu (wykryto tag NFC w {slot})",
+                                              $"{spoolId} returned to storage (NFC tag detected in {slot})"));
+                }
                 RecordTemperature(serial, value);
                 ConnectionMessages[serial] = null;
                 if (_printersWithTelemetry.Contains(serial) && Printers.FirstOrDefault(p => p.Serial == serial) is { } printer)
@@ -689,8 +719,11 @@ public sealed class PrinterStore
                 current.JobName ?? AppSettings.Text("Drukarka oczekuje na działanie.", "The printer needs attention."), printer.Name);
         }
 
-        var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(s => (s.RemainingPercent ?? 100) <= 15).Select(s => s.Id));
-        var newLow = current.AmsSlots.Where(s => (s.RemainingPercent ?? 100) <= 15 && !previousLow.Contains(s.Id)).ToList();
+        // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
+        // so RemainingPercent reads as 0 and must not raise a false "low filament" alert (issue #27).
+        bool LowAndTrusted(AmsSlot s) => s.RemainingWeightGrams != null && (s.RemainingPercent ?? 100) <= 15;
+        var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(LowAndTrusted).Select(s => s.Id));
+        var newLow = current.AmsSlots.Where(s => LowAndTrusted(s) && !previousLow.Contains(s.Id)).ToList();
         if (AppSettings.NotifyLowFilament && newLow.FirstOrDefault() is { } slot)
             NotificationService.Post(AppSettings.Text("Niski poziom filamentu", "Low filament"),
                 $"{slot.Label} • {slot.Material} • {slot.RemainingPercent ?? 0}%", printer.Name);

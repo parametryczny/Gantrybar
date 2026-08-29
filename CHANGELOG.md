@@ -2,6 +2,111 @@
 
 Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są opisane w tym pliku.
 
+## 0.9.0 - 2026-08-29
+
+Dalej dopracowujemy wygląd i wydajność oraz sukcesywnie dodajemy personalizację. W tym wydaniu dochodzą też duże rzeczy: **śledzenie fizycznych rolek filamentu w Spoolbase** (z automatycznym odejmowaniem wagi po wydruku), **podgląd floty w przeglądarce**, **synchronizacja między komputerami**, a na macOS **uniwersalny build (Intel + Apple Silicon)**. Na Windows dochodzi natywny efekt szkła i dopracowanie karty do parytetu 1:1 z macOS.
+
+Najważniejsze: to wydanie domyka **parytet na trzech platformach**. Linux dostaje pełny komplet nowości i nadrabia to, co dotąd było tylko na macOS/Windows: **widok „Szczegóły”, automatyzacje ze sterowaniem i podgląd kamery na żywo**, a do tego fizyczne rolki z odejmowaniem wagi, podgląd floty w przeglądarce, synchronizację i efekt szkła. Ten sam zestaw funkcji i ten sam układ karty działają teraz na macOS, Windows i Linux; różni się tylko natywny rendering każdego systemu (czcionki, sposób realizacji frosted‑glass).
+
+### Fizyczne rolki filamentu (nowość)
+
+Do tej pory Spoolbase znał tylko rodzaje filamentu. Teraz możesz prowadzić konkretne rolki z wagą, przypisane do slotów AMS/EXT. Stan należy do rolki, nie do slotu, więc gdy przełożysz ją do innej drukarki, gramy jadą razem z nią.
+
+Jak dodać filament do AMS, krok po kroku:
+
+1. Kliknij pastylkę slotu (fasolkę AMS albo EXT) na karcie drukarki. Otworzy się panel przypisania dla tego slotu (np. „AMS A2").
+2. Panel pokazuje materiał widziany przez AMS, aktualnie przypisaną rolkę (albo „Brak") i listę Twoich rolek.
+3. Masz już rolkę w bazie? Wybierz ją z listy. Pasujące materiałem i kolorem są na górze i podświetlone. Jeśli rolka jest w innej drukarce, Gantry zapyta „Przenieść tutaj?" i zwolni poprzedni slot.
+4. Nowa rolka? Kliknij „+ Nowa rolka":
+   * wybierz filament ze swojego katalogu Spoolbase (albo „Nowa definicja z AMS", która weźmie materiał i kolor prosto z drukarki),
+   * podaj ilość na start: 1000, 750, 500 g albo własną wartość,
+   * gotowe. Rolka dostaje własne ID, np. `SP-00001`.
+5. Od teraz slot pokazuje realny procent i gramy (liczone lokalnie z pozostałej wagi), w kolorze wybranego filamentu, nawet dla filamentu bez RFID.
+6. Wymiana lub zdjęcie: kliknij slot ponownie i użyj „Odepnij", albo przypisz inną rolkę.
+7. Przenoszenie między drukarkami: wyjmujesz rolkę, w drugiej drukarce klikasz slot i wybierasz tę samą rolkę (`SP-000xx`). Stan zostaje bez zmian.
+
+Działa dla AMS i zewnętrznej szpuli (EXT), wspólnie dla wszystkich drukarek, dane są trwale zapisywane. Jedna rolka może być tylko w jednym miejscu naraz.
+
+Jeśli do slotu z ręcznie przypisaną rolką **włożysz rolkę z tagiem NFC/RFID**, Gantry rozpozna, że tamta rolka została wyjęta, i **automatycznie odpina** przypisaną (wraca do magazynu). Na karcie pojawia się wtedy krótka informacja z przyciskiem **OK**, np. „SP-00003 wróciła do magazynu (wykryto tag NFC w AMS A3)".
+
+### Automatyczne odejmowanie wagi po wydruku (nowość)
+
+Po zakończonym wydruku Gantry odejmuje realnie zużyty filament od przypisanej rolki, lokalnie i bez chmury:
+
+* **Klipper / Moonraker:** realne `filament_used` (mm) przeliczone na gramy (Ø1,75),
+* **Bambu:** `used_g` z wydrukowanego pliku `.gcode.3mf` pobranego po **lokalnym FTPS** (bez logowania do chmury, bez chmury Bambu).
+
+Odejmowanie jest **idempotentne per zadanie**, więc reconnect, restart albo dwa komputery patrzące na tę samą drukarkę nie policzą zużycia podwójnie.
+
+### Gramy z AMS (tag NFC/RFID)
+
+* nowy przełącznik w Ustawieniach, w sekcji „Karty drukarek": **„Gramy na rolce (AMS NFC / Spoolbase)"**, domyślnie wyłączony,
+* po włączeniu pod slotem widać pozostałe gramy: dla rolek Bambu **z tagiem RFID/NFC** liczone z odczytu tagu (`tray_weight × remain%`), a dla rolek przypisanych w Spoolbase z ich wagi,
+* rolka bez tagu i bez przypisania nie ma skąd wziąć wagi (można przypisać rolkę Spoolbase).
+
+### Podgląd floty w przeglądarce (nowość)
+
+* lekki, **tylko do odczytu** serwer WWW w sieci lokalnej: całą flotę widać z telefonu albo innego komputera w tej samej sieci Wi-Fi, bez logowania i bez chmury,
+* **na żywo przez WebSocket** (push przy każdej zmianie), z automatycznym fallbackiem na odpytywanie,
+* ta sama estetyka co aplikacja: karty, kolorowe temperatury, sloty AMS/EXT, procent,
+* w Ustawieniach nowa sekcja z **adresami** (`<nazwa>.local` i IP), **kodem QR** do zeskanowania telefonem oraz **przełącznikiem włączania serwera** (wyłączony = zero otwartych portów).
+
+### Synchronizacja między komputerami (nowość)
+
+* dwukierunkowa synchronizacja **Spoolbase, listy drukarek i ustawień** między Twoimi komputerami, **tylko w sieci lokalnej** (bez chmury),
+* parowanie przez **wspólny token**: kopiujesz go z jednego komputera na drugi i podajesz adres, reszta dzieje się sama,
+* scalanie „ostatni wygrywa" po czasie; zużycie filamentu jest idempotentne, więc wspólny wydruk nie odejmie się podwójnie,
+* **kody dostępu do drukarek nie są przesyłane** (zostają w Keychain każdego komputera).
+
+### Uniwersalny build macOS i niższy próg systemu
+
+* aplikacja macOS jest teraz **uniwersalna (Apple Silicon + Intel)** — koniec z przekreśloną ikoną i komunikatem „tylko na układach Apple" na Intelu,
+* **obniżony próg do macOS 13 (Ventura)**: jedyne API blokujące starsze systemy (efekt „liquid glass") ma teraz łagodny fallback.
+
+### Windows: natywny efekt szkła i parytet karty z macOS
+
+* główny dymek to teraz prawdziwy **Desktop Acrylic** (rozmyte tło pulpitu pod ciemnym, półprzezroczystym tintem, zaokrąglone rogi); przełącznik **Przezroczystość (Mała / Średnia / Duża)** steruje tylko siłą tintu, bez restartu, z fallbackiem na solidny ciemny panel,
+* karta dopracowana do macOS: **wordmark GANTRY** i licznik „X drukarek · Y pracuje", **ikona wykresu** zamiast napisu „Szczegóły", uchwyt przeciągania i „⋯" w zaokrąglonych pigułkach, temperatury z **„/ —"** przy braku wartości zadanej, **kreskowanie** pustych slotów, karta offline bez dublowania komunikatu.
+
+### Linux: parytet funkcji z macOS
+
+* **widok „Szczegóły”**: wykres temperatur w czasie (dysza / stół / komora), temperatury z wartościami zadanymi, wentylatory (części / aux / komora), poziom prędkości i średnica dyszy, moduły AMS/EXT oraz postęp / warstwy / ETA; wejście z ikony wykresu na karcie i z menu,
+* **automatyzacje ze sterowaniem**: reguły per drukarka (wyzwalacz: po warstwie / po % / na stan; akcja: światło komory, pauza/wznów/stop, powiadomienie, własna komenda MQTT/G‑code, skrypt), odpalane raz na wydruk; akcje „komenda” i „skrypt” są domyślnie wyłączone i wymagają jednorazowej zgody (kill‑switch w Ustawieniach),
+* **podgląd kamery na żywo**: Bambu przez RTSPS:322 (ffmpeg jako dekoder H.264, akceptacja self‑signed), Klipper/Moonraker jako MJPEG czytany natywnie; wejście z karty i z Szczegółów,
+* **fizyczne rolki w Spoolbase**: klik w slot AMS/EXT otwiera panel przypisania (rolka z katalogu, nowa rolka, przeniesienie istniejącej, ustawienie pozostałych gramów, odłączenie do magazynu); slot pokazuje kolor i gramy przypisanej rolki,
+* **automatyczne odejmowanie wagi po wydruku** (Klipper realnie z `filament_used`, Bambu z `used_g` w `.gcode.3mf` pobieranym po FTPS), idempotentne per zadanie,
+* **auto‑odpięcie** przy włożeniu rolki z tagiem NFC/RFID, z **krótką informacją na karcie** i przyciskiem OK,
+* **podgląd floty w przeglądarce** i **dwukierunkowa synchronizacja** (Spoolbase, katalog filamentów, lista drukarek i ustawienia) w sieci lokalnej, zgodna z macOS/Windows,
+* frosted‑glass dymka tray (rozmycie na KWin, przezroczystość w innych środowiskach).
+
+### Personalizacja
+
+* Przełącznik kolumn 1 / 2 w nagłówku (szeroka lub ostatnia samotna karta zajmuje pełną szerokość, zasada 2-2-1).
+* „Karty drukarek" w Ustawieniach: włącz albo wyłącz Nazwę pliku, Postęp, Temperatury, Filamenty / AMS (a teraz również Gramy na rolce).
+* „Dostosuj…" w Szczegółach: ukryj moduły (Kamera, AMS, Temperatury, Wentylatory, Sterowanie), przestawiaj kafle, wróć do domyślnego układu.
+
+### Spokojniejsze, płaskie karty
+
+* Stonowana kolorystyka: stan czyta się z tekstu i ikony, kolor niosą tylko wartości temperatur i realne kolory filamentu.
+* Płaski układ: zamiast pudełek w pudełku sekcje (zadanie, temperatury, filamenty) rozdzielają długie, cienkie linie. Między urządzeniami (AMS, HT, EXT) delikatna pionowa kreska.
+* Temperatury: kolor tylko na liczbie (dysza, stół, komora), a kafel komory znika, gdy nie ma czujnika.
+* Filamenty: procent wewnątrz kolorowej fasolki z auto-kontrastem, poziom wypełnia się od dołu z delikatną falą, a każdy kafelek ma cienki obrys, więc pusta lub 0% rolka nie ginie.
+* **Sloty pojedyncze (AMS HT / EXT)** to szerszy, wyśrodkowany prostokąt skalujący się z kartą (35% kolumny, min 60 px); grupa AMS jest ~3× szersza od pojedynczej, a dwie pojedyncze obok siebie (HT + EXT) są równe. Sloty nie migają ani nie skaczą przy odświeżaniu.
+
+### Offline
+
+* Gdy drukarka traci połączenie, jej karta przygasa i pokazuje komunikat błędu. Menu i Szczegóły dalej są dostępne.
+
+### Poprawki
+
+* **Nazwa pliku po wydruku:** karta pokazuje nazwę zadania tylko podczas druku; po zakończeniu i w bezczynności wraca „BRAK AKTYWNEGO ZADANIA" (koniec ze starą nazwą wiszącą po zakończeniu i po odświeżeniu).
+* **[#27] Fałszywy „Filament low" dla rolek bez chipa:** ostrzeżenie (czerwona kropka i powiadomienie) odpala się tylko przy wiarygodnym odczycie poziomu, czyli tag RFID/NFC (waga) albo przypisana rolka Spoolbase; rolka bez chipa (remain=0 „nieznane") już nie wywoła alarmu.
+
+### Pod maską
+
+* Segmentowy pasek postępu, licznik warstw przy ETA (pełna nazwa pliku przestała się ucinać).
+* Kompaktowy nagłówek i węższe okno, więcej drukarek na ekranie.
+
 ## 0.8.0 — 2026-08-20
 
 Duże wydanie: pełny widok **„Szczegóły"** drukarki, **podgląd kamery na żywo**, **automatyzacje ze sterowaniem** i **nadpisania per‑drukarka** — najpierw na macOS, a w tym wydaniu doprowadzone do **parytetu 1:1 na Windows**.

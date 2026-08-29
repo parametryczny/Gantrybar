@@ -14,11 +14,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Install GTK
-        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-3.0 xvfb fonts-noto-core fonts-dejavu-core adwaita-icon-theme
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 xvfb fonts-noto-core fonts-dejavu-core adwaita-icon-theme
       - name: Render dashboard preview
         run: xvfb-run -a env PYTHONPATH=linux python3 linux/scripts/render_preview.py linux-preview.png
       - name: Render Spoolbase preview
         run: xvfb-run -a env PYTHONPATH=linux python3 linux/scripts/render_spoolbase.py spoolbase-preview.png
+      - name: Render Details preview
+        run: xvfb-run -a env PYTHONPATH=linux python3 linux/scripts/render_details.py details-preview.png
       - name: Upload preview
         uses: actions/upload-artifact@v4
         with:
@@ -26,3 +28,4 @@ jobs:
           path: |
             linux-preview.png
             spoolbase-preview.png
+            details-preview.png

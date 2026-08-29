@@ -7,6 +7,9 @@ final class PrinterStore: ObservableObject {
     @Published private(set) var printers: [SavedPrinter]
     @Published private(set) var telemetry: [String: PrinterTelemetry] = [:]
     @Published private(set) var connectionMessages: [String: String] = [:]
+    /// Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool that was
+    /// auto-detached because an NFC roll was inserted into its slot).
+    @Published private(set) var spoolNotices: [String: [String]] = [:]
     @Published private(set) var discovered: [DiscoveredPrinter] = []
     @Published var isScanning = false
     @Published var globalMessage: String?
@@ -431,6 +434,28 @@ final class PrinterStore: ObservableObject {
         for printer in printers { reconnect(printer) }
     }
 
+    /// Clears the card notices for a printer (the user tapped "OK" on the on-card message).
+    func dismissSpoolNotices(serial: String) {
+        guard spoolNotices[serial] != nil else { return }
+        spoolNotices[serial] = nil
+    }
+
+    /// Merges peer printers from LAN sync: adds any printer we do not already have (matched by serial).
+    /// Secrets are never synced (Bambu access codes live in the Keychain, Klipper/Prusa apiKey is
+    /// dropped), so a newly added printer appears but needs its access code entered once on this Mac
+    /// before it connects. Existing printers and deletions are left untouched in v1.
+    @discardableResult
+    func mergeRemote(printers remote: [SyncPrinter]) -> Bool {
+        var didChange = false
+        for candidate in remote where !printers.contains(where: { $0.serial == candidate.serial }) {
+            printers.append(SavedPrinter(serial: candidate.serial, name: candidate.name, model: candidate.model,
+                                         host: candidate.host, kind: candidate.kind, port: candidate.port, apiKey: nil))
+            didChange = true
+        }
+        if didChange { persistence.save(printers); reconnectAll() }
+        return didChange
+    }
+
     func retryAfterLocalNetworkPermission() {
         guard localNetworkWasDenied else { return }
         reconnectAll()
@@ -527,6 +552,16 @@ final class PrinterStore: ObservableObject {
                 dismissedJobs.removeValue(forKey: serial)
             }
             telemetry[serial] = value
+            // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment;
+            // surface a dismissible notice on the card so the change is not silent.
+            let detached = SpoolbaseShared.spools.detachAssignmentsReplacedByNFC(
+                printerSerial: serial, previous: previous?.filamentGroups ?? [], current: value.filamentGroups)
+            for item in detached {
+                let text = AppSettings.shared.text(
+                    "\(item.spoolID) wróciła do magazynu (wykryto tag NFC w \(item.slot))",
+                    "\(item.spoolID) returned to storage (NFC tag detected in \(item.slot))")
+                spoolNotices[serial, default: []].append(text)
+            }
             recordTemperature(serial: serial, value: value)
             connectionMessages[serial] = nil
             if printersWithTelemetry.contains(serial), let printer = printers.first(where: { $0.serial == serial }) {
@@ -649,8 +684,11 @@ final class PrinterStore: ObservableObject {
             )
         }
 
-        let previousLow = Set(previous?.amsSlots.filter { ($0.remainingPercent ?? 100) <= 15 }.map(\.id) ?? [])
-        let newLow = current.amsSlots.filter { ($0.remainingPercent ?? 100) <= 15 && !previousLow.contains($0.id) }
+        // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
+        // so `remainingPercent` reads as 0 and must not raise a false "low filament" alert (issue #27).
+        func lowAndTrusted(_ s: AMSSlot) -> Bool { s.remainingWeightGrams != nil && (s.remainingPercent ?? 100) <= 15 }
+        let previousLow = Set(previous?.amsSlots.filter(lowAndTrusted).map(\.id) ?? [])
+        let newLow = current.amsSlots.filter { lowAndTrusted($0) && !previousLow.contains($0.id) }
         if settings.notifyLowFilament, let slot = newLow.first {
             NotificationService.post(
                 title: settings.text("Niski poziom filamentu", "Low filament"),

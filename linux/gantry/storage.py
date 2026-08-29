@@ -47,6 +47,13 @@ DEFAULTS: dict[str, Any] = {
     "quiet_hours_start": "22:00",
     "quiet_hours_end": "07:00",
     "spoolbase_enabled": True,
+    "card_show_spool_grams": False,
+    "web_dashboard_enabled": True,
+    # Automations: {serial: [rule, ...]}. Off-by-default kill switch gates the two code-running actions
+    # (raw command / shell script); approved rule ids remember a one-time consent per rule.
+    "automations": {},
+    "allow_script_actions": False,
+    "approved_script_rules": [],
     "printers": [],
     "certificate_pins": {},
 }

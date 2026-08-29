@@ -232,11 +232,22 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 let s = NSScrollView()
                 s.drawsBackground = false
                 s.hasVerticalScroller = true
+                // A flipped document view keeps the list pinned to the TOP of the scroll area;
+                // a plain NSView would bottom-align it and leave a large empty gap above the rows.
+                let doc = FlippedView()
+                doc.translatesAutoresizingMaskIntoConstraints = false
                 block.translatesAutoresizingMaskIntoConstraints = false
-                s.documentView = block
+                doc.addSubview(block)
+                NSLayoutConstraint.activate([
+                    block.topAnchor.constraint(equalTo: doc.topAnchor),
+                    block.leadingAnchor.constraint(equalTo: doc.leadingAnchor),
+                    block.trailingAnchor.constraint(equalTo: doc.trailingAnchor),
+                    block.bottomAnchor.constraint(equalTo: doc.bottomAnchor)
+                ])
+                s.documentView = doc
                 s.translatesAutoresizingMaskIntoConstraints = false
                 column.addArrangedSubview(s)
-                block.widthAnchor.constraint(equalTo: s.widthAnchor).isActive = true
+                doc.widthAnchor.constraint(equalTo: s.widthAnchor).isActive = true
                 s.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
                 scroll = s
             } else {
@@ -254,6 +265,35 @@ final class SpoolAssignPopoverViewController: NSViewController {
             column.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16)
         ])
         if let scroll { scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true }
+        addCloseButton()
+    }
+
+    /// A persistent close control in the top-right corner (the panel otherwise only closes after a
+    /// choice is made). Re-added on every `present` since that clears the view's subviews.
+    private func addCloseButton() {
+        let host = ActionView()
+        host.onClick = { [weak self] in self?.onClose?() }
+        host.wantsLayer = true
+        host.layer?.cornerRadius = 11
+        host.layer?.backgroundColor = GantryTheme.surface.cgColor
+        host.layer?.borderWidth = 1
+        host.layer?.borderColor = GantryTheme.line.cgColor
+        host.translatesAutoresizingMaskIntoConstraints = false
+        let label = NSTextField(labelWithString: "✕")
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.textColor = GantryTheme.secondary
+        label.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(label)
+        host.toolTip = t("Zamknij", "Close")
+        view.addSubview(host)
+        NSLayoutConstraint.activate([
+            host.widthAnchor.constraint(equalToConstant: 22),
+            host.heightAnchor.constraint(equalToConstant: 22),
+            host.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            host.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            label.centerXAnchor.constraint(equalTo: host.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: host.centerYAnchor)
+        ])
     }
 
     private func pageHeader(title: String, subtitle: String, back: (() -> Void)?) -> NSView {
@@ -409,4 +449,9 @@ private final class ActionView: NSView {
     var onClick: (() -> Void)?
     override func mouseDown(with event: NSEvent) { onClick?() }
     override var acceptsFirstResponder: Bool { true }
+}
+
+/// Top-left origin so a scroll view's content grows downward from the top instead of the bottom.
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }

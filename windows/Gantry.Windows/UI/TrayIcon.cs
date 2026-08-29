@@ -235,6 +235,8 @@ public sealed class TrayIcon : IDisposable
         if (_settings is null)
         {
             _settings = new SettingsWindow();
+            // Live-refresh the flyout's acrylic tint the moment Transparency changes (no restart).
+            _settings.OnTransparencyChanged = () => _dashboard?.ApplyPanelTransparency();
             _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); };
         }
         _settings.Show();

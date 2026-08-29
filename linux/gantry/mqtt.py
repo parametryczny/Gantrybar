@@ -91,6 +91,21 @@ class MqttConnection:
         self._stop = threading.Event()
         self._socket: ssl.SSLSocket | None = None
         self._thread: threading.Thread | None = None
+        self._send_lock = threading.Lock()
+
+    def send_command(self, json_str: str) -> bool:
+        """Publish a raw command (e.g. chamber light, pause) to the printer's request topic. Used by
+        automations. Safe to call from any thread; serialised against the read loop's own writes."""
+        stream = self._socket
+        if stream is None:
+            return False
+        packet = publish_packet(f"device/{self.printer.serial}/request", json_str.encode())
+        try:
+            with self._send_lock:
+                stream.sendall(packet)
+            return True
+        except OSError:
+            return False
 
     def start(self) -> None:
         self._stop.clear()
@@ -145,11 +160,13 @@ class MqttConnection:
                     try:
                         header, body = read_packet(stream)
                     except socket.timeout:
-                        stream.sendall(b"\xC0\x00")
+                        with self._send_lock:
+                            stream.sendall(b"\xC0\x00")
                         last_ping = time.monotonic()
                         continue
                     if time.monotonic() - last_ping > 30:
-                        stream.sendall(b"\xC0\x00")
+                        with self._send_lock:
+                            stream.sendall(b"\xC0\x00")
                         last_ping = time.monotonic()
                     payload = publish_payload(header, body)
                     if payload is None:

@@ -215,12 +215,25 @@ public static class AppSettings
         get => Defaults.GetBool("card-show-filaments", true);
         set => Defaults.SetBool("card-show-filaments", value);
     }
+    /// <summary>Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).</summary>
+    public static bool CardShowSpoolGrams
+    {
+        get => Defaults.GetBool("card-show-spool-grams", false);
+        set => Defaults.SetBool("card-show-spool-grams", value);
+    }
 
     // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     public static bool SpoolbaseEnabled
     {
         get => Defaults.GetBool("spoolbase-enabled", true);
         set => Defaults.SetBool("spoolbase-enabled", value);
+    }
+
+    /// <summary>Whether the read-only LAN web dashboard (http://&lt;ip&gt;:8787) runs.</summary>
+    public static bool WebDashboardEnabled
+    {
+        get => Defaults.GetBool("web-dashboard-enabled", true);
+        set => Defaults.SetBool("web-dashboard-enabled", value);
     }
 
     // Download and install new releases automatically instead of only notifying about them.

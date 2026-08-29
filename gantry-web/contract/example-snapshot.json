@@ -1,0 +1,57 @@
+{
+  "protocolVersion": 1,
+  "generatedAt": "2026-08-28T12:30:00Z",
+  "device": {
+    "id": "a41af5ba-60d1-4e41-a4b1-00fab2bb6377",
+    "name": "Mac Studio",
+    "platform": "macos",
+    "appVersion": "0.8.0"
+  },
+  "printers": [
+    {
+      "id": "01P00A000000001",
+      "name": "X1 Carbon",
+      "model": "X1C",
+      "connectionType": "MQTT",
+      "state": "printing",
+      "job": {
+        "fileName": "slonecznik_twist_plate_1.3mf",
+        "progress": 46,
+        "remainingSeconds": 6300,
+        "eta": "2026-08-28T14:15:00Z",
+        "currentLayer": 27,
+        "totalLayers": 110
+      },
+      "temperatures": {
+        "nozzles": [{ "label": "", "current": 220, "target": 220 }],
+        "bed": { "current": 55, "target": 55 },
+        "chamber": { "current": 45, "target": null }
+      },
+      "filamentGroups": [
+        {
+          "id": "ams-0",
+          "name": "AMS A",
+          "kind": "ams",
+          "humidityPercent": 31,
+          "temperatureCelsius": 35,
+          "slots": [
+            { "id": "A1", "label": "A1", "material": "PLA", "colorHex": "A9AAAB", "remainingPercent": 35, "remainingGrams": 350, "active": false, "present": true },
+            { "id": "A2", "label": "A2", "material": "PLA", "colorHex": "F7D75C", "remainingPercent": 76, "remainingGrams": 760, "active": true, "present": true },
+            { "id": "A3", "label": "A3", "material": "ABS", "colorHex": "DE310A", "remainingPercent": 75, "remainingGrams": 750, "active": false, "present": true },
+            { "id": "A4", "label": "A4", "material": "", "colorHex": "303436", "remainingPercent": null, "remainingGrams": null, "active": false, "present": false }
+          ]
+        },
+        {
+          "id": "ext-0",
+          "name": "EXT",
+          "kind": "ext",
+          "humidityPercent": 30,
+          "temperatureCelsius": 38,
+          "slots": [
+            { "id": "EXT", "label": "EXT", "material": "PETG", "colorHex": "78855B", "remainingPercent": 60, "remainingGrams": 600, "active": false, "present": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

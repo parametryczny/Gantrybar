@@ -369,6 +369,10 @@ final class PrinterDashboardViewController: NSViewController {
             } else {
                 cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings)
             }
+            let serial = printer.serial
+            cardsBySerial[serial]?.showNotices(store.spoolNotices[serial] ?? []) { [weak self] in
+                self?.store.dismissSpoolNotices(serial: serial)
+            }
         }
 
         // Size the popover from the cards' real laid-out height (cards grow when AMS chips wrap).
@@ -614,8 +618,10 @@ final class PrinterDashboardViewController: NSViewController {
 }
 
 @MainActor
-private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
+private final class CompactPrinterRowView: NSView, NSDraggingSource {
     let serial: String
+    /// macOS 26 "liquid glass" where available, a standard translucent material on older systems.
+    private let backdrop: NSView
     private let stateIcon = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
@@ -640,11 +646,20 @@ private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
         serial = printer.serial
         self.onMove = onMove
         self.onSelect = onSelect
+        backdrop = CompactPrinterRowView.makeBackdrop()
         super.init(frame: .zero)
 
-        style = .regular
-        cornerRadius = 12
-        tintColor = .clear
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.masksToBounds = true
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(backdrop)
+        NSLayoutConstraint.activate([
+            backdrop.leadingAnchor.constraint(equalTo: leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: trailingAnchor),
+            backdrop.topAnchor.constraint(equalTo: topAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
         registerForDraggedTypes([printerCardPasteboardType])
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(rowClicked)))
         layoutWidthConstraint = widthAnchor.constraint(equalToConstant: 456)
@@ -653,7 +668,19 @@ private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
 
         let rowContent = NSView()
         rowContent.wantsLayer = true
-        contentView = rowContent
+        rowContent.translatesAutoresizingMaskIntoConstraints = false
+        // On macOS 26 the glass view hosts its content; on older systems we stack it over the material.
+        if #available(macOS 26.0, *), let glass = backdrop as? NSGlassEffectView {
+            glass.contentView = rowContent
+        } else {
+            addSubview(rowContent)
+            NSLayoutConstraint.activate([
+                rowContent.leadingAnchor.constraint(equalTo: leadingAnchor),
+                rowContent.trailingAnchor.constraint(equalTo: trailingAnchor),
+                rowContent.topAnchor.constraint(equalTo: topAnchor),
+                rowContent.bottomAnchor.constraint(equalTo: bottomAnchor)
+            ])
+        }
 
         dropIndicatorLayer.backgroundColor = NSColor.systemBlue.cgColor
         dropIndicatorLayer.cornerRadius = 1
@@ -715,7 +742,30 @@ private final class CompactPrinterRowView: NSGlassEffectView, NSDraggingSource {
         stateIcon.contentTintColor = stateColor(telemetry.state)
 
         // Neutral glass to match the flat translucent cards; only an error carries a faint warm wash.
-        tintColor = telemetry.state == .error ? GantryTheme.statusPrinting.withAlphaComponent(0.08) : .clear
+        // (macOS 26 tint only; on older systems the error is already carried by the icon and red text.)
+        if #available(macOS 26.0, *), let glass = backdrop as? NSGlassEffectView {
+            glass.tintColor = telemetry.state == .error ? GantryTheme.statusPrinting.withAlphaComponent(0.08) : .clear
+        }
+    }
+
+    /// Backdrop for the compact row: the macOS 26 "liquid glass" effect where available, degrading to a
+    /// standard translucent material on older systems so the app still runs on macOS 14+.
+    private static func makeBackdrop() -> NSView {
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            glass.cornerRadius = 12
+            glass.tintColor = .clear
+            return glass
+        }
+        let effect = NSVisualEffectView()
+        effect.blendingMode = .behindWindow
+        effect.material = .hudWindow
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 12
+        effect.layer?.masksToBounds = true
+        return effect
     }
 
     // Match the neutral card contract: state is carried by the icon shape and the label text,
@@ -830,6 +880,11 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     // Disconnect scrim: dims the whole card and shows the connection error when the printer is offline.
     private let disconnectOverlay = PassthroughView()
     private let disconnectLabel = NSTextField(labelWithString: "")
+    // Small dismissible notice at the bottom of the card (e.g. a Spoolbase spool auto-detached by an NFC roll).
+    private let noticeBanner = NSView()
+    private let noticeLabel = NSTextField(labelWithString: "")
+    private let noticeOKButton = NSButton()
+    private var onDismissNotice: (() -> Void)?
     // The spool-assignment overlay lives on the popover's content view (not a nested NSPopover, which a
     // transient menu-bar popover would instantly dismiss). Static so it survives a card rebuild.
     private static var activeSpoolBackdrop: NSView?
@@ -842,6 +897,9 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     private var layoutWidthConstraint: NSLayoutConstraint?
     private var dragHandle: PrinterDragHandle?
     private var renderedGroups: [FilamentGroup] = []
+    /// Signature of the last-rendered filament dock, so it rebuilds only when the AMS/EXT data or an
+    /// assigned Spoolbase spool actually changes — not on every telemetry tick (which caused a jitter).
+    private var lastFilamentSignature: String?
     private var lastMetricsKey: String?
     private var lastDual = false
     private var currentLayoutWidth: CGFloat = 456
@@ -1116,8 +1174,65 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             offStack.trailingAnchor.constraint(lessThanOrEqualTo: disconnectOverlay.trailingAnchor, constant: -16)
         ])
 
+        // Bottom notice banner (spool auto-detached, etc.) with an OK to dismiss.
+        noticeBanner.wantsLayer = true
+        noticeBanner.layer?.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.14, blue: 0.09, alpha: 0.98).cgColor
+        noticeBanner.layer?.cornerRadius = 10
+        noticeBanner.layer?.borderWidth = 1
+        noticeBanner.layer?.borderColor = GantryTheme.line.cgColor
+        noticeBanner.isHidden = true
+        noticeBanner.translatesAutoresizingMaskIntoConstraints = false
+        noticeLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
+        noticeLabel.textColor = GantryTheme.text
+        noticeLabel.lineBreakMode = .byWordWrapping
+        noticeLabel.maximumNumberOfLines = 3
+        noticeLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        // Yield horizontal room to the OK button so it is never pushed out of view.
+        noticeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        noticeLabel.translatesAutoresizingMaskIntoConstraints = false
+        noticeOKButton.title = "OK"
+        noticeOKButton.bezelStyle = .rounded
+        noticeOKButton.controlSize = .regular
+        noticeOKButton.bezelColor = GantryTheme.accent
+        noticeOKButton.contentTintColor = GantryTheme.canvas
+        noticeOKButton.font = .systemFont(ofSize: 11, weight: .bold)
+        noticeOKButton.target = self
+        noticeOKButton.action = #selector(dismissNoticeTapped)
+        noticeOKButton.setContentHuggingPriority(.required, for: .horizontal)
+        noticeOKButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        noticeOKButton.translatesAutoresizingMaskIntoConstraints = false
+        let noticeRow = NSStackView(views: [noticeLabel, noticeOKButton])
+        noticeRow.orientation = .horizontal
+        noticeRow.alignment = .centerY
+        noticeRow.spacing = 8
+        noticeRow.translatesAutoresizingMaskIntoConstraints = false
+        noticeBanner.addSubview(noticeRow)
+        content.addSubview(noticeBanner)
+        NSLayoutConstraint.activate([
+            noticeBanner.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
+            noticeBanner.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
+            noticeBanner.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
+            noticeRow.leadingAnchor.constraint(equalTo: noticeBanner.leadingAnchor, constant: 10),
+            noticeRow.trailingAnchor.constraint(equalTo: noticeBanner.trailingAnchor, constant: -8),
+            noticeRow.topAnchor.constraint(equalTo: noticeBanner.topAnchor, constant: 6),
+            noticeRow.bottomAnchor.constraint(equalTo: noticeBanner.bottomAnchor, constant: -6)
+        ])
+
         update(printer: printer, telemetry: .init(), message: nil, settings: AppSettings.shared)
         self.onMove = onMove
+    }
+
+    @objc private func dismissNoticeTapped() {
+        noticeBanner.isHidden = true
+        onDismissNotice?()
+    }
+
+    /// Shows a dismissible notice at the bottom of the card, or hides it when there is nothing to say.
+    func showNotices(_ texts: [String], onDismiss: @escaping () -> Void) {
+        guard !texts.isEmpty else { noticeBanner.isHidden = true; return }
+        noticeLabel.stringValue = texts.joined(separator: "\n")
+        onDismissNotice = onDismiss
+        noticeBanner.isHidden = false
     }
 
     required init?(coder: NSCoder) { nil }
@@ -1312,8 +1427,11 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         let groups = telemetry.filamentGroups.isEmpty
             ? Self.legacyGroups(from: telemetry.amsSlots)
             : telemetry.filamentGroups
-        // Rebuilt every update so an assigned physical spool (Spoolbase) shows without waiting for the
-        // AMS reading to change. Clicking a slot opens its assignment popover.
+        // Rebuild only when the filament data or an assigned Spoolbase spool actually changes — not on
+        // every telemetry tick, which recreated the views and made the slots jitter up/down.
+        let filamentSig = Self.filamentSignature(groups, serial: printer.serial, settings: settings)
+        if filamentSig != lastFilamentSignature {
+        lastFilamentSignature = filamentSig
         renderedGroups = groups
         filamentDock.setGroups(groups, settings: settings, showRemaining: true,
                                printerSerial: printer.serial,
@@ -1343,6 +1461,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             PrinterCardView.activeSpoolVC = vc
             _ = anchor
         })
+        }
 
         // User-controlled card content (Settings → "Karty drukarek"). Hidden modules simply collapse
         // out of the vertical stack; the card resizes to fit whatever remains.
@@ -1363,6 +1482,21 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             disconnectLabel.stringValue = message
                 ?? settings.text("Brak połączenia z drukarką", "No connection to the printer")
         }
+    }
+
+    /// A compact signature of everything the filament dock draws (group data + assigned Spoolbase spool
+    /// + the grams/filament settings), so the dock rebuilds only when something visible changed.
+    private static func filamentSignature(_ groups: [FilamentGroup], serial: String, settings: AppSettings) -> String {
+        var parts: [String] = [settings.cardShowSpoolGrams ? "g1" : "g0", settings.cardShowFilaments ? "f1" : "f0"]
+        for (gi, g) in groups.enumerated() {
+            parts.append("\(g.displayName)/\(g.isExternal)/\(g.humidityPercent ?? -1)/\(g.temperatureCelsius.map { Int($0) } ?? -1)/\(g.declaredCapacity)")
+            for (si, slot) in g.slots.enumerated() {
+                let loc = SpoolLocation(printerSerial: serial, feeder: g.isExternal ? .ext : .ams, amsIndex: gi, slot: si)
+                let sp = SpoolbaseShared.spools.spool(at: loc)
+                parts.append("\(slot.label),\(slot.material ?? ""),\(slot.colorHex ?? ""),\(slot.remainingPercent ?? -1),\(slot.isActive),\(slot.remainingWeightGrams.map { Int($0) } ?? -1),\(sp?.id ?? ""),\(sp.map { Int($0.remainingWeightGrams) } ?? -1)")
+            }
+        }
+        return parts.joined(separator: "|")
     }
 
     /// Rebuild the temperature rows only when the nozzle count changes. Single-nozzle printers keep a
@@ -2038,7 +2172,7 @@ final class FilamentSlotView: NSView {
     private let onTap: ((NSView) -> Void)?
 
     init(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool = false,
-         location: SpoolLocation? = nil, onTap: ((NSView) -> Void)? = nil) {
+         location: SpoolLocation? = nil, onTap: ((NSView) -> Void)? = nil, isSingle: Bool = false) {
         self.onTap = onTap
         super.init(frame: .zero)
         // A manually-assigned physical spool wins over the (often unknown) AMS reading: its % and colour
@@ -2087,9 +2221,14 @@ final class FilamentSlotView: NSView {
         // Keep swatches compact and readable: don't let a slot stretch wider than a tidy chip,
         // so a 4-slot AMS reads as neat squares instead of big blocks. The fill-width constraint
         // below is lowered in priority so this cap wins and the chip stays centered in its cell.
-        let maxWidth = swatch.widthAnchor.constraint(lessThanOrEqualToConstant: isExternal ? 92 : 56)
-        maxWidth.priority = .required
-        maxWidth.isActive = true
+        // Multi-slot AMS keeps a compact per-slot cap so four slots read as neat squares. A single slot
+        // (AMS HT / EXT) instead takes a fixed fraction of its column — set in the activate block below,
+        // once the swatch is in the view hierarchy — so it scales with the card and never jumps.
+        if !isSingle {
+            let maxWidth = swatch.widthAnchor.constraint(lessThanOrEqualToConstant: isExternal ? 92 : 56)
+            maxWidth.priority = .required
+            maxWidth.isActive = true
+        }
 
         // The remaining % lives INSIDE the colour chip, in a contrasting ink (white on a dark spool,
         // black on a light/yellow one) so it is legible whatever the filament colour is — no separate
@@ -2152,9 +2291,12 @@ final class FilamentSlotView: NSView {
 
         // Remaining % now sits inside the swatch (above), so the slot is just chip + material caption.
         var slotViews: [NSView] = [swatch, meta]
-        // Assigned physical spool: show its grams under the material (spec §13).
-        if let assignedSpool {
-            let grams = NSTextField(labelWithString: "\(Int(assignedSpool.remainingWeightGrams)) g")
+        // Grams on the spool: the assigned Spoolbase weight, or the AMS NFC weight — shown only when the
+        // user turned on "grams on spool" for the cards (Settings).
+        if AppSettings.shared.cardShowSpoolGrams,
+           let gramsValue = (assignedSpool.map { $0.remainingWeightGrams } ?? slot.remainingWeightGrams),
+           gramsValue > 0 {
+            let grams = NSTextField(labelWithString: "\(Int(gramsValue)) g")
             grams.font = .systemFont(ofSize: 8.5, weight: .medium)
             grams.textColor = GantryTheme.muted
             grams.alignment = .center
@@ -2174,10 +2316,25 @@ final class FilamentSlotView: NSView {
             swatch.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 1, constant: 0).withPriority(.defaultLow),
             meta.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
+        // A single slot (AMS HT / EXT) targets 35% of its column, but never below a legible minimum, so
+        // next to a wide AMS it still reads like a slot rather than a sliver — and never wider than the
+        // column. Multi-slot AMS keeps its compact per-slot cap set earlier.
+        if isSingle {
+            let target = swatch.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.35)
+            target.priority = .defaultHigh
+            let floor = swatch.widthAnchor.constraint(greaterThanOrEqualToConstant: 60)
+            floor.priority = .init(999)
+            let ceiling = swatch.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor)
+            ceiling.priority = .required
+            NSLayoutConstraint.activate([target, floor, ceiling])
+        }
 
         // External spools report remain=0 as "unknown" (Bambu doesn't gauge them), so a low-filament
-        // dot there is a false alarm — only warn for real AMS/CFS slots.
-        if present, !isExternal, (effectivePct ?? 100) <= 15 {
+        // dot there is a false alarm. A chipless AMS spool is the same: remain reads 0 but is not real,
+        // so only warn when the level is trustworthy — an RFID tag (weight) or an assigned Spoolbase
+        // spool (issue #27).
+        let trustedLevel = slot.remainingWeightGrams != nil || assignedSpool != nil
+        if present, !isExternal, trustedLevel, (effectivePct ?? 100) <= 15 {
             let warning = NSView()
             warning.wantsLayer = true
             warning.layer?.backgroundColor = NSColor.systemRed.cgColor
@@ -2259,21 +2416,17 @@ final class FilamentGroupView: NSView {
                 onSlotTapped?(location, title, slot.material, slot.colorHex, anchor)
             }
             return FilamentSlotView(slot: slot, isExternal: group.isExternal, showRemaining: showRemaining,
-                                    location: printerSerial.isEmpty ? nil : location, onTap: tap)
+                                    location: printerSerial.isEmpty ? nil : location, onTap: tap, isSingle: group.slots.count == 1)
         }
-        // A single spool reads as one grid-sized chip centred in its tile (a lone edge-to-edge pill
-        // looked bare). Even spacers on both sides keep it centred; multi-slot modules still stretch.
-        let single = slotViews.count == 1
-        let leadSpacer = NSView(), trailSpacer = NSView()
-        let slots = NSStackView(views: single ? [leadSpacer] + slotViews + [trailSpacer] : slotViews)
+        // Each slot fills its share of the module. A single spool's chip fills the column; its inner
+        // swatch then takes a fixed fraction of that width (see FilamentSlotView), so a lone slot is a
+        // wide rectangle and two side-by-side single groups (HT + EXT) match — and never jump, because
+        // the width is a definite proportion rather than an ambiguous fill.
+        let slots = NSStackView(views: slotViews)
         slots.orientation = .horizontal
         slots.alignment = .top
-        slots.distribution = single ? .fill : .fillEqually
+        slots.distribution = .fillEqually
         slots.spacing = 5
-        if single, let chip = slotViews.first {
-            chip.widthAnchor.constraint(lessThanOrEqualToConstant: group.isExternal ? 96 : 60).isActive = true
-            leadSpacer.widthAnchor.constraint(equalTo: trailSpacer.widthAnchor).isActive = true
-        }
 
         let stack = NSStackView(views: [header, slots])
         stack.orientation = .vertical
@@ -2395,10 +2548,10 @@ final class FilamentDockView: NSView {
                     sep.topAnchor.constraint(equalTo: row.topAnchor, constant: 2),
                     sep.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -2)
                 ])
-                // Physical capacity is the contract: AMS HT (1) + EXT (1) is 50/50, while a
-                // regular four-slot AMS beside EXT remains 4/1. Do not special-case EXT visually.
+                // A multi-slot module (AMS) gets a column three times as wide as a single-slot one, so an
+                // AMS beside EXT reads ~3:1; two single groups (AMS HT + EXT) stay 50/50.
                 func weight(_ g: FilamentGroup) -> CGFloat {
-                    CGFloat(max(1, g.declaredCapacity))
+                    g.declaredCapacity > 1 ? 3 : 1
                 }
                 let proportional = views[1].widthAnchor.constraint(equalTo: views[0].widthAnchor, multiplier: weight(rowGroups[1]) / weight(rowGroups[0]))
                 proportional.priority = .defaultHigh

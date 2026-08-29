@@ -41,7 +41,7 @@
 
     <!-- Rounded, translucent panel body; the acrylic/mica backdrop (set via DWM) shows through.
          PanelBody.Background alpha is set from the Panel-transparency setting (backdrop only). -->
-    <Border x:Name="PanelBody" CornerRadius="12" Background="#B3242426" SnapsToDevicePixels="True">
+    <Border x:Name="PanelBody" CornerRadius="12" Background="#40242426" SnapsToDevicePixels="True">
         <Grid>
             <DockPanel Margin="2">
                 <Grid DockPanel.Dock="Top" Margin="16,14,12,8">
@@ -50,7 +50,11 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <Image Source="Assets/wordmark.png" Height="17" HorizontalAlignment="Left" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True"/>
+                        <TextBlock Text="GANTRY" FontSize="18" FontWeight="Black" FontFamily="Segoe UI Black, Segoe UI" Foreground="#FFF5F5F7" HorizontalAlignment="Left" SnapsToDevicePixels="True">
+                            <TextBlock.LayoutTransform>
+                                <ScaleTransform ScaleX="1.06" ScaleY="1"/>
+                            </TextBlock.LayoutTransform>
+                        </TextBlock>
                         <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">

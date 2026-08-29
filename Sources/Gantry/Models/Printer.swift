@@ -105,6 +105,8 @@ struct FilamentSlot: Equatable, Identifiable, Sendable {
     let colorHex: String?
     let remainingPercent: Int?
     let isActive: Bool
+    /// Remaining filament weight in grams from the AMS NFC/RFID tag (tray_weight × remain), when known.
+    var remainingWeightGrams: Double? = nil
 
     var isPresent: Bool {
         guard let material else { return false }
@@ -139,6 +141,9 @@ struct AMSSlot: Equatable, Identifiable, Sendable {
     let remainingPercent: Int?
     let isActive: Bool
     let isExternal: Bool
+    /// RFID/NFC remaining weight (grams). Nil for a chipless spool, whose `remainingPercent` is not a
+    /// trustworthy reading — used to suppress false "low filament" warnings (issue #27).
+    var remainingWeightGrams: Double? = nil
 }
 
 extension FilamentGroup {
@@ -152,7 +157,8 @@ extension FilamentGroup {
                 colorHex: slot.colorHex ?? "8E8E93FF",
                 remainingPercent: slot.remainingPercent,
                 isActive: slot.isActive,
-                isExternal: isExternal
+                isExternal: isExternal,
+                remainingWeightGrams: slot.remainingWeightGrams
             )
         }
     }

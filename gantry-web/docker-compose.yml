@@ -1,0 +1,13 @@
+services:
+  gantry-web:
+    build: .
+    restart: unless-stopped
+    environment:
+      GANTRY_WEB_PUBLIC_URL: ${GANTRY_WEB_PUBLIC_URL}
+      GANTRY_WEB_SETUP_TOKEN: ${GANTRY_WEB_SETUP_TOKEN}
+      GANTRY_WEB_SESSION_HOURS: ${GANTRY_WEB_SESSION_HOURS:-12}
+      GANTRY_WEB_SNAPSHOT_TTL_SECONDS: ${GANTRY_WEB_SNAPSHOT_TTL_SECONDS:-45}
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8788:8788"

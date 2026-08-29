@@ -74,6 +74,8 @@ final class AppSettings: ObservableObject {
     @Published var cardShowProgress: Bool { didSet { defaults.set(cardShowProgress, forKey: "card-show-progress") } }
     @Published var cardShowTemperatures: Bool { didSet { defaults.set(cardShowTemperatures, forKey: "card-show-temps") } }
     @Published var cardShowFilaments: Bool { didSet { defaults.set(cardShowFilaments, forKey: "card-show-filaments") } }
+    /// Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).
+    @Published var cardShowSpoolGrams: Bool { didSet { defaults.set(cardShowSpoolGrams, forKey: "card-show-spool-grams") } }
 
     /// Security kill switch for automation actions that execute code: `.script` (runs a program on this
     /// Mac) and `.command` (an arbitrary raw MQTT/G-code command). OFF by default so a tampered or planted
@@ -129,6 +131,7 @@ final class AppSettings: ObservableObject {
         cardShowProgress = defaults.object(forKey: "card-show-progress") as? Bool ?? true
         cardShowTemperatures = defaults.object(forKey: "card-show-temps") as? Bool ?? true
         cardShowFilaments = defaults.object(forKey: "card-show-filaments") as? Bool ?? true
+        cardShowSpoolGrams = defaults.object(forKey: "card-show-spool-grams") as? Bool ?? false
         allowScriptActions = defaults.object(forKey: "allow-script-actions") as? Bool ?? false
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true

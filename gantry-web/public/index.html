@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Gantry Web</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <section id="gate" class="gate" hidden>
+      <div class="gate-mark" aria-hidden="true">G</div>
+      <p class="eyebrow">GANTRY WEB</p>
+      <h1 id="gate-title">Połącz panel</h1>
+      <p id="gate-copy" class="gate-copy"></p>
+
+      <form id="setup-form" class="gate-form" hidden>
+        <label>Nazwa panelu<input name="displayName" autocomplete="organization" value="Moje Gantry"></label>
+        <label>Token instalacyjny<input name="setupToken" type="password" autocomplete="one-time-code" required></label>
+        <label>Gantry Web Link Key<input name="linkKey" type="password" autocomplete="off" minlength="32" required></label>
+        <label>Hasło do panelu<input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+        <button type="submit">Utwórz bezpieczny panel</button>
+      </form>
+
+      <form id="login-form" class="gate-form" hidden>
+        <label>Hasło<input name="password" type="password" autocomplete="current-password" required autofocus></label>
+        <button type="submit">Otwórz Gantry</button>
+      </form>
+      <p id="gate-error" class="error" role="alert"></p>
+    </section>
+
+    <section id="dashboard" hidden>
+      <header class="toolbar">
+        <div>
+          <div class="brand-row"><span class="brand-mark">G</span><h1 id="title">Gantry</h1></div>
+          <p id="summary" class="summary">Łączenie…</p>
+        </div>
+        <div class="toolbar-actions">
+          <div class="density" aria-label="Gęstość kafelków">
+            <button data-density="compact">Małe</button>
+            <button data-density="normal" class="active">Średnie</button>
+            <button data-density="large">Duże</button>
+          </div>
+          <button id="logout" class="icon-button" title="Wyloguj" aria-label="Wyloguj">↗</button>
+        </div>
+      </header>
+      <div id="empty" class="empty" hidden>
+        <span class="empty-orbit"></span>
+        <h2>Czekam na pierwszą drukarkę</h2>
+        <p>Włącz Gantry Web Link w aplikacji desktopowej i wklej adres tego serwera.</p>
+      </div>
+      <div id="fleet" class="fleet" aria-live="polite"></div>
+      <footer><span id="connection-dot" class="connection-dot"></span><span id="connection-label">Aktualizacje na żywo</span></footer>
+    </section>
+  </main>
+</body>
+</html>

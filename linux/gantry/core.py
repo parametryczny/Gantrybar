@@ -38,6 +38,7 @@ class AmsSlot:
     remaining: int | None = None
     active: bool = False
     external: bool = False
+    remaining_weight_g: float | None = None
 
 
 @dataclass(slots=True)
@@ -48,6 +49,8 @@ class FilamentSlot:
     color: str | None = None
     remaining: int | None = None
     active: bool = False
+    # Remaining grams from the AMS NFC/RFID tag (tray_weight * remain%); None for a chipless spool.
+    remaining_weight_g: float | None = None
 
     @property
     def present(self) -> bool:
@@ -76,6 +79,7 @@ class FilamentGroup:
                 remaining=s.remaining,
                 active=s.active,
                 external=self.external,
+                remaining_weight_g=s.remaining_weight_g,
             )
             for s in self.slots
         ]
@@ -113,6 +117,19 @@ class Telemetry:
     ams_slots: list[AmsSlot] = field(default_factory=list)
     ams_humidity: int | None = None
     ams_temperature: float | None = None
+    # Consumption sources: Klipper reports real extruded length (mm); Bambu names the printed file so we
+    # can read its per-filament used_g from the 3mf. Used to auto-decrement the assigned physical spool.
+    filament_used_mm: float | None = None
+    gcode_file: str | None = None
+    # Cooling fans as a percentage (Bambu reports a 0-15 gear; aux = big_fan1, chamber = big_fan2),
+    # speed level (Bambu spd_lvl: 1 Silent .. 4 Ludicrous) and magnitude, and nozzle diameter. Shown in
+    # the Details view; not every model/firmware reports each one.
+    part_fan: int | None = None
+    aux_fan: int | None = None
+    chamber_fan: int | None = None
+    speed_level: int | None = None
+    speed_percent: int | None = None
+    nozzle_diameter: float | None = None
 
 
 @dataclass(slots=True)
@@ -150,6 +167,28 @@ def _number(value: Any) -> float | None:
 def _integer(value: Any) -> int | None:
     number = _number(value)
     return int(number) if number is not None else None
+
+
+def _fan_percent(value: Any) -> int | None:
+    """Bambu reports fan speed as a 0-15 gear; convert to a percentage. A value already above 15 is
+    treated as a direct percentage (some firmwares/models)."""
+    raw = _integer(value)
+    if raw is None:
+        return None
+    if raw > 15:
+        return min(raw, 100)
+    return int(round(raw / 15.0 * 100))
+
+
+def _nfc_grams(tray: dict[str, Any]) -> float | None:
+    """Remaining grams from an AMS NFC/RFID tray: tray_weight (nominal grams) scaled by remain (%).
+    None for a spool whose tag carries no weight (non-RFID / third-party)."""
+    nominal = _number(tray.get("tray_weight"))
+    if nominal is None or nominal <= 0:
+        return None
+    remain = _integer(tray.get("remain"))
+    remain = 100 if remain is None else max(0, min(remain, 100))
+    return nominal * remain / 100.0
 
 
 def _display_name(value: str) -> str:
@@ -216,6 +255,7 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
                 color=str(tray.get("tray_color") or "8E8E93FF") if material else None,
                 remaining=_integer(tray.get("remain")) if material else None,
                 active=resolve_active(slot_id, matches),
+                remaining_weight_g=_nfc_grams(tray) if material else None,
             ))
         # Keep the last known humidity/temperature when a mid-print report omits them.
         previous_unit = next((g for g in previous if g.group_id == f"ams-{unit_id}"), None)
@@ -258,6 +298,7 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
                 color=(str(external.get("tray_color") or "E8E8E8FF")) if material else None,
                 remaining=_integer(external.get("remain")) if material else None,
                 active=resolve_active(slot_id, matches),
+                remaining_weight_g=_nfc_grams(external) if material else None,
             )],
         ))
 
@@ -321,12 +362,30 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
                 result.nozzle, result.nozzle_target = by_id[0]
     if not modern_chamber and (fallback := _number(report.get("chamber_temper"))) is not None and fallback > 10:
         result.chamber = fallback
+    # Fans (part / aux / chamber), speed level+magnitude and nozzle diameter for the Details view.
+    if "cooling_fan_speed" in report:
+        result.part_fan = _fan_percent(report.get("cooling_fan_speed"))
+    if "big_fan1_speed" in report:
+        result.aux_fan = _fan_percent(report.get("big_fan1_speed"))
+    if "big_fan2_speed" in report:
+        result.chamber_fan = _fan_percent(report.get("big_fan2_speed"))
+    if "spd_lvl" in report:
+        result.speed_level = _integer(report.get("spd_lvl"))
+    if "spd_mag" in report:
+        result.speed_percent = _integer(report.get("spd_mag"))
+    diameter = _number(report.get("nozzle_diameter"))
+    if diameter is not None and diameter > 0:
+        result.nozzle_diameter = diameter
     stage = report.get("stage")
     result.stage = _integer(stage.get("_id")) if isinstance(stage, dict) else _integer(report.get("stg_cur"))
     if str(report.get("print_type", "")).lower() == "idle" and result.stage == 0:
         result.stage = 255
     if report.get("subtask_name"):
         result.job_name = _display_name(str(report["subtask_name"]))
+    # The printed file, e.g. "vase.gcode.3mf" — needed to fetch its per-filament used_g after a finish.
+    gcode_file = report.get("gcode_file") or report.get("subtask_name")
+    if gcode_file:
+        result.gcode_file = str(gcode_file)
     if "print_error" in report:
         try:
             result.error_code = int(str(report["print_error"]), 0)

@@ -100,6 +100,34 @@ public sealed class PhysicalSpoolStore
         ChangedInternal(SaveSpools);
     }
 
+    /// <summary>When a real RFID/NFC spool is newly inserted into a slot that still holds a manually
+    /// assigned Spoolbase spool, the assignment is stale (that roll was taken out) - send it back to
+    /// storage so the slot shows the inserted NFC roll's own data. Fires only on the insert transition
+    /// (the slot gains an NFC reading), so a deliberate later assignment is left alone.</summary>
+    public List<(string SpoolId, string Slot)> DetachAssignmentsReplacedByNfc(string printerSerial, List<FilamentGroup> previous, List<FilamentGroup> current)
+    {
+        var detached = new List<(string, string)>();
+        for (int gi = 0; gi < current.Count; gi++)
+        {
+            var group = current[gi];
+            for (int si = 0; si < group.Slots.Count; si++)
+            {
+                if (group.Slots[si].RemainingWeightGrams is null) continue;
+                bool hadNfc = gi < previous.Count && si < previous[gi].Slots.Count
+                    && previous[gi].Slots[si].RemainingWeightGrams is not null;
+                if (hadNfc) continue;
+                var location = SpoolLocation.At(printerSerial, group.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si);
+                if (SpoolAt(location) is { } assigned)
+                {
+                    string slotLabel = group.IsExternal ? group.DisplayName : $"{group.DisplayName} {group.Slots[si].Label}";
+                    Assign(assigned.Id, SpoolLocation.Storage());
+                    detached.Add((assigned.Id, slotLabel));
+                }
+            }
+        }
+        return detached;
+    }
+
     /// <summary>Idempotent per print job: a job id already recorded is ignored (no double-count).</summary>
     public bool Consume(string spoolId, double grams, string printerSerial, string printJobId)
     {
@@ -119,6 +147,26 @@ public sealed class PhysicalSpoolStore
     }
 
     // Persistence
+
+    public IReadOnlyList<SpoolUsageEvent> UsageEvents => _usage;
+
+    /// <summary>Merges a peer's spools and usage history (LAN sync). Spools reconcile by UpdatedAt (newest
+    /// wins, new ids added); usage events union by id and stay idempotent per (printJobID, spoolID).</summary>
+    public bool MergeRemote(List<PhysicalSpool> remoteSpools, List<SpoolUsageEvent> remoteEvents)
+    {
+        bool changed = false;
+        foreach (var e in remoteEvents)
+            if (!_usage.Any(u => u.Id == e.Id || (u.PrintJobId == e.PrintJobId && u.SpoolId == e.SpoolId)))
+            { _usage.Add(e); changed = true; }
+        foreach (var r in remoteSpools)
+        {
+            var local = _spools.FirstOrDefault(s => s.Id == r.Id);
+            if (local is null) { _spools.Add(r); changed = true; }
+            else if (r.UpdatedAt > local.UpdatedAt) { _spools[_spools.IndexOf(local)] = r; changed = true; }
+        }
+        if (changed) { SaveSpools(); Save(_usagePath, _usage); Changed?.Invoke(); }
+        return changed;
+    }
 
     private void ChangedInternal(Action save) { save(); Changed?.Invoke(); }
     private void SaveSpools() => Save(_spoolsPath, _spools);

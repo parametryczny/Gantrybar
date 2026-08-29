@@ -32,6 +32,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _parse_iso(value: Any) -> datetime:
+    if not isinstance(value, str) or not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def normalized_hex(value: str) -> str:
     filtered = (value or "").strip().lstrip("#").upper()
     if len(filtered) == 6 and all(c in "0123456789ABCDEF" for c in filtered):
@@ -66,6 +76,9 @@ class Filament:
             manufacturerCode=data.get("manufacturerCode", ""), spoolCount=data.get("spoolCount", 0),
             notes=data.get("notes", ""), updatedAt=data.get("updatedAt", _now()),
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 def load_catalog() -> list[dict[str, Any]]:
@@ -132,6 +145,25 @@ class FilamentStore:
                 self._changed()
                 return
 
+    def merge_remote(self, remote: list[dict[str, Any]]) -> bool:
+        """Reconcile a peer's catalogue by id, last-write-wins on updatedAt (LAN sync)."""
+        by_id = {f.id: f for f in self.filaments}
+        changed = False
+        for data in remote or []:
+            incoming = Filament.from_dict(data)
+            local = by_id.get(incoming.id)
+            if local is None:
+                self.filaments.append(incoming)
+                by_id[incoming.id] = incoming
+                changed = True
+            elif _parse_iso(incoming.updatedAt) > _parse_iso(local.updatedAt):
+                self.filaments[self.filaments.index(local)] = incoming
+                by_id[incoming.id] = incoming
+                changed = True
+        if changed:
+            self._changed()
+        return changed
+
     def _changed(self) -> None:
         self._save()
         if self.on_change:
@@ -172,7 +204,7 @@ class SpoolbaseWindow(Gtk.Window):
     def __init__(self, app: Any) -> None:
         super().__init__()
         self.app = app
-        self.store = FilamentStore()
+        self.store = getattr(app, "filament_store", None) or FilamentStore()
         self.store.on_change = self._render
         self._suppress_hide = False
         self._just_shown = False

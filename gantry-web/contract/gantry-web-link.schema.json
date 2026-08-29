@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gantry.app/contracts/web-link-v1.schema.json",
+  "title": "Gantry Web Link snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "generatedAt", "device", "printers"],
+  "properties": {
+    "protocolVersion": { "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "platform", "appVersion"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,96}$" },
+        "name": { "type": "string", "maxLength": 80 },
+        "platform": { "enum": ["macos", "windows", "linux"] },
+        "appVersion": { "type": "string", "maxLength": 32 }
+      }
+    },
+    "printers": {
+      "type": "array",
+      "maxItems": 250,
+      "items": { "$ref": "#/$defs/printer" }
+    }
+  },
+  "$defs": {
+    "temperature": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": { "current": { "type": ["number", "null"] }, "target": { "type": ["number", "null"] } }
+    },
+    "nozzleTemperature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "current", "target"],
+      "properties": {
+        "label": { "type": "string", "maxLength": 4 },
+        "current": { "type": ["number", "null"] },
+        "target": { "type": ["number", "null"] }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "material", "colorHex", "active", "present"],
+      "properties": {
+        "id": { "type": "string", "maxLength": 32 },
+        "label": { "type": "string", "maxLength": 24 },
+        "material": { "type": "string", "maxLength": 32 },
+        "colorHex": { "type": "string", "pattern": "^#?[0-9A-Fa-f]{6}$" },
+        "remainingPercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "remainingGrams": { "type": ["number", "null"], "minimum": 0 },
+        "active": { "type": "boolean" },
+        "present": { "type": "boolean" }
+      }
+    },
+    "printer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "model", "connectionType", "state", "job", "temperatures", "filamentGroups"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,96}$" },
+        "name": { "type": "string", "maxLength": 80 },
+        "model": { "type": "string", "maxLength": 64 },
+        "connectionType": { "type": "string", "maxLength": 24 },
+        "state": { "enum": ["printing", "paused", "finished", "error", "idle", "offline"] },
+        "job": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fileName", "progress", "remainingSeconds", "eta", "currentLayer", "totalLayers"],
+          "properties": {
+            "fileName": { "type": "string", "maxLength": 220 },
+            "progress": { "type": "number", "minimum": 0, "maximum": 100 },
+            "remainingSeconds": { "type": "number", "minimum": 0 },
+            "eta": { "type": ["string", "null"], "format": "date-time" },
+            "currentLayer": { "type": "number", "minimum": 0 },
+            "totalLayers": { "type": "number", "minimum": 0 }
+          }
+        },
+        "temperatures": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["nozzles", "bed", "chamber"],
+          "properties": {
+            "nozzles": { "type": "array", "maxItems": 2, "items": { "$ref": "#/$defs/nozzleTemperature" } },
+            "bed": { "$ref": "#/$defs/temperature" },
+            "chamber": { "$ref": "#/$defs/temperature" }
+          }
+        },
+        "filamentGroups": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name", "kind", "humidityPercent", "temperatureCelsius", "slots"],
+            "properties": {
+              "id": { "type": "string", "maxLength": 32 },
+              "name": { "type": "string", "maxLength": 32 },
+              "kind": { "enum": ["ams", "ams-ht", "ext"] },
+              "humidityPercent": { "type": ["number", "null"] },
+              "temperatureCelsius": { "type": ["number", "null"] },
+              "slots": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/slot" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
