@@ -123,7 +123,7 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.08); border-radius: 16px; padding: 9px; }
 .card.printing { background-color: %(card)s; background-image: radial-gradient(farthest-side at left top, alpha(#ff6857, 0.22), alpha(#ff6857, 0.08) 42%%, alpha(#ff6857, 0.00) 82%%); border-color: alpha(#ff6857, 0.24); }
 .printer-icon { color: #d7d7d2; margin-right: 2px; }
-.printer-name { font-size: 13px; font-weight: 650; }
+.printer-name { font-size: 13px; font-weight: 600; }
 .connection { color: %(secondary)s; border: 1px solid alpha(#ffffff, 0.12); border-radius: 6px; padding: 2px 6px; font-family: monospace; font-size: 9px; font-weight: 600; }
 .job-surface { background: alpha(#ffffff, 0.035); border: 1px solid alpha(#ffffff, 0.08); border-radius: 10px; padding: 5px 7px 6px; }
 .card-notice { background: alpha(#ff6857, 0.16); border: 1px solid alpha(#ff6857, 0.34); border-radius: 9px; padding: 5px 6px 5px 9px; }
@@ -135,13 +135,13 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .meta { color: %(secondary)s; font-size: 11px; }
 .status { color: #d7d7d2; font-weight: 700; font-size: 10px; }
 .card.printing .status, .card.printing .percent { color: #ff6857; }
-.percent { color: #d7d7d2; font-size: 22px; font-weight: 650; }
+.percent { color: #d7d7d2; font-size: 22px; font-weight: 600; }
 .eta { color: #d7d7d2; border: 1px solid alpha(#ffffff, 0.10); border-radius: 8px; padding: 3px 7px; font-family: monospace; font-size: 10px; font-weight: 600; }
 .temp-bento { background: alpha(#ffffff, 0.035); border: 1px solid alpha(#ffffff, 0.08); border-radius: 10px; }
 .temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.08); }
 .temp-zone:first-child { border-left: none; }
-.temp-name { color: %(secondary)s; font-family: monospace; font-size: 7px; font-weight: 650; }
-.temp-value { color: #f5f5f7; font-family: monospace; font-size: 14px; font-weight: 650; }
+.temp-name { color: %(secondary)s; font-family: monospace; font-size: 7px; font-weight: 600; }
+.temp-value { color: #f5f5f7; font-family: monospace; font-size: 14px; font-weight: 600; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
 .ams-group { background: alpha(#ffffff, 0.07); border-radius: 12px; padding: 9px 11px; }
