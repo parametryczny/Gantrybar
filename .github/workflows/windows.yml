@@ -36,6 +36,22 @@ jobs:
           if (-not $exe) { throw "Gantry.exe not found after build." }
           & $exe.FullName --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render Spoolbase preview (off-screen WPF)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path Gantry.Windows\bin\Release -Recurse -Filter Gantry.exe | Select-Object -First 1
+          if (-not $exe) { throw "Gantry.exe not found for render." }
+          $out = Join-Path $PWD "render-out"
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--render","$out" -Wait -PassThru
+          Write-Host "render exit: $($p.ExitCode)"
+          if (Test-Path $out) { Get-ChildItem $out | ForEach-Object { Write-Host $_.Name $_.Length } }
+          else { Write-Warning "no render output" }
+      - name: Upload Windows preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-preview
+          path: windows/render-out/*.png
+          if-no-files-found: warn
       # Self-contained FOLDER publish (not a self-extracting single-file exe). The self-extract
       # pattern is the main trigger for Avast/SmartScreen false positives — see issue #20.
       - name: Publish self-contained app

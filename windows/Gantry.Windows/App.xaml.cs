@@ -56,6 +56,24 @@ public partial class App : Application
             return;
         }
 
+        // Off-screen render of the Spoolbase UI to PNG (for previews on CI): --render <out-dir>
+        if (e.Args.Contains("--render", StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var idx = Array.FindIndex(e.Args, a => a.Equals("--render", StringComparison.OrdinalIgnoreCase));
+                var outDir = idx >= 0 && idx + 1 < e.Args.Length ? e.Args[idx + 1] : ".";
+                Gantry.UI.RenderHarness.RenderAll(outDir);
+                Shutdown(0);
+            }
+            catch (Exception ex)
+            {
+                LogError("Render", ex);
+                Shutdown(1);
+            }
+            return;
+        }
+
         // Windows-1252 is not registered by default on .NET 8; the status parser uses it to
         // repair mis-encoded print names.
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
