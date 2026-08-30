@@ -200,13 +200,24 @@ class DetailWindow(Gtk.Window):
         self.graph.queue_draw()
         self.show_all()
 
-    def _tile(self, name: str, value: str) -> Gtk.Widget:
+    def _tile(self, name: str, value: str, cur: float | None = None, tgt: float | None = None,
+              strong: bool = False) -> Gtk.Widget:
         zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         zone.get_style_context().add_class("temp-zone")
         label = Gtk.Label(label=name.upper(), xalign=0)
         label.get_style_context().add_class("temp-name")
         val = Gtk.Label(label=value, xalign=0.5)
-        val.get_style_context().add_class("temp-value")
+        vctx = val.get_style_context()
+        vctx.add_class("temp-value")
+        if strong:
+            vctx.add_class("strong")   # hardware values (fans / speed / diameter) stay bright
+        else:
+            # Temperature values follow activity, like macOS: heating warm, cooling cool, else grey.
+            target = tgt or 0
+            if cur is not None and target > 5 and cur < target - 3:
+                vctx.add_class("heat")
+            elif cur is not None and cur > max(target, 0) + 5 and cur > 30:
+                vctx.add_class("cool")
         zone.pack_start(label, False, False, 0)
         zone.pack_start(val, False, False, 0)
         return zone
@@ -225,29 +236,32 @@ class DetailWindow(Gtk.Window):
         if dual:
             left = next((n for n in nozzles if n.position == "left"), nozzles[0])
             right = next((n for n in nozzles if n.position == "right"), None)
-            self.temps.pack_start(self._tile("Dysza P" if pl else "Nozzle R",
-                                             fmt(right.current if right else None, right.target if right else None)), True, True, 0)
-            self.temps.pack_start(self._tile("Dysza L" if pl else "Nozzle L", fmt(left.current, left.target)), True, True, 0)
+            rc, rt = (right.current, right.target) if right else (None, None)
+            self.temps.pack_start(self._tile("Dysza P" if pl else "Nozzle R", fmt(rc, rt), rc, rt), True, True, 0)
+            self.temps.pack_start(self._tile("Dysza L" if pl else "Nozzle L", fmt(left.current, left.target),
+                                             left.current, left.target), True, True, 0)
         else:
             cur = nozzles[0].current if nozzles else tel.nozzle
             tgt = nozzles[0].target if nozzles else tel.nozzle_target
-            self.temps.pack_start(self._tile("Dysza" if pl else "Nozzle", fmt(cur, tgt)), True, True, 0)
-        self.temps.pack_start(self._tile("Stół" if pl else "Bed", fmt(tel.bed, tel.bed_target)), True, True, 0)
-        self.temps.pack_start(self._tile("Komora" if pl else "Chamber", fmt(tel.chamber, None)), True, True, 0)
+            self.temps.pack_start(self._tile("Dysza" if pl else "Nozzle", fmt(cur, tgt), cur, tgt), True, True, 0)
+        self.temps.pack_start(self._tile("Stół" if pl else "Bed", fmt(tel.bed, tel.bed_target),
+                                         tel.bed, tel.bed_target), True, True, 0)
+        self.temps.pack_start(self._tile("Komora" if pl else "Chamber", fmt(tel.chamber, None),
+                                         tel.chamber, None), True, True, 0)
 
     def _fill_hardware(self, tel: Telemetry, pl: bool) -> None:
         for child in self.hw.get_children():
             self.hw.remove(child)
         fan = lambda v: "—" if v is None else f"{v}%"
-        self.hw.pack_start(self._tile("Went. części" if pl else "Part fan", fan(tel.part_fan)), True, True, 0)
-        self.hw.pack_start(self._tile("Went. aux" if pl else "Aux fan", fan(tel.aux_fan)), True, True, 0)
-        self.hw.pack_start(self._tile("Went. komory" if pl else "Chamber fan", fan(tel.chamber_fan)), True, True, 0)
+        self.hw.pack_start(self._tile("Went. części" if pl else "Part fan", fan(tel.part_fan), strong=True), True, True, 0)
+        self.hw.pack_start(self._tile("Went. aux" if pl else "Aux fan", fan(tel.aux_fan), strong=True), True, True, 0)
+        self.hw.pack_start(self._tile("Went. komory" if pl else "Chamber fan", fan(tel.chamber_fan), strong=True), True, True, 0)
         if tel.speed_level or tel.speed_percent is not None:
             name = _SPEED_NAMES.get(tel.speed_level or 0, ("", ""))[0 if pl else 1]
             pct = f"{tel.speed_percent}%" if tel.speed_percent is not None else ""
-            self.hw.pack_start(self._tile("Prędkość" if pl else "Speed", (f"{name} {pct}").strip() or "—"), True, True, 0)
+            self.hw.pack_start(self._tile("Prędkość" if pl else "Speed", (f"{name} {pct}").strip() or "—", strong=True), True, True, 0)
         if tel.nozzle_diameter:
-            self.hw.pack_start(self._tile("Dysza mm" if pl else "Nozzle mm", f"{tel.nozzle_diameter:.1f}"), True, True, 0)
+            self.hw.pack_start(self._tile("Dysza mm" if pl else "Nozzle mm", f"{tel.nozzle_diameter:.1f}", strong=True), True, True, 0)
 
     def _fill_filaments(self, tel: Telemetry, pl: bool) -> None:
         for child in self.ams.get_children():

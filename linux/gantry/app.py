@@ -147,6 +147,7 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .temp-value { color: %(secondary)s; font-family: monospace; font-size: 14px; font-weight: 600; }
 .temp-value.heat { color: #d18c82; }
 .temp-value.cool { color: #8ca8c7; }
+.temp-value.strong { color: %(foreground)s; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
 .ams-group { background: alpha(#ffffff, 0.052); border-radius: 12px; padding: 9px 11px; }
@@ -293,7 +294,9 @@ class PrinterCard(Gtk.Frame):
         self.temps = Gtk.Box(spacing=0, homogeneous=True)
         self.temps.get_style_context().add_class("temp-bento")
         self.box.pack_start(self.temps, False, False, 0)
-        self.ams = Gtk.Box(spacing=6)
+        # Filament modules laid out on a homogeneous grid so groups share the card width by weight
+        # (a multi-slot AMS takes 3 columns, a single EXT/HT takes 1), like macOS.
+        self.ams = Gtk.Grid(column_spacing=6, column_homogeneous=True)
         self.box.pack_start(self.ams, False, False, 0)
         target = Gtk.TargetEntry.new("application/x-gantry-printer", Gtk.TargetFlags.SAME_APP, 0)
         self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, [target], Gdk.DragAction.MOVE)
@@ -455,9 +458,15 @@ class PrinterCard(Gtk.Frame):
             self.ams.remove(child)
         spoolbase_on = bool(self.app.config.data.get("spoolbase_enabled", True))
         store = getattr(self.app, "physical_spools", None) if spoolbase_on else None
+        column = 0
         for group_index, group in enumerate(telemetry.filament_groups):
+            # A real multi-slot AMS is ~3x wider than a single EXT/HT, and a lone slot is a narrower,
+            # centred tile (matches the macOS grid).
+            weight = 3 if group.declared_capacity > 1 else 1
+            is_single = len(group.slots) <= 1
             gbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             gbox.get_style_context().add_class("ams-group")
+            gbox.set_hexpand(True)
             env: list[str] = []
             if group.humidity is not None:
                 env.append(f"{group.humidity}/5" if group.humidity <= 5 else f"{group.humidity}%")
@@ -481,7 +490,13 @@ class PrinterCard(Gtk.Frame):
                                          if f.id == assigned.get("filamentDefinitionID")), None)
                 sbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
                 swatch = Gtk.Label(label="")
-                swatch.set_size_request(56, 38)
+                if is_single:
+                    swatch.set_size_request(64, 38)          # lone slot: narrower, centred
+                    swatch.set_halign(Gtk.Align.CENTER)
+                else:
+                    swatch.set_size_request(40, 38)          # AMS slots stretch to fill the group evenly
+                    swatch.set_hexpand(True)
+                    swatch.set_halign(Gtk.Align.FILL)
                 ctx = swatch.get_style_context()
                 ctx.add_class("ams")
                 if slot.active:
@@ -546,11 +561,12 @@ class PrinterCard(Gtk.Frame):
                     event_box.connect("button-press-event",
                                       lambda _w, _e, g=group, gi=group_index, s=slot, si=slot_index:
                                       self._open_slot_assign(g, gi, s, si))
-                    srow.pack_start(event_box, False, False, 0)
+                    srow.pack_start(event_box, True, True, 0)
                 else:
-                    srow.pack_start(sbox, False, False, 0)
+                    srow.pack_start(sbox, True, True, 0)
             gbox.pack_start(srow, False, False, 0)
-            self.ams.pack_start(gbox, False, False, 0)
+            self.ams.attach(gbox, column, 0, weight, 1)
+            column += weight
         self.ams.show_all()
 
     def show_notice(self, text: str) -> None:
