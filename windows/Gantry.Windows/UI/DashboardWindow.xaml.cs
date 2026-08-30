@@ -807,24 +807,26 @@ public partial class DashboardWindow : Window
             bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
             string bedLabel = pl ? "Stół" : "Bed";
             string chamberLabel = pl ? "Komora" : "Chamber";
-            var nozzleBrush = GTheme.Brush(GTheme.Nozzle);
+            // Temperature value colour follows activity (warm heating, cool cooling, grey at temperature /
+            // idle; grey in monochrome mode) — same as macOS/Linux, not a fixed per-zone tint.
+            Brush ActivityBrush(double? cur, double? tgt) => TempColor(cur, tgt) ?? GTheme.Brush(GTheme.Secondary);
             var cells = new List<(string, string, Brush?)>();
             if (dual)
             {
                 var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
                 var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
-                cells.Add((pl ? "Dysze L" : "Nozzles L", FormatTemp(left.CurrentTemperature, left.TargetTemperature), nozzleBrush));
-                cells.Add(("P", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature), nozzleBrush));
+                cells.Add((pl ? "Dysze L" : "Nozzles L", FormatTemp(left.CurrentTemperature, left.TargetTemperature), ActivityBrush(left.CurrentTemperature, left.TargetTemperature)));
+                cells.Add(("P", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature), ActivityBrush(right?.CurrentTemperature, right?.TargetTemperature)));
             }
             else
             {
                 var single = nozzles[0];
-                cells.Add((pl ? "Dysza" : "Nozzle", FormatTemp(single.CurrentTemperature, single.TargetTemperature), nozzleBrush));
+                cells.Add((pl ? "Dysza" : "Nozzle", FormatTemp(single.CurrentTemperature, single.TargetTemperature), ActivityBrush(single.CurrentTemperature, single.TargetTemperature)));
             }
-            cells.Add((bedLabel, FormatTemp(t.BedTemperature, t.BedTargetTemperature), GTheme.Brush(GTheme.Bed)));
+            cells.Add((bedLabel, FormatTemp(t.BedTemperature, t.BedTargetTemperature), ActivityBrush(t.BedTemperature, t.BedTargetTemperature)));
             // Chamber tile only when there is an actual reading (no empty "— / —" tile).
             if (t.ChamberTemperature is { } ch)
-                cells.Add((chamberLabel, FormatTemp(ch, null), GTheme.Brush(GTheme.Chamber)));
+                cells.Add((chamberLabel, FormatTemp(ch, null), ActivityBrush(ch, null)));
             _temps.Children.Add(TempRow(cells.ToArray()));
 
             // Filament modules laid out in rows of up to two, side by side (macOS layout): an AMS is
