@@ -1898,10 +1898,12 @@ private final class TemperatureBentoView: NSView {
         }
 
         for (index, zone) in zones.enumerated() {
+            // Monochrome mode: every temperature stays grey instead of its warm/cool zone tint.
+            let tint = settings.monochrome ? NSColor.secondaryLabelColor : zone.3
             row.addArrangedSubview(ThermalZoneView(label: zone.0,
                                                    current: Self.value(zone.1),
                                                    target: Self.target(zone.2),
-                                                   tint: zone.3,
+                                                   tint: tint,
                                                    separated: index > 0))
         }
     }
