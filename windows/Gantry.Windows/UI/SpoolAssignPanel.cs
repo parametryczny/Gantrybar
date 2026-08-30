@@ -238,11 +238,10 @@ internal sealed class SpoolAssignPanel
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        if (dot is { } c)
-        {
-            var sw = new Border { Width = 12, Height = 12, CornerRadius = new CornerRadius(5), Background = new SolidColorBrush(c), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(sw, 0); grid.Children.Add(sw);
-        }
+        // Always show a swatch so a row is never bare — a spool with no linked filament gets a neutral grey.
+        var c = dot ?? Color.FromRgb(0x5A, 0x5A, 0x5E);
+        var sw = new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(7), Background = new SolidColorBrush(c), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 9, 0), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(sw, 0); grid.Children.Add(sw);
         var text = new StackPanel();
         text.Children.Add(new TextBlock { Text = title, FontSize = 12, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Text), TextTrimming = TextTrimming.CharacterEllipsis });
         text.Children.Add(new TextBlock { Text = subtitle, FontSize = 10, Foreground = GTheme.Brush(highlight ? GTheme.Humidity : GTheme.Secondary), TextTrimming = TextTrimming.CharacterEllipsis });

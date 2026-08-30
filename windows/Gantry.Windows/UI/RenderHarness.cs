@@ -1,7 +1,9 @@
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Gantry.Models;
 using Gantry.Services;
 
 namespace Gantry.UI;
@@ -21,6 +23,39 @@ internal static class RenderHarness
         Safe(() => RenderWindow(new SpoolbaseEditWindow(store, null, false), Path.Combine(outDir, "win-editor.png")));
         Safe(() => RenderWindow(new SpoolbaseWindow(), Path.Combine(outDir, "win-spoolbase.png")));
         Safe(() => RenderWindow(new DashboardWindow(new PrinterStore(a => a())), Path.Combine(outDir, "win-dashboard.png")));
+        Safe(() => RenderAssignPanel(Path.Combine(outDir, "win-assign.png")));
+    }
+
+    private static void RenderAssignPanel(string path)
+    {
+        var fils = SpoolbaseShared.Filaments.Filaments;
+        if (fils.Count > 0 && SpoolbaseShared.Spools.Spools.Count == 0)
+        {
+            int i = 1;
+            foreach (var f in fils.Take(4))
+            {
+                SpoolbaseShared.Spools.Add(new PhysicalSpool
+                {
+                    Id = SpoolbaseShared.Spools.NextSpoolId(),
+                    FilamentDefinitionId = f.Id,
+                    NominalWeightGrams = 1000,
+                    RemainingWeightGrams = 1000 - i * 130,
+                    Status = SpoolStatus.Stored,
+                    Location = SpoolLocation.Storage()
+                });
+                i++;
+            }
+        }
+        var loc = SpoolLocation.At("X1", SpoolFeeder.Ams, 0, 1);
+        var panel = SpoolAssignPanel.Build(loc, "AMS A2", "PLA", "E89CC6", () => { });
+        var win = new Window
+        {
+            Width = 340,
+            SizeToContent = SizeToContent.Height,
+            Background = new SolidColorBrush(Color.FromRgb(0x0C, 0x0D, 0x0E)),
+            Content = panel
+        };
+        RenderWindow(win, path);
     }
 
     private static void Safe(System.Action action)
