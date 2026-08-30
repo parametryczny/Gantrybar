@@ -80,13 +80,15 @@ def main(out_path: str) -> None:
 
     detail = DetailWindow(app, "X1")
     detail.update(tel)
-    child = detail.get_child()
-    detail.remove(child)
-    child.set_size_request(430, -1)
+    # Render the content box directly: the ScrolledWindow collapses to zero height offscreen, so
+    # reparent the body (graph + tiles + filaments) which has a real natural height.
+    body = detail.body
+    body.get_parent().remove(body)
+    body.set_size_request(430, -1)
 
     win = Gtk.OffscreenWindow()
     win.get_style_context().add_class("popover-window")
-    win.add(child)
+    win.add(body)
     win.show_all()
     for _ in range(4):
         while Gtk.events_pending():
