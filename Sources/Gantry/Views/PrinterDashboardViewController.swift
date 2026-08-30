@@ -130,7 +130,7 @@ final class PrinterDashboardViewController: NSViewController {
         let addButton = iconButton("plus", tooltip: "Dodaj drukarkę / Add printer", action: #selector(addPressed))
         let refreshButton = iconButton("arrow.clockwise", tooltip: "Połącz ponownie / Reconnect", action: #selector(refreshPressed))
         // Reset (clear finished jobs) — compact icon.
-        resetButton.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+        resetButton.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
         resetButton.imagePosition = .imageOnly
         resetButton.isBordered = false
         resetButton.contentTintColor = GantryTheme.secondary
