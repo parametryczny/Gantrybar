@@ -167,6 +167,45 @@ progressbar progress { border-radius: 2px; background: #ff6857; }
          "secondary": secondary, "trough": trough, "job": job, "walpha": window_alpha}).encode()
 
 
+def _draw_glyph(widget: Gtk.Widget, cr: object, kind: str) -> bool:
+    """Draw a small monochrome icon with Cairo (chart / layers / reorder grip) so it never depends on
+    font glyphs. Some fonts lack the block/geometric characters and render them as tofu boxes."""
+    alloc = widget.get_allocation()
+    w, h = alloc.width, alloc.height
+    style = widget.get_style_context()
+    rgba = style.get_color(style.get_state())
+    cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, rgba.alpha)
+    cr.set_line_width(1.4)
+    cr.set_line_cap(1)   # round
+    cr.set_line_join(1)  # round
+    if kind == "chart":
+        pad = 1.5
+        pts = [(pad, h - pad - 1), (w * 0.34, h * 0.46), (w * 0.6, h * 0.6), (w - pad, pad + 1)]
+        cr.move_to(*pts[0])
+        for p in pts[1:]:
+            cr.line_to(*p)
+        cr.stroke()
+    elif kind == "layers":
+        for y in (h * 0.28, h * 0.52, h * 0.76):
+            cr.move_to(1, y)
+            cr.line_to(w - 1, y)
+        cr.stroke()
+    elif kind == "grip":
+        cx = w / 2
+        cr.move_to(cx - 3, h * 0.40); cr.line_to(cx, h * 0.28); cr.line_to(cx + 3, h * 0.40)  # ^
+        cr.move_to(cx - 3, h * 0.60); cr.line_to(cx, h * 0.72); cr.line_to(cx + 3, h * 0.60)  # v
+        cr.stroke()
+    return False
+
+
+def _icon(kind: str, width: int, height: int, css: str = "meta") -> Gtk.DrawingArea:
+    area = Gtk.DrawingArea()
+    area.set_size_request(width, height)
+    area.get_style_context().add_class(css)
+    area.connect("draw", lambda widget, cr: _draw_glyph(widget, cr, kind))
+    return area
+
+
 class PrinterCard(Gtk.Frame):
     def __init__(self, app: "Gantry", printer: Printer) -> None:
         super().__init__()
@@ -204,11 +243,11 @@ class PrinterCard(Gtk.Frame):
         self.connection = Gtk.Label(label=connection_text)
         self.connection.get_style_context().add_class("connection")
         top.pack_start(icon, False, False, 0)
-        drag = Gtk.Label(label="⌄⌃")
-        drag.get_style_context().add_class("meta")
+        drag = _icon("grip", 12, 18)
         drag.set_tooltip_text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek"
                               if self.app.language == "pl" else "Drag up/down to reorder printers")
-        chart = Gtk.Button(label="▁▄▇"); chart.set_relief(Gtk.ReliefStyle.NONE); chart.get_style_context().add_class("cardmenu")
+        chart = Gtk.Button(); chart.set_relief(Gtk.ReliefStyle.NONE); chart.get_style_context().add_class("cardmenu")
+        chart.add(_icon("chart", 18, 13, css="cardmenu"))
         chart.set_tooltip_text("Szczegóły" if self.app.language == "pl" else "Details")
         chart.connect("clicked", lambda *_: self.app.open_details(self.printer.serial))
         menu = Gtk.Button(label="⋯"); menu.set_relief(Gtk.ReliefStyle.NONE); menu.get_style_context().add_class("cardmenu")
@@ -230,7 +269,10 @@ class PrinterCard(Gtk.Frame):
         self.status_row.pack_start(self.status, False, False, 0)
         self.status_row.pack_start(Gtk.Label(label="·"), False, False, 0)
         self.status_row.pack_start(self.job, True, True, 0)
-        self.status_row.pack_start(self.progress_meta, False, False, 0)
+        meta_box = Gtk.Box(spacing=4)
+        meta_box.pack_start(_icon("layers", 12, 11), False, False, 0)
+        meta_box.pack_start(self.progress_meta, False, False, 0)
+        self.status_row.pack_start(meta_box, False, False, 0)
         self.job_surface.pack_start(self.status_row, False, False, 0)
         progress_row = Gtk.Box(spacing=7)
         self.progress = Gtk.ProgressBar(show_text=False)
@@ -355,7 +397,7 @@ class PrinterCard(Gtk.Frame):
             eta = "—"
         layers = "—" if telemetry.current_layer is None else f"{telemetry.current_layer}/{telemetry.total_layers or '—'}"
         self.eta.set_text(f"ETA {eta}")
-        self.progress_meta.set_text(f"▤ {layers}")
+        self.progress_meta.set_text(layers)
 
         pl = self.app.language == "pl"
 
