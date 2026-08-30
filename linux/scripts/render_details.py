@@ -93,6 +93,12 @@ def main(out_path: str) -> None:
     for _ in range(4):
         while Gtk.events_pending():
             Gtk.main_iteration()
+    # The temperature graph is a DrawingArea; force an expose after it has a real allocation so its
+    # cairo lines land in the captured pixbuf.
+    detail.graph.queue_draw()
+    for _ in range(4):
+        while Gtk.events_pending():
+            Gtk.main_iteration()
     pixbuf = win.get_pixbuf()
     pixbuf.savev(out_path, "png", [], [])
     print("rendered", out_path, pixbuf.get_width(), "x", pixbuf.get_height())
