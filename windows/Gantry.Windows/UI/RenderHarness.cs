@@ -18,8 +18,14 @@ internal static class RenderHarness
         var store = new FilamentStore();
         Seed(store);
 
-        RenderWindow(new SpoolbaseEditWindow(store, null, false), Path.Combine(outDir, "win-editor.png"));
-        RenderWindow(new SpoolbaseWindow(), Path.Combine(outDir, "win-spoolbase.png"));
+        Safe(() => RenderWindow(new SpoolbaseEditWindow(store, null, false), Path.Combine(outDir, "win-editor.png")));
+        Safe(() => RenderWindow(new SpoolbaseWindow(), Path.Combine(outDir, "win-spoolbase.png")));
+        Safe(() => RenderWindow(new DashboardWindow(new PrinterStore(a => a())), Path.Combine(outDir, "win-dashboard.png")));
+    }
+
+    private static void Safe(System.Action action)
+    {
+        try { action(); } catch { /* one render failing should not block the others */ }
     }
 
     private static void Seed(FilamentStore store)
