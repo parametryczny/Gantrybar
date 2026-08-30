@@ -513,7 +513,11 @@ final class PrinterDashboardViewController: NSViewController {
 
     private func iconButton(_ symbol: String, tooltip: String, action: Selector) -> NSButton {
         let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)!, target: self, action: action)
-        button.bezelStyle = .circular
+        // Flat, borderless icon so Reconnect and Add match the other header buttons (columns / list /
+        // clear) instead of showing filled circular bezels.
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.contentTintColor = GantryTheme.secondary
         button.toolTip = tooltip
         return button
     }
