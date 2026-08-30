@@ -28,6 +28,8 @@ jobs:
         run: PYTHONPATH=linux python3 -m compileall -q linux/gantry
       - name: Load GTK application module
         run: xvfb-run -a env PYTHONPATH=linux python3 -c "import gantry.app"
+      - name: Desktop integration self-test (tray detection must succeed with appindicator installed)
+        run: xvfb-run -a env PYTHONPATH=linux python3 -m gantry --diagnose
       - name: Build Debian package
         run: GANTRY_PACKAGE_SUFFIX=hotfix sh linux/scripts/build-deb.sh
       - name: Inspect Debian package
