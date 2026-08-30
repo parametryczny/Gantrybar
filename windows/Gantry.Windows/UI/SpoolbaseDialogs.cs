@@ -1,11 +1,109 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Markup;
 using System.Windows.Media;
 using Gantry.Services;
 
 namespace Gantry.UI;
+
+/// <summary>Shared dark chrome (immersive dark title bar + rounded corners) and a dark ComboBox style,
+/// so the Spoolbase dialogs match the macOS look instead of a plain white WPF form.</summary>
+internal static class SpoolbaseChrome
+{
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+    public static void ApplyDark(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        int dark = 1, round = 2;
+        try
+        {
+            DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));   // DWMWA_USE_IMMERSIVE_DARK_MODE
+            DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));  // DWMWA_WINDOW_CORNER_PREFERENCE
+        }
+        catch { /* older Windows: plain title bar is fine */ }
+    }
+
+    private static System.Windows.Style? _combo;
+    private static bool _comboTried;
+    public static System.Windows.Style? DarkCombo
+    {
+        get
+        {
+            if (_comboTried) return _combo;
+            _comboTried = true;
+            try { _combo = (System.Windows.Style)XamlReader.Parse(ComboXaml); }
+            catch { _combo = null; }
+            return _combo;
+        }
+    }
+
+    private const string ComboXaml = @"
+<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+       xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ComboBox'>
+  <Setter Property='Foreground' Value='#F5F5F7'/>
+  <Setter Property='ItemContainerStyle'>
+    <Setter.Value>
+      <Style TargetType='ComboBoxItem'>
+        <Setter Property='Foreground' Value='#F5F5F7'/>
+        <Setter Property='Padding' Value='9,6'/>
+        <Setter Property='Template'>
+          <Setter.Value>
+            <ControlTemplate TargetType='ComboBoxItem'>
+              <Border x:Name='b' Background='Transparent' Padding='{TemplateBinding Padding}'>
+                <ContentPresenter/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property='IsHighlighted' Value='True'>
+                  <Setter TargetName='b' Property='Background' Value='#22FFFFFF'/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </Setter.Value>
+  </Setter>
+  <Setter Property='Template'>
+    <Setter.Value>
+      <ControlTemplate TargetType='ComboBox'>
+        <Grid>
+          <ToggleButton Focusable='False' ClickMode='Press'
+              IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
+            <ToggleButton.Template>
+              <ControlTemplate TargetType='ToggleButton'>
+                <Border CornerRadius='8' Background='#22FFFFFF' Padding='9,6'>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/>
+                    </Grid.ColumnDefinitions>
+                    <ContentPresenter VerticalAlignment='Center'
+                        Content='{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}'/>
+                    <Path Grid.Column='1' VerticalAlignment='Center' Margin='6,0,0,0'
+                        Data='M0,0 L7,0 L3.5,4 Z' Fill='#9A9A9E'/>
+                  </Grid>
+                </Border>
+              </ControlTemplate>
+            </ToggleButton.Template>
+          </ToggleButton>
+          <Popup IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True'
+                 Focusable='False' PopupAnimation='Fade'>
+            <Border CornerRadius='8' Background='#FF2A2A2C' BorderBrush='#33FFFFFF' BorderThickness='1'
+                    Margin='0,3,0,0' MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}'>
+              <ScrollViewer MaxHeight='240'><ItemsPresenter/></ScrollViewer>
+            </Border>
+          </Popup>
+        </Grid>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>";
+}
 
 /// <summary>Searchable catalog picker — add a filament from the bundled catalog to the inventory.</summary>
 public sealed class SpoolbaseCatalogWindow : Window
@@ -28,6 +126,7 @@ public sealed class SpoolbaseCatalogWindow : Window
         Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x26));
         Foreground = Ink;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
+        SourceInitialized += (_, _) => SpoolbaseChrome.ApplyDark(this);
 
         var root = new DockPanel { Margin = new Thickness(14) };
 
@@ -125,6 +224,7 @@ public sealed class SpoolbaseEditWindow : Window
         Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x26));
         Foreground = Ink;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
+        SourceInitialized += (_, _) => SpoolbaseChrome.ApplyDark(this);
 
         var stack = new StackPanel { Margin = new Thickness(16) };
 
@@ -139,7 +239,9 @@ public sealed class SpoolbaseEditWindow : Window
         {
             foreach (var v in FilamentCatalogMeta.Types) _type.Items.Add(v);
             _type.SelectedItem = FilamentCatalogMeta.Types.Contains(_original.Type) ? _original.Type : "PLA";
-            _type.Foreground = Brushes.Black;
+            if (SpoolbaseChrome.DarkCombo is { } comboStyle) _type.Style = comboStyle;
+            else _type.Foreground = Brushes.Black;   // fallback: readable on the default light combo
+            _type.Margin = new Thickness(0, 0, 0, 8);
 
             stack.Children.Add(Field(Pl ? "Marka" : "Brand", _brand, _original.Brand));
             stack.Children.Add(Field(Pl ? "Nazwa" : "Name", _name, _original.Name));
@@ -216,10 +318,16 @@ public sealed class SpoolbaseEditWindow : Window
 
     private UIElement Field(string label, TextBox box, string value)
     {
-        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
         panel.Children.Add(Label(label));
         Prepare(box, value);
-        panel.Children.Add(box);
+        // A rounded dark surface around the field, like the macOS inputs.
+        panel.Children.Add(new Border
+        {
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF)),
+            Child = box
+        });
         return panel;
     }
 
@@ -227,8 +335,8 @@ public sealed class SpoolbaseEditWindow : Window
     {
         box.Text = value;
         box.FontSize = 13;
-        box.Padding = new Thickness(7, 5, 7, 5);
-        box.Background = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF));
+        box.Padding = new Thickness(9, 6, 9, 6);
+        box.Background = Brushes.Transparent;
         box.Foreground = Ink;
         box.CaretBrush = Ink;
         box.BorderThickness = new Thickness(0);
