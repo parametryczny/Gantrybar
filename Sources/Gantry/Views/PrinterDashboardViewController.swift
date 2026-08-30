@@ -2404,14 +2404,18 @@ final class FilamentGroupView: NSView {
         headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         headerSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         var headerViews: [NSView] = [name, headerSpacer]
+        let mono = AppSettings.shared.monochrome
         if let humidity = group.humidityPercent {
             let text = humidity <= 5 ? "\(humidity)/5" : "\(humidity)%"
             // Humidity reads green (dry/healthy), a genuinely damp module goes warm — matching the demo.
-            headerViews.append(Self.metric(symbol: "drop.fill", text: text,
-                                            tint: Self.isHumidityHigh(group.humidityPercent) ? GantryTheme.statusPaused : GantryTheme.humidity))
+            // Monochrome mode keeps it grey.
+            let tint = mono ? NSColor.secondaryLabelColor
+                            : (Self.isHumidityHigh(group.humidityPercent) ? GantryTheme.statusPaused : GantryTheme.humidity)
+            headerViews.append(Self.metric(symbol: "drop.fill", text: text, tint: tint))
         }
         if let temp = group.temperatureCelsius {
-            headerViews.append(Self.metric(symbol: "thermometer.medium", text: "\(Int(temp.rounded()))°", tint: GantryTheme.sensorTemp))
+            headerViews.append(Self.metric(symbol: "thermometer.medium", text: "\(Int(temp.rounded()))°",
+                                           tint: mono ? .secondaryLabelColor : GantryTheme.sensorTemp))
         }
         let header = NSStackView(views: headerViews)
         header.orientation = .horizontal
