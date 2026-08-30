@@ -18,15 +18,23 @@ from gantry.core import (  # noqa: E402
 )
 
 
+class _StubConfig:
+    data = {"spoolbase_enabled": True, "card_show_spool_grams": False}
+
+
 class StubApp:
     language = "pl"
     text = gapp.TEXT["pl"]
     window = None
+    config = _StubConfig()
+    physical_spools = None
+    filament_store = None
 
     def open_printer_dialog(self, *a): ...
     def remove_printer(self, *a): ...
     def move_printer(self, *a): ...
     def toggle_compact_printer(self, *a): ...
+    def open_details(self, *a): ...
 
 
 def slot(label, material, color, remaining, active):
