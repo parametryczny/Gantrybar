@@ -1,0 +1,47 @@
+# Maintainer: parametryczny <kamil.dom@gmail.com>
+# Gantry: local 3D-printer fleet monitor. Arch / CachyOS package, builds the latest main.
+#   makepkg -si        # clone main, install, and pull system dependencies
+# The app is pure Python (GTK 3), so there is nothing to compile; package() just installs the files.
+pkgname=gantry-git
+_pkg=gantry
+pkgver=0.9.0
+pkgrel=1
+pkgdesc="Local 3D printer fleet monitor (Bambu Lab, Klipper/Moonraker, Prusa, Snapmaker) in the tray"
+arch=('any')
+url="https://github.com/parametryczny/Gantrybar"
+license=('MIT')
+depends=('python' 'python-gobject' 'gtk3' 'libayatana-appindicator' 'librsvg'
+         'python-websocket-client' 'libnotify' 'libsecret')
+optdepends=('ffmpeg: live camera view for Bambu printers'
+            'gnome-keyring: secret storage on non-KDE desktops (KDE uses KWallet)')
+provides=('gantry')
+conflicts=('gantry')
+makedepends=('git')
+source=("git+https://github.com/parametryczny/Gantrybar.git#branch=main")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "$srcdir/Gantrybar"
+    python -c 'import sys; sys.path.insert(0, "linux"); from gantry import __version__ as v; print(v)' 2>/dev/null \
+        || echo 0.9.0
+}
+
+package() {
+    cd "$srcdir/Gantrybar"
+    local site
+    site="$(python -c 'import site; print(site.getsitepackages()[0])')"
+
+    # The Python package (import gantry -> python -m gantry).
+    install -dm755 "$pkgdir$site"
+    cp -r linux/gantry "$pkgdir$site/gantry"
+    find "$pkgdir$site/gantry" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+
+    # Launchers, desktop entry, icon, metadata, license.
+    install -Dm755 linux/packaging/gantry "$pkgdir/usr/bin/gantry"
+    install -Dm755 linux/packaging/gantry-kiosk "$pkgdir/usr/bin/gantry-kiosk"
+    install -Dm644 linux/packaging/gantry.desktop "$pkgdir/usr/share/applications/gantry.desktop"
+    install -Dm644 linux/assets/gantry.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/gantry.svg"
+    install -Dm644 linux/packaging/gantry.metainfo.xml \
+        "$pkgdir/usr/share/metainfo/pl.parametryczny.Gantry.metainfo.xml"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$_pkg/LICENSE"
+}
