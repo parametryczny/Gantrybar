@@ -109,7 +109,9 @@ def css_for(theme: str, window_alpha: float = 1.0) -> bytes:
     if theme == "light":
         colors = ("#f2f2f7", "#1c1c1e", "#ffffff", "#d1d1d6", "#636366", "#f2f2f7", "#c7c7cc")
     else:
-        colors = ("#18181a", "#f5f5f7", "#29292c", "#404044", "#a1a1a6", "#4a4a4e", "#b8b8bd")
+        # Matched 1:1 to the macOS design tokens (GantryTheme.swift): canvas / text / card / line /
+        # secondary / progress-trough / job-name.
+        colors = ("#0c0d0e", "#f2f3f1", "#151719", "#2a2c2e", "#a7aaa6", "#33363a", "#9da09c")
     background, foreground, card, border, secondary, trough, job = colors
     # Only the window backdrop gets the transparency; cards keep their solid background so their
     # text stays readable at every level (matches the macOS/Windows behaviour).
@@ -122,10 +124,10 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .subtitle { color: %(secondary)s; font-size: 11px; }
 .card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.08); border-radius: 16px; padding: 9px; }
 .card.printing { background-color: %(card)s; background-image: radial-gradient(farthest-side at left top, alpha(#ff6857, 0.22), alpha(#ff6857, 0.08) 42%%, alpha(#ff6857, 0.00) 82%%); border-color: alpha(#ff6857, 0.24); }
-.printer-icon { color: #d7d7d2; margin-right: 2px; }
+.printer-icon { color: %(secondary)s; margin-right: 2px; }
 .printer-name { font-size: 13px; font-weight: 600; }
 .connection { color: %(secondary)s; border: 1px solid alpha(#ffffff, 0.12); border-radius: 6px; padding: 2px 6px; font-family: monospace; font-size: 9px; font-weight: 600; }
-.job-surface { background: alpha(#ffffff, 0.035); border: 1px solid alpha(#ffffff, 0.08); border-radius: 10px; padding: 5px 7px 6px; }
+.job-surface { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; padding: 5px 7px 6px; }
 .card-notice { background: alpha(#ff6857, 0.16); border: 1px solid alpha(#ff6857, 0.34); border-radius: 9px; padding: 5px 6px 5px 9px; }
 .card-notice label { color: #f0d9d5; font-size: 10px; }
 .card-notice-ok { color: #ff8a7c; font-weight: 700; font-size: 10px; padding: 1px 8px; }
@@ -133,18 +135,21 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .detail-body .status { font-size: 12px; }
 .job { color: %(job)s; font-weight: 600; font-size: 10px; }
 .meta { color: %(secondary)s; font-size: 11px; }
-.status { color: #d7d7d2; font-weight: 700; font-size: 10px; }
+.status { color: #d4d7d3; font-weight: 700; font-size: 10px; }
 .card.printing .status, .card.printing .percent { color: #ff6857; }
-.percent { color: #d7d7d2; font-size: 22px; font-weight: 600; }
-.eta { color: #d7d7d2; border: 1px solid alpha(#ffffff, 0.10); border-radius: 8px; padding: 3px 7px; font-family: monospace; font-size: 10px; font-weight: 600; }
-.temp-bento { background: alpha(#ffffff, 0.035); border: 1px solid alpha(#ffffff, 0.08); border-radius: 10px; }
-.temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.08); }
+.percent { color: #d4d7d3; font-size: 22px; font-weight: 600; }
+.eta { color: #d4d7d3; border: 1px solid alpha(#ffffff, 0.10); border-radius: 8px; padding: 3px 7px; font-family: monospace; font-size: 10px; font-weight: 600; }
+.temp-bento { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; }
+.temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.09); }
 .temp-zone:first-child { border-left: none; }
 .temp-name { color: %(secondary)s; font-family: monospace; font-size: 7px; font-weight: 600; }
-.temp-value { color: #f5f5f7; font-family: monospace; font-size: 14px; font-weight: 600; }
+/* Temperature value colour follows activity, like macOS: heating warm, cooling cool, at-temp/idle grey. */
+.temp-value { color: %(secondary)s; font-family: monospace; font-size: 14px; font-weight: 600; }
+.temp-value.heat { color: #d18c82; }
+.temp-value.cool { color: #8ca8c7; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
-.ams-group { background: alpha(#ffffff, 0.07); border-radius: 12px; padding: 9px 11px; }
+.ams-group { background: alpha(#ffffff, 0.052); border-radius: 12px; padding: 9px 11px; }
 button { border-radius: 10px; padding: 7px 12px; }
 button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
 entry { padding: 8px; border-radius: 8px; }
@@ -412,7 +417,14 @@ class PrinterCard(Gtk.Frame):
             name = Gtk.Label(label=label.upper(), xalign=0)
             name.get_style_context().add_class("temp-name")
             value = Gtk.Label(label=fmt(cur, tgt), xalign=0.5)
-            value.get_style_context().add_class("temp-value")
+            vctx = value.get_style_context()
+            vctx.add_class("temp-value")
+            # Colour by activity (matches macOS tempColor): heating warm, cooling cool, else grey.
+            target = tgt or 0
+            if cur is not None and target > 5 and cur < target - 3:
+                vctx.add_class("heat")
+            elif cur is not None and cur > max(target, 0) + 5 and cur > 30:
+                vctx.add_class("cool")
             zone.pack_start(name, False, False, 0)
             zone.pack_start(value, False, False, 0)
             return zone
