@@ -25,6 +25,7 @@ struct SyncSettings: Codable, Sendable {
     var panelTransparency: String
     var spoolbaseEnabled: Bool
     var webDashboardEnabled: Bool
+    var monochrome: Bool?   // optional so a peer on an older build (which omits it) still decodes
     var autoUpdate: Bool
     var cardShowFileName: Bool
     var cardShowProgress: Bool
@@ -235,6 +236,7 @@ final class SyncService {
             panelTransparency: s.panelTransparency.rawValue,
             spoolbaseEnabled: s.spoolbaseEnabled,
             webDashboardEnabled: s.webDashboardEnabled,
+            monochrome: s.monochrome,
             autoUpdate: s.autoUpdate,
             cardShowFileName: s.cardShowFileName,
             cardShowProgress: s.cardShowProgress,
@@ -257,6 +259,7 @@ final class SyncService {
         if let transparency = PanelTransparency(rawValue: v.panelTransparency) { s.panelTransparency = transparency }
         s.spoolbaseEnabled = v.spoolbaseEnabled
         s.webDashboardEnabled = v.webDashboardEnabled
+        if let m = v.monochrome { s.monochrome = m }
         s.autoUpdate = v.autoUpdate
         s.cardShowFileName = v.cardShowFileName
         s.cardShowProgress = v.cardShowProgress

@@ -148,6 +148,7 @@ public sealed class SyncService
         PanelTransparency = AppSettings.PanelTransparency switch { 0 => "low", 2 => "high", _ => "medium" },
         SpoolbaseEnabled = AppSettings.SpoolbaseEnabled,
         WebDashboardEnabled = AppSettings.WebDashboardEnabled,
+        Monochrome = AppSettings.Monochrome,
         AutoUpdate = AppSettings.AutoUpdate,
         CardShowFileName = AppSettings.CardShowFileName,
         CardShowProgress = AppSettings.CardShowProgress,
@@ -169,6 +170,7 @@ public sealed class SyncService
             AppSettings.PanelTransparency = v.PanelTransparency switch { "low" => 0, "high" => 2, _ => 1 };
             AppSettings.SpoolbaseEnabled = v.SpoolbaseEnabled;
             AppSettings.WebDashboardEnabled = v.WebDashboardEnabled;
+            if (v.Monochrome is { } mono) AppSettings.Monochrome = mono;
             AppSettings.AutoUpdate = v.AutoUpdate;
             AppSettings.CardShowFileName = v.CardShowFileName;
             AppSettings.CardShowProgress = v.CardShowProgress;

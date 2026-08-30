@@ -45,6 +45,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.Click += (_, _) => AppSettings.CardShowTemperatures = CardTempsCheckBox.IsChecked == true;
         CardFilamentsCheckBox.Click += (_, _) => AppSettings.CardShowFilaments = CardFilamentsCheckBox.IsChecked == true;
         CardSpoolGramsCheckBox.Click += (_, _) => AppSettings.CardShowSpoolGrams = CardSpoolGramsCheckBox.IsChecked == true;
+        MonochromeCheckBox.Click += (_, _) => AppSettings.Monochrome = MonochromeCheckBox.IsChecked == true;
         CheckUpdatesButton.Click += async (_, _) => await CheckUpdatesAsync();
         QuietHoursCheckBox.Click += (_, _) => { QuietHours.Enabled = QuietHoursCheckBox.IsChecked == true; QuietTimesRow.IsEnabled = QuietHoursCheckBox.IsChecked == true; };
         QuietStartBox.LostFocus += (_, _) => SaveQuietTimes();
@@ -157,6 +158,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.Content = AppSettings.Text("Temperatury", "Temperatures");
         CardFilamentsCheckBox.Content = AppSettings.Text("Filamenty / AMS", "Filaments / AMS");
         CardSpoolGramsCheckBox.Content = AppSettings.Text("Gramy na rolce (AMS NFC / Spoolbase)", "Grams on spool (AMS NFC / Spoolbase)");
+        MonochromeCheckBox.Content = AppSettings.Text("Kolorystyka monochromatyczna", "Monochrome colours");
 
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
         PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished");
@@ -199,6 +201,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.IsChecked = AppSettings.CardShowTemperatures;
         CardFilamentsCheckBox.IsChecked = AppSettings.CardShowFilaments;
         CardSpoolGramsCheckBox.IsChecked = AppSettings.CardShowSpoolGrams;
+        MonochromeCheckBox.IsChecked = AppSettings.Monochrome;
         QuietHoursCheckBox.IsChecked = QuietHours.Enabled;
         QuietStartBox.Text = MinutesToText(QuietHours.StartMinutes);
         QuietEndBox.Text = MinutesToText(QuietHours.EndMinutes);

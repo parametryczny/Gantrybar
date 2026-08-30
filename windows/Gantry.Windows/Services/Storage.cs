@@ -221,6 +221,12 @@ public static class AppSettings
         get => Defaults.GetBool("card-show-spool-grams", false);
         set => Defaults.SetBool("card-show-spool-grams", value);
     }
+    /// <summary>Calmer palette: temperatures stay grey and filament colours are muted toward grey.</summary>
+    public static bool Monochrome
+    {
+        get => Defaults.GetBool("monochrome", false);
+        set => Defaults.SetBool("monochrome", value);
+    }
 
     // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     public static bool SpoolbaseEnabled

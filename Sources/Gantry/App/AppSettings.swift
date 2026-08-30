@@ -77,6 +77,10 @@ final class AppSettings: ObservableObject {
     /// Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).
     @Published var cardShowSpoolGrams: Bool { didSet { defaults.set(cardShowSpoolGrams, forKey: "card-show-spool-grams") } }
 
+    /// Calmer palette for people who find the colours tiring: temperature values stay grey (no
+    /// heating/cooling tint) and filament colours are muted toward grey.
+    @Published var monochrome: Bool { didSet { defaults.set(monochrome, forKey: "monochrome") } }
+
     /// Security kill switch for automation actions that execute code: `.script` (runs a program on this
     /// Mac) and `.command` (an arbitrary raw MQTT/G-code command). OFF by default so a tampered or planted
     /// automation config cannot run code silently — the same class of issue as KeePass triggers
@@ -132,6 +136,7 @@ final class AppSettings: ObservableObject {
         cardShowTemperatures = defaults.object(forKey: "card-show-temps") as? Bool ?? true
         cardShowFilaments = defaults.object(forKey: "card-show-filaments") as? Bool ?? true
         cardShowSpoolGrams = defaults.object(forKey: "card-show-spool-grams") as? Bool ?? false
+        monochrome = defaults.object(forKey: "monochrome") as? Bool ?? false
         allowScriptActions = defaults.object(forKey: "allow-script-actions") as? Bool ?? false
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true

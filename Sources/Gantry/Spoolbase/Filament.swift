@@ -95,6 +95,17 @@ extension NSColor {
         guard let rgb = usingColorSpace(.deviceRGB) else { return "8E8E93" }
         return String(format: "%02X%02X%02X", Int(rgb.redComponent * 255), Int(rgb.greenComponent * 255), Int(rgb.blueComponent * 255))
     }
+
+    /// Blend the colour toward its own grey (luminance) so filament colours read calmer in the
+    /// monochrome mode. amount 0…1: 0 keeps the colour, 1 is fully grey.
+    func mutedTowardGrey(_ amount: CGFloat = 0.62) -> NSColor {
+        guard let rgb = usingColorSpace(.deviceRGB) else { return self }
+        let lum = rgb.redComponent * 0.299 + rgb.greenComponent * 0.587 + rgb.blueComponent * 0.114
+        return NSColor(deviceRed: rgb.redComponent + (lum - rgb.redComponent) * amount,
+                       green: rgb.greenComponent + (lum - rgb.greenComponent) * amount,
+                       blue: rgb.blueComponent + (lum - rgb.blueComponent) * amount,
+                       alpha: rgb.alphaComponent)
+    }
 }
 
 enum FilamentCatalog {

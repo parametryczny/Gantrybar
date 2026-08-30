@@ -45,6 +45,7 @@ public sealed class SyncSettings
     public string PanelTransparency { get; set; } = "low";
     public bool SpoolbaseEnabled { get; set; }
     public bool WebDashboardEnabled { get; set; }
+    public bool? Monochrome { get; set; }   // nullable so a peer on an older build still deserializes
     public bool AutoUpdate { get; set; }
     public bool CardShowFileName { get; set; }
     public bool CardShowProgress { get; set; }

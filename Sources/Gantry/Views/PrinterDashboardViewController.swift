@@ -1633,6 +1633,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     /// Tints a temperature by what it's doing: warming toward a setpoint reads red, cooling down from
     /// one reads blue, and holding at (or near) the setpoint stays the neutral default.
     private func tempColor(_ current: Double?, _ target: Double?) -> NSColor {
+        if AppSettings.shared.monochrome { return .secondaryLabelColor }
         guard let current else { return .secondaryLabelColor }
         let target = target ?? 0
         if target > 5, current < target - 3 { return Self.heatingColor }        // ramping up
@@ -2186,7 +2187,7 @@ final class FilamentSlotView: NSView {
         let present = slot.isPresent || assignedSpool != nil
         let effectivePct: Int? = assignedSpool?.percent ?? slot.remainingPercent
         let materialText: String = slot.isPresent ? (slot.material ?? "—") : (assignedDef?.type ?? assignedDef?.name ?? "—")
-        let color: NSColor
+        var color: NSColor
         if let assignedDef {
             // The user explicitly chose this spool's filament, so its colour wins over the AMS reading.
             color = NSColor(hex: assignedDef.colorHex)
@@ -2195,6 +2196,7 @@ final class FilamentSlotView: NSView {
         } else {
             color = NSColor.secondaryLabelColor.withAlphaComponent(0.18)
         }
+        if AppSettings.shared.monochrome { color = color.mutedTowardGrey() }
         // Flexible width so the slots stretch to fill their module (distribution .fillEqually).
         setContentHuggingPriority(.defaultLow, for: .horizontal)
 

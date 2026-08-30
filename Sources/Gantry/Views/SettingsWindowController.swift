@@ -38,6 +38,7 @@ final class SettingsWindowController: NSWindowController {
     private let cardTempsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let cardFilamentsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let cardSpoolGramsCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let monochromeCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notificationsLabel = NSTextField(labelWithString: "")
     private let notifyFinishedCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notifyErrorCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
@@ -249,7 +250,7 @@ final class SettingsWindowController: NSWindowController {
         updatesBody.alignment = .leading
         updatesBody.spacing = 8
 
-        let cardChecks = [cardFileNameCheck, cardProgressCheck, cardTempsCheck, cardFilamentsCheck, cardSpoolGramsCheck]
+        let cardChecks = [cardFileNameCheck, cardProgressCheck, cardTempsCheck, cardFilamentsCheck, cardSpoolGramsCheck, monochromeCheck]
         for check in cardChecks {
             check.target = self
             check.action = #selector(cardContentToggled)
@@ -484,11 +485,13 @@ final class SettingsWindowController: NSWindowController {
         cardTempsCheck.title = settings.text("Temperatury", "Temperatures")
         cardFilamentsCheck.title = settings.text("Filamenty / AMS", "Filaments / AMS")
         cardSpoolGramsCheck.title = settings.text("Gramy na rolce (AMS NFC / Spoolbase)", "Grams on spool (AMS NFC / Spoolbase)")
+        monochromeCheck.title = settings.text("Kolorystyka monochromatyczna", "Monochrome colours")
         cardFileNameCheck.state = settings.cardShowFileName ? .on : .off
         cardProgressCheck.state = settings.cardShowProgress ? .on : .off
         cardTempsCheck.state = settings.cardShowTemperatures ? .on : .off
         cardFilamentsCheck.state = settings.cardShowFilaments ? .on : .off
         cardSpoolGramsCheck.state = settings.cardShowSpoolGrams ? .on : .off
+        monochromeCheck.state = settings.monochrome ? .on : .off
         notificationsLabel.stringValue = settings.text("POWIADOMIENIA", "NOTIFICATIONS")
         notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished")
         notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error")
@@ -648,6 +651,7 @@ final class SettingsWindowController: NSWindowController {
         settings.cardShowTemperatures = cardTempsCheck.state == .on
         settings.cardShowFilaments = cardFilamentsCheck.state == .on
         settings.cardShowSpoolGrams = cardSpoolGramsCheck.state == .on
+        settings.monochrome = monochromeCheck.state == .on
     }
 
     @objc private func checkForUpdates() {

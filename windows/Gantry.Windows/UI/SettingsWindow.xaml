@@ -109,6 +109,7 @@
                     <CheckBox x:Name="CardTempsCheckBox" Margin="0,6"/>
                     <CheckBox x:Name="CardFilamentsCheckBox" Margin="0,6"/>
                     <CheckBox x:Name="CardSpoolGramsCheckBox" Margin="0,6"/>
+                    <CheckBox x:Name="MonochromeCheckBox" Margin="0,6"/>
                 </StackPanel>
             </Border>
 

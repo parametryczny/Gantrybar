@@ -1032,11 +1032,20 @@ public partial class DashboardWindow : Window
 
     private static Brush? TempColor(double? current, double? target)
     {
+        if (AppSettings.Monochrome) return null;   // grey values in monochrome mode
         if (current is not { } cur) return null;
         double t = target ?? 0;
         if (t > 5 && cur < t - 3) return HeatingBrush;                 // ramping up
         if (cur > Math.Max(t, 0) + 5 && cur > 30) return CoolingBrush; // above setpoint, still warm
         return null;
+    }
+
+    /// <summary>Blend a colour toward its own grey (luminance) for the monochrome mode.</summary>
+    private static Color MutedTowardGrey(Color c, double amount = 0.62)
+    {
+        double lum = c.R * 0.299 + c.G * 0.587 + c.B * 0.114;
+        byte Mix(byte v) => (byte)Math.Clamp(v + (lum - v) * amount, 0, 255);
+        return Color.FromArgb(c.A, Mix(c.R), Mix(c.G), Mix(c.B));
     }
 
     private static (string Label, string Value, Brush? Colour) TempCell(string label, double? current, double? target)
@@ -1222,6 +1231,7 @@ public partial class DashboardWindow : Window
         var color = assignedDef != null ? ParseHex(assignedDef.ColorHex)
             : slot.IsPresent ? ParseHex(slot.ColorHex ?? "8E8E93FF")
             : Color.FromArgb(0x28, 0x8E, 0x8E, 0x93);
+        if (AppSettings.Monochrome) color = MutedTowardGrey(color);   // calmer filament colours
         string materialText = slot.IsPresent ? (slot.Material ?? "—") : (assignedDef?.Type ?? "—");
         const double SwatchHeight = 24;
         double frac = present && effPct is { } fp ? Math.Clamp(fp / 100.0, 0, 1) : 1.0;
