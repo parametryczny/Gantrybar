@@ -1152,11 +1152,14 @@ public partial class DashboardWindow : Window
         if (group.HumidityPercent is { } h)
         {
             bool humid = h <= 5 ? h >= 4 : h >= 40;
-            envPanel.Children.Add(EnvCluster("💧", h <= 5 ? $"{h}/5" : $"{h}%",
-                GTheme.Brush(humid ? GTheme.StatusPaused : GTheme.Humidity)));
+            var hb = AppSettings.Monochrome ? Muted() : GTheme.Brush(humid ? GTheme.StatusPaused : GTheme.Humidity);
+            envPanel.Children.Add(EnvCluster("💧", h <= 5 ? $"{h}/5" : $"{h}%", hb));
         }
         if (group.TemperatureCelsius is { } tc)
-            envPanel.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°", GTheme.Brush(GTheme.SensorTemp)));
+        {
+            var tb = AppSettings.Monochrome ? Muted() : GTheme.Brush(GTheme.SensorTemp);
+            envPanel.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°", tb));
+        }
         Grid.SetColumn(envPanel, 2); header.Children.Add(envPanel);
         inner.Children.Add(header);
 
