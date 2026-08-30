@@ -13,7 +13,7 @@
     <AssemblyName>Gantry</AssemblyName>
     <RootNamespace>Gantry</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.8.0</Version>
+    <Version>0.9.0</Version>
     <Product>Gantry</Product>
     <ApplicationIcon>gantry.ico</ApplicationIcon>
     <LangVersion>latest</LangVersion>
