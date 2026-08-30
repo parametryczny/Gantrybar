@@ -151,6 +151,10 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
 .ams-group { background: alpha(#ffffff, 0.052); border-radius: 12px; padding: 9px 11px; }
+.slot-pct { font-size: 10px; font-weight: 700; }
+.slot-material { color: %(foreground)s; font-size: 10px; font-weight: 600; }
+.slot-material.empty { color: #6d716e; }
+.slot-id { color: #6d716e; font-family: monospace; font-size: 7px; font-weight: 500; }
 button { border-radius: 10px; padding: 7px 12px; }
 button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
 entry { padding: 8px; border-radius: 8px; }
@@ -202,6 +206,15 @@ def _draw_glyph(widget: Gtk.Widget, cr: object, kind: str) -> bool:
         cr.move_to(cx - 3, h * 0.60); cr.line_to(cx, h * 0.72); cr.line_to(cx + 3, h * 0.60)  # v
         cr.stroke()
     return False
+
+
+def _contrast_ink(hexcolor: str) -> str:
+    """Black on a light spool, white on a dark one, so the % printed inside the chip stays legible."""
+    try:
+        r, g, b = int(hexcolor[0:2], 16), int(hexcolor[2:4], 16), int(hexcolor[4:6], 16)
+        return "#111111" if (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 else "#ffffff"
+    except Exception:
+        return "#ffffff"
 
 
 def _icon(kind: str, width: int, height: int, css: str = "meta") -> Gtk.DrawingArea:
@@ -514,14 +527,41 @@ class PrinterCard(Gtk.Frame):
                     ctx.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
                 except Exception:
                     pass
+                # Remaining %: an assigned Spoolbase roll wins, otherwise the AMS reading. Material name:
+                # from the slot, or the assigned roll's filament (matches macOS).
+                effective_pct = None
+                if assigned is not None and store is not None:
+                    effective_pct = store.percent(assigned)
+                elif slot.remaining is not None:
+                    effective_pct = slot.remaining
+                if slot.present:
+                    material_text = slot.material or "—"
+                elif assigned_def is not None:
+                    material_text = assigned_def.type or assigned_def.name or "—"
+                else:
+                    material_text = "—"
+                # The % sits inside the colour chip (contrasting ink), like macOS.
+                overlay = Gtk.Overlay()
+                overlay.add(swatch)
+                if present and effective_pct is not None:
+                    pct_lbl = Gtk.Label(label=f"{int(effective_pct)}%")
+                    pctx = pct_lbl.get_style_context()
+                    pctx.add_class("slot-pct")
+                    pct_lbl.set_halign(Gtk.Align.CENTER)
+                    pct_lbl.set_valign(Gtk.Align.CENTER)
+                    try:
+                        pp = Gtk.CssProvider()
+                        pp.load_from_data((".slot-pct { color: %s; }" % _contrast_ink(color)).encode())
+                        pctx.add_provider(pp, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+                    except Exception:
+                        pass
+                    overlay.add_overlay(pct_lbl)
                 # Low-filament marker (red corner dot) — only when the level is trustworthy. External
                 # spools and chipless AMS spools both report remain=0 as "unknown", so warn only for a
                 # real RFID/NFC tag (weight known), never a chipless spool (issue #27).
                 trusted_level = slot.remaining_weight_g is not None
                 low = present and not group.external and trusted_level and (slot.remaining if slot.remaining is not None else 100) <= 15
                 if low:
-                    overlay = Gtk.Overlay()
-                    overlay.add(swatch)
                     dot = Gtk.Label(label="")
                     dot.set_size_request(7, 7)
                     dot.set_halign(Gtk.Align.END)
@@ -537,12 +577,21 @@ class PrinterCard(Gtk.Frame):
                     except Exception:
                         pass
                     overlay.add_overlay(dot)
-                    swatch_widget: Gtk.Widget = overlay
-                else:
-                    swatch_widget = swatch
-                caption = Gtk.Label(xalign=0.5)
-                caption.get_style_context().add_class("meta")
-                caption.set_markup(f"<b>{GLib.markup_escape_text(slot.label)}</b>" if slot.active else GLib.markup_escape_text(slot.label))
+                swatch_widget: Gtk.Widget = overlay
+                # Caption: material name centered (primary), the slot id quiet at the leading edge (macOS).
+                caption = Gtk.Overlay()
+                material_lbl = Gtk.Label(label=material_text, xalign=0.5, ellipsize=Pango.EllipsizeMode.END)
+                mctx = material_lbl.get_style_context()
+                mctx.add_class("slot-material")
+                if not present:
+                    mctx.add_class("empty")
+                caption.add(material_lbl)
+                if not group.external:
+                    id_lbl = Gtk.Label(label=slot.label)
+                    id_lbl.get_style_context().add_class("slot-id")
+                    id_lbl.set_halign(Gtk.Align.START)
+                    id_lbl.set_valign(Gtk.Align.CENTER)
+                    caption.add_overlay(id_lbl)
                 sbox.pack_start(swatch_widget, False, False, 0)
                 sbox.pack_start(caption, False, False, 0)
                 # Grams on the spool: the AMS NFC/RFID tag, or a manually-assigned Spoolbase roll.
