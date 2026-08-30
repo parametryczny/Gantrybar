@@ -22,8 +22,51 @@ internal static class RenderHarness
 
         Safe(() => RenderWindow(new SpoolbaseEditWindow(store, null, false), Path.Combine(outDir, "win-editor.png")));
         Safe(() => RenderWindow(new SpoolbaseWindow(), Path.Combine(outDir, "win-spoolbase.png")));
-        Safe(() => RenderWindow(new DashboardWindow(new PrinterStore(a => a())), Path.Combine(outDir, "win-dashboard.png")));
+        Safe(() => RenderDashboard(Path.Combine(outDir, "win-dashboard.png")));
         Safe(() => RenderAssignPanel(Path.Combine(outDir, "win-assign.png")));
+    }
+
+    private static void RenderDashboard(string path)
+    {
+        SavedPrinterStore.Save(new()
+        {
+            new SavedPrinter { Serial = "X1", Name = "Bambu 3058", Host = "1.2.3.4", Kind = PrinterKind.Bambu },
+            new SavedPrinter { Serial = "P1S", Name = "P1S", Host = "1.2.3.5", Kind = PrinterKind.Bambu },
+        });
+        var store = new PrinterStore(a => a());
+
+        FilamentSlot S(string label, string? mat, string? hex, int? pct, bool active) =>
+            new() { Label = label, Material = mat, ColorHex = hex, RemainingPercent = pct, IsActive = active };
+        store.Telemetry["X1"] = new PrinterTelemetry
+        {
+            State = PrinterState.Printing, Progress = 76, JobName = "benchy.3mf",
+            BedTemperature = 60, BedTargetTemperature = 60, ChamberTemperature = 38,
+            CurrentLayer = 185, TotalLayers = 240,
+            Nozzles = { new NozzleTelemetry { Position = NozzlePosition.Single, CurrentTemperature = 220, TargetTemperature = 220 } },
+            FilamentGroups =
+            {
+                new FilamentGroup { DisplayName = "AMS A", DeclaredCapacity = 4, HumidityPercent = 19, TemperatureCelsius = 47,
+                    Slots = { S("A1", null, null, null, false), S("A2", "PLA", "E8C848", 60, false),
+                              S("A3", "PETG", "111111", 8, true), S("A4", null, null, null, false) } },
+                new FilamentGroup { DisplayName = "EXT", DeclaredCapacity = 1, IsExternal = true,
+                    Slots = { S("EXT", "TPU", "1A9E5A", 100, true) } },
+            },
+        };
+        store.Telemetry["P1S"] = new PrinterTelemetry
+        {
+            State = PrinterState.Printing, Progress = 42, JobName = "bracket_v3.3mf",
+            BedTemperature = 55, BedTargetTemperature = 60, ChamberTemperature = 33,
+            CurrentLayer = 113, TotalLayers = 276,
+            Nozzles = { new NozzleTelemetry { Position = NozzlePosition.Single, CurrentTemperature = 180, TargetTemperature = 220 } },
+            FilamentGroups =
+            {
+                new FilamentGroup { DisplayName = "AMS HT", DeclaredCapacity = 1, HumidityPercent = 33, TemperatureCelsius = 33,
+                    Slots = { S("A1", "PETG", "DCDCE0", 90, true) } },
+                new FilamentGroup { DisplayName = "EXT", DeclaredCapacity = 1, IsExternal = true,
+                    Slots = { S("EXT", "PETG", "161616", 100, false) } },
+            },
+        };
+        RenderWindow(new DashboardWindow(store), path);
     }
 
     private static void RenderAssignPanel(string path)
