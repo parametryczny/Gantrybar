@@ -487,6 +487,9 @@ final class PrinterDashboardViewController: NSViewController {
         view.window?.appearance = AppSettings.shared.appearance
         view.layer?.backgroundColor = NSColor.clear.cgColor
         refreshLocalization()
+        // Force a full card rebuild: settings like monochrome change the slot colours, which are baked in
+        // when a FilamentSlotView is created — an in-place update would not recompute them.
+        renderedSerials = []
         refreshDashboard()
     }
 
