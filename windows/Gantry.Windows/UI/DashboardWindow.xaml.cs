@@ -25,6 +25,7 @@ public partial class DashboardWindow : Window
         // closer to the macOS popover than a plain window. No-ops safely on older Windows.
         SourceInitialized += (_, _) => ApplyModernChrome();
         ScanButton.Click += (_, _) => _store.Scan();
+        ClearButton.Click += (_, _) => _store.ResetCompletedStatuses();
         AddButton.Click += (_, _) => OpenAddWindow();
         CompactButton.Click += (_, _) => ToggleCompact();
         ColumnsButton.Click += (_, _) => { AppSettings.DashboardColumns = AppSettings.DashboardColumns == 2 ? 1 : 2; Rebuild(); };

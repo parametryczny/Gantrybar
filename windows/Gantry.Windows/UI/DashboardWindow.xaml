@@ -60,6 +60,7 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="ColumnsButton" Width="24" Height="24" Margin="3,0" FontSize="12" ToolTip="Kolumny / Columns"/>
                         <Button x:Name="CompactButton" MinWidth="52" Height="24" Margin="3,0" Padding="6,0" FontSize="11" Visibility="Collapsed"/>
+                        <Button x:Name="ClearButton" Content="✕" Width="24" Height="24" Margin="3,0" FontSize="11" ToolTip="Wyczyść zakończone / Clear finished"/>
                         <Button x:Name="ScanButton" Content="⟳" Width="24" Height="24" Margin="3,0" FontSize="12" ToolTip="Scan"/>
                         <Button x:Name="AddButton" Content="+" Width="24" Height="24" Margin="3,0" FontSize="14" ToolTip="Add printer"/>
                     </StackPanel>
