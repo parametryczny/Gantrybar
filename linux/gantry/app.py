@@ -1357,6 +1357,37 @@ class Gantry:
         Gtk.main_quit()
 
 
+def _diagnose() -> int:
+    """Self-test the desktop integration without opening a GUI: is the tray usable, X11 or Wayland,
+    and will the frosted-glass blur apply. Run: python3 -m gantry --diagnose"""
+    import os
+    tray = True
+    try:
+        gi.require_version("AyatanaAppIndicator3", "0.1")
+        from gi.repository import AyatanaAppIndicator3  # noqa: F401
+    except Exception as exc:
+        tray = False
+        tray_err = str(exc)
+    session = os.environ.get("XDG_SESSION_TYPE", "?")
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "?")
+    print(f"Gantry {__version__} diagnostyka / diagnostics")
+    print(f"  pulpit / desktop : {desktop}")
+    print(f"  sesja / session  : {session}")
+    if tray:
+        print("  tray (AppIndicator): OK -> dymek + frosted-glass wlaczone")
+    else:
+        print(f"  tray (AppIndicator): BRAK -> zwykle okno. Instaluj: sudo pacman -S libayatana-appindicator")
+        print(f"      ({tray_err})")
+    if tray:
+        if session == "x11":
+            print("  rozmycie / blur  : KWin X11 -> powinno dzialac")
+        elif session == "wayland":
+            print("  rozmycie / blur  : Wayland -> blur przez wlasciwosc X11 nie zadziala; zostaje przezroczystosc")
+        else:
+            print("  rozmycie / blur  : nieznana sesja -> zostaje przezroczystosc")
+    return 0 if tray else 1
+
+
 def main() -> int:
     # Name the app "Gantry" for the window manager instead of the script name ("__main__.py") when run
     # from source, and set a matching WM_CLASS so GNOME/KDE group and label the window correctly.
@@ -1370,9 +1401,12 @@ def main() -> int:
     parser.add_argument("--background", action="store_true")
     parser.add_argument("--kiosk", action="store_true", help="full-screen Raspberry Pi workshop dashboard")
     parser.add_argument("--version", action="store_true")
+    parser.add_argument("--diagnose", action="store_true", help="check tray / blur / session and exit")
     args = parser.parse_args()
     if args.version:
         print(f"Gantry {__version__}"); return 0
+    if args.diagnose:
+        return _diagnose()
     if args.kiosk:
         from .kiosk import KioskGantry
         KioskGantry()
