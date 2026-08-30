@@ -157,6 +157,8 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .slot-id { color: #6d716e; font-family: monospace; font-size: 7px; font-weight: 500; }
 button { border-radius: 10px; padding: 7px 12px; }
 button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
+button.headericon { background: transparent; border: none; box-shadow: none; padding: 2px 6px; min-width: 26px; min-height: 24px; color: %(secondary)s; font-size: 15px; }
+button.headericon:hover { background: alpha(#ffffff, 0.08); border-radius: 8px; }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
 progressbar progress { border-radius: 2px; background: #ff6857; }
@@ -682,10 +684,17 @@ class Dashboard(Gtk.Window):
         self.subtitle = Gtk.Label(xalign=0); self.subtitle.get_style_context().add_class("subtitle")
         titles.pack_start(title, False, False, 0); titles.pack_start(self.subtitle, False, False, 0)
         self.collapse = Gtk.Button(); self.collapse.connect("clicked", self._toggle)
+        clear = Gtk.Button(label="✕"); clear.connect("clicked", lambda _b: app.reset_completed())
+        clear.set_tooltip_text("Wyczyść zakończone" if app.language == "pl" else "Clear finished")
         refresh = Gtk.Button(label="↻"); refresh.connect("clicked", lambda _b: app.reconnect_all())
+        refresh.set_tooltip_text("Połącz ponownie" if app.language == "pl" else "Reconnect")
         add = Gtk.Button(label="＋"); add.connect("clicked", lambda _b: app.open_printer_dialog())
+        add.set_tooltip_text("Dodaj drukarkę" if app.language == "pl" else "Add printer")
+        for _b in (self.collapse, clear, refresh, add):
+            _b.set_relief(Gtk.ReliefStyle.NONE); _b.get_style_context().add_class("headericon")
         header.pack_start(titles, True, True, 0)
-        header.pack_start(self.collapse, False, False, 0); header.pack_start(refresh, False, False, 0); header.pack_start(add, False, False, 0)
+        header.pack_start(self.collapse, False, False, 0); header.pack_start(clear, False, False, 0)
+        header.pack_start(refresh, False, False, 0); header.pack_start(add, False, False, 0)
         root.pack_start(header, False, False, 0)
         scroll = Gtk.ScrolledWindow(); scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.grid = Gtk.Grid(column_spacing=10, row_spacing=10, margin=12)
@@ -1324,6 +1333,14 @@ class Gantry:
         except SecretStoreError: pass
         if printer.kind == PrinterKind.BAMBU: self.config.remove_pin(printer.serial)
         self.config.printers = self.printers; self.rebuild_cards()
+
+    def reset_completed(self) -> None:
+        """Tidy the fleet: drop the last job name from printers that are not printing/paused and rebuild,
+        so finished/idle cards read clean (the macOS 'Wyczyść zakończone' button)."""
+        for tel in self.telemetry.values():
+            if tel.state not in (PrinterState.PRINTING, PrinterState.PAUSED):
+                tel.job_name = None
+        self.rebuild_cards()
 
     def reconnect_all(self) -> None:
         for connection in self.connections.values(): connection.stop()
