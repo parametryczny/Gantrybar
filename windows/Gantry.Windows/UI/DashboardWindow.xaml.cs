@@ -243,8 +243,12 @@ public partial class DashboardWindow : Window
         var area = SystemParameters.WorkArea;
         Left = area.Right - Width - 8;
         Top = area.Bottom - Height - 8;
-        ApplyPanelTransparency();   // pick up any change made in Settings while the panel was hidden
         Show();
+        // Reassert Desktop Acrylic on every show, not just the first. SourceInitialized (which runs the
+        // full ApplyModernChrome) fires only once, when the handle is first created; on later Hide/Show
+        // cycles Win11 drops the transparent composition and the extended DWM frame, so the flyout came
+        // back opaque after the first open (issue #28). Re-applying after Show keeps it frosted.
+        ApplyModernChrome();
         Activate();
         FitHeightToContent();   // size to content now that it's visible
     }
