@@ -129,6 +129,12 @@ class DetailWindow(Gtk.Window):
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        # Request the content's natural height instead of collapsing to zero (fixes an empty/clipped
+        # body when the window is sized to content, and lets the offscreen preview capture everything).
+        try:
+            scroll.set_propagate_natural_height(True)
+        except AttributeError:
+            pass
         outer.pack_start(scroll, True, True, 0)
         self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.body.get_style_context().add_class("detail-body")
