@@ -209,10 +209,12 @@ class DetailWindow(Gtk.Window):
         val = Gtk.Label(label=value, xalign=0.5)
         vctx = val.get_style_context()
         vctx.add_class("temp-value")
+        mono = bool(self.app.config.data.get("monochrome", False))
         if strong:
             vctx.add_class("strong")   # hardware values (fans / speed / diameter) stay bright
-        else:
+        elif not mono:
             # Temperature values follow activity, like macOS: heating warm, cooling cool, else grey.
+            # Monochrome mode keeps every value grey.
             target = tgt or 0
             if cur is not None and target > 5 and cur < target - 3:
                 vctx.add_class("heat")
@@ -283,6 +285,9 @@ class DetailWindow(Gtk.Window):
                     ctx.add_class("active")
                 present = slot.present
                 color = (slot.color or "8E8E93FF").lstrip("#")[:6] if present else "5A5A5E"
+                if bool(self.app.config.data.get("monochrome", False)):
+                    from .app import _muted_hex
+                    color = _muted_hex(color)
                 try:
                     provider = Gtk.CssProvider()
                     provider.load_from_data((".ams { background-color: #%s; }" % color).encode())

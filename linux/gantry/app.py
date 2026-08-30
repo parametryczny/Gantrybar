@@ -210,6 +210,20 @@ def _draw_glyph(widget: Gtk.Widget, cr: object, kind: str) -> bool:
     return False
 
 
+def _muted_hex(hexcolor: str, amount: float = 0.62) -> str:
+    """Blend a colour toward its own grey (luminance) so filament colours read calmer in the
+    monochrome mode. amount 0..1: 0 keeps the colour, 1 is fully grey."""
+    try:
+        r, g, b = int(hexcolor[0:2], 16), int(hexcolor[2:4], 16), int(hexcolor[4:6], 16)
+        lum = 0.299 * r + 0.587 * g + 0.114 * b
+        r = int(r + (lum - r) * amount)
+        g = int(g + (lum - g) * amount)
+        b = int(b + (lum - b) * amount)
+        return f"{max(0, min(255, r)):02X}{max(0, min(255, g)):02X}{max(0, min(255, b)):02X}"
+    except Exception:
+        return hexcolor
+
+
 def _contrast_ink(hexcolor: str) -> str:
     """Black on a light spool, white on a dark one, so the % printed inside the chip stays legible."""
     try:
@@ -423,6 +437,7 @@ class PrinterCard(Gtk.Frame):
         self.progress_meta.set_text(layers)
 
         pl = self.app.language == "pl"
+        mono = bool(self.app.config.data.get("monochrome", False))
 
         def fmt(cur: float | None, tgt: float | None) -> str:
             if cur is None:
@@ -438,8 +453,11 @@ class PrinterCard(Gtk.Frame):
             vctx = value.get_style_context()
             vctx.add_class("temp-value")
             # Colour by activity (matches macOS tempColor): heating warm, cooling cool, else grey.
+            # In monochrome mode every value stays grey.
             target = tgt or 0
-            if cur is not None and target > 5 and cur < target - 3:
+            if mono:
+                pass
+            elif cur is not None and target > 5 and cur < target - 3:
                 vctx.add_class("heat")
             elif cur is not None and cur > max(target, 0) + 5 and cur > 30:
                 vctx.add_class("cool")
@@ -520,6 +538,8 @@ class PrinterCard(Gtk.Frame):
                 color = (slot.color or "8E8E93FF").lstrip("#")[:6] if slot.present else "5A5A5E"
                 if not slot.present and assigned_def is not None:
                     color = assigned_def.colorHex
+                if mono:
+                    color = _muted_hex(color)   # calmer filament colours in monochrome mode
                 # Set the colour through a per-widget CSS provider rather than the deprecated
                 # override_background_color(), which paints a flat fill over the CSS border and hides
                 # the white ring on the active slot.
@@ -945,6 +965,10 @@ class SettingsDialog(Gtk.Dialog):
         self.spool_grams = Gtk.CheckButton(label="Gramy na rolce (AMS NFC / Spoolbase)" if app.language == "pl" else "Grams on spool (AMS NFC / Spoolbase)")
         self.spool_grams.set_active(bool(app.config.data.get("card_show_spool_grams", False)))
         box.pack_start(self.spool_grams, False, False, 0)
+        self.monochrome = Gtk.CheckButton(label="Kolorystyka monochromatyczna" if _pl else "Monochrome colours")
+        self.monochrome.set_active(bool(app.config.data.get("monochrome", False)))
+        self.monochrome.set_tooltip_text("Temperatury na szaro, kolory AMS wyciszone" if _pl else "Grey temperatures, calmer AMS colours")
+        box.pack_start(self.monochrome, False, False, 0)
         # Security: allow automations whose action runs code (raw command / shell script). Off by default.
         self.allow_scripts = Gtk.CheckButton(label="Zezwól automatyzacjom na komendy i skrypty" if _pl else "Allow command and script automations")
         self.allow_scripts.set_active(bool(app.config.data.get("allow_script_actions", False)))
@@ -1004,12 +1028,14 @@ class SettingsDialog(Gtk.Dialog):
         for key, widget in self.notices.items(): self.app.config.data[key] = widget.get_active()
         self.app.config.data["spoolbase_enabled"] = self.spoolbase.get_active()
         self.app.config.data["card_show_spool_grams"] = self.spool_grams.get_active()
+        self.app.config.data["monochrome"] = self.monochrome.get_active()
         self.app.config.data["allow_script_actions"] = self.allow_scripts.get_active()
         self.app.config.data["web_dashboard_enabled"] = self.web_dashboard.get_active()
         web_server = getattr(self.app, "web_server", None)
         if web_server is not None:
             web_server.start() if self.web_dashboard.get_active() else web_server.stop()
         self.app.config.save(); set_autostart(self.autostart.get_active())
+        self.app.rebuild_cards()   # pick up monochrome / grams / card changes immediately
         sync = getattr(self.app, "sync_service", None)
         if sync is not None:
             sync.note_settings_changed()

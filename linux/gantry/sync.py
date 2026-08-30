@@ -219,6 +219,7 @@ class SyncService:
             "panelTransparency": str(cfg.get("panel_transparency", "low")),
             "spoolbaseEnabled": bool(cfg.get("spoolbase_enabled", True)),
             "webDashboardEnabled": bool(cfg.get("web_dashboard_enabled", True)),
+            "monochrome": bool(cfg.get("monochrome", False)),
             "autoUpdate": False,
             "cardShowFileName": True, "cardShowProgress": True,
             "cardShowTemperatures": True, "cardShowFilaments": True,
@@ -236,6 +237,7 @@ class SyncService:
             cfg["panel_transparency"] = s.get("panelTransparency", cfg.get("panel_transparency"))
             cfg["spoolbase_enabled"] = bool(s.get("spoolbaseEnabled", cfg.get("spoolbase_enabled", True)))
             cfg["web_dashboard_enabled"] = bool(s.get("webDashboardEnabled", cfg.get("web_dashboard_enabled", True)))
+            cfg["monochrome"] = bool(s.get("monochrome", cfg.get("monochrome", False)))
             for wire, key in _NOTIFY:
                 if wire in s:
                     cfg[key] = bool(s[wire])
