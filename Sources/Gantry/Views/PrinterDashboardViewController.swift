@@ -1897,9 +1897,24 @@ private final class TemperatureBentoView: NSView {
             zones.append((settings.text("KOMORA", "CHAMBER"), chamberCurrent, nil, GantryTheme.chamber))
         }
 
+        // Temperatures are coloured by activity (not a fixed per-zone tint): warm while heating, cool
+        // while cooling above the setpoint, grey at temperature / idle. Monochrome keeps every value grey.
+        let heat = NSColor(calibratedRed: 0.82, green: 0.55, blue: 0.51, alpha: 1)
+        let cool = NSColor(calibratedRed: 0.55, green: 0.66, blue: 0.78, alpha: 1)
+        let mono = settings.monochrome
         for (index, zone) in zones.enumerated() {
-            // Monochrome mode: every temperature stays grey instead of its warm/cool zone tint.
-            let tint = settings.monochrome ? NSColor.secondaryLabelColor : zone.3
+            let cur = zone.1
+            let tgt = zone.2 ?? 0
+            let tint: NSColor
+            if mono {
+                tint = .secondaryLabelColor
+            } else if let c = cur, tgt > 5, c < tgt - 3 {
+                tint = heat
+            } else if let c = cur, c > max(tgt, 0) + 5, c > 30 {
+                tint = cool
+            } else {
+                tint = .secondaryLabelColor
+            }
             row.addArrangedSubview(ThermalZoneView(label: zone.0,
                                                    current: Self.value(zone.1),
                                                    target: Self.target(zone.2),
