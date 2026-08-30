@@ -115,9 +115,13 @@ public sealed class SpoolbaseEditWindow : Window
 
         Title = _isNew ? (Pl ? "Nowy filament" : "New filament")
                        : (countOnly ? (Pl ? "Liczba szpul" : "Spool count") : (Pl ? "Edytuj filament" : "Edit filament"));
-        Width = 380; Height = countOnly ? 190 : 430;
+        // Grow to fit the fields instead of a fixed height that clipped the form (the manufacturer code,
+        // spool count and the buttons fell off the bottom). Cap the height and scroll on a small screen.
+        Width = 400;
+        SizeToContent = SizeToContent.Height;
+        MaxHeight = 720;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
+        ResizeMode = ResizeMode.CanResize;
         Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x26));
         Foreground = Ink;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
@@ -155,7 +159,12 @@ public sealed class SpoolbaseEditWindow : Window
         buttons.Children.Add(save); buttons.Children.Add(cancel);
         stack.Children.Add(buttons);
 
-        Content = stack;
+        Content = new ScrollViewer
+        {
+            Content = stack,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
     }
 
     private void Commit(bool countOnly)
