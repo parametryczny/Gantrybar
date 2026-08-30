@@ -529,6 +529,7 @@ class Dashboard(Gtk.Window):
         # taskbar entry that drops near the tray and closes when you click elsewhere. Without a tray
         # (no AppIndicator) fall back to a normal titled window so it stays reachable.
         self.tray_mode = AppIndicator is not None
+        self.set_title("Gantry")
         if self.tray_mode:
             self.set_default_size(840, 640)
             self.set_decorated(False)
@@ -1357,6 +1358,14 @@ class Gantry:
 
 
 def main() -> int:
+    # Name the app "Gantry" for the window manager instead of the script name ("__main__.py") when run
+    # from source, and set a matching WM_CLASS so GNOME/KDE group and label the window correctly.
+    GLib.set_prgname("Gantry")
+    GLib.set_application_name("Gantry")
+    try:
+        Gtk.Window.set_default_icon_name("gantry")
+    except Exception:
+        pass
     parser = argparse.ArgumentParser(prog="gantry")
     parser.add_argument("--background", action="store_true")
     parser.add_argument("--kiosk", action="store_true", help="full-screen Raspberry Pi workshop dashboard")
