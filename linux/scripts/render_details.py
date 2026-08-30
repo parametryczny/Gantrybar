@@ -27,9 +27,13 @@ class StubApp:
     text = gapp.TEXT["pl"]
     window = None
 
+    class _Cfg:
+        data = {"monochrome": False, "card_show_spool_grams": False, "spoolbase_enabled": True}
+
     def __init__(self, printers):
         self.printers = printers
         self.temp_history = {}
+        self.config = StubApp._Cfg()
 
     def open_automations(self, *a): ...
     def open_camera(self, *a): ...
