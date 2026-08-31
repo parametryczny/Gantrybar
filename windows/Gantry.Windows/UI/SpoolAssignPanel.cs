@@ -71,23 +71,43 @@ internal sealed class SpoolAssignPanel
         }
         else stack.Children.Add(Muted(T("Brak", "None")));
 
-        stack.Children.Add(Pill(T("+ Nowa rolka", "+ New roll"), true, ShowPickFilament));
+        // Filaments from the user's Spoolbase inventory — pick one to put a fresh roll in this slot. This
+        // is what people expect: the roll they just added to Spoolbase is assignable directly here.
+        stack.Children.Add(SectionHeader(T("Z MAGAZYNU SPOOLBASE", "FROM SPOOLBASE")));
+        var defs = _filaments.Filaments.OrderByDescending(MatchesDef).ThenBy(d => $"{d.Brand}{d.Name}").ToList();
+        if (defs.Count == 0)
+            stack.Children.Add(Muted(T("Magazyn pusty. Dodaj filamenty w oknie Spoolbase.",
+                                       "Empty. Add filaments in the Spoolbase window.")));
+        foreach (var d in defs)
+        {
+            var def = d;
+            var name = $"{d.Brand} {d.Name}".Trim();
+            var colour = string.IsNullOrEmpty(d.ColorName) ? "#" + d.ColorHex : d.ColorName;
+            stack.Children.Add(Row(ParseHex(d.ColorHex), string.IsNullOrEmpty(name) ? d.Type : name,
+                $"{d.Type} · {colour} · {d.SpoolCount} szp.", null, MatchesDef(d), () => ShowPickGrams(def)));
+        }
+        if (_material is not null)
+            stack.Children.Add(Pill(T("+ Nowa z AMS", "+ New from AMS"), false, () => ShowPickGrams(EnsureDefinition())));
 
-        stack.Children.Add(SectionHeader(T("ROLKI", "SPOOLS")));
+        // Existing physical rolls (SP-000xx) — move one here, or delete a stray one from the list.
         var available = _spools.Spools
             .Where(s => s.Status != SpoolStatus.Archived && !s.Location.SameSlot(_loc))
             .OrderByDescending(MatchesSpool).ThenBy(s => s.Id).ToList();
-        if (available.Count == 0) stack.Children.Add(Muted(T("Brak rolek. Utwórz nową powyżej.", "No spools yet. Create one above.")));
-        foreach (var s in available)
+        if (available.Count > 0)
         {
-            var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
-            var name = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
-            var place = s.Location.IsStorage ? T("Magazyn", "Storage") : T("w drukarce", "on a printer");
-            var spool = s;
-            stack.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
-                string.IsNullOrEmpty(name) ? s.Id : name,
-                $"{s.Id} · {(int)s.RemainingWeightGrams} g · {s.Percent}% · {place}",
-                null, MatchesSpool(s), () => AssignSpool(spool)));
+            stack.Children.Add(SectionHeader(T("ISTNIEJĄCE ROLKI", "EXISTING ROLLS")));
+            foreach (var s in available)
+            {
+                var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
+                var name = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
+                var place = s.Location.IsStorage ? T("Magazyn", "Storage") : T("w drukarce", "on a printer");
+                var spool = s;
+                stack.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
+                    string.IsNullOrEmpty(name) ? s.Id : name,
+                    $"{s.Id} · {(int)s.RemainingWeightGrams} g · {s.Percent}% · {place}",
+                    null, MatchesSpool(s), () => AssignSpool(spool),
+                    onDelete: () => { _spools.Delete(spool.Id); ShowMain(); }));
+            }
         }
         Set(stack);
     }
@@ -232,7 +252,7 @@ internal sealed class SpoolAssignPanel
         return border;
     }
 
-    private FrameworkElement Row(Color? dot, string title, string subtitle, string? trailing, bool highlight, Action action)
+    private FrameworkElement Row(Color? dot, string title, string subtitle, string? trailing, bool highlight, Action action, Action? onDelete = null)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -250,6 +270,17 @@ internal sealed class SpoolAssignPanel
         {
             var tl = new TextBlock { Text = trailing, FontSize = 11, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.StatusPrinting), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(tl, 2); grid.Children.Add(tl);
+        }
+        else if (onDelete is not null)
+        {
+            var del = new TextBlock
+            {
+                Text = "🗑", FontSize = 12, Foreground = GTheme.Brush(GTheme.Muted), Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(6, 2, 2, 2),
+                ToolTip = T("Usuń rolkę", "Delete roll")
+            };
+            del.MouseLeftButtonUp += (_, e) => { e.Handled = true; onDelete(); };
+            Grid.SetColumn(del, 2); grid.Children.Add(del);
         }
         var border = new Border
         {
