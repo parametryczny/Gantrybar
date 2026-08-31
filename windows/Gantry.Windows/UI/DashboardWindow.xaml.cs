@@ -364,6 +364,20 @@ public partial class DashboardWindow : Window
             DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref acrylic, sizeof(int));
         }
         catch { }
+
+        // What actually makes it show live is a window RESIZE (that is why entering/leaving details, which
+        // re-fits the height, refreshes the glass): DWM only recomposes the acrylic on a real size change.
+        // So nudge the height by 1px and restore it on the next frame — invisible, but it forces the
+        // recompose immediately without waiting for a layout rebuild.
+        if (IsVisible && !_spoolOverlayActive)
+        {
+            double h = Height;
+            Height = h + 1;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (IsVisible && !_spoolOverlayActive && Math.Abs(Height - (h + 1)) < 0.5) Height = h;
+            }), System.Windows.Threading.DispatcherPriority.Render);
+        }
     }
 
     /// <summary>Whether Windows has transparency effects enabled (Settings → Personalisation → Colours).
