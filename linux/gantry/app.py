@@ -126,7 +126,7 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .printer-icon { color: %(secondary)s; margin-right: 2px; }
 .printer-name { font-size: 13px; font-weight: 600; }
 .connection { color: %(secondary)s; border: 1px solid alpha(#ffffff, 0.12); border-radius: 6px; padding: 2px 6px; font-family: monospace; font-size: 9px; font-weight: 600; }
-.job-surface { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; padding: 5px 7px 6px; }
+.job-surface { background: transparent; border: none; padding: 2px 0 4px; }
 .card-notice { background: alpha(#ff6857, 0.16); border: 1px solid alpha(#ff6857, 0.34); border-radius: 9px; padding: 5px 6px 5px 9px; }
 .card-notice label { color: #f0d9d5; font-size: 10px; }
 .card-notice-ok { color: #ff8a7c; font-weight: 700; font-size: 10px; padding: 1px 8px; }
