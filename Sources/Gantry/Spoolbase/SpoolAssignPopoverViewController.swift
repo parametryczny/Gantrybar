@@ -144,7 +144,6 @@ final class SpoolAssignPopoverViewController: NSViewController {
         let newRoll = pill(t("+ Utwórz nową rolkę", "+ Create new roll"), filled: false) { [weak self] in
             self?.showPickFilament()
         }
-        newRoll.widthAnchor.constraint(equalToConstant: 324).isActive = true
 
         let catalogSection = NSStackView()
         catalogSection.orientation = .vertical
@@ -182,6 +181,8 @@ final class SpoolAssignPopoverViewController: NSViewController {
         body.orientation = .vertical
         body.alignment = .leading
         body.spacing = 12
+        // Make every row/section fill the width (flexible, not fixed) so nothing overflows a narrow popover.
+        [assignedSection, rollsSection, catalogSection, body].forEach(stretchChildren)
         present([header, assignedSection, divider(), body], scrollFrom: 3)
     }
 
@@ -208,7 +209,6 @@ final class SpoolAssignPopoverViewController: NSViewController {
             self.spools.correctWeight(id: spool.id, netGrams: net, tare: tareField.stringValue.isEmpty ? nil : tare)
             self.onChange(); self.showMain()
         }
-        save.widthAnchor.constraint(equalToConstant: 324).isActive = true
 
         present([header,
                  labeledField(t("Netto (g)", "Net (g)"), netField),
@@ -341,6 +341,14 @@ final class SpoolAssignPopoverViewController: NSViewController {
 
     // MARK: Layout + styled components
 
+    /// Pin every arranged subview of a vertical stack to the stack's width, so rows/pills/dividers fill
+    /// the panel instead of keeping a fixed width that could overflow a narrow popover.
+    private func stretchChildren(_ stack: NSStackView) {
+        for child in stack.arrangedSubviews {
+            child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+    }
+
     /// Lays out a screen: fixed rows on top, then (optionally) the row at `scrollFrom` becomes a
     /// scrolling list that fills the remaining height.
     private func present(_ blocks: [NSView], scrollFrom: Int?) {
@@ -384,9 +392,10 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 scroll = s
             } else {
                 column.addArrangedSubview(block)
-                if block is NSStackView || block is NSTextField {
-                    block.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
-                }
+                // Every block fills the column width, so rows/dividers/buttons never stay a fixed width
+                // that could exceed a narrow popover. Wrapping text fields are the one exception (they
+                // must be free to grow tall), and they already fill via their own constraints.
+                block.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
             }
         }
         view.addSubview(column)
@@ -497,7 +506,6 @@ final class SpoolAssignPopoverViewController: NSViewController {
         line.wantsLayer = true
         line.layer?.backgroundColor = GantryTheme.line.cgColor
         line.heightAnchor.constraint(equalToConstant: 1).isActive = true
-        line.widthAnchor.constraint(equalToConstant: 324).isActive = true
         return line
     }
 
@@ -553,7 +561,6 @@ final class SpoolAssignPopoverViewController: NSViewController {
         host.layer?.backgroundColor = GantryTheme.surface.cgColor
         host.layer?.borderWidth = highlight ? 1 : 0
         host.layer?.borderColor = GantryTheme.humidity.withAlphaComponent(0.5).cgColor
-        host.widthAnchor.constraint(equalToConstant: 324).isActive = true
 
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
