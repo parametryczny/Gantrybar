@@ -59,58 +59,108 @@ internal sealed class SpoolAssignPanel
         var stack = Column();
         stack.Children.Add(Header(_title, T($"AMS: {_material ?? "nieznany"}", $"AMS: {_material ?? "unknown"}"), null));
 
+        // 1. Assigned roll + per-roll actions. Weight and history live on the roll, not the slot, so
+        // unassigning only moves it to storage (its grams are kept).
         stack.Children.Add(SectionHeader(T("PRZYPISANA ROLKA", "ASSIGNED SPOOL")));
         var assigned = _spools.SpoolAt(_loc);
         if (assigned is not null)
         {
-            var def = _filaments.Filaments.FirstOrDefault(f => f.Id == assigned.FilamentDefinitionId);
-            stack.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
-                def != null ? $"{def.Brand} {def.Name}".Trim() : assigned.Id,
+            var adef = _filaments.Filaments.FirstOrDefault(f => f.Id == assigned.FilamentDefinitionId);
+            stack.Children.Add(Row(adef != null ? ParseHex(adef.ColorHex) : (Color?)null,
+                adef != null ? $"{adef.Brand} {adef.Name}".Trim() : assigned.Id,
                 $"{assigned.Id} · {(int)assigned.RemainingWeightGrams} g · {assigned.Percent}%",
-                T("Odepnij", "Unassign"), false, () => { _spools.Assign(assigned.Id, SpoolLocation.Storage()); ShowMain(); }));
+                null, false, () => { }));
+            var actions = new StackPanel { Orientation = Orientation.Horizontal };
+            actions.Children.Add(Pill(T("Skoryguj", "Weigh"), false, () => ShowCorrectWeight(assigned)));
+            actions.Children.Add(Pill(T("Zeruj", "Reset"), false, () => ConfirmReset(assigned)));
+            actions.Children.Add(Pill(T("Odepnij", "Unassign"), false, () => { _spools.Assign(assigned.Id, SpoolLocation.Storage()); ShowMain(); }));
+            stack.Children.Add(actions);
         }
         else stack.Children.Add(Muted(T("Brak", "None")));
 
-        // Filaments from the user's Spoolbase inventory — pick one to put a fresh roll in this slot. This
-        // is what people expect: the roll they just added to Spoolbase is assignable directly here.
-        stack.Children.Add(SectionHeader(T("Z MAGAZYNU SPOOLBASE", "FROM SPOOLBASE")));
-        var defs = _filaments.Filaments.OrderByDescending(MatchesDef).ThenBy(d => $"{d.Brand}{d.Name}").ToList();
+        // 2. Existing physical rolls to move here (storage + other printers), matching filament first.
+        // Clicking one only moves it: its remembered grams are never re-asked or reset (spec §3-4).
+        stack.Children.Add(SectionHeader(T("DOSTĘPNE ROLKI", "AVAILABLE ROLLS")));
+        var assignedId = assigned?.Id;
+        var available = _spools.Spools
+            .Where(s => s.Status != SpoolStatus.Archived && !s.Location.SameSlot(_loc) && s.Id != assignedId)
+            .OrderByDescending(MatchesSpool).ThenByDescending(s => s.Location.IsStorage).ThenBy(s => s.Id).ToList();
+        if (available.Count == 0)
+            stack.Children.Add(Muted(T("Brak wolnych rolek. Utwórz nową poniżej.", "No spare rolls. Create one below.")));
+        foreach (var s in available)
+        {
+            var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
+            var name = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
+            var place = s.Location.IsStorage ? T("magazyn", "storage") : T("inna drukarka", "other printer");
+            var spool = s;
+            stack.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
+                string.IsNullOrEmpty(name) ? s.Id : name,
+                $"{s.Id} · {(int)s.RemainingWeightGrams} g · {s.Percent}% · {place}",
+                null, MatchesSpool(s), () => AssignSpool(spool),
+                onDelete: () => { _spools.Delete(spool.Id); ShowMain(); }));
+        }
+
+        // 3. Create a new roll: guided button + the whole catalog grouped by type. Picking a filament
+        // asks for the starting grams (spec §2).
+        stack.Children.Add(Pill(T("+ Utwórz nową rolkę", "+ Create new roll"), false, ShowPickFilament));
+        stack.Children.Add(SectionHeader(T("FILAMENTY (NOWA ROLKA)", "FILAMENTS (NEW ROLL)")));
+        var defs = _filaments.Filaments
+            .OrderBy(d => d.Type).ThenByDescending(MatchesDef).ThenBy(d => $"{d.Brand}{d.Name}").ToList();
         if (defs.Count == 0)
             stack.Children.Add(Muted(T("Magazyn pusty. Dodaj filamenty w oknie Spoolbase.",
                                        "Empty. Add filaments in the Spoolbase window.")));
+        string? lastType = null;
         foreach (var d in defs)
         {
+            if (d.Type != lastType) { stack.Children.Add(TypeLabel(d.Type)); lastType = d.Type; }
             var def = d;
             var name = $"{d.Brand} {d.Name}".Trim();
             var colour = string.IsNullOrEmpty(d.ColorName) ? "#" + d.ColorHex : d.ColorName;
             stack.Children.Add(Row(ParseHex(d.ColorHex), string.IsNullOrEmpty(name) ? d.Type : name,
-                $"{d.Type} · {colour} · {d.SpoolCount} szp.", null, MatchesDef(d), () => ShowPickGrams(def)));
-        }
-        if (_material is not null)
-            stack.Children.Add(Pill(T("+ Nowa z AMS", "+ New from AMS"), false, () => ShowPickGrams(EnsureDefinition())));
-
-        // Rolls currently loaded in ANOTHER printer — move one here. Storage rolls are left out: they
-        // just mirror the inventory above, so listing both read as duplicates.
-        var available = _spools.Spools
-            .Where(s => s.Status != SpoolStatus.Archived && !s.Location.IsStorage && !s.Location.SameSlot(_loc))
-            .OrderByDescending(MatchesSpool).ThenBy(s => s.Id).ToList();
-        if (available.Count > 0)
-        {
-            stack.Children.Add(SectionHeader(T("ISTNIEJĄCE ROLKI", "EXISTING ROLLS")));
-            foreach (var s in available)
-            {
-                var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
-                var name = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
-                var place = s.Location.IsStorage ? T("Magazyn", "Storage") : T("w drukarce", "on a printer");
-                var spool = s;
-                stack.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
-                    string.IsNullOrEmpty(name) ? s.Id : name,
-                    $"{s.Id} · {(int)s.RemainingWeightGrams} g · {s.Percent}% · {place}",
-                    null, MatchesSpool(s), () => AssignSpool(spool),
-                    onDelete: () => { _spools.Delete(spool.Id); ShowMain(); }));
-            }
+                $"{d.Type} · {colour}", null, MatchesDef(d), () => ShowPickGrams(def)));
         }
         Set(stack);
+    }
+
+    /// <summary>Weigh screen (spec §5): a fresh net reading, or gross + the empty-spool tare (subtracted
+    /// for you). The tare is remembered on the roll for next time.</summary>
+    private void ShowCorrectWeight(PhysicalSpool spool)
+    {
+        var stack = Column();
+        stack.Children.Add(Header(T("Skoryguj wagę", "Correct weight"),
+            $"{spool.Id} · {T("nominał", "nominal")} {(int)spool.NominalWeightGrams} g", ShowMain));
+
+        var net = Input(((int)spool.RemainingWeightGrams).ToString());
+        var gross = Input("");
+        var tare = Input(spool.TareGrams is { } tg ? ((int)tg).ToString() : "");
+        stack.Children.Add(LabeledField(T("Netto (g)", "Net (g)"), net));
+        stack.Children.Add(LabeledField(T("Brutto (g)", "Gross (g)"), gross));
+        stack.Children.Add(LabeledField(T("Tara szpuli (g)", "Spool tare (g)"), tare));
+        stack.Children.Add(Muted(T("Wpisz wagę netto, albo brutto + tarę pustej szpuli (aplikacja odejmie tarę).",
+                                   "Enter net weight, or gross + empty-spool tare (the app subtracts it).")));
+        stack.Children.Add(Pill(T("Zapisz", "Save"), true, () =>
+        {
+            static double? Num(TextBox t) => double.TryParse(t.Text.Replace(',', '.'),
+                System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+            var tareV = Num(tare);
+            double? netV = (Num(gross) is { } g && tareV is { } tv) ? Math.Max(0, g - tv) : Num(net);
+            if (netV is not { } nv) return;
+            _spools.CorrectWeight(spool.Id, nv, string.IsNullOrWhiteSpace(tare.Text) ? null : tareV);
+            ShowMain();
+        }));
+        Set(stack);
+    }
+
+    /// <summary>Reset a spent roll back to full (spec §6): same physical roll, refilled. Clears history.</summary>
+    private void ConfirmReset(PhysicalSpool spool)
+    {
+        var res = MessageBox.Show(
+            T($"Wyzerować rolkę {spool.Id}? Ustawia pełny stan {(int)spool.NominalWeightGrams} g i czyści historię zużycia tej rolki.",
+              $"Reset roll {spool.Id}? Sets a full {(int)spool.NominalWeightGrams} g and clears this roll's usage history."),
+            "Gantry", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (res != MessageBoxResult.Yes) return;
+        _spools.ResetToFull(spool.Id);
+        ShowMain();
     }
 
     private void ShowPickFilament()
@@ -231,6 +281,28 @@ internal sealed class SpoolAssignPanel
 
     private static TextBlock Muted(string text) => new()
     { Text = text, FontSize = 11, Foreground = GTheme.Brush(GTheme.Muted), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
+
+    /// A quiet caption heading each material group in the catalog list (PLA, PETG, …).
+    private static TextBlock TypeLabel(string text) => new()
+    { Text = text.ToUpperInvariant(), FontSize = 8, FontWeight = FontWeights.Bold, Foreground = GTheme.Brush(GTheme.Secondary), Margin = new Thickness(0, 6, 0, 2) };
+
+    private static TextBox Input(string text) => new()
+    {
+        Text = text, Width = 120, VerticalContentAlignment = VerticalAlignment.Center,
+        Background = new SolidColorBrush(Color.FromRgb(0x2C, 0x2C, 0x2E)), Foreground = GTheme.Brush(GTheme.Text),
+        BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), Padding = new Thickness(6, 3, 6, 3)
+    };
+
+    private static FrameworkElement LabeledField(string label, TextBox field)
+    {
+        var g = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var tb = new TextBlock { Text = label, FontSize = 11, Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(tb, 0); g.Children.Add(tb);
+        Grid.SetColumn(field, 1); g.Children.Add(field);
+        return g;
+    }
 
     private static FrameworkElement Link(string text, Action action)
     {

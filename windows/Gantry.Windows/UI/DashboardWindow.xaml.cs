@@ -54,6 +54,10 @@ public partial class DashboardWindow : Window
     private FrameworkElement? _cardMenu;
 
     private Grid? _spoolLayer;
+    // While the slot-assignment overlay is open the window is grown to a comfortable height so plenty of
+    // rolls/filaments show even for a single short printer card — and the per-tick content-fit is
+    // suspended so it doesn't shrink the window back under the open panel (parity with macOS).
+    private bool _spoolOverlayActive;
     private void OnSpoolsChanged() => Dispatcher.Invoke(Rebuild);
 
     /// <summary>Shows the spool-assignment panel for a slot as a dimmed in-window overlay.</summary>
@@ -65,15 +69,35 @@ public partial class DashboardWindow : Window
         backdrop.MouseLeftButtonDown += (_, _) => CloseSpoolAssign();
         var layer = new Grid();
         layer.Children.Add(backdrop);
-        layer.Children.Add(SpoolAssignPanel.Build(location, title, material, colorHex, CloseSpoolAssign));
+        var panel = SpoolAssignPanel.Build(location, title, material, colorHex, CloseSpoolAssign);
+        layer.Children.Add(panel);
         _spoolLayer = layer;
         host.Children.Add(layer);
+
+        // Grow the window (a short single-printer window must not squeeze the add list), then let the
+        // panel fill most of that height with its own list scrolling inside.
+        _spoolOverlayActive = true;
+        double maxH = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
+        double target = Math.Min(maxH, Math.Max(Height, 780));
+        if (target > Height + 1)
+        {
+            Height = target;
+            var area = SystemParameters.WorkArea;
+            Left = area.Right - Width - 8;
+            Top = area.Bottom - Height - 8;
+        }
+        panel.MaxHeight = Height - 40;
     }
 
     internal void CloseSpoolAssign()
     {
         if (_spoolLayer is not null && MenuLayer.Parent is Grid host) host.Children.Remove(_spoolLayer);
         _spoolLayer = null;
+        if (_spoolOverlayActive)
+        {
+            _spoolOverlayActive = false;
+            FitHeightToContent();   // restore the natural, content-driven height
+        }
     }
 
     private void ShowCardMenu(FrameworkElement anchor, FrameworkElement menu)
@@ -520,6 +544,7 @@ public partial class DashboardWindow : Window
     internal void FitHeightToContent()
     {
         if (!IsVisible) return;
+        if (_spoolOverlayActive) return;   // keep the grown height while the slot overlay is open
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (!IsVisible) return;

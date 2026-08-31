@@ -48,12 +48,16 @@ final class SpoolAssignPopoverViewController: NSViewController {
 
     // MARK: Screens
 
-    /// Main screen: current assignment + a scrollable list of spools (matching first).
+    /// Main screen (spec §3): the assigned roll on top (with weigh / reset / unassign), then the physical
+    /// rolls you can move here, then a "create new roll" button and the catalog grouped by type. The whole
+    /// lower region scrolls as one, so a long inventory never squashes the list.
     private func showMain() {
         let header = pageHeader(title: slotTitle,
                                 subtitle: t("AMS: \(amsMaterial ?? "nieznany")", "AMS: \(amsMaterial ?? "unknown")"),
                                 back: nil)
 
+        // 1. The roll currently in this slot + its per-roll actions. Weight and history live on the roll,
+        // never on the slot, so unassigning only moves it to storage (its grams are kept).
         let assignedSection = NSStackView()
         assignedSection.orientation = .vertical
         assignedSection.alignment = .leading
@@ -65,11 +69,18 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 dot: def.map { NSColor(filamentHex: $0.colorHex) },
                 title: def.map { "\($0.brand) \($0.name)".trimmingCharacters(in: .whitespaces) } ?? assigned.id,
                 subtitle: "\(assigned.id) · \(Int(assigned.remainingWeightGrams)) g · \(assigned.percent)%",
-                trailing: t("Odepnij", "Unassign")) { [weak self] in
+                action: {}))
+            let actions = NSStackView(views: [
+                pill(t("Skoryguj", "Weigh"), filled: false) { [weak self] in self?.showCorrectWeight(assigned) },
+                pill(t("Zeruj", "Reset"), filled: false) { [weak self] in self?.confirmReset(assigned) },
+                pill(t("Odepnij", "Unassign"), filled: false) { [weak self] in
                     guard let self else { return }
                     self.spools.assign(spoolID: assigned.id, to: .storage)
                     self.onChange(); self.showMain()
-                })
+                }])
+            actions.orientation = .horizontal
+            actions.spacing = 6
+            assignedSection.addArrangedSubview(actions)
         } else {
             let none = NSTextField(labelWithString: t("Brak", "None"))
             none.font = .systemFont(ofSize: 12)
@@ -77,55 +88,31 @@ final class SpoolAssignPopoverViewController: NSViewController {
             assignedSection.addArrangedSubview(none)
         }
 
-        // From the user's Spoolbase inventory — pick a filament to put a fresh roll in this slot. This is
-        // what people expect: a filament they added to Spoolbase is assignable directly here.
-        let inventorySection = NSStackView()
-        inventorySection.orientation = .vertical
-        inventorySection.alignment = .leading
-        inventorySection.spacing = 6
-        inventorySection.addArrangedSubview(sectionHeader(t("Z MAGAZYNU SPOOLBASE", "FROM SPOOLBASE")))
-        let defs = filaments.filaments.sorted { a, b in
-            let am = matchesDef(a), bm = matchesDef(b)
-            return am != bm ? am : "\(a.brand)\(a.name)" < "\(b.brand)\(b.name)"
-        }
-        if defs.isEmpty {
-            inventorySection.addArrangedSubview(note(t("Magazyn pusty. Dodaj filamenty w oknie Spoolbase.",
-                                                       "Empty. Add filaments in the Spoolbase window.")))
-        } else {
-            for def in defs {
-                let name = "\(def.brand) \(def.name)".trimmingCharacters(in: .whitespaces)
-                let colour = def.colorName.isEmpty ? "#\(def.colorHex)" : def.colorName
-                inventorySection.addArrangedSubview(row(
-                    dot: NSColor(filamentHex: def.colorHex),
-                    title: name.isEmpty ? def.type : name,
-                    subtitle: "\(def.type) · \(colour) · \(def.spoolCount) szp.",
-                    highlight: matchesDef(def)) { [weak self] in self?.showPickGrams(def: def) })
-            }
-        }
-        let newRoll = pill(t("+ Nowa z AMS", "+ New from AMS"), filled: false) { [weak self] in
-            guard let self else { return }
-            self.showPickGrams(def: self.ensureDefinition())
-        }
-
-        // Rolls currently loaded in ANOTHER printer — move one here. Storage rolls are left out: they
-        // just mirror the inventory above, so listing both read as duplicates.
-        let listSection = NSStackView()
-        listSection.orientation = .vertical
-        listSection.alignment = .leading
-        listSection.spacing = 6
+        // 2. Existing physical rolls (in storage or loaded on another printer) — matching filament first.
+        // Clicking one only moves it here: its remembered grams are never re-asked or reset (spec §3–4).
+        let rollsSection = NSStackView()
+        rollsSection.orientation = .vertical
+        rollsSection.alignment = .leading
+        rollsSection.spacing = 6
+        rollsSection.addArrangedSubview(sectionHeader(t("DOSTĘPNE ROLKI", "AVAILABLE ROLLS")))
+        let assignedID = spools.spool(at: location)?.id
         let available = spools.spools
-            .filter { $0.status != .archived && !$0.location.isStorage && !$0.location.sameSlot(as: location) }
+            .filter { $0.status != .archived && !$0.location.sameSlot(as: location) && $0.id != assignedID }
             .sorted { a, b in
                 let am = matchesSpool(a), bm = matchesSpool(b)
-                return am != bm ? am : a.id < b.id
+                if am != bm { return am }
+                if a.location.isStorage != b.location.isStorage { return a.location.isStorage }
+                return a.id < b.id
             }
-        if !available.isEmpty {
-            listSection.addArrangedSubview(sectionHeader(t("ISTNIEJĄCE ROLKI", "EXISTING ROLLS")))
+        if available.isEmpty {
+            rollsSection.addArrangedSubview(note(t("Brak wolnych rolek. Utwórz nową poniżej.",
+                                                   "No spare rolls. Create one below.")))
+        } else {
             for spool in available {
                 let def = filaments.filaments.first { $0.id == spool.filamentDefinitionID }
                 let name = def.map { "\($0.brand) \($0.name)".trimmingCharacters(in: .whitespaces) } ?? spool.id
-                let place = spool.location.isStorage ? t("Magazyn", "Storage") : t("w drukarce", "on a printer")
-                listSection.addArrangedSubview(row(
+                let place = spool.location.isStorage ? t("magazyn", "storage") : t("inna drukarka", "other printer")
+                rollsSection.addArrangedSubview(row(
                     dot: def.map { NSColor(filamentHex: $0.colorHex) },
                     title: name.isEmpty ? spool.id : name,
                     subtitle: "\(spool.id) · \(Int(spool.remainingWeightGrams)) g · \(spool.percent)% · \(place)",
@@ -137,9 +124,98 @@ final class SpoolAssignPopoverViewController: NSViewController {
             }
         }
 
-        // Scroll everything below the printer's own slot (the inventory can be long) as one region, so
-        // there's no fixed giant block above a tiny scroll area.
-        present([header, assignedSection, divider(), inventorySection, newRoll, listSection], scrollFrom: 3)
+        // 3. Create a brand-new roll: a guided button, plus the whole catalog grouped by type so a
+        // filament is easy to find. Picking a filament asks for the starting grams (spec §2).
+        let newRoll = pill(t("+ Utwórz nową rolkę", "+ Create new roll"), filled: false) { [weak self] in
+            self?.showPickFilament()
+        }
+        newRoll.widthAnchor.constraint(equalToConstant: 268).isActive = true
+
+        let catalogSection = NSStackView()
+        catalogSection.orientation = .vertical
+        catalogSection.alignment = .leading
+        catalogSection.spacing = 6
+        catalogSection.addArrangedSubview(sectionHeader(t("FILAMENTY (NOWA ROLKA)", "FILAMENTS (NEW ROLL)")))
+        let defs = filaments.filaments.sorted { a, b in
+            if a.type != b.type { return a.type < b.type }
+            let am = matchesDef(a), bm = matchesDef(b)
+            if am != bm { return am }
+            return "\(a.brand)\(a.name)" < "\(b.brand)\(b.name)"
+        }
+        if defs.isEmpty {
+            catalogSection.addArrangedSubview(note(t("Magazyn pusty. Dodaj filamenty w oknie Spoolbase.",
+                                                     "Empty. Add filaments in the Spoolbase window.")))
+        } else {
+            var lastType: String?
+            for def in defs {
+                if def.type != lastType {
+                    catalogSection.addArrangedSubview(typeLabel(def.type))
+                    lastType = def.type
+                }
+                let name = "\(def.brand) \(def.name)".trimmingCharacters(in: .whitespaces)
+                let colour = def.colorName.isEmpty ? "#\(def.colorHex)" : def.colorName
+                catalogSection.addArrangedSubview(row(
+                    dot: NSColor(filamentHex: def.colorHex),
+                    title: name.isEmpty ? def.type : name,
+                    subtitle: "\(def.type) · \(colour)",
+                    highlight: matchesDef(def)) { [weak self] in self?.showPickGrams(def: def) })
+            }
+        }
+
+        // The rolls list, the create button and the catalog scroll together as one region.
+        let body = NSStackView(views: [rollsSection, newRoll, catalogSection])
+        body.orientation = .vertical
+        body.alignment = .leading
+        body.spacing = 12
+        present([header, assignedSection, divider(), body], scrollFrom: 3)
+    }
+
+    /// Weigh screen (spec §5): set a fresh net reading, or enter gross + the empty-spool tare and let the
+    /// app subtract it. The tare is remembered on the roll for next time.
+    private func showCorrectWeight(_ spool: PhysicalSpool) {
+        let header = pageHeader(title: t("Skoryguj wagę", "Correct weight"),
+                                subtitle: "\(spool.id) · \(t("nominał", "nominal")) \(Int(spool.nominalWeightGrams)) g",
+                                back: { [weak self] in self?.showMain() })
+
+        let netField = NSTextField(string: String(Int(spool.remainingWeightGrams)))
+        let grossField = NSTextField(string: "")
+        let tareField = NSTextField(string: spool.tareGrams.map { String(Int($0)) } ?? "")
+
+        let hint = note(t("Wpisz wagę netto, albo brutto i tarę pustej szpuli (aplikacja odejmie tarę).",
+                          "Enter the net weight, or gross plus the empty-spool tare (the app subtracts it)."))
+        let save = pill(t("Zapisz", "Save"), filled: true) { [weak self] in
+            guard let self else { return }
+            func num(_ f: NSTextField) -> Double? { Double(f.stringValue.replacingOccurrences(of: ",", with: ".")) }
+            let tare = num(tareField)
+            let net: Double?
+            if let gross = num(grossField), let tare { net = max(0, gross - tare) } else { net = num(netField) }
+            guard let net else { return }
+            self.spools.correctWeight(id: spool.id, netGrams: net, tare: tareField.stringValue.isEmpty ? nil : tare)
+            self.onChange(); self.showMain()
+        }
+        save.widthAnchor.constraint(equalToConstant: 268).isActive = true
+
+        present([header,
+                 labeledField(t("Netto (g)", "Net (g)"), netField),
+                 divider(),
+                 labeledField(t("Brutto (g)", "Gross (g)"), grossField),
+                 labeledField(t("Tara szpuli (g)", "Spool tare (g)"), tareField),
+                 hint, save], scrollFrom: nil)
+    }
+
+    /// Reset a spent roll back to full (spec §6): the same physical roll, refilled — e.g. you swapped in a
+    /// fresh spool of the same product. Clears this roll's consumption history.
+    private func confirmReset(_ spool: PhysicalSpool) {
+        let alert = NSAlert()
+        alert.messageText = t("Wyzerować rolkę \(spool.id)?", "Reset roll \(spool.id)?")
+        alert.informativeText = t(
+            "Ustawia pełny stan \(Int(spool.nominalWeightGrams)) g (nowa rolka tego samego typu). Historia zużycia tej rolki zostanie wyczyszczona.",
+            "Sets a full \(Int(spool.nominalWeightGrams)) g (a fresh roll of the same product). This roll's usage history is cleared.")
+        alert.addButton(withTitle: t("Wyzeruj", "Reset"))
+        alert.addButton(withTitle: t("Anuluj", "Cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        spools.resetToFull(id: spool.id)
+        onChange(); showMain()
     }
 
     /// Step 1 of "new roll": pick a filament from the Spoolbase catalog (matching AMS first).
@@ -283,6 +359,13 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 column.addArrangedSubview(s)
                 doc.widthAnchor.constraint(equalTo: s.widthAnchor).isActive = true
                 s.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+                // Prefer to be exactly as tall as the content (so short lists show fully with no dead
+                // space and no scrolling). This is a low-priority wish: when the window is short — e.g. a
+                // single-printer popover — the panel's height cap wins, this compresses, and the list
+                // scrolls instead of overflowing the window. See the height cap in the dashboard.
+                let fit = s.heightAnchor.constraint(equalTo: doc.heightAnchor)
+                fit.priority = .defaultLow
+                fit.isActive = true
                 scroll = s
             } else {
                 column.addArrangedSubview(block)
@@ -298,7 +381,13 @@ final class SpoolAssignPopoverViewController: NSViewController {
             column.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
             column.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16)
         ])
-        if let scroll { scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true }
+        if let scroll {
+            // Keep the list usable even on a short window, but let this break before the window cap does
+            // (so it can shrink further rather than clip). Required min would fight the cap and clip.
+            let minH = scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
+            minH.priority = .defaultHigh
+            minH.isActive = true
+        }
         addCloseButton()
     }
 
@@ -354,6 +443,31 @@ final class SpoolAssignPopoverViewController: NSViewController {
         label.font = .systemFont(ofSize: 9, weight: .semibold)
         label.textColor = GantryTheme.muted
         return label
+    }
+
+    /// A quiet caption that heads each material group in the catalog list (PLA, PETG, …).
+    private func typeLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text.uppercased())
+        label.font = .systemFont(ofSize: 8, weight: .bold)
+        label.textColor = GantryTheme.secondary
+        return label
+    }
+
+    /// A caption + input row used by the weigh screen.
+    private func labeledField(_ title: String, _ field: NSTextField) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = GantryTheme.secondary
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        field.bezelStyle = .roundedBezel
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        let stack = NSStackView(views: [label, field, NSView()])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        return stack
     }
 
     private func note(_ text: String) -> NSTextField {

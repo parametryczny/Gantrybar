@@ -56,6 +56,25 @@ final class PhysicalSpoolStore {
         changed()
     }
 
+    /// Creates `count` fresh rolls of one filament definition, each with its own id, dropped straight
+    /// into storage (spec §1: adding a filament to Spoolbase creates one physical roll per spool). A
+    /// full roll has remaining == nominal == `weight`; an opened roll passes a smaller `remaining`.
+    @discardableResult
+    func createRolls(definitionID: UUID, count: Int, weight: Double, remaining: Double? = nil) -> [PhysicalSpool] {
+        var created: [PhysicalSpool] = []
+        for _ in 0..<max(0, count) {
+            let rest = remaining ?? weight
+            let spool = PhysicalSpool(id: nextSpoolID(), filamentDefinitionID: definitionID,
+                                      nominalWeightGrams: weight, remainingWeightGrams: rest,
+                                      status: rest < weight ? .active : .new, location: .storage,
+                                      openedAt: rest < weight ? .now : nil)
+            spools.append(spool)
+            created.append(spool)
+        }
+        if !created.isEmpty { changed() }
+        return created
+    }
+
     func update(_ spool: PhysicalSpool) {
         guard let index = spools.firstIndex(where: { $0.id == spool.id }) else { return }
         var updated = spool
@@ -74,6 +93,41 @@ final class PhysicalSpoolStore {
         guard let index = spools.firstIndex(where: { $0.id == id }) else { return }
         spools[index].remainingWeightGrams = max(0, min(grams, spools[index].nominalWeightGrams))
         spools[index].status = spools[index].remainingWeightGrams <= 0 ? .empty : spools[index].status
+        spools[index].updatedAt = .now
+        changed()
+    }
+
+    /// Manual weighing (spec §5 "Skoryguj wagę"): store a freshly measured net amount and stamp the
+    /// weighing date. `tare` (empty-spool weight) is remembered so a later gross reading can be
+    /// converted to net automatically. `grams` here is already net (gross minus tare).
+    func correctWeight(id: String, netGrams: Double, tare: Double? = nil) {
+        guard let index = spools.firstIndex(where: { $0.id == id }) else { return }
+        spools[index].remainingWeightGrams = max(0, min(netGrams, spools[index].nominalWeightGrams))
+        if let tare { spools[index].tareGrams = tare }
+        spools[index].weighedAt = .now
+        if spools[index].remainingWeightGrams <= 0 {
+            spools[index].status = .empty
+            spools[index].emptiedAt = .now
+        } else if spools[index].status == .empty {
+            spools[index].status = spools[index].location.isStorage ? .stored : .active
+        }
+        spools[index].updatedAt = .now
+        changed()
+    }
+
+    /// Reset a roll back to a full nominal amount (spec §6): used when a spent roll is swapped for a
+    /// fresh one of the same product without minting a new id. Clears consumption/lifecycle so the
+    /// history starts over for the new physical roll. Pass `nominal` to also change the roll size.
+    func resetToFull(id: String, nominal: Double? = nil) {
+        guard let index = spools.firstIndex(where: { $0.id == id }) else { return }
+        let full = max(0, nominal ?? spools[index].nominalWeightGrams)
+        spools[index].nominalWeightGrams = full
+        spools[index].remainingWeightGrams = full
+        spools[index].totalConsumedGrams = 0
+        spools[index].openedAt = nil
+        spools[index].emptiedAt = nil
+        spools[index].weighedAt = nil
+        spools[index].status = spools[index].location.isStorage ? .new : .active
         spools[index].updatedAt = .now
         changed()
     }

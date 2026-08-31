@@ -112,6 +112,8 @@ public sealed class SpoolbaseCatalogWindow : Window
     private readonly List<CatalogFilament> _catalog;
     private readonly ListBox _listBox = new();
     private readonly TextBox _search = new();
+    private readonly TextBox _qty = new() { Text = "1", Width = 48, TextAlignment = TextAlignment.Center };
+    private readonly TextBox _weight = new() { Text = "1000", Width = 60, TextAlignment = TextAlignment.Center };
 
     private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF7));
     private static bool Pl => AppSettings.Polish;
@@ -143,6 +145,25 @@ public sealed class SpoolbaseCatalogWindow : Window
         DockPanel.SetDock(addManual, Dock.Bottom);
         root.Children.Add(addManual);
 
+        // Quantity + per-roll weight: each spool added becomes a real physical roll (SP-xxxxx) in storage
+        // with this weight from the moment the filament is added (spec §1-2). Full roll = 1000 g.
+        foreach (var box in new[] { _qty, _weight })
+        {
+            box.FontSize = 13; box.Padding = new Thickness(6, 4, 6, 4);
+            box.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+            box.Foreground = Ink; box.CaretBrush = Ink; box.BorderThickness = new Thickness(0);
+        }
+        var addBtn = new Button { Content = Pl ? "Dodaj do moich" : "Add to mine", Height = 32, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(10, 0, 10, 0) };
+        addBtn.Click += (_, _) => AddSelected();
+        var footer = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        footer.Children.Add(new TextBlock { Text = Pl ? "Liczba szpul" : "Spools", Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        footer.Children.Add(_qty);
+        footer.Children.Add(new TextBlock { Text = Pl ? "Waga (g)" : "Weight (g)", Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
+        footer.Children.Add(_weight);
+        footer.Children.Add(addBtn);
+        DockPanel.SetDock(footer, Dock.Bottom);
+        root.Children.Add(footer);
+
         _listBox.Background = Brushes.Transparent;
         _listBox.BorderThickness = new Thickness(0);
         _listBox.ItemTemplate = BuildRowTemplate();
@@ -169,7 +190,14 @@ public sealed class SpoolbaseCatalogWindow : Window
     private void AddSelected()
     {
         if (_listBox.SelectedItem is not CatalogFilament item) return;
-        _store.Add(item.InventoryItem(1));
+        int qty = int.TryParse(_qty.Text.Trim(), out var q) ? Math.Max(1, q) : 1;
+        double weight = double.TryParse(_weight.Text.Trim(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var w) && w > 0 ? w : 1000;
+        _store.Add(item.InventoryItem(qty));
+        // Match the definition by catalog id (Add may have merged into an existing entry) and mint the
+        // physical rolls, so the roll and its weight exist from the moment the filament is added.
+        var def = _store.Filaments.FirstOrDefault(f => f.CatalogId == item.Id);
+        if (def is not null) SpoolbaseShared.Spools.CreateRolls(def.Id, qty, weight);
         Close();
     }
 
@@ -202,6 +230,7 @@ public sealed class SpoolbaseEditWindow : Window
     private readonly TextBox _colorHex = new();
     private readonly TextBox _code = new();
     private readonly TextBox _count = new();
+    private readonly TextBox _weight = new();
 
     private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF7));
     private static bool Pl => AppSettings.Polish;
@@ -251,6 +280,7 @@ public sealed class SpoolbaseEditWindow : Window
             stack.Children.Add(Field("Hex", _colorHex, _original.ColorHex));
             stack.Children.Add(Field(Pl ? "Kod producenta" : "Manufacturer code", _code, _original.ManufacturerCode));
             stack.Children.Add(Field(Pl ? "Liczba szpul" : "Spool count", _count, _original.SpoolCount.ToString()));
+            if (_isNew) stack.Children.Add(Field(Pl ? "Waga rolki (g)" : "Roll weight (g)", _weight, "1000"));
         }
 
         var save = new Button { Content = Pl ? "Zapisz" : "Save", Height = 32, Width = 100 };
@@ -291,6 +321,11 @@ public sealed class SpoolbaseEditWindow : Window
         {
             updated.CatalogId ??= "custom-" + Guid.NewGuid().ToString("N");
             _store.Add(updated);
+            // Mint physical rolls so the roll and its weight exist from the moment it is added (spec §1).
+            double weight = double.TryParse(_weight.Text.Trim(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var w) && w > 0 ? w : 1000;
+            var def = _store.Filaments.FirstOrDefault(f => f.Id == updated.Id) ?? updated;
+            SpoolbaseShared.Spools.CreateRolls(def.Id, count, weight);
         }
         else
         {

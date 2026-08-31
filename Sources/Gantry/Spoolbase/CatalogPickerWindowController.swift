@@ -4,7 +4,7 @@ import AppKit
 final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
     private var catalog: [CatalogFilament]
     private let existingCatalogIDs: Set<String>
-    private let onAdd: (CatalogFilament, Int) -> Void
+    private let onAdd: (CatalogFilament, Int, Double) -> Void
     private let searchField = NSSearchField()
     private let brandPopup = NSPopUpButton()
     private let typePopup = NSPopUpButton()
@@ -13,6 +13,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
     private let editButton = NSButton()
     private let deleteButton = NSButton()
     private let quantityField = NSTextField()
+    private let weightField = NSTextField()
     private let countLabel = NSTextField(labelWithString: "")
     private var visible: [CatalogFilament] = []
     private var editorController: FilamentEditorWindowController?
@@ -21,7 +22,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
     init(
         catalog: [CatalogFilament],
         existingCatalogIDs: Set<String>,
-        onAdd: @escaping (CatalogFilament, Int) -> Void
+        onAdd: @escaping (CatalogFilament, Int, Double) -> Void
     ) {
         self.catalog = catalog
         self.existingCatalogIDs = existingCatalogIDs
@@ -144,6 +145,13 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         quantityField.alignment = .center
         quantityField.formatter = integerFormatter()
         quantityField.widthAnchor.constraint(equalToConstant: 55).isActive = true
+        let weightTitle = NSTextField(labelWithString: "Waga rolki (g)")
+        weightTitle.textColor = .secondaryLabelColor
+        weightTitle.toolTip = "Pełna rolka to zwykle 1000 g. Dla napoczętej wpisz pozostałe gramy."
+        weightField.integerValue = 1000
+        weightField.alignment = .center
+        weightField.formatter = integerFormatter()
+        weightField.widthAnchor.constraint(equalToConstant: 62).isActive = true
         let cancel = NSButton(title: "Anuluj", target: self, action: #selector(cancelPressed))
         cancel.keyEquivalent = "\u{1b}"
         let custom = NSButton(title: "Dodaj własny…", target: self, action: #selector(addCustomPressed))
@@ -170,7 +178,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         addButton.keyEquivalent = "\r"
         addButton.bezelStyle = .rounded
         [custom, editButton, deleteButton, cancel, addButton].forEach { $0.controlSize = .small }
-        let footer = NSStackView(views: [custom, editButton, deleteButton, NSView(), quantityTitle, quantityField, cancel, addButton])
+        let footer = NSStackView(views: [custom, editButton, deleteButton, NSView(), weightTitle, weightField, quantityTitle, quantityField, cancel, addButton])
         footer.orientation = .horizontal
         footer.alignment = .centerY
         footer.spacing = 9
@@ -329,7 +337,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
     }
     @objc private func addPressed() {
         guard let selected else { return }
-        onAdd(selected, max(1, quantityField.integerValue))
+        onAdd(selected, max(1, quantityField.integerValue), max(1, Double(weightField.integerValue)))
         closeSheet()
     }
 

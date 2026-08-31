@@ -380,7 +380,7 @@ final class PrinterDashboardViewController: NSViewController {
         // popover's bottom edge visibly pulse on every telemetry tick.
         view.layoutSubtreeIfNeeded()
         let measuredContent = cardsStack.fittingSize.height
-        if measuredContent > 1 {
+        if measuredContent > 1 && !spoolOverlaySizingActive {
             // header(12+36) + gap(6) + footer block(scroll→footer 6 + footer 14 + bottom 8), plus a
             // 4 px hairline so rounding never leaves a scrollbar — otherwise the panel hugs its content.
             let chromeAndInsets: CGFloat = 12 + 36 + 6 + 6 + 14 + 8 + 4
@@ -401,6 +401,33 @@ final class PrinterDashboardViewController: NSViewController {
     }
 
     private var lastReportedContentSize: NSSize = .zero
+    // While the slot-assignment overlay is open, the popover is grown to a comfortable height so plenty
+    // of rolls/filaments show even for a single short printer card — and the normal per-tick auto-size is
+    // suspended so it doesn't shrink the popover back under the open panel.
+    private var spoolOverlaySizingActive = false
+    private static weak var overlaySizingHost: PrinterDashboardViewController?
+
+    /// Grow the popover to a tall, comfortable size for the open assignment overlay (spec: a small app
+    /// window must not squeeze the filament list). Keeps the current height if it is already taller.
+    func beginSpoolOverlaySizing() {
+        spoolOverlaySizingActive = true
+        PrinterDashboardViewController.overlaySizingHost = self
+        let screenH = (view.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
+        let width = preferredContentSize.width > 0 ? preferredContentSize.width : 540
+        let height = min(screenH - 24, max(preferredContentSize.height, 780))
+        let size = NSSize(width: width, height: height)
+        preferredContentSize = size
+        onPreferredContentSize(size)
+    }
+
+    /// Restore the popover to its natural content-driven height once the overlay closes.
+    static func endSpoolOverlaySizing() {
+        guard let host = overlaySizingHost else { return }
+        overlaySizingHost = nil
+        host.spoolOverlaySizingActive = false
+        host.lastReportedContentSize = .zero
+        host.refreshDashboard()
+    }
     // Equal-height constraints tying the cards of each row together; rebuilt every populate so a
     // card re-paired into a different row never keeps a stale partner.
     private var rowHeightConstraints: [NSLayoutConstraint] = []
@@ -900,6 +927,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         activeSpoolBackdrop?.removeFromSuperview()
         activeSpoolBackdrop = nil
         activeSpoolVC = nil
+        PrinterDashboardViewController.endSpoolOverlaySizing()
     }
     private var layoutWidthConstraint: NSLayoutConstraint?
     private var dragHandle: PrinterDragHandle?
@@ -1466,6 +1494,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             host.addSubview(backdrop)
             PrinterCardView.activeSpoolBackdrop = backdrop
             PrinterCardView.activeSpoolVC = vc
+            // Grow the popover so the roll/filament list has room even when the app window is short.
+            (self.window?.contentViewController as? PrinterDashboardViewController)?.beginSpoolOverlaySizing()
             _ = anchor
         })
         }

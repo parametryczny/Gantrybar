@@ -23,6 +23,10 @@ public sealed class PhysicalSpool
     [JsonPropertyName("emptiedAt")] public DateTime? EmptiedAt { get; set; }
     [JsonPropertyName("lastUsedAt")] public DateTime? LastUsedAt { get; set; }
     [JsonPropertyName("totalConsumedGrams")] public double TotalConsumedGrams { get; set; }
+    // Manual weighing (spec §5): when last weighed, and the empty-spool tare (so a gross reading can be
+    // turned into net filament). Both nullable; unset until first weighed.
+    [JsonPropertyName("weighedAt")] public DateTime? WeighedAt { get; set; }
+    [JsonPropertyName("tareGrams")] public double? TareGrams { get; set; }
 
     /// <summary>Locally computed fill level (no RFID). Never pushed back to firmware.</summary>
     [JsonIgnore]

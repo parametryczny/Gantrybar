@@ -23,6 +23,10 @@ struct PhysicalSpool: Codable, Identifiable, Hashable, Sendable {
     var emptiedAt: Date?
     var lastUsedAt: Date?
     var totalConsumedGrams: Double
+    // Manual weighing (spec §5): when the user last weighed the roll, and the tare of the empty spool
+    // (so a gross reading can be turned into net filament). Both optional; nil until first weighed.
+    var weighedAt: Date?
+    var tareGrams: Double?
 
     init(
         id: String,
@@ -37,7 +41,9 @@ struct PhysicalSpool: Codable, Identifiable, Hashable, Sendable {
         openedAt: Date? = nil,
         emptiedAt: Date? = nil,
         lastUsedAt: Date? = nil,
-        totalConsumedGrams: Double = 0
+        totalConsumedGrams: Double = 0,
+        weighedAt: Date? = nil,
+        tareGrams: Double? = nil
     ) {
         self.id = id
         self.filamentDefinitionID = filamentDefinitionID
@@ -52,6 +58,8 @@ struct PhysicalSpool: Codable, Identifiable, Hashable, Sendable {
         self.emptiedAt = emptiedAt
         self.lastUsedAt = lastUsedAt
         self.totalConsumedGrams = totalConsumedGrams
+        self.weighedAt = weighedAt
+        self.tareGrams = tareGrams
     }
 
     /// Locally computed fill level (no RFID): remaining / nominal. Never pushed back to firmware.

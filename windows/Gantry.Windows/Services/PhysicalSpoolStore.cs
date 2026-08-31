@@ -65,6 +65,30 @@ public sealed class PhysicalSpoolStore
 
     public void Add(PhysicalSpool spool) { _spools.Add(spool); ChangedInternal(SaveSpools); }
 
+    /// <summary>Creates <paramref name="count"/> fresh rolls of one definition, each with its own id,
+    /// dropped straight into storage (spec §1: adding a filament creates one physical roll per spool). A
+    /// full roll has remaining == nominal == <paramref name="weight"/>; an opened roll passes a smaller
+    /// <paramref name="remaining"/>.</summary>
+    public void CreateRolls(Guid definitionId, int count, double weight, double? remaining = null)
+    {
+        if (count <= 0) return;
+        for (int i = 0; i < count; i++)
+        {
+            double rest = remaining ?? weight;
+            _spools.Add(new PhysicalSpool
+            {
+                Id = NextSpoolId(),
+                FilamentDefinitionId = definitionId,
+                NominalWeightGrams = weight,
+                RemainingWeightGrams = rest,
+                Status = rest < weight ? SpoolStatus.Active : SpoolStatus.New,
+                Location = SpoolLocation.Storage(),
+                OpenedAt = rest < weight ? DateTime.UtcNow : null
+            });
+        }
+        ChangedInternal(SaveSpools);
+    }
+
     public void Delete(string id) { _spools.RemoveAll(s => s.Id == id); ChangedInternal(SaveSpools); }
 
     public void SetRemaining(string id, double grams)
@@ -73,6 +97,41 @@ public sealed class PhysicalSpoolStore
         if (s is null) return;
         s.RemainingWeightGrams = Math.Max(0, Math.Min(grams, s.NominalWeightGrams));
         if (s.RemainingWeightGrams <= 0) s.Status = SpoolStatus.Empty;
+        s.UpdatedAt = DateTime.UtcNow;
+        ChangedInternal(SaveSpools);
+    }
+
+    /// <summary>Manual weighing (spec §5 "Skoryguj wagę"): store a freshly measured net amount and stamp
+    /// the weighing date. <paramref name="tare"/> (empty-spool weight) is remembered for next time; the
+    /// caller passes an already-net value (gross minus tare).</summary>
+    public void CorrectWeight(string id, double netGrams, double? tare = null)
+    {
+        var s = Spool(id);
+        if (s is null) return;
+        s.RemainingWeightGrams = Math.Max(0, Math.Min(netGrams, s.NominalWeightGrams));
+        if (tare is not null) s.TareGrams = tare;
+        s.WeighedAt = DateTime.UtcNow;
+        if (s.RemainingWeightGrams <= 0) { s.Status = SpoolStatus.Empty; s.EmptiedAt = DateTime.UtcNow; }
+        else if (s.Status == SpoolStatus.Empty) s.Status = s.Location.IsStorage ? SpoolStatus.Stored : SpoolStatus.Active;
+        s.UpdatedAt = DateTime.UtcNow;
+        ChangedInternal(SaveSpools);
+    }
+
+    /// <summary>Reset a roll back to a full nominal amount (spec §6): the same physical roll, refilled —
+    /// e.g. a spent roll swapped for a fresh one of the same product without minting a new id. Clears this
+    /// roll's consumption/lifecycle so history starts over.</summary>
+    public void ResetToFull(string id, double? nominal = null)
+    {
+        var s = Spool(id);
+        if (s is null) return;
+        double full = Math.Max(0, nominal ?? s.NominalWeightGrams);
+        s.NominalWeightGrams = full;
+        s.RemainingWeightGrams = full;
+        s.TotalConsumedGrams = 0;
+        s.OpenedAt = null;
+        s.EmptiedAt = null;
+        s.WeighedAt = null;
+        s.Status = s.Location.IsStorage ? SpoolStatus.New : SpoolStatus.Active;
         s.UpdatedAt = DateTime.UtcNow;
         ChangedInternal(SaveSpools);
     }
