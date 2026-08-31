@@ -15,7 +15,10 @@ namespace Gantry.UI;
 /// </summary>
 public sealed class SpoolbaseWindow : Window
 {
-    private readonly FilamentStore _store = new();
+    // The one shared inventory, so filaments added here also appear in the slot assign panel (which uses
+    // SpoolbaseShared.Filaments). A separate instance made the two views diverge — added filaments never
+    // showed up when assigning a roll to a slot.
+    private readonly FilamentStore _store = SpoolbaseShared.Filaments;
     private readonly TextBox _search = new();
     private readonly StackPanel _list = new();
     private readonly TextBlock _summary = new();

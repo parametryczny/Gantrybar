@@ -17,7 +17,7 @@ internal static class RenderHarness
     {
         Directory.CreateDirectory(outDir);
 
-        var store = new FilamentStore();
+        var store = SpoolbaseShared.Filaments;   // the one shared inventory every view uses
         Seed(store);
 
         Safe(() => RenderWindow(new SpoolbaseEditWindow(store, null, false), Path.Combine(outDir, "win-editor.png")));
