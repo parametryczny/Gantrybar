@@ -413,6 +413,9 @@ final class PrinterDashboardViewController: NSViewController {
         spoolOverlaySizingActive = true
         PrinterDashboardViewController.overlaySizingHost = self
         let screenH = (view.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
+        // Grow only the height: the popover width is pinned by the cards' own layout, so forcing it wider
+        // has no effect (the panel is instead sized to fit the narrowest popover). Make it tall enough to
+        // show plenty of the list; restored on close.
         let width = preferredContentSize.width > 0 ? preferredContentSize.width : 540
         let height = min(screenH - 24, max(preferredContentSize.height, 780))
         let size = NSSize(width: width, height: height)
@@ -1488,7 +1491,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             NSLayoutConstraint.activate([
                 panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
                 panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
-                panel.widthAnchor.constraint(equalToConstant: 300),
+                panel.widthAnchor.constraint(equalToConstant: 356),
                 panel.heightAnchor.constraint(lessThanOrEqualTo: backdrop.heightAnchor, constant: -24)
             ])
             host.addSubview(backdrop)

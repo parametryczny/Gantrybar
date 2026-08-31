@@ -46,6 +46,22 @@ final class SpoolAssignPopoverViewController: NSViewController {
 
     private func t(_ pl: String, _ en: String) -> String { AppSettings.shared.text(pl, en) }
 
+    /// Names of saved printers, so a roll loaded elsewhere shows *where* right on its row (spec: see it
+    /// at the filament, before selecting).
+    private lazy var printerNames: [String: String] =
+        Dictionary(PrinterPersistence().load().map { ($0.serial, $0.name) }, uniquingKeysWith: { first, _ in first })
+
+    /// A short location for a roll: "magazyn", or "<printer> · A2" / "<printer> · EXT".
+    private func placeLabel(_ loc: SpoolLocation) -> String {
+        guard !loc.isStorage else { return t("magazyn", "storage") }
+        let name = loc.printerSerial.flatMap { printerNames[$0] } ?? loc.printerSerial ?? t("drukarka", "printer")
+        let slot: String
+        if loc.feeder == .ext { slot = "EXT" }
+        else if let s = loc.slot { slot = (loc.amsIndex ?? 0) == 0 ? "A\(s + 1)" : "AMS\((loc.amsIndex ?? 0) + 1) \(s + 1)" }
+        else { slot = "AMS" }
+        return "\(name) · \(slot)"
+    }
+
     // MARK: Screens
 
     /// Main screen (spec §3): the assigned roll on top (with weigh / reset / unassign), then the physical
@@ -111,11 +127,10 @@ final class SpoolAssignPopoverViewController: NSViewController {
             for spool in available {
                 let def = filaments.filaments.first { $0.id == spool.filamentDefinitionID }
                 let name = def.map { "\($0.brand) \($0.name)".trimmingCharacters(in: .whitespaces) } ?? spool.id
-                let place = spool.location.isStorage ? t("magazyn", "storage") : t("inna drukarka", "other printer")
                 rollsSection.addArrangedSubview(row(
                     dot: def.map { NSColor(filamentHex: $0.colorHex) },
                     title: name.isEmpty ? spool.id : name,
-                    subtitle: "\(spool.id) · \(Int(spool.remainingWeightGrams)) g · \(spool.percent)% · \(place)",
+                    subtitle: "\(spool.id) · \(Int(spool.remainingWeightGrams)) g · \(placeLabel(spool.location))",
                     highlight: matchesSpool(spool),
                     onDelete: { [weak self] in
                         guard let self else { return }
@@ -129,7 +144,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
         let newRoll = pill(t("+ Utwórz nową rolkę", "+ Create new roll"), filled: false) { [weak self] in
             self?.showPickFilament()
         }
-        newRoll.widthAnchor.constraint(equalToConstant: 268).isActive = true
+        newRoll.widthAnchor.constraint(equalToConstant: 324).isActive = true
 
         let catalogSection = NSStackView()
         catalogSection.orientation = .vertical
@@ -193,7 +208,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
             self.spools.correctWeight(id: spool.id, netGrams: net, tare: tareField.stringValue.isEmpty ? nil : tare)
             self.onChange(); self.showMain()
         }
-        save.widthAnchor.constraint(equalToConstant: 268).isActive = true
+        save.widthAnchor.constraint(equalToConstant: 324).isActive = true
 
         present([header,
                  labeledField(t("Netto (g)", "Net (g)"), netField),
@@ -482,7 +497,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
         line.wantsLayer = true
         line.layer?.backgroundColor = GantryTheme.line.cgColor
         line.heightAnchor.constraint(equalToConstant: 1).isActive = true
-        line.widthAnchor.constraint(equalToConstant: 268).isActive = true
+        line.widthAnchor.constraint(equalToConstant: 324).isActive = true
         return line
     }
 
@@ -538,7 +553,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
         host.layer?.backgroundColor = GantryTheme.surface.cgColor
         host.layer?.borderWidth = highlight ? 1 : 0
         host.layer?.borderColor = GantryTheme.humidity.withAlphaComponent(0.5).cgColor
-        host.widthAnchor.constraint(equalToConstant: 268).isActive = true
+        host.widthAnchor.constraint(equalToConstant: 324).isActive = true
 
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 12, weight: .medium)

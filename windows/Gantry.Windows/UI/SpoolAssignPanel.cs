@@ -21,6 +21,9 @@ internal sealed class SpoolAssignPanel
     private readonly Border _root;
     private readonly PhysicalSpoolStore _spools = SpoolbaseShared.Spools;
     private readonly FilamentStore _filaments = SpoolbaseShared.Filaments;
+    // Names of saved printers, so a roll loaded elsewhere shows *where* right on its row.
+    private static readonly System.Collections.Generic.Dictionary<string, string> PrinterNames =
+        SavedPrinterStore.Load().GroupBy(p => p.Serial).ToDictionary(g => g.Key, g => g.First().Name);
 
     public static FrameworkElement Build(SpoolLocation loc, string title, string? material, string? colorHex, Action onClose)
     {
@@ -36,7 +39,7 @@ internal sealed class SpoolAssignPanel
         _colorHex = colorHex; _onClose = onClose;
         _root = new Border
         {
-            Width = 300, MaxHeight = 440,
+            Width = 360, MaxHeight = 440,
             Background = new SolidColorBrush(Color.FromRgb(0x15, 0x17, 0x19)),
             CornerRadius = new CornerRadius(14),
             BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
@@ -91,11 +94,10 @@ internal sealed class SpoolAssignPanel
         {
             var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
             var name = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
-            var place = s.Location.IsStorage ? T("magazyn", "storage") : T("inna drukarka", "other printer");
             var spool = s;
             stack.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
                 string.IsNullOrEmpty(name) ? s.Id : name,
-                $"{s.Id} · {(int)s.RemainingWeightGrams} g · {s.Percent}% · {place}",
+                $"{s.Id} · {(int)s.RemainingWeightGrams} g · {PlaceLabel(s.Location)}",
                 null, MatchesSpool(s), () => AssignSpool(spool),
                 onDelete: () => { _spools.Delete(spool.Id); ShowMain(); }));
         }
@@ -256,6 +258,19 @@ internal sealed class SpoolAssignPanel
         bool material = string.Equals(def.Type, _material, StringComparison.OrdinalIgnoreCase);
         bool color = _colorHex is null || Norm(def.ColorHex) == Norm(_colorHex);
         return material && color;
+    }
+
+    /// A short location for a roll: "magazyn", or "&lt;printer&gt; · A2" / "&lt;printer&gt; · EXT".
+    private static string PlaceLabel(SpoolLocation loc)
+    {
+        if (loc.IsStorage) return T("magazyn", "storage");
+        var name = loc.PrinterSerial != null && PrinterNames.TryGetValue(loc.PrinterSerial, out var n) && !string.IsNullOrEmpty(n)
+            ? n : loc.PrinterSerial ?? T("drukarka", "printer");
+        string slot;
+        if (loc.Feeder == SpoolFeeder.Ext) slot = "EXT";
+        else if (loc.Slot is { } s) slot = (loc.AmsIndex ?? 0) == 0 ? $"A{s + 1}" : $"AMS{(loc.AmsIndex ?? 0) + 1} {s + 1}";
+        else slot = "AMS";
+        return $"{name} · {slot}";
     }
 
     private bool MatchesSpool(PhysicalSpool s) =>
