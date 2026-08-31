@@ -138,7 +138,7 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .card.printing .status { color: #ff6857; }
 .percent { color: #d4d7d3; font-size: 22px; font-weight: 600; }
 .eta { color: #d4d7d3; border: 1px solid alpha(#ffffff, 0.10); border-radius: 8px; padding: 3px 7px; font-family: monospace; font-size: 10px; font-weight: 600; }
-.temp-bento { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; }
+.temp-bento { background: transparent; border: none; }
 .temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.09); }
 .temp-zone:first-child { border-left: none; }
 .temp-name { color: %(secondary)s; font-family: monospace; font-size: 7px; font-weight: 600; }
@@ -156,7 +156,7 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .temp-value.strong { color: %(foreground)s; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
-.ams-group { background: alpha(#ffffff, 0.052); border-radius: 12px; padding: 9px 11px; }
+.ams-group { background: transparent; padding: 4px 6px; }
 .slot-pct { font-size: 10px; font-weight: 700; }
 .slot-material { color: #d4d7d3; font-size: 10px; font-weight: 600; }
 .slot-material.empty { color: #6d716e; }
