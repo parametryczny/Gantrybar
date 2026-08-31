@@ -156,6 +156,8 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .temp-value.strong { color: %(foreground)s; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
+/* Empty slot: a faint diagonal hatch (like the macOS striped chip) instead of a flat grey block. */
+.ams.empty { background-image: repeating-linear-gradient(45deg, alpha(#ffffff, 0.05), alpha(#ffffff, 0.05) 1px, transparent 1px, transparent 6px); }
 .ams-group { background: transparent; padding: 4px 6px; }
 .slot-pct { font-size: 10px; font-weight: 700; }
 .slot-material { color: #d4d7d3; font-size: 10px; font-weight: 600; }
@@ -463,8 +465,16 @@ class PrinterCard(Gtk.Frame):
             # a print), cold/idle muted, heating warm, cooling cool, firmware alarm red. In monochrome mode
             # hue is dropped but a leading glyph (↑ ● ↓ ○ ! —) keeps the state readable.
             st = temp_state(cur, tgt, printing, errored and tgt is not None)
-            text = fmt(cur, tgt)
-            value = Gtk.Label(label=(f"{TEMP_SYMBOLS[st]} {text}" if mono else text), xalign=0.5)
+            # Big current value (coloured by state via CSS class) + a small muted target, like macOS:
+            # "255°" then a quiet "/255°" — not one flat "255/255°".
+            sym = (TEMP_SYMBOLS[st] + " ") if mono else ""
+            cur_txt = f"{cur:.0f}°" if cur is not None else "—"
+            markup = GLib.markup_escape_text(sym + cur_txt)
+            if cur is not None and tgt:
+                markup += (f"<span size='xx-small' foreground='#6d716e'>"
+                           f" /{tgt:.0f}°</span>")
+            value = Gtk.Label(xalign=0.5)
+            value.set_markup(markup)
             vctx = value.get_style_context()
             vctx.add_class("temp-value")
             vctx.add_class("mono" if mono else st)
@@ -515,10 +525,16 @@ class PrinterCard(Gtk.Frame):
                 env.append(f"🌡 {group.temperature:.0f}°")
             if group.humidity is not None:
                 env.append("💧 " + (f"{group.humidity}/5" if group.humidity <= 5 else f"{group.humidity}%"))
+            # Short header name like macOS: "AMS A" → "AMS" (the letter already shows on the slot as A1),
+            # "AMS HT" → "HT" (keep the meaningful type); EXT / CFS stay as-is.
+            short = group.display_name
+            if short.startswith("AMS "):
+                rest = short[4:]
+                short = "AMS" if len(rest) == 1 else rest
             header = Gtk.Label(xalign=0)
             suffix = (f"<span foreground='#d4d7d3' alpha='73%'> · "
                       f"{GLib.markup_escape_text(' · '.join(env))}</span>") if env else ""
-            header.set_markup(f"<b>{GLib.markup_escape_text(group.display_name)}</b>{suffix}")
+            header.set_markup(f"<b>{GLib.markup_escape_text(short)}</b>{suffix}")
             gbox.pack_start(header, False, False, 0)
             srow = Gtk.Box(spacing=4)
             for slot_index, slot in enumerate(group.slots):
@@ -546,9 +562,13 @@ class PrinterCard(Gtk.Frame):
                 if slot.active:
                     ctx.add_class("active")
                 present = slot.present or assigned is not None
-                color = (slot.color or "8E8E93FF").lstrip("#")[:6] if slot.present else "5A5A5E"
-                if not slot.present and assigned_def is not None:
-                    color = assigned_def.colorHex
+                if slot.present:
+                    color = (slot.color or "8E8E93FF").lstrip("#")[:6]
+                elif assigned_def is not None:
+                    color = str(assigned_def.colorHex).lstrip("#")[:6]
+                else:
+                    color = "1D1F22"            # dim base; the .empty hatch draws the striped look over it
+                    ctx.add_class("empty")
                 if mono:
                     color = _muted_hex(color)   # calmer filament colours in monochrome mode
                 # Set the colour through a per-widget CSS provider rather than the deprecated
