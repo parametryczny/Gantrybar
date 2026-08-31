@@ -123,7 +123,6 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .title { font-size: 18px; font-weight: 700; }
 .subtitle { color: %(secondary)s; font-size: 11px; }
 .card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.08); border-radius: 16px; padding: 9px; }
-.card.printing { background-color: %(card)s; background-image: radial-gradient(farthest-side at left top, alpha(#ff6857, 0.22), alpha(#ff6857, 0.08) 42%%, alpha(#ff6857, 0.00) 82%%); border-color: alpha(#ff6857, 0.24); }
 .printer-icon { color: %(secondary)s; margin-right: 2px; }
 .printer-name { font-size: 13px; font-weight: 600; }
 .connection { color: %(secondary)s; border: 1px solid alpha(#ffffff, 0.12); border-radius: 6px; padding: 2px 6px; font-family: monospace; font-size: 9px; font-weight: 600; }
@@ -143,10 +142,13 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.09); }
 .temp-zone:first-child { border-left: none; }
 .temp-name { color: %(secondary)s; font-family: monospace; font-size: 7px; font-weight: 600; }
-/* Temperature value colour follows activity, like macOS: heating warm, cooling cool, at-temp/idle grey. */
-.temp-value { color: %(secondary)s; font-family: monospace; font-size: 14px; font-weight: 600; }
+/* Temperature value colour follows STATE (design/kolorystyka.md): at-temp = neutral metric, cold/idle
+   muted, heating warm, cooling cool. Same map for nozzle, bed and chamber. */
+.temp-value { color: #d4d7d3; font-family: monospace; font-size: 14px; font-weight: 600; }
 .temp-value.heat { color: #d18c82; }
-.temp-value.cool { color: #8ca8c7; }
+.temp-value.cool { color: #8ba9c7; }
+.temp-value.idle { color: #6d716e; }
+.temp-value.mono { color: %(secondary)s; }
 .temp-value.strong { color: %(foreground)s; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
@@ -452,15 +454,19 @@ class PrinterCard(Gtk.Frame):
             value = Gtk.Label(label=fmt(cur, tgt), xalign=0.5)
             vctx = value.get_style_context()
             vctx.add_class("temp-value")
-            # Colour by activity (matches macOS tempColor): heating warm, cooling cool, else grey.
-            # In monochrome mode every value stays grey.
+            # Colour by state (design/kolorystyka.md): at-temp neutral metric, cold/idle muted, heating
+            # warm, cooling cool. In monochrome mode every value stays grey.
             target = tgt or 0
             if mono:
-                pass
-            elif cur is not None and target > 5 and cur < target - 3:
+                vctx.add_class("mono")
+            elif cur is None:
+                vctx.add_class("idle")
+            elif target > 5 and cur < target - 3:
                 vctx.add_class("heat")
-            elif cur is not None and cur > max(target, 0) + 5 and cur > 30:
+            elif cur > max(target, 0) + 5 and cur > 30:
                 vctx.add_class("cool")
+            elif target <= 5 and cur <= 30:
+                vctx.add_class("idle")
             zone.pack_start(name, False, False, 0)
             zone.pack_start(value, False, False, 0)
             return zone

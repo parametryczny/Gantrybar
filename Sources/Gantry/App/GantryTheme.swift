@@ -27,6 +27,15 @@ enum GantryTheme {
     static let humidity   = NSColor(hex: 0x73CFAD)
     static let sensorTemp = NSColor(hex: 0xEFA25F)
 
+    // Temperature STATE colours — the same map for nozzle, bed and chamber (design/kolorystyka.md §3).
+    // The per-sensor colours above are reserved for charts/legends only.
+    static let tempIdle    = NSColor(hex: 0x6D716E)   // cold / no setpoint
+    static let tempHeating = NSColor(hex: 0xD18C82)   // ramping up
+    static let tempReady   = NSColor(hex: 0xD4D7D3)   // at temperature (neutral metric)
+    static let tempHolding = NSColor(hex: 0xF2F3F1)   // printing, holding the setpoint
+    static let tempCooling = NSColor(hex: 0x8BA9C7)   // above setpoint, cooling
+    static let tempError   = NSColor(hex: 0xFF5A4E)   // firmware thermal alarm
+
     // MARK: Status
     static let statusPrinting = NSColor(hex: 0xFF6857)   // design-tokens status.printing
     static let statusDefault  = NSColor(hex: 0xD4D7D3)

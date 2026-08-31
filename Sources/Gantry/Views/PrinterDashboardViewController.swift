@@ -1664,19 +1664,16 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         return "\(Int(current.rounded()))°"
     }
 
-    // Muted, desaturated hints — a whisper of warm/cool, not a bright signal that fights the UI.
-    private static let heatingColor = NSColor(calibratedRed: 0.82, green: 0.55, blue: 0.51, alpha: 1)
-    private static let coolingColor = NSColor(calibratedRed: 0.55, green: 0.66, blue: 0.78, alpha: 1)
-
-    /// Tints a temperature by what it's doing: warming toward a setpoint reads red, cooling down from
-    /// one reads blue, and holding at (or near) the setpoint stays the neutral default.
+    /// Colours a temperature by state (design/kolorystyka.md §3): heating warm, cooling cool, at-temperature
+    /// the neutral metric colour, cold/idle muted. The same map applies to nozzle, bed and chamber.
     private func tempColor(_ current: Double?, _ target: Double?) -> NSColor {
-        if AppSettings.shared.monochrome { return .secondaryLabelColor }
-        guard let current else { return .secondaryLabelColor }
+        if AppSettings.shared.monochrome { return GantryTheme.secondary }
+        guard let current else { return GantryTheme.tempIdle }
         let target = target ?? 0
-        if target > 5, current < target - 3 { return Self.heatingColor }        // ramping up
-        if current > max(target, 0) + 5, current > 30 { return Self.coolingColor } // above setpoint, still warm
-        return .secondaryLabelColor                                              // at temperature / idle
+        if target > 5, current < target - 3 { return GantryTheme.tempHeating }        // ramping up
+        if current > max(target, 0) + 5, current > 30 { return GantryTheme.tempCooling } // above setpoint, still warm
+        if target <= 5, current <= 30 { return GantryTheme.tempIdle }                 // cold / no setpoint
+        return GantryTheme.tempReady                                                  // at temperature
     }
 }
 
@@ -1932,23 +1929,30 @@ private final class TemperatureBentoView: NSView {
             zones.append((settings.text("KOMORA", "CHAMBER"), chamberCurrent, nil, GantryTheme.chamber))
         }
 
-        // Temperatures are coloured by activity (not a fixed per-zone tint): warm while heating, cool
-        // while cooling above the setpoint, grey at temperature / idle. Monochrome keeps every value grey.
-        let heat = NSColor(calibratedRed: 0.82, green: 0.55, blue: 0.51, alpha: 1)
-        let cool = NSColor(calibratedRed: 0.55, green: 0.66, blue: 0.78, alpha: 1)
+        // Temperatures are coloured by state, per design/kolorystyka.md — the same map for nozzle, bed and
+        // chamber: heating warm, cooling cool, at-temperature the neutral metric colour, cold/idle muted.
+        // Monochrome keeps every value grey.
+        let heat = GantryTheme.tempHeating
+        let cool = GantryTheme.tempCooling
+        let ready = GantryTheme.tempReady   // #D4D7D3 metric
+        let idle = GantryTheme.tempIdle      // #6D716E muted
         let mono = settings.monochrome
         for (index, zone) in zones.enumerated() {
             let cur = zone.1
             let tgt = zone.2 ?? 0
             let tint: NSColor
             if mono {
-                tint = .secondaryLabelColor
+                tint = GantryTheme.secondary
+            } else if cur == nil {
+                tint = idle
             } else if let c = cur, tgt > 5, c < tgt - 3 {
                 tint = heat
             } else if let c = cur, c > max(tgt, 0) + 5, c > 30 {
                 tint = cool
+            } else if tgt <= 5, let c = cur, c <= 30 {
+                tint = idle
             } else {
-                tint = .secondaryLabelColor
+                tint = ready
             }
             row.addArrangedSubview(ThermalZoneView(label: zone.0,
                                                    current: Self.value(zone.1),

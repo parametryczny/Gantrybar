@@ -212,14 +212,20 @@ class DetailWindow(Gtk.Window):
         mono = bool(self.app.config.data.get("monochrome", False))
         if strong:
             vctx.add_class("strong")   # hardware values (fans / speed / diameter) stay bright
-        elif not mono:
-            # Temperature values follow activity, like macOS: heating warm, cooling cool, else grey.
-            # Monochrome mode keeps every value grey.
+        elif mono:
+            vctx.add_class("mono")     # monochrome keeps every value grey
+        else:
+            # Temperature values follow state (design/kolorystyka.md): at-temp neutral metric, cold/idle
+            # muted, heating warm, cooling cool.
             target = tgt or 0
-            if cur is not None and target > 5 and cur < target - 3:
+            if cur is None:
+                vctx.add_class("idle")
+            elif target > 5 and cur < target - 3:
                 vctx.add_class("heat")
-            elif cur is not None and cur > max(target, 0) + 5 and cur > 30:
+            elif cur > max(target, 0) + 5 and cur > 30:
                 vctx.add_class("cool")
+            elif target <= 5 and cur <= 30:
+                vctx.add_class("idle")
         zone.pack_start(label, False, False, 0)
         zone.pack_start(val, False, False, 0)
         return zone

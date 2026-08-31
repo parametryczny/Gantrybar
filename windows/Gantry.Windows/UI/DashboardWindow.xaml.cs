@@ -1053,18 +1053,21 @@ public partial class DashboardWindow : Window
     }
 
     /// <summary>A horizontal row of labelled temperature cells, e.g. "L 245/245°", "Stół 65/65°".</summary>
-    // Muted heat/cool tints matching macOS; null keeps the default (holding / idle) colour.
-    private static readonly Brush HeatingBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0x8C, 0x86));
-    private static readonly Brush CoolingBrush = new SolidColorBrush(Color.FromRgb(0x8B, 0xA9, 0xC7));
+    // Temperature STATE colours (design/kolorystyka.md §3) — same map for nozzle, bed and chamber.
+    private static readonly Brush HeatingBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0x8C, 0x82)); // ramping up
+    private static readonly Brush CoolingBrush = new SolidColorBrush(Color.FromRgb(0x8B, 0xA9, 0xC7)); // above setpoint
+    private static readonly Brush ReadyBrush   = new SolidColorBrush(Color.FromRgb(0xD4, 0xD7, 0xD3)); // at temperature (metric)
+    private static readonly Brush IdleBrush    = new SolidColorBrush(Color.FromRgb(0x6D, 0x71, 0x6E)); // cold / no setpoint
 
     private static Brush? TempColor(double? current, double? target)
     {
         if (AppSettings.Monochrome) return null;   // grey values in monochrome mode
-        if (current is not { } cur) return null;
+        if (current is not { } cur) return IdleBrush;
         double t = target ?? 0;
         if (t > 5 && cur < t - 3) return HeatingBrush;                 // ramping up
         if (cur > Math.Max(t, 0) + 5 && cur > 30) return CoolingBrush; // above setpoint, still warm
-        return null;
+        if (t <= 5 && cur <= 30) return IdleBrush;                     // cold / no setpoint
+        return ReadyBrush;                                             // at temperature
     }
 
     /// <summary>Blend a colour toward its own grey (luminance) for the monochrome mode.</summary>
