@@ -89,9 +89,10 @@ internal sealed class SpoolAssignPanel
         if (_material is not null)
             stack.Children.Add(Pill(T("+ Nowa z AMS", "+ New from AMS"), false, () => ShowPickGrams(EnsureDefinition())));
 
-        // Existing physical rolls (SP-000xx) — move one here, or delete a stray one from the list.
+        // Rolls currently loaded in ANOTHER printer — move one here. Storage rolls are left out: they
+        // just mirror the inventory above, so listing both read as duplicates.
         var available = _spools.Spools
-            .Where(s => s.Status != SpoolStatus.Archived && !s.Location.SameSlot(_loc))
+            .Where(s => s.Status != SpoolStatus.Archived && !s.Location.IsStorage && !s.Location.SameSlot(_loc))
             .OrderByDescending(MatchesSpool).ThenBy(s => s.Id).ToList();
         if (available.Count > 0)
         {

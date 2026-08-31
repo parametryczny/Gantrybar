@@ -107,13 +107,14 @@ final class SpoolAssignPopoverViewController: NSViewController {
             self.showPickGrams(def: self.ensureDefinition())
         }
 
-        // Existing physical rolls (SP-000xx) — move one here, or delete a stray one from the list.
+        // Rolls currently loaded in ANOTHER printer — move one here. Storage rolls are left out: they
+        // just mirror the inventory above, so listing both read as duplicates.
         let listSection = NSStackView()
         listSection.orientation = .vertical
         listSection.alignment = .leading
         listSection.spacing = 6
         let available = spools.spools
-            .filter { $0.status != .archived && !$0.location.sameSlot(as: location) }
+            .filter { $0.status != .archived && !$0.location.isStorage && !$0.location.sameSlot(as: location) }
             .sorted { a, b in
                 let am = matchesSpool(a), bm = matchesSpool(b)
                 return am != bm ? am : a.id < b.id
@@ -136,7 +137,9 @@ final class SpoolAssignPopoverViewController: NSViewController {
             }
         }
 
-        present([header, assignedSection, divider(), inventorySection, newRoll, listSection], scrollFrom: 4)
+        // Scroll everything below the printer's own slot (the inventory can be long) as one region, so
+        // there's no fixed giant block above a tiny scroll area.
+        present([header, assignedSection, divider(), inventorySection, newRoll, listSection], scrollFrom: 3)
     }
 
     /// Step 1 of "new roll": pick a filament from the Spoolbase catalog (matching AMS first).
