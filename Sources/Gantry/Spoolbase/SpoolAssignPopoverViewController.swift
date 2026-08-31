@@ -77,22 +77,49 @@ final class SpoolAssignPopoverViewController: NSViewController {
             assignedSection.addArrangedSubview(none)
         }
 
-        let newRoll = pill(t("+ Nowa rolka", "+ New roll"), filled: true) { [weak self] in self?.showPickFilament() }
+        // From the user's Spoolbase inventory — pick a filament to put a fresh roll in this slot. This is
+        // what people expect: a filament they added to Spoolbase is assignable directly here.
+        let inventorySection = NSStackView()
+        inventorySection.orientation = .vertical
+        inventorySection.alignment = .leading
+        inventorySection.spacing = 6
+        inventorySection.addArrangedSubview(sectionHeader(t("Z MAGAZYNU SPOOLBASE", "FROM SPOOLBASE")))
+        let defs = filaments.filaments.sorted { a, b in
+            let am = matchesDef(a), bm = matchesDef(b)
+            return am != bm ? am : "\(a.brand)\(a.name)" < "\(b.brand)\(b.name)"
+        }
+        if defs.isEmpty {
+            inventorySection.addArrangedSubview(note(t("Magazyn pusty. Dodaj filamenty w oknie Spoolbase.",
+                                                       "Empty. Add filaments in the Spoolbase window.")))
+        } else {
+            for def in defs {
+                let name = "\(def.brand) \(def.name)".trimmingCharacters(in: .whitespaces)
+                let colour = def.colorName.isEmpty ? "#\(def.colorHex)" : def.colorName
+                inventorySection.addArrangedSubview(row(
+                    dot: NSColor(filamentHex: def.colorHex),
+                    title: name.isEmpty ? def.type : name,
+                    subtitle: "\(def.type) · \(colour) · \(def.spoolCount) szp.",
+                    highlight: matchesDef(def)) { [weak self] in self?.showPickGrams(def: def) })
+            }
+        }
+        let newRoll = pill(t("+ Nowa z AMS", "+ New from AMS"), filled: false) { [weak self] in
+            guard let self else { return }
+            self.showPickGrams(def: self.ensureDefinition())
+        }
 
+        // Existing physical rolls (SP-000xx) — move one here, or delete a stray one from the list.
         let listSection = NSStackView()
         listSection.orientation = .vertical
         listSection.alignment = .leading
         listSection.spacing = 6
-        listSection.addArrangedSubview(sectionHeader(t("ROLKI", "SPOOLS")))
         let available = spools.spools
             .filter { $0.status != .archived && !$0.location.sameSlot(as: location) }
             .sorted { a, b in
                 let am = matchesSpool(a), bm = matchesSpool(b)
                 return am != bm ? am : a.id < b.id
             }
-        if available.isEmpty {
-            listSection.addArrangedSubview(note(t("Brak rolek. Utwórz nową powyżej.", "No spools yet. Create one above.")))
-        } else {
+        if !available.isEmpty {
+            listSection.addArrangedSubview(sectionHeader(t("ISTNIEJĄCE ROLKI", "EXISTING ROLLS")))
             for spool in available {
                 let def = filaments.filaments.first { $0.id == spool.filamentDefinitionID }
                 let name = def.map { "\($0.brand) \($0.name)".trimmingCharacters(in: .whitespaces) } ?? spool.id
@@ -101,11 +128,15 @@ final class SpoolAssignPopoverViewController: NSViewController {
                     dot: def.map { NSColor(filamentHex: $0.colorHex) },
                     title: name.isEmpty ? spool.id : name,
                     subtitle: "\(spool.id) · \(Int(spool.remainingWeightGrams)) g · \(spool.percent)% · \(place)",
-                    highlight: matchesSpool(spool)) { [weak self] in self?.assign(spool) })
+                    highlight: matchesSpool(spool),
+                    onDelete: { [weak self] in
+                        guard let self else { return }
+                        self.spools.delete(id: spool.id); self.onChange(); self.showMain()
+                    }) { [weak self] in self?.assign(spool) })
             }
         }
 
-        present([header, assignedSection, divider(), newRoll, listSection], scrollFrom: 4)
+        present([header, assignedSection, divider(), inventorySection, newRoll, listSection], scrollFrom: 4)
     }
 
     /// Step 1 of "new roll": pick a filament from the Spoolbase catalog (matching AMS first).
@@ -382,7 +413,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
 
     /// A tappable list row: optional colour dot, a title and a quiet subtitle, styled as a card.
     private func row(dot: NSColor?, title: String, subtitle: String, trailing: String? = nil,
-                     highlight: Bool = false, action: @escaping () -> Void) -> NSView {
+                     highlight: Bool = false, onDelete: (() -> Void)? = nil, action: @escaping () -> Void) -> NSView {
         let host = ActionView()
         host.onClick = action
         host.wantsLayer = true
@@ -426,6 +457,26 @@ final class SpoolAssignPopoverViewController: NSViewController {
             tl.font = .systemFont(ofSize: 11, weight: .medium)
             tl.textColor = GantryTheme.statusPrinting
             rowViews.append(tl)
+        }
+        if let onDelete {
+            // A separate trash target so deleting a stray roll never triggers the row's assign action.
+            let del = ActionView()
+            del.onClick = onDelete
+            del.toolTip = t("Usuń rolkę", "Delete roll")
+            let icon = NSImageView(image: NSImage(systemSymbolName: "trash", accessibilityDescription: nil) ?? NSImage())
+            icon.contentTintColor = GantryTheme.secondary
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            del.addSubview(icon)
+            del.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                del.widthAnchor.constraint(equalToConstant: 22),
+                del.heightAnchor.constraint(equalToConstant: 22),
+                icon.centerXAnchor.constraint(equalTo: del.centerXAnchor),
+                icon.centerYAnchor.constraint(equalTo: del.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 13),
+                icon.heightAnchor.constraint(equalToConstant: 13)
+            ])
+            rowViews.append(del)
         }
         let hstack = NSStackView(views: rowViews)
         hstack.orientation = .horizontal
