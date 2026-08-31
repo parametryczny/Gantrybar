@@ -27,7 +27,7 @@ except (ValueError, ImportError):
     AppIndicator = None
 
 from . import __version__
-from .core import Printer, PrinterKind, PrinterState, Telemetry, expand_scan_targets
+from .core import Printer, PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state, expand_scan_targets
 from .csvimport import parse_printer_csv
 from .discovery import scan
 from .desktop import installed_slicers, open_desktop_app
@@ -135,7 +135,7 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .job { color: %(job)s; font-weight: 600; font-size: 10px; }
 .meta { color: %(secondary)s; font-size: 11px; }
 .status { color: #d4d7d3; font-weight: 700; font-size: 10px; }
-.card.printing .status, .card.printing .percent { color: #ff6857; }
+.card.printing .status { color: #ff6857; }
 .percent { color: #d4d7d3; font-size: 22px; font-weight: 600; }
 .eta { color: #d4d7d3; border: 1px solid alpha(#ffffff, 0.10); border-radius: 8px; padding: 3px 7px; font-family: monospace; font-size: 10px; font-weight: 600; }
 .temp-bento { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; }
@@ -148,6 +148,10 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .temp-value.heat { color: #d18c82; }
 .temp-value.cool { color: #8ba9c7; }
 .temp-value.idle { color: #6d716e; }
+.temp-value.ready { color: #d4d7d3; }
+.temp-value.unavail { color: #6d716e; }
+.temp-value.hold { color: #f2f3f1; font-weight: 700; }
+.temp-value.err { color: #ff5a4e; font-weight: 700; }
 .temp-value.mono { color: %(secondary)s; }
 .temp-value.strong { color: %(foreground)s; }
 .ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
@@ -446,27 +450,23 @@ class PrinterCard(Gtk.Frame):
                 return "—"
             return f"{cur:.0f}/{tgt:.0f}°" if tgt else f"{cur:.0f}°"
 
+        printing = telemetry.state == PrinterState.PRINTING
+        errored = telemetry.state == PrinterState.ERROR
+
         def temp_zone(label: str, cur: float | None, tgt: float | None) -> Gtk.Widget:
             zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
             zone.get_style_context().add_class("temp-zone")
             name = Gtk.Label(label=label.upper(), xalign=0)
             name.get_style_context().add_class("temp-name")
-            value = Gtk.Label(label=fmt(cur, tgt), xalign=0.5)
+            # Colour by state (design/kolorystyka.md §3): at-temp neutral metric (white while holding during
+            # a print), cold/idle muted, heating warm, cooling cool, firmware alarm red. In monochrome mode
+            # hue is dropped but a leading glyph (↑ ● ↓ ○ ! —) keeps the state readable.
+            st = temp_state(cur, tgt, printing, errored and tgt is not None)
+            text = fmt(cur, tgt)
+            value = Gtk.Label(label=(f"{TEMP_SYMBOLS[st]} {text}" if mono else text), xalign=0.5)
             vctx = value.get_style_context()
             vctx.add_class("temp-value")
-            # Colour by state (design/kolorystyka.md): at-temp neutral metric, cold/idle muted, heating
-            # warm, cooling cool. In monochrome mode every value stays grey.
-            target = tgt or 0
-            if mono:
-                vctx.add_class("mono")
-            elif cur is None:
-                vctx.add_class("idle")
-            elif target > 5 and cur < target - 3:
-                vctx.add_class("heat")
-            elif cur > max(target, 0) + 5 and cur > 30:
-                vctx.add_class("cool")
-            elif target <= 5 and cur <= 30:
-                vctx.add_class("idle")
+            vctx.add_class("mono" if mono else st)
             zone.pack_start(name, False, False, 0)
             zone.pack_start(value, False, False, 0)
             return zone

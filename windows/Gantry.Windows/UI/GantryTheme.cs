@@ -56,3 +56,43 @@ internal static class GTheme
 
     private static byte A(double alpha) => (byte)System.Math.Clamp(System.Math.Round(alpha * 255), 0, 255);
 }
+
+/// <summary>Temperature STATE colours + monochrome glyphs (design/kolorystyka.md §3). The same map for
+/// nozzle, bed and chamber; the per-sensor colours (GTheme.Nozzle/Bed/Chamber) are for charts only.</summary>
+internal static class TempStyle
+{
+    public enum State { Error, Unavailable, Idle, Heating, Ready, Holding, Cooling }
+
+    public static State Of(double? current, double? target, bool printing, bool error)
+    {
+        if (error) return State.Error;
+        if (current is not { } cur) return State.Unavailable;
+        double t = target ?? 0;
+        if (t <= 5 && cur <= 30) return State.Idle;
+        if (t > 5 && cur < t - 3) return State.Heating;
+        if (cur > System.Math.Max(t, 0) + 5 && cur > 30) return State.Cooling;
+        return printing ? State.Holding : State.Ready;
+    }
+
+    public static Color Colour(State s, bool mono) => s switch
+    {
+        State.Error => mono ? GTheme.Text : Color.FromRgb(0xFF, 0x5A, 0x4E),
+        State.Unavailable => mono ? Color.FromRgb(0x4B, 0x4F, 0x4C) : GTheme.Muted,
+        State.Idle => GTheme.Muted,                                   // #6D716E
+        State.Heating => mono ? GTheme.Accent : Color.FromRgb(0xD1, 0x8C, 0x82),
+        State.Ready => GTheme.Accent,                                 // #D4D7D3 metric
+        State.Holding => GTheme.Text,                                 // #F2F3F1 (same in mono)
+        State.Cooling => mono ? GTheme.Secondary : Color.FromRgb(0x8B, 0xA9, 0xC7),
+        _ => GTheme.Accent
+    };
+
+    public static Brush BrushFor(State s, bool mono) => new SolidColorBrush(Colour(s, mono));
+
+    public static string Symbol(State s) => s switch
+    {
+        State.Error => "!", State.Unavailable => "—", State.Idle => "○",
+        State.Heating => "↑", State.Ready => "●", State.Holding => "●", State.Cooling => "↓", _ => ""
+    };
+
+    public static bool Bold(State s) => s == State.Holding || s == State.Error;
+}

@@ -46,9 +46,11 @@ public sealed class DetailView : UserControl
     private readonly Dictionary<string, FrameworkElement> _cardByKey = new();
     private Point _cardDragStart;
 
-    private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
-    private static readonly Brush BedBrush = new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF));
-    private static readonly Brush ChamberBrush = new SolidColorBrush(Color.FromRgb(0x64, 0xD2, 0xFF));
+    // Per-sensor colours (design/kolorystyka.md §5) — used for the chart series/legend only. The temp
+    // READOUT values follow state (TempStyle), not these.
+    private static readonly Brush NozzleBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x8A, 0x61));
+    private static readonly Brush BedBrush = new SolidColorBrush(Color.FromRgb(0xEF, 0xBD, 0x5F));
+    private static readonly Brush ChamberBrush = new SolidColorBrush(Color.FromRgb(0xBB, 0xA5, 0xEF));
 
     private readonly Action _onBack;
 
@@ -346,9 +348,11 @@ public sealed class DetailView : UserControl
 
         // Temperatures
         _temps.Children.Clear();
-        _temps.Children.Add(TempChip(_pl ? "Dysza" : "Nozzle", t.NozzleTemperature, t.NozzleTargetTemperature, NozzleBrush));
-        _temps.Children.Add(TempChip(_pl ? "Stół" : "Bed", t.BedTemperature, t.BedTargetTemperature, BedBrush));
-        _temps.Children.Add(TempChip(_pl ? "Komora" : "Chamber", t.ChamberTemperature, null, ChamberBrush));
+        bool printingT = t.State == PrinterState.Printing;
+        bool errorT = t.State == PrinterState.Error;
+        _temps.Children.Add(TempChip(_pl ? "Dysza" : "Nozzle", t.NozzleTemperature, t.NozzleTargetTemperature, NozzleBrush, printingT, errorT));
+        _temps.Children.Add(TempChip(_pl ? "Stół" : "Bed", t.BedTemperature, t.BedTargetTemperature, BedBrush, printingT, errorT));
+        _temps.Children.Add(TempChip(_pl ? "Komora" : "Chamber", t.ChamberTemperature, null, ChamberBrush, printingT, errorT));
         DrawGraph();
 
         // Fans + speed
@@ -580,14 +584,23 @@ public sealed class DetailView : UserControl
         VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
     };
 
-    private UIElement TempChip(string title, double? current, double? target, Brush accent)
+    private UIElement TempChip(string title, double? current, double? target, Brush accent, bool printing, bool error)
     {
+        // Dot keeps the sensor colour (a small legend), but the value follows STATE (kolorystyka.md §3).
         var dot = new Ellipse { Width = 6, Height = 6, Fill = accent, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
         var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Children = { dot, new TextBlock { Text = title, FontSize = 9, Foreground = Muted() } } };
+        bool mono = AppSettings.Monochrome;
+        var st = TempStyle.Of(current, target, printing, error && target.HasValue);
         string value = current is { } c
             ? (int)c + "°" + (target is { } tg && tg > 0 ? $" / {(int)tg}°" : "")
             : "—";
-        var stack = new StackPanel { Children = { titleRow, new TextBlock { Text = value, FontSize = 13, FontWeight = FontWeights.SemiBold } } };
+        if (mono) value = TempStyle.Symbol(st) + " " + value;
+        var valueBlock = new TextBlock
+        {
+            Text = value, FontSize = 13, FontWeight = TempStyle.Bold(st) ? FontWeights.Bold : FontWeights.SemiBold,
+            Foreground = TempStyle.BrushFor(st, mono)
+        };
+        var stack = new StackPanel { Children = { titleRow, valueBlock } };
         return new Border { Background = new SolidColorBrush(Color.FromArgb(0x50, 0x2C, 0x2C, 0x2E)), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 8, 0), Child = stack };
     }
 

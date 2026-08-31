@@ -12,7 +12,7 @@ from typing import Any
 
 from gi.repository import Gdk, GLib, Gtk  # type: ignore  # noqa: E402
 
-from .core import PrinterKind, PrinterState, Telemetry
+from .core import PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
 
 _SPEED_NAMES = {1: ("Cichy", "Silent"), 2: ("Standard", "Standard"),
                 3: ("Sport", "Sport"), 4: ("Wariat", "Ludicrous")}
@@ -194,6 +194,8 @@ class DetailWindow(Gtk.Window):
         layers = "—" if tel.current_layer is None else f"{tel.current_layer}/{tel.total_layers or '—'}"
         self.meta.set_text(f"{tel.progress}%   ·   ETA {eta}   ·   {'Warstwa' if pl else 'Layer'} {layers}")
 
+        self._printing = tel.state == PrinterState.PRINTING
+        self._errored = tel.state == PrinterState.ERROR
         self._fill_temps(tel, pl)
         self._fill_hardware(tel, pl)
         self._fill_filaments(tel, pl)
@@ -206,26 +208,25 @@ class DetailWindow(Gtk.Window):
         zone.get_style_context().add_class("temp-zone")
         label = Gtk.Label(label=name.upper(), xalign=0)
         label.get_style_context().add_class("temp-name")
-        val = Gtk.Label(label=value, xalign=0.5)
+        mono = bool(self.app.config.data.get("monochrome", False))
+        text = value
+        if not strong:
+            # Temperature values follow state (design/kolorystyka.md §3): at-temp neutral metric (white
+            # while holding during a print), cold/idle muted, heating warm, cooling cool, alarm red. In
+            # monochrome mode a leading glyph carries the state instead of colour.
+            st = temp_state(cur, tgt, getattr(self, "_printing", False),
+                            getattr(self, "_errored", False) and tgt is not None)
+            if mono:
+                text = f"{TEMP_SYMBOLS[st]} {value}"
+        val = Gtk.Label(label=text, xalign=0.5)
         vctx = val.get_style_context()
         vctx.add_class("temp-value")
-        mono = bool(self.app.config.data.get("monochrome", False))
         if strong:
             vctx.add_class("strong")   # hardware values (fans / speed / diameter) stay bright
         elif mono:
-            vctx.add_class("mono")     # monochrome keeps every value grey
+            vctx.add_class("mono")     # monochrome keeps every value grey (glyph shows the state)
         else:
-            # Temperature values follow state (design/kolorystyka.md): at-temp neutral metric, cold/idle
-            # muted, heating warm, cooling cool.
-            target = tgt or 0
-            if cur is None:
-                vctx.add_class("idle")
-            elif target > 5 and cur < target - 3:
-                vctx.add_class("heat")
-            elif cur > max(target, 0) + 5 and cur > 30:
-                vctx.add_class("cool")
-            elif target <= 5 and cur <= 30:
-                vctx.add_class("idle")
+            vctx.add_class(st)
         zone.pack_start(label, False, False, 0)
         zone.pack_start(val, False, False, 0)
         return zone

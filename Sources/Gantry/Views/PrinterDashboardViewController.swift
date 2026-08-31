@@ -1457,6 +1457,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
                          bedCurrent: telemetry.bedTemperature,
                          bedTarget: telemetry.bedTargetTemperature,
                          chamberCurrent: telemetry.chamberTemperature,
+                         printing: telemetry.state == .printing,
+                         error: telemetry.state == .error,
                          settings: settings)
 
         // Physical filament modules, laid out as side-by-side groups that wrap in pairs. Parsers that
@@ -1664,16 +1666,11 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         return "\(Int(current.rounded()))°"
     }
 
-    /// Colours a temperature by state (design/kolorystyka.md §3): heating warm, cooling cool, at-temperature
-    /// the neutral metric colour, cold/idle muted. The same map applies to nozzle, bed and chamber.
+    /// Colours a temperature by state (design/kolorystyka.md §3), via the shared state map so nozzle, bed
+    /// and chamber always agree. Printing/alarm state isn't known here, so it never resolves to holding/error.
     private func tempColor(_ current: Double?, _ target: Double?) -> NSColor {
-        if AppSettings.shared.monochrome { return GantryTheme.secondary }
-        guard let current else { return GantryTheme.tempIdle }
-        let target = target ?? 0
-        if target > 5, current < target - 3 { return GantryTheme.tempHeating }        // ramping up
-        if current > max(target, 0) + 5, current > 30 { return GantryTheme.tempCooling } // above setpoint, still warm
-        if target <= 5, current <= 30 { return GantryTheme.tempIdle }                 // cold / no setpoint
-        return GantryTheme.tempReady                                                  // at temperature
+        let state = GantryTheme.tempState(current: current, target: target, printing: false, error: false)
+        return GantryTheme.tempColor(state, mono: AppSettings.shared.monochrome)
     }
 }
 
@@ -1902,7 +1899,7 @@ private final class TemperatureBentoView: NSView {
     required init?(coder: NSCoder) { nil }
 
     func update(nozzles: [NozzleTelemetry], bedCurrent: Double?, bedTarget: Double?,
-                chamberCurrent: Double?, settings: AppSettings) {
+                chamberCurrent: Double?, printing: Bool, error: Bool, settings: AppSettings) {
         row.arrangedSubviews.forEach {
             row.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -1930,35 +1927,22 @@ private final class TemperatureBentoView: NSView {
         }
 
         // Temperatures are coloured by state, per design/kolorystyka.md — the same map for nozzle, bed and
-        // chamber: heating warm, cooling cool, at-temperature the neutral metric colour, cold/idle muted.
-        // Monochrome keeps every value grey.
-        let heat = GantryTheme.tempHeating
-        let cool = GantryTheme.tempCooling
-        let ready = GantryTheme.tempReady   // #D4D7D3 metric
-        let idle = GantryTheme.tempIdle      // #6D716E muted
+        // chamber: heating warm, cooling cool, at-temperature the neutral metric colour (white while the
+        // printer holds it during a print), cold/idle muted, firmware alarm red. In monochrome mode hue is
+        // dropped but a leading glyph (↑ ● ↓ ○ ! —) keeps the state readable.
         let mono = settings.monochrome
         for (index, zone) in zones.enumerated() {
-            let cur = zone.1
-            let tgt = zone.2 ?? 0
-            let tint: NSColor
-            if mono {
-                tint = GantryTheme.secondary
-            } else if cur == nil {
-                tint = idle
-            } else if let c = cur, tgt > 5, c < tgt - 3 {
-                tint = heat
-            } else if let c = cur, c > max(tgt, 0) + 5, c > 30 {
-                tint = cool
-            } else if tgt <= 5, let c = cur, c <= 30 {
-                tint = idle
-            } else {
-                tint = ready
-            }
+            // The chamber has no target and never triggers a thermal alarm on its own; only the nozzle/bed
+            // carry the printer's error state here.
+            let zoneError = error && zone.2 != nil
+            let state = GantryTheme.tempState(current: zone.1, target: zone.2, printing: printing, error: zoneError)
             row.addArrangedSubview(ThermalZoneView(label: zone.0,
                                                    current: Self.value(zone.1),
                                                    target: Self.target(zone.2),
-                                                   tint: tint,
-                                                   separated: index > 0))
+                                                   tint: GantryTheme.tempColor(state, mono: mono),
+                                                   separated: index > 0,
+                                                   symbol: mono ? GantryTheme.tempSymbol(state) : nil,
+                                                   bold: GantryTheme.tempBold(state)))
         }
     }
 
@@ -1978,7 +1962,8 @@ private final class ThermalZoneView: NSView {
     private let separator = CALayer()
     private let ambient = CAGradientLayer()
 
-    init(label: String, current: String, target: String, tint: NSColor, separated: Bool) {
+    init(label: String, current: String, target: String, tint: NSColor, separated: Bool,
+         symbol: String? = nil, bold: Bool = false) {
         super.init(frame: .zero)
         wantsLayer = true
         // Neutral tile: the hue lives only on the temperature value below, so a wall of zones reads
@@ -1999,10 +1984,11 @@ private final class ThermalZoneView: NSView {
         labelField.textColor = .tertiaryLabelColor
         labelField.lineBreakMode = .byTruncatingTail
 
-        let currentField = NSTextField(labelWithString: current)
-        currentField.font = .monospacedDigitSystemFont(ofSize: 14, weight: .semibold)
-        // The one spot of colour per zone: the live temperature carries its zone hue (nozzle warm,
-        // bed gold, chamber violet) so the tile itself can stay neutral.
+        // In monochrome mode a leading glyph (↑ ● ↓ ○ ! —) carries the state that colour otherwise would.
+        let currentField = NSTextField(labelWithString: symbol.map { "\($0) \(current)" } ?? current)
+        currentField.font = .monospacedDigitSystemFont(ofSize: 14, weight: bold ? .bold : .semibold)
+        // The one spot of colour per zone: the live temperature carries its state colour so the tile
+        // itself can stay neutral.
         currentField.textColor = tint
         let targetField = NSTextField(labelWithString: target)
         // Quiet target: small and faint so the eye catches the big current value, the target just hints.

@@ -832,26 +832,38 @@ public partial class DashboardWindow : Window
             bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
             string bedLabel = pl ? "Stół" : "Bed";
             string chamberLabel = pl ? "Komora" : "Chamber";
-            // Temperature value colour follows activity (warm heating, cool cooling, grey at temperature /
-            // idle; grey in monochrome mode) — same as macOS/Linux, not a fixed per-zone tint.
-            Brush ActivityBrush(double? cur, double? tgt) => TempColor(cur, tgt) ?? GTheme.Brush(GTheme.Secondary);
-            var cells = new List<(string, string, Brush?)>();
+            // Temperature value colour follows STATE (design/kolorystyka.md §3), the same map for nozzle,
+            // bed and chamber: heating warm, cooling cool, at-temperature the neutral metric colour (white
+            // while the printer holds it during a print), cold/idle muted, firmware alarm red. In
+            // monochrome mode hue is dropped but a leading glyph (↑ ● ↓ ○ ! —) keeps the state readable.
+            bool printing = t.State == PrinterState.Printing;
+            bool error = t.State == PrinterState.Error;
+            bool mono = AppSettings.Monochrome;
+            (string, string, Brush?, bool) Cell(string label, double? cur, double? tgt)
+            {
+                // Only the nozzle/bed (which carry a target) surface the printer's thermal alarm here.
+                var st = TempStyle.Of(cur, tgt, printing, error && tgt.HasValue);
+                var val = FormatTemp(cur, tgt);
+                if (mono) val = TempStyle.Symbol(st) + " " + val;
+                return (label, val, TempStyle.BrushFor(st, mono), TempStyle.Bold(st));
+            }
+            var cells = new List<(string, string, Brush?, bool)>();
             if (dual)
             {
                 var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
                 var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
-                cells.Add((pl ? "Dysze L" : "Nozzles L", FormatTemp(left.CurrentTemperature, left.TargetTemperature), ActivityBrush(left.CurrentTemperature, left.TargetTemperature)));
-                cells.Add(("P", FormatTemp(right?.CurrentTemperature, right?.TargetTemperature), ActivityBrush(right?.CurrentTemperature, right?.TargetTemperature)));
+                cells.Add(Cell(pl ? "Dysze L" : "Nozzles L", left.CurrentTemperature, left.TargetTemperature));
+                cells.Add(Cell("P", right?.CurrentTemperature, right?.TargetTemperature));
             }
             else
             {
                 var single = nozzles[0];
-                cells.Add((pl ? "Dysza" : "Nozzle", FormatTemp(single.CurrentTemperature, single.TargetTemperature), ActivityBrush(single.CurrentTemperature, single.TargetTemperature)));
+                cells.Add(Cell(pl ? "Dysza" : "Nozzle", single.CurrentTemperature, single.TargetTemperature));
             }
-            cells.Add((bedLabel, FormatTemp(t.BedTemperature, t.BedTargetTemperature), ActivityBrush(t.BedTemperature, t.BedTargetTemperature)));
+            cells.Add(Cell(bedLabel, t.BedTemperature, t.BedTargetTemperature));
             // Chamber tile only when there is an actual reading (no empty "— / —" tile).
             if (t.ChamberTemperature is { } ch)
-                cells.Add((chamberLabel, FormatTemp(ch, null), ActivityBrush(ch, null)));
+                cells.Add(Cell(chamberLabel, ch, null));
             _temps.Children.Add(TempRow(cells.ToArray()));
 
             // Filament modules laid out in rows of up to two, side by side (macOS layout): an AMS is
@@ -1052,23 +1064,8 @@ public partial class DashboardWindow : Window
         return (panel, value);
     }
 
-    /// <summary>A horizontal row of labelled temperature cells, e.g. "L 245/245°", "Stół 65/65°".</summary>
-    // Temperature STATE colours (design/kolorystyka.md §3) — same map for nozzle, bed and chamber.
-    private static readonly Brush HeatingBrush = new SolidColorBrush(Color.FromRgb(0xD1, 0x8C, 0x82)); // ramping up
-    private static readonly Brush CoolingBrush = new SolidColorBrush(Color.FromRgb(0x8B, 0xA9, 0xC7)); // above setpoint
-    private static readonly Brush ReadyBrush   = new SolidColorBrush(Color.FromRgb(0xD4, 0xD7, 0xD3)); // at temperature (metric)
-    private static readonly Brush IdleBrush    = new SolidColorBrush(Color.FromRgb(0x6D, 0x71, 0x6E)); // cold / no setpoint
-
-    private static Brush? TempColor(double? current, double? target)
-    {
-        if (AppSettings.Monochrome) return null;   // grey values in monochrome mode
-        if (current is not { } cur) return IdleBrush;
-        double t = target ?? 0;
-        if (t > 5 && cur < t - 3) return HeatingBrush;                 // ramping up
-        if (cur > Math.Max(t, 0) + 5 && cur > 30) return CoolingBrush; // above setpoint, still warm
-        if (t <= 5 && cur <= 30) return IdleBrush;                     // cold / no setpoint
-        return ReadyBrush;                                             // at temperature
-    }
+    /// <summary>A horizontal row of labelled temperature cells, e.g. "L 245/245°", "Stół 65/65°".
+    /// Colours come from the shared <see cref="TempStyle"/> so nozzle/bed/chamber agree across platforms.</summary>
 
     /// <summary>Blend a colour toward its own grey (luminance) for the monochrome mode.</summary>
     private static Color MutedTowardGrey(Color c, double amount = 0.62)
@@ -1078,17 +1075,14 @@ public partial class DashboardWindow : Window
         return Color.FromArgb(c.A, Mix(c.R), Mix(c.G), Mix(c.B));
     }
 
-    private static (string Label, string Value, Brush? Colour) TempCell(string label, double? current, double? target)
-        => (label, FormatTemp(current, target), TempColor(current, target));
-
-    private static UIElement TempRow(params (string Label, string Value, Brush? Colour)[] cells)
+    private static UIElement TempRow(params (string Label, string Value, Brush? Colour, bool Bold)[] cells)
     {
         var row = new Grid();
         for (int i = 0; i < cells.Length; i++)
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (int i = 0; i < cells.Length; i++)
         {
-            var (label, value, colour) = cells[i];
+            var (label, value, colour, bold) = cells[i];
             var cell = new Grid { Height = 34 };
             cell.Children.Add(new TextBlock
             {
@@ -1099,7 +1093,7 @@ public partial class DashboardWindow : Window
             var valueBlock = new TextBlock
             {
                 FontFamily = new FontFamily("Segoe UI"), FontSize = 14,
-                FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
+                FontWeight = bold ? FontWeights.Bold : FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 6, 3, 0)
             };
             // The one spot of colour per zone is the live value; the target "/ X°" stays small and faint.

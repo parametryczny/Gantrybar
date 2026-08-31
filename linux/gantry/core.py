@@ -18,6 +18,29 @@ class PrinterState(str, Enum):
     ERROR = "error"
 
 
+# Temperature STATE map (design/kolorystyka.md §3) — the same states drive nozzle, bed and chamber
+# colour. `hold` = printing while at the setpoint; `err` comes from a firmware alarm, not a threshold.
+TEMP_SYMBOLS = {
+    "err": "!", "unavail": "—", "idle": "○",
+    "heat": "↑", "ready": "●", "hold": "●", "cool": "↓",
+}
+
+
+def temp_state(cur: float | None, tgt: float | None, printing: bool, error: bool) -> str:
+    if error:
+        return "err"
+    if cur is None:
+        return "unavail"
+    target = tgt or 0
+    if target <= 5 and cur <= 30:
+        return "idle"
+    if target > 5 and cur < target - 3:
+        return "heat"
+    if cur > max(target, 0) + 5 and cur > 30:
+        return "cool"
+    return "hold" if printing else "ready"
+
+
 class PrinterKind(str, Enum):
     BAMBU = "bambu"
     KLIPPER = "klipper"

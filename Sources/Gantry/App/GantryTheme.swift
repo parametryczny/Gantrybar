@@ -36,6 +36,48 @@ enum GantryTheme {
     static let tempCooling = NSColor(hex: 0x8BA9C7)   // above setpoint, cooling
     static let tempError   = NSColor(hex: 0xFF5A4E)   // firmware thermal alarm
 
+    /// The state a temperature is in (design/kolorystyka.md §3). `holding` = printing while at the
+    /// setpoint; `error` comes from a firmware/validated alarm, never an arbitrary threshold.
+    enum TempState { case error, unavailable, idle, heating, ready, holding, cooling }
+
+    static func tempState(current: Double?, target: Double?, printing: Bool, error: Bool) -> TempState {
+        if error { return .error }
+        guard let current else { return .unavailable }
+        let t = target ?? 0
+        if t <= 5, current <= 30 { return .idle }
+        if t > 5, current < t - 3 { return .heating }
+        if current > max(t, 0) + 5, current > 30 { return .cooling }
+        return printing ? .holding : .ready
+    }
+
+    /// Colour for a state. In monochrome mode hue is dropped but brightness still separates the states
+    /// (the symbol carries the rest — see `tempSymbol`).
+    static func tempColor(_ state: TempState, mono: Bool) -> NSColor {
+        switch state {
+        case .error:       return mono ? text : tempError
+        case .unavailable: return mono ? NSColor(hex: 0x4B4F4C) : muted.withAlphaComponent(0.55)
+        case .idle:        return tempIdle
+        case .heating:     return mono ? accent : tempHeating
+        case .ready:       return mono ? accent : tempReady
+        case .holding:     return mono ? text : tempHolding
+        case .cooling:     return mono ? secondary : tempCooling
+        }
+    }
+
+    /// A leading glyph used in monochrome mode so state is legible without colour.
+    static func tempSymbol(_ state: TempState) -> String {
+        switch state {
+        case .error:       return "!"
+        case .unavailable: return "—"
+        case .idle:        return "○"
+        case .heating:     return "↑"
+        case .ready, .holding: return "●"
+        case .cooling:     return "↓"
+        }
+    }
+
+    static func tempBold(_ state: TempState) -> Bool { state == .holding || state == .error }
+
     // MARK: Status
     static let statusPrinting = NSColor(hex: 0xFF6857)   // design-tokens status.printing
     static let statusDefault  = NSColor(hex: 0xD4D7D3)
