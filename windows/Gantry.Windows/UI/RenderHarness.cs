@@ -79,7 +79,7 @@ internal static class RenderHarness
             {
                 // Put a couple on another printer so the "existing rolls" (movable) section shows up;
                 // the rest stay in storage (now hidden from the assign list).
-                var loc = i <= 2 ? SpoolLocation.At("X2", SpoolFeeder.Ams, 0, i - 1) : SpoolLocation.Storage();
+                var spoolLoc = i <= 2 ? SpoolLocation.At("X2", SpoolFeeder.Ams, 0, i - 1) : SpoolLocation.Storage();
                 SpoolbaseShared.Spools.Add(new PhysicalSpool
                 {
                     Id = SpoolbaseShared.Spools.NextSpoolId(),
@@ -87,7 +87,7 @@ internal static class RenderHarness
                     NominalWeightGrams = 1000,
                     RemainingWeightGrams = 1000 - i * 130,
                     Status = i <= 2 ? SpoolStatus.Active : SpoolStatus.Stored,
-                    Location = loc
+                    Location = spoolLoc
                 });
                 i++;
             }
