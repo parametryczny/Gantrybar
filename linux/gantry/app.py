@@ -158,9 +158,10 @@ window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); b
 .ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
 .ams-group { background: alpha(#ffffff, 0.052); border-radius: 12px; padding: 9px 11px; }
 .slot-pct { font-size: 10px; font-weight: 700; }
-.slot-material { color: %(foreground)s; font-size: 10px; font-weight: 600; }
+.slot-material { color: #d4d7d3; font-size: 10px; font-weight: 600; }
 .slot-material.empty { color: #6d716e; }
-.slot-id { color: #6d716e; font-family: monospace; font-size: 7px; font-weight: 500; }
+.slot-id { color: alpha(#d4d7d3, 0.62); font-family: monospace; font-size: 7px; font-weight: 500; }
+.slot-grams { color: #d4d7d3; font-size: 10px; font-weight: 600; }
 button { border-radius: 10px; padding: 7px 12px; }
 button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
 button.headericon { background: transparent; border: none; box-shadow: none; padding: 2px 6px; min-width: 26px; min-height: 24px; color: %(secondary)s; font-size: 15px; }
@@ -506,13 +507,17 @@ class PrinterCard(Gtk.Frame):
             gbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             gbox.get_style_context().add_class("ams-group")
             gbox.set_hexpand(True)
+            # One compact, left-aligned line: "AMS · 🌡 38° · 💧 32%" (name, temperature, humidity). The
+            # env values are calm neutral metric text (kolorystyka.md); separators drop with a missing
+            # measurement, and colour emoji ignore the foreground so they keep their own hue.
             env: list[str] = []
-            if group.humidity is not None:
-                env.append(f"{group.humidity}/5" if group.humidity <= 5 else f"{group.humidity}%")
             if group.temperature is not None:
-                env.append(f"{group.temperature:.0f}°")
+                env.append(f"🌡 {group.temperature:.0f}°")
+            if group.humidity is not None:
+                env.append("💧 " + (f"{group.humidity}/5" if group.humidity <= 5 else f"{group.humidity}%"))
             header = Gtk.Label(xalign=0)
-            suffix = f"  <span alpha='60%'>{GLib.markup_escape_text(' · '.join(env))}</span>" if env else ""
+            suffix = (f"<span foreground='#d4d7d3' alpha='73%'> · "
+                      f"{GLib.markup_escape_text(' · '.join(env))}</span>") if env else ""
             header.set_markup(f"<b>{GLib.markup_escape_text(group.display_name)}</b>{suffix}")
             gbox.pack_start(header, False, False, 0)
             srow = Gtk.Box(spacing=4)
@@ -628,7 +633,7 @@ class PrinterCard(Gtk.Frame):
                     grams_value = assigned.get("remainingWeightGrams")
                 if grams_value and self.app.config.data.get("card_show_spool_grams"):
                     grams = Gtk.Label(xalign=0.5)
-                    grams.get_style_context().add_class("meta")
+                    grams.get_style_context().add_class("slot-grams")
                     grams.set_text(f"{int(grams_value)} g")
                     sbox.pack_start(grams, False, False, 0)
                 # Click a slot to assign / edit / detach its physical roll (Spoolbase only).

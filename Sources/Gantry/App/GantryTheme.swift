@@ -19,6 +19,7 @@ enum GantryTheme {
     static let secondary = NSColor(hex: 0xA7AAA6)
     static let muted     = NSColor(hex: 0x6D716E)
     static let accent    = NSColor(hex: 0xD4D7D3)   // neutral, not blue
+    static let metric     = NSColor(hex: 0xD4D7D3)   // shared telemetry/value colour (kolorystyka.md §2)
 
     // MARK: Thermal zones (warm nozzle / bed, cool chamber) + environment
     static let nozzle     = NSColor(hex: 0xFF8A61)

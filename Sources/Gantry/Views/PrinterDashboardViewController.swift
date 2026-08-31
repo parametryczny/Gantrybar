@@ -2245,8 +2245,12 @@ final class FilamentSlotView: NSView {
         // Flexible width so the slots stretch to fill their module (distribution .fillEqually).
         setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        // In the detail card the swatch fills from the bottom in proportion to the remaining amount
-        // (less filament → shorter fill); elsewhere it's a solid colour chip.
+        let gramsValue = assignedSpool.map { $0.remainingWeightGrams } ?? slot.remainingWeightGrams
+        let showGrams = AppSettings.shared.cardShowSpoolGrams && present && (gramsValue ?? 0) > 0
+
+        // Compact vertical slot: a colour chip on top (filling its cell), then the values UNDER it — the
+        // percent inside the chip, the material + grams as a quiet caption below. This keeps the slot as
+        // narrow as its column so four AMS slots + EXT still fit a card.
         let swatch: NSView
         if showRemaining, present, let pct = effectivePct {
             swatch = FilamentSwatchView(color: color, fraction: CGFloat(pct) / 100)
@@ -2262,34 +2266,19 @@ final class FilamentSlotView: NSView {
             swatch.layer?.borderColor = NSColor.white.withAlphaComponent(0.8).cgColor
             swatch.layer?.borderWidth = 1.5
         } else {
-            // A faint light outline so the chip is always visible — even an empty/0% dark spool that
-            // would otherwise vanish on the flat dark card (no group box behind it anymore).
             swatch.layer?.borderColor = GantryTheme.line.cgColor
             swatch.layer?.borderWidth = 1
         }
         swatch.translatesAutoresizingMaskIntoConstraints = false
         swatch.heightAnchor.constraint(equalToConstant: 18).isActive = true
-        // Keep swatches compact and readable: don't let a slot stretch wider than a tidy chip,
-        // so a 4-slot AMS reads as neat squares instead of big blocks. The fill-width constraint
-        // below is lowered in priority so this cap wins and the chip stays centered in its cell.
-        // Multi-slot AMS keeps a compact per-slot cap so four slots read as neat squares. A single slot
-        // (AMS HT / EXT) instead takes a fixed fraction of its column — set in the activate block below,
-        // once the swatch is in the view hierarchy — so it scales with the card and never jumps.
         if !isSingle {
             let maxWidth = swatch.widthAnchor.constraint(lessThanOrEqualToConstant: isExternal ? 92 : 56)
             maxWidth.priority = .required
             maxWidth.isActive = true
         }
 
-        // The remaining % lives INSIDE the colour chip, in a contrasting ink (white on a dark spool,
-        // black on a light/yellow one) so it is legible whatever the filament colour is — no separate
-        // row needed. A faint opposite-colour shadow keeps it readable where the fill meets the dim
-        // empty part of the chip.
+        // Remaining % lives inside the chip, in contrast ink so it's legible on any filament colour.
         if showRemaining, present, let pct = effectivePct {
-            // The fill rises from the bottom by `pct`. The centred number is only over the SOLID colour
-            // once the fill reaches the middle; below that it sits over the dim (dark) empty part, which
-            // always wants light ink. So pick contrast by what's actually behind the text, not by the
-            // spool colour alone — that fixes "black 0% on a light spool over a dark chip".
             let overSolid = CGFloat(pct) / 100 >= 0.5
             let inkIsDark = overSolid && color.contrastingTextColor == .black
             let ink: NSColor = inkIsDark ? .black : NSColor.white.withAlphaComponent(0.95)
@@ -2314,14 +2303,14 @@ final class FilamentSlotView: NSView {
             ])
         }
 
-        // Slot id stays quiet at the leading edge; material is the primary, centered caption.
+        // Caption under the chip: slot id (quiet) + material (clear), read as one label "A4 PLA".
         let slotID = NSTextField(labelWithString: isExternal ? "" : slot.label)
         slotID.font = .monospacedSystemFont(ofSize: 7.5, weight: .medium)
-        slotID.textColor = GantryTheme.muted
+        slotID.textColor = GantryTheme.metric.withAlphaComponent(0.62)
         let material = NSTextField(labelWithString: present ? materialText : "—")
         material.font = .systemFont(ofSize: 10, weight: .semibold)
         material.alignment = .center
-        material.textColor = present ? GantryTheme.text : GantryTheme.muted
+        material.textColor = present ? GantryTheme.metric : GantryTheme.muted
         material.lineBreakMode = .byTruncatingTail
         material.toolTip = "\(slot.label) • \(materialText) • \(effectivePct.map { "\($0)%" } ?? "—")"
         let meta = NSView()
@@ -2340,16 +2329,13 @@ final class FilamentSlotView: NSView {
             material.trailingAnchor.constraint(lessThanOrEqualTo: meta.trailingAnchor)
         ])
 
-        // Remaining % now sits inside the swatch (above), so the slot is just chip + material caption.
         var slotViews: [NSView] = [swatch, meta]
-        // Grams on the spool: the assigned Spoolbase weight, or the AMS NFC weight — shown only when the
-        // user turned on "grams on spool" for the cards (Settings).
-        if AppSettings.shared.cardShowSpoolGrams,
-           let gramsValue = (assignedSpool.map { $0.remainingWeightGrams } ?? slot.remainingWeightGrams),
-           gramsValue > 0 {
-            let grams = NSTextField(labelWithString: "\(Int(gramsValue)) g")
-            grams.font = .systemFont(ofSize: 8.5, weight: .medium)
-            grams.textColor = GantryTheme.muted
+        // Grams under the caption — the assigned Spoolbase weight or AMS NFC weight, in the neutral metric
+        // colour so it reads clearly (only when "grams on spool" is on in Settings).
+        if showGrams, let g = gramsValue {
+            let grams = NSTextField(labelWithString: "\(Int(g)) g")
+            grams.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+            grams.textColor = GantryTheme.metric
             grams.alignment = .center
             slotViews.append(grams)
         }
@@ -2367,9 +2353,6 @@ final class FilamentSlotView: NSView {
             swatch.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 1, constant: 0).withPriority(.defaultLow),
             meta.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
-        // A single slot (AMS HT / EXT) targets 35% of its column, but never below a legible minimum, so
-        // next to a wide AMS it still reads like a slot rather than a sliver — and never wider than the
-        // column. Multi-slot AMS keeps its compact per-slot cap set earlier.
         if isSingle {
             let target = swatch.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.35)
             target.priority = .defaultHigh
@@ -2386,17 +2369,35 @@ final class FilamentSlotView: NSView {
         // spool (issue #27).
         let trustedLevel = slot.remainingWeightGrams != nil || assignedSpool != nil
         if present, !isExternal, trustedLevel, (effectivePct ?? 100) <= 15 {
+            // The badge sits on the chip's top-right, never over the % / grams. In colour mode it's a red
+            // dot; in monochrome it becomes an outlined "!" so the warning never relies on colour alone.
             let warning = NSView()
             warning.wantsLayer = true
-            warning.layer?.backgroundColor = NSColor.systemRed.cgColor
-            warning.layer?.cornerRadius = 3
-            warning.layer?.borderWidth = 1
-            warning.layer?.borderColor = NSColor.controlBackgroundColor.cgColor
+            warning.layer?.cornerRadius = 4
             warning.translatesAutoresizingMaskIntoConstraints = false
+            if AppSettings.shared.monochrome {
+                warning.layer?.backgroundColor = GantryTheme.card.cgColor
+                warning.layer?.borderWidth = 1
+                warning.layer?.borderColor = NSColor.white.withAlphaComponent(0.9).cgColor
+                let bang = NSTextField(labelWithString: "!")
+                bang.font = .systemFont(ofSize: 8, weight: .bold)
+                bang.textColor = NSColor.white.withAlphaComponent(0.95)
+                bang.translatesAutoresizingMaskIntoConstraints = false
+                warning.addSubview(bang)
+                NSLayoutConstraint.activate([
+                    bang.centerXAnchor.constraint(equalTo: warning.centerXAnchor),
+                    bang.centerYAnchor.constraint(equalTo: warning.centerYAnchor)
+                ])
+            } else {
+                warning.layer?.backgroundColor = GantryTheme.tempError.cgColor
+                warning.layer?.borderWidth = 1
+                warning.layer?.borderColor = GantryTheme.card.cgColor
+            }
             swatch.addSubview(warning)
+            let side: CGFloat = AppSettings.shared.monochrome ? 12 : 8
             NSLayoutConstraint.activate([
-                warning.widthAnchor.constraint(equalToConstant: 6),
-                warning.heightAnchor.constraint(equalToConstant: 6),
+                warning.widthAnchor.constraint(equalToConstant: side),
+                warning.heightAnchor.constraint(equalToConstant: side),
                 warning.topAnchor.constraint(equalTo: swatch.topAnchor, constant: 3),
                 warning.trailingAnchor.constraint(equalTo: swatch.trailingAnchor, constant: -3)
             ])
@@ -2429,33 +2430,31 @@ final class FilamentGroupView: NSView {
         // Fill the width the dock allots (proportional to slot count), never hug.
         setContentHuggingPriority(.defaultLow, for: .horizontal)
 
+        // One compact, left-aligned line: "AMS · 🌡 38° · 💧 32%" (name, then temperature, then humidity),
+        // no flexible spacer or space-between. Environment values are calm neutral metric text (never the
+        // heat/cool colours), each preceded by a "·" separator that drops with its missing measurement.
         let name = NSTextField(labelWithString: Self.shortName(group.displayName))
-        name.font = .systemFont(ofSize: 10, weight: .semibold)
-        name.textColor = .labelColor
+        name.font = .systemFont(ofSize: 11, weight: .semibold)
+        name.textColor = GantryTheme.text
         name.lineBreakMode = .byTruncatingTail
-        // In a narrow card the header can't fit the name plus both metrics. Humidity/temperature are
-        // the data worth keeping, so let the name shrink first (metrics resist compression, below).
+        // The name yields space first in a tight header; the env values resist compression (below).
         name.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
-        // Per-module humidity (droplet) and temperature (thermometer) as small icon + value clusters.
-        // The spacer between name and metrics must collapse before the name is compressed, so a tight
-        // header never shows a truncated "AMS…" while a gap sits unused next to it.
-        let headerSpacer = NSView()
-        headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        headerSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        var headerViews: [NSView] = [name, headerSpacer]
-        let mono = AppSettings.shared.monochrome
-        if let humidity = group.humidityPercent {
-            let text = humidity <= 5 ? "\(humidity)/5" : "\(humidity)%"
-            // Humidity reads green (dry/healthy), a genuinely damp module goes warm — matching the demo.
-            // Monochrome mode keeps it grey.
-            let tint = mono ? NSColor.secondaryLabelColor
-                            : (Self.isHumidityHigh(group.humidityPercent) ? GantryTheme.statusPaused : GantryTheme.humidity)
-            headerViews.append(Self.metric(symbol: "drop.fill", text: text, tint: tint))
+        var headerViews: [NSView] = [name]
+        func separator() -> NSTextField {
+            let dot = NSTextField(labelWithString: "·")
+            dot.font = .systemFont(ofSize: 11)
+            dot.textColor = GantryTheme.metric.withAlphaComponent(0.45)
+            dot.setContentCompressionResistancePriority(.required, for: .horizontal)
+            return dot
         }
         if let temp = group.temperatureCelsius {
-            headerViews.append(Self.metric(symbol: "thermometer.medium", text: "\(Int(temp.rounded()))°",
-                                           tint: mono ? .secondaryLabelColor : GantryTheme.sensorTemp))
+            headerViews.append(separator())
+            headerViews.append(Self.envCluster(emoji: "🌡", text: "\(Int(temp.rounded()))°"))
+        }
+        if let humidity = group.humidityPercent {
+            headerViews.append(separator())
+            headerViews.append(Self.envCluster(emoji: "💧", text: humidity <= 5 ? "\(humidity)/5" : "\(humidity)%"))
         }
         let header = NSStackView(views: headerViews)
         header.orientation = .horizontal
@@ -2508,17 +2507,17 @@ final class FilamentGroupView: NSView {
         return suffix.count == 1 ? "AMS" : suffix
     }
 
-    private static func metric(symbol: String, text: String, tint: NSColor) -> NSView {
-        let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
-        image.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 8, weight: .regular)
-        image.contentTintColor = tint
+    /// An environment cluster: an emoji icon (🌡 / 💧) + a calm neutral value at ~72% of the metric
+    /// colour. The value resists compression so it never truncates when the header is tight.
+    private static func envCluster(emoji: String, text: String) -> NSView {
+        let icon = NSTextField(labelWithString: emoji)
+        icon.font = .systemFont(ofSize: 9)
+        icon.setContentCompressionResistancePriority(.required, for: .horizontal)
         let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 9, weight: .medium)
-        label.textColor = tint
-        // The metric value must survive a tight header intact — the module name yields space first.
+        label.font = .systemFont(ofSize: 10, weight: .medium)
+        label.textColor = GantryTheme.metric.withAlphaComponent(0.72)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
-        image.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let cluster = NSStackView(views: [image, label])
+        let cluster = NSStackView(views: [icon, label])
         cluster.orientation = .horizontal
         cluster.alignment = .centerY
         cluster.spacing = 3

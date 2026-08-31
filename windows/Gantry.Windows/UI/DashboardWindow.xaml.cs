@@ -1165,26 +1165,23 @@ public partial class DashboardWindow : Window
     {
         var inner = new StackPanel();
 
-        // Header: name on the left, per-module humidity (💧) and temperature (🌡) clusters on the right.
-        var header = new Grid();
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var name = new TextBlock { Text = ShortName(group.DisplayName), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        Grid.SetColumn(name, 0); header.Children.Add(name);
-        var envPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        if (group.HumidityPercent is { } h)
-        {
-            bool humid = h <= 5 ? h >= 4 : h >= 40;
-            var hb = AppSettings.Monochrome ? Muted() : GTheme.Brush(humid ? GTheme.StatusPaused : GTheme.Humidity);
-            envPanel.Children.Add(EnvCluster("💧", h <= 5 ? $"{h}/5" : $"{h}%", hb));
-        }
+        // One compact, left-aligned line: "AMS · 🌡 38° · 💧 32%" (name, temperature, humidity). No
+        // space-between spacer; env values stay calm neutral metric text (kolorystyka.md), each preceded
+        // by a "·" separator that drops with its missing measurement.
+        var header = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        header.Children.Add(new TextBlock { Text = ShortName(group.DisplayName), FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+        var envBrush = new SolidColorBrush(Color.FromArgb(0xB8, 0xD4, 0xD7, 0xD3));   // metric @ ~72%
+        TextBlock Sep() => new() { Text = "·", FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(0x73, 0xD4, 0xD7, 0xD3)), Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
         if (group.TemperatureCelsius is { } tc)
         {
-            var tb = AppSettings.Monochrome ? Muted() : GTheme.Brush(GTheme.SensorTemp);
-            envPanel.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°", tb));
+            header.Children.Add(Sep());
+            header.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°", envBrush));
         }
-        Grid.SetColumn(envPanel, 2); header.Children.Add(envPanel);
+        if (group.HumidityPercent is { } h)
+        {
+            header.Children.Add(Sep());
+            header.Children.Add(EnvCluster("💧", h <= 5 ? $"{h}/5" : $"{h}%", envBrush));
+        }
         inner.Children.Add(header);
 
         SpoolLocation? SlotLoc(int si) => serial != null
@@ -1238,7 +1235,7 @@ public partial class DashboardWindow : Window
 
     private static StackPanel EnvCluster(string glyph, string text, Brush brush)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         panel.Children.Add(new TextBlock { Text = glyph, FontSize = 10, Foreground = brush, Margin = new Thickness(0, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center });
         panel.Children.Add(new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeights.Medium, Foreground = brush, VerticalAlignment = VerticalAlignment.Center });
         return panel;
@@ -1327,16 +1324,17 @@ public partial class DashboardWindow : Window
                 Margin = new Thickness(0, 2, 5, 0)
             });
         }
-        // Caption under the swatch: slot id (quiet, leading) + material (primary, centred).
+        // Caption under the swatch: slot id (quiet, leading) + material (primary, centred). Both use the
+        // shared metric colour (kolorystyka.md), the id at a lower opacity so it reads as one label.
         var meta = new Grid { Margin = new Thickness(0, 1, 0, 0) };
         if (!external)
-            meta.Children.Add(new TextBlock { Text = slot.Label, FontFamily = new FontFamily("Segoe UI"), FontSize = 7, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center });
+            meta.Children.Add(new TextBlock { Text = slot.Label, FontFamily = new FontFamily("Segoe UI"), FontSize = 7, FontWeight = FontWeights.Medium, Foreground = new SolidColorBrush(Color.FromArgb(0x9E, 0xD4, 0xD7, 0xD3)), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center });
         meta.Children.Add(new TextBlock
         {
             Text = present ? materialText : "—",
             FontSize = 10, FontWeight = FontWeights.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = GTheme.Brush(present ? GTheme.Text : GTheme.Muted)
+            Foreground = GTheme.Brush(present ? GTheme.Accent : GTheme.Muted)
         });
         var panel = new StackPanel();
         panel.Children.Add(swatchElement);
@@ -1350,7 +1348,8 @@ public partial class DashboardWindow : Window
                 panel.Children.Add(new TextBlock
                 {
                     Text = $"{(int)g} g",
-                    FontSize = 8.5, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Muted),
+                    FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.SemiBold,
+                    Foreground = GTheme.Brush(GTheme.Accent),
                     HorizontalAlignment = HorizontalAlignment.Center
                 });
         }
