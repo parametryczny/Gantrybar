@@ -1,8 +1,11 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using Gantry.Models;
 using Gantry.Services;
@@ -39,20 +42,81 @@ internal sealed class SpoolAssignPanel
         _colorHex = colorHex; _onClose = onClose;
         _root = new Border
         {
-            Width = 360, MaxHeight = 440,
+            MaxHeight = 440,
             Background = new SolidColorBrush(Color.FromRgb(0x15, 0x17, 0x19)),
             CornerRadius = new CornerRadius(14),
             BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         };
+        // Width is driven by the content (longest filament name / roll line), not the window, so the panel
+        // is only as wide as it needs to be.
+        _root.Width = PreferredWidth();
+    }
+
+    /// The panel's natural width: the widest row content plus the row chrome (swatch, paddings) and the
+    /// panel margins, clamped so a very long name just truncates instead of ballooning.
+    private double PreferredWidth()
+    {
+        var fam = new FontFamily("Segoe UI Variable, Segoe UI");
+        var tf12 = new Typeface(fam, FontStyles.Normal, FontWeights.Medium, FontStretches.Normal);
+        var tf10 = new Typeface(fam, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        double W(string s, double size, Typeface tf) =>
+            new FormattedText(s ?? "", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, tf, size, Brushes.White, 1.0).Width;
+        double content = 150;
+        foreach (var d in _filaments.Filaments)
+        {
+            var title = $"{d.Brand} {d.Name}".Trim();
+            content = Math.Max(content, W(string.IsNullOrEmpty(title) ? d.Type : title, 12, tf12));
+            content = Math.Max(content, W($"{d.Type} · {(string.IsNullOrEmpty(d.ColorName) ? "#" + d.ColorHex : d.ColorName)}", 10, tf10));
+        }
+        foreach (var s in _spools.Spools)
+        {
+            var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
+            var title = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
+            content = Math.Max(content, W(string.IsNullOrEmpty(title) ? s.Id : title, 12, tf12));
+            content = Math.Max(content, W($"{s.Id} · {(int)s.RemainingWeightGrams} g · {PlaceLabel(s.Location)}", 10, tf10));
+        }
+        // swatch(14)+margin(9) + row padding(20) + panel margins(32) + scrollbar lane(12).
+        double chrome = 23 + 20 + 32 + 12;
+        return Math.Min(460, Math.Max(280, Math.Ceiling(content) + chrome));
     }
 
     private static string T(string pl, string en) => AppSettings.Text(pl, en);
 
+    // A 9 px, trackless, rounded scrollbar with a semi-transparent knob. Parsed once; null (default bar)
+    // if parsing ever fails, so a bad template can never crash the panel.
+    private static readonly Style? SlimScrollBar = BuildSlimScrollBar();
+    private static Style? BuildSlimScrollBar()
+    {
+        const string xaml =
+            "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' " +
+            "xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ScrollBar'>" +
+            "<Setter Property='Width' Value='9'/><Setter Property='Background' Value='Transparent'/>" +
+            "<Setter Property='Template'><Setter.Value>" +
+            "<ControlTemplate TargetType='ScrollBar'><Grid Background='Transparent'>" +
+            "<Track x:Name='PART_Track' IsDirectionReversed='True'>" +
+            "<Track.DecreaseRepeatButton><RepeatButton Command='ScrollBar.PageUpCommand' Opacity='0' Focusable='False' IsTabStop='False'/></Track.DecreaseRepeatButton>" +
+            "<Track.IncreaseRepeatButton><RepeatButton Command='ScrollBar.PageDownCommand' Opacity='0' Focusable='False' IsTabStop='False'/></Track.IncreaseRepeatButton>" +
+            "<Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType='Thumb'>" +
+            "<Border CornerRadius='4' Background='#48FFFFFF' Margin='2,2,2,2'/>" +
+            "</ControlTemplate></Thumb.Template></Thumb></Track.Thumb>" +
+            "</Track></Grid></ControlTemplate></Setter.Value></Setter></Style>";
+        try { return (Style)XamlReader.Parse(xaml); }
+        catch { return null; }
+    }
+
     private void Set(StackPanel content)
     {
         content.Margin = new Thickness(16);
-        _root.Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = content };
+        var sv = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = content
+        };
+        // A slim, dark, rounded scrollbar that matches the panel instead of the chunky system default.
+        if (SlimScrollBar != null) sv.Resources[typeof(ScrollBar)] = SlimScrollBar;
+        _root.Child = sv;
     }
 
     // MARK: screens

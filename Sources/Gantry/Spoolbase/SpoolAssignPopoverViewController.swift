@@ -41,7 +41,38 @@ final class SpoolAssignPopoverViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Width is driven by the content (the longest filament name / roll line), not the window: a
+        // high-priority equal-width that yields to the popover cap in the dashboard. So the panel is only
+        // as wide as it needs to be, never stretched to fill the popover.
+        let wc = view.widthAnchor.constraint(equalToConstant: preferredContentWidth)
+        wc.priority = .defaultHigh
+        wc.isActive = true
         showMain()
+    }
+
+    /// The panel's natural width: the widest row content (filament name or roll line) plus the row chrome
+    /// (swatch, delete button, paddings) and the panel margins, clamped so it stays reasonable and a very
+    /// long name just truncates instead of ballooning.
+    private var preferredContentWidth: CGFloat {
+        let titleFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let subFont = NSFont.systemFont(ofSize: 10)
+        func w(_ s: String, _ f: NSFont) -> CGFloat { (s as NSString).size(withAttributes: [.font: f]).width }
+        var content: CGFloat = 150   // floor so the header + the 3 action pills always fit
+        for def in filaments.filaments {
+            let title = "\(def.brand) \(def.name)".trimmingCharacters(in: .whitespaces)
+            content = max(content, w(title.isEmpty ? def.type : title, titleFont))
+            content = max(content, w("\(def.type) · \(def.colorName.isEmpty ? "#\(def.colorHex)" : def.colorName)", subFont))
+        }
+        for sp in spools.spools {
+            let def = filaments.filaments.first { $0.id == sp.filamentDefinitionID }
+            let title = def.map { "\($0.brand) \($0.name)".trimmingCharacters(in: .whitespaces) } ?? sp.id
+            content = max(content, w(title.isEmpty ? sp.id : title, titleFont))
+            content = max(content, w("\(sp.id) · \(Int(sp.remainingWeightGrams)) g · \(placeLabel(sp.location))", subFont))
+        }
+        // swatch(12)+gap(8) + row padding(20) + panel margins(32) + scrollbar lane(14). The delete button
+        // on roll rows lives in the natural trailing slack, so it isn't counted here (keeps the panel snug).
+        let chrome: CGFloat = 12 + 8 + 20 + 32 + 14
+        return min(460, max(280, ceil(content) + chrome))
     }
 
     private func t(_ pl: String, _ en: String) -> String { AppSettings.shared.text(pl, en) }
@@ -365,6 +396,14 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 let s = NSScrollView()
                 s.drawsBackground = false
                 s.hasVerticalScroller = true
+                // Overlay scrollers so the bar floats over the margin and never eats row width; even so
+                // we reserve a small lane below so a legacy (always-on) scrollbar can't clip the rows'
+                // right edge (the delete button).
+                s.scrollerStyle = .overlay
+                s.autohidesScrollers = true
+                s.verticalScrollElasticity = .allowed
+                s.verticalScroller = SlimScroller()
+                s.verticalScroller?.knobStyle = .dark
                 // A flipped document view keeps the list pinned to the TOP of the scroll area;
                 // a plain NSView would bottom-align it and leave a large empty gap above the rows.
                 let doc = FlippedView()
@@ -380,7 +419,9 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 s.documentView = doc
                 s.translatesAutoresizingMaskIntoConstraints = false
                 column.addArrangedSubview(s)
-                doc.widthAnchor.constraint(equalTo: s.widthAnchor).isActive = true
+                // Leave a 14 pt lane on the right for the scrollbar so rows (and the delete button) are
+                // never drawn under it.
+                doc.widthAnchor.constraint(equalTo: s.widthAnchor, constant: -14).isActive = true
                 s.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
                 // Prefer to be exactly as tall as the content (so short lists show fully with no dead
                 // space and no scrolling). This is a low-priority wish: when the window is short — e.g. a
@@ -644,4 +685,24 @@ private final class ActionView: NSView {
 /// Top-left origin so a scroll view's content grows downward from the top instead of the bottom.
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+/// A slim, dark, rounded scrollbar that matches the panel instead of the chunky system default. Works as
+/// an overlay scroller and, when the user forces always-on scrollbars, still draws thin with no track.
+private final class SlimScroller: NSScroller {
+    override class var isCompatibleWithOverlayScrollers: Bool { true }
+    override class func scrollerWidth(for controlSize: NSControl.ControlSize, scrollerStyle: NSScroller.Style) -> CGFloat { 9 }
+
+    override func drawKnobSlot(in slot: NSRect, highlight flag: Bool) {
+        // No visible track — keep it clean; the knob alone signals scroll position.
+    }
+
+    override func drawKnob() {
+        let frame = rect(for: .knob).insetBy(dx: 3, dy: 2)
+        guard frame.width > 0, frame.height > 0 else { return }
+        let radius = frame.width / 2
+        let path = NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius)
+        NSColor.white.withAlphaComponent(0.28).setFill()
+        path.fill()
+    }
 }

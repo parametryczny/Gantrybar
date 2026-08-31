@@ -1491,9 +1491,9 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             NSLayoutConstraint.activate([
                 panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
                 panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
-                // Always fit inside the popover (16 pt margin each side), whatever its column width is,
-                // so the panel can never be wider than the window. Its rows are flexible and fill it.
-                panel.widthAnchor.constraint(equalTo: backdrop.widthAnchor, constant: -32),
+                // The panel sizes itself to its content (longest filament name + padding); here we only
+                // cap it so it can never be wider than the popover. Rows fill whatever width results.
+                panel.widthAnchor.constraint(lessThanOrEqualTo: backdrop.widthAnchor, constant: -24),
                 panel.heightAnchor.constraint(lessThanOrEqualTo: backdrop.heightAnchor, constant: -24)
             ])
             host.addSubview(backdrop)

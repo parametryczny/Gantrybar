@@ -96,7 +96,7 @@ internal static class RenderHarness
         var panel = SpoolAssignPanel.Build(loc, "AMS A2", "PLA", "E89CC6", () => { });
         var win = new Window
         {
-            Width = 340,
+            Width = 480,
             SizeToContent = SizeToContent.Height,
             Background = new SolidColorBrush(Color.FromRgb(0x0C, 0x0D, 0x0E)),
             Content = panel
