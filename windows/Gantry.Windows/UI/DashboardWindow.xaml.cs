@@ -297,6 +297,7 @@ public partial class DashboardWindow : Window
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    private const int DWMSBT_NONE = 1;              // no system backdrop (used to force a DWM recompose)
     private const int DWMSBT_TRANSIENTWINDOW = 3;   // Desktop Acrylic (transient flyout)
 
     /// <summary>Turns the flyout into a real Desktop Acrylic (frosted glass) panel: a transparent WPF
@@ -350,9 +351,19 @@ public partial class DashboardWindow : Window
 
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
-        // Desktop Acrylic is the same for every level — the tint alpha above is what varies.
-        int acrylic = DWMSBT_TRANSIENTWINDOW;
-        try { DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref acrylic, sizeof(int)); } catch { }
+        // Desktop Acrylic is the same for every level — the tint alpha above is what varies. To make a
+        // LIVE toggle take effect at once (instead of only after the next layout rebuild, as when you
+        // enter/leave the details view), re-extend the DWM frame and toggle the backdrop off→on so DWM
+        // rebuilds the glass immediately — re-setting it to the same value is a no-op DWM ignores.
+        var margins = new MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
+        try { DwmExtendFrameIntoClientArea(hwnd, ref margins); } catch { }
+        int none = DWMSBT_NONE, acrylic = DWMSBT_TRANSIENTWINDOW;
+        try
+        {
+            DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref none, sizeof(int));
+            DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref acrylic, sizeof(int));
+        }
+        catch { }
     }
 
     /// <summary>Whether Windows has transparency effects enabled (Settings → Personalisation → Colours).
