@@ -97,12 +97,13 @@ final class MaintenancePanelViewController: NSViewController {
 
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.language == .pl)
         let title = label(s.text("Konserwacja · \(printer.name)", "Maintenance · \(printer.name)"), 20, .bold)
+        let instructions = button(s.text("Instrukcje", "Instructions")) { [weak self] in self?.showInstructions() }
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.text("Zamknij", "Close"))!,
                              target: self, action: #selector(closePressed))
         close.isBordered = false
         close.contentTintColor = GantryTheme.secondary
         close.toolTip = s.text("Zamknij", "Close")
-        let header = NSStackView(views: [title, NSView(), close])
+        let header = NSStackView(views: [title, instructions, NSView(), close])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 8
@@ -151,13 +152,6 @@ final class MaintenancePanelViewController: NSViewController {
                                        snapshot.successPercent.map { "\($0)%" } ?? "—",
                                        snapshot.consumedGrams), 11, .semibold, GantryTheme.secondary)
         body.addArrangedSubview(stats)
-
-        let instructions = button(s.text("Instrukcje", "Instructions")) { [weak self] in self?.showInstructions() }
-        let fullHistory = button(s.text("Pełna historia", "Full history")) { [weak self] in self?.showHistory() }
-        let footer = NSStackView(views: [instructions, NSView(), fullHistory])
-        footer.orientation = .horizontal; footer.alignment = .centerY; footer.spacing = 8
-        body.addArrangedSubview(footer)
-        footer.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
 
         let document = MaintenanceFlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
@@ -341,15 +335,6 @@ final class MaintenancePanelViewController: NSViewController {
         alert.runModal()
     }
 
-    private func showHistory() {
-        let s = AppSettings.shared
-        let entries = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.language == .pl).history
-        let rows = entries.map { "\($0.endedAt.formatted(date: .abbreviated, time: .shortened)) · \($0.job.isEmpty ? "—" : $0.job) · \(formatDuration($0.durationSeconds))" }
-        let alert = NSAlert()
-        alert.messageText = s.text("Pełna historia", "Full history")
-        alert.informativeText = rows.isEmpty ? s.text("Brak historii.", "No history.") : rows.joined(separator: "\n")
-        alert.runModal()
-    }
 }
 
 private final class ClosureButton: NSButton {
