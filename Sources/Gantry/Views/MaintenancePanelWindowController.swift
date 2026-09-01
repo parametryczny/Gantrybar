@@ -13,14 +13,12 @@ final class MaintenancePanelWindowController: NSWindowController, NSWindowDelega
         if let existing = active[printer.serial] {
             existing.telemetry = telemetry
             existing.rebuild()
-            existing.showWindow(nil)
-            existing.window?.makeKeyAndOrderFront(nil)
+            existing.present()
             return
         }
         let controller = MaintenancePanelWindowController(printer: printer, telemetry: telemetry)
         active[printer.serial] = controller
-        controller.showWindow(nil)
-        controller.window?.makeKeyAndOrderFront(nil)
+        controller.present()
     }
 
     private init(printer: SavedPrinter, telemetry: PrinterTelemetry) {
@@ -30,6 +28,7 @@ final class MaintenancePanelWindowController: NSWindowController, NSWindowDelega
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.minSize = NSSize(width: 390, height: 400)
         window.isReleasedWhenClosed = false
+        window.collectionBehavior.insert(.moveToActiveSpace)
         super.init(window: window)
         window.delegate = self
         rebuild()
@@ -39,6 +38,16 @@ final class MaintenancePanelWindowController: NSWindowController, NSWindowDelega
 
     func windowWillClose(_ notification: Notification) {
         Self.active[printer.serial] = nil
+    }
+
+    /// Gantry runs as an accessory/menu-bar app. Merely ordering an NSWindow is not enough when the
+    /// click originated inside a transient NSPopover: AppKit can close the popover without activating
+    /// the application, leaving the new window behind other apps. Use the same presentation sequence
+    /// as Settings and Advanced printer windows.
+    private func present() {
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func rebuild() {
