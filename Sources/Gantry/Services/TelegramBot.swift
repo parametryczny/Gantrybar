@@ -176,12 +176,13 @@ final class TelegramBot {
     private func actionKeyboard(serial: String) -> String {
         let s = AppSettings.shared
         var rows: [[(String, String)]] = []
-        // AMS as a row of tiles: colour dot + slot + material + %. Display-only (tap does nothing), up to
-        // four per row so a 4-slot AMS reads as one row like the on-screen card.
-        for group in store?.telemetry[serial]?.filamentGroups ?? [] {
-            let loaded = group.slots.filter(\.isPresent)
-            guard !loaded.isEmpty else { continue }
-            let tiles = loaded.map { slot -> (String, String) in
+        // AMS as a grid of tiles: colour dot + material + %. Display-only (tap does nothing). All loaded
+        // slots across every module are flattened into one list and packed four-per-row, so a lone AMS
+        // slot + EXT sit side by side instead of each taking a full-width row.
+        let tiles = (store?.telemetry[serial]?.filamentGroups ?? [])
+            .flatMap { $0.slots }
+            .filter(\.isPresent)
+            .map { slot -> (String, String) in
                 // Keep it short so Telegram keeps four tiles on one row (long labels force full width).
                 let active = slot.isActive ? "●" : ""
                 let pct = slot.remainingPercent.map { "\($0)%" } ?? ""
@@ -189,9 +190,8 @@ final class TelegramBot {
                     .trimmingCharacters(in: .whitespaces)
                 return (label, "noop")
             }
-            for chunk in stride(from: 0, to: tiles.count, by: 4) {
-                rows.append(Array(tiles[chunk ..< min(chunk + 4, tiles.count)]))
-            }
+        for chunk in stride(from: 0, to: tiles.count, by: 4) {
+            rows.append(Array(tiles[chunk ..< min(chunk + 4, tiles.count)]))
         }
         rows.append([("⏸ " + s.text("Pauza", "Pause"), "a:pause:\(serial)"),
                      ("▶️ " + s.text("Wznów", "Resume"), "a:resume:\(serial)"),
