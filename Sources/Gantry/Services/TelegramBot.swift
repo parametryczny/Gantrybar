@@ -78,11 +78,18 @@ final class TelegramBot {
         case "a" where parts.count >= 3:
             await runAction(parts[1], serial: parts[2], cbID: cbID, messageID: messageID)
         case "photo" where parts.count > 1:
-            await answer(cbID, "📷")
-            await send(text: AppSettings.shared.text(
-                "📷 Zdjęcie z kamery jest w przygotowaniu. Kamery Bambu nadają H.264 (RTSP), więc snapshot wymaga dekodowania klatki — dodam to wkrótce.",
-                "📷 Camera snapshot is in preparation. Bambu cameras stream H.264 (RTSP), so a snapshot needs a frame decode — coming soon."),
-                replyMarkup: nil)
+            let serial = parts[1]
+            let name = store?.printers.first { $0.serial == serial }?.name ?? serial
+            await answer(cbID, "📷…")
+            await send(text: AppSettings.shared.text("📷 Robię zdjęcie z kamery \(name)…",
+                                                     "📷 Grabbing a camera snapshot from \(name)…"), replyMarkup: nil)
+            if let printer = store?.printers.first(where: { $0.serial == serial }), let store,
+               let jpeg = await CameraSnapshot.capture(printer: printer, store: store) {
+                await sendPhoto(jpeg: jpeg, caption: "🖨 \(name)")
+            } else {
+                await send(text: AppSettings.shared.text("Nie udało się pobrać zdjęcia (kamera niedostępna).",
+                                                         "Couldn't grab a snapshot (camera unavailable)."), replyMarkup: nil)
+            }
         default:
             await answer(cbID, "")
         }
@@ -232,6 +239,31 @@ final class TelegramBot {
 
     private func answer(_ callbackID: String, _ text: String) async {
         await api("answerCallbackQuery", ["callback_query_id": callbackID, "text": text])
+    }
+
+    /// Uploads a JPEG via multipart/form-data (sendPhoto). The bot's only non-urlencoded call.
+    private func sendPhoto(jpeg: Data, caption: String) async {
+        guard let url = URL(string: "https://api.telegram.org/bot\(token)/sendPhoto") else { return }
+        let boundary = "GantryBoundary-\(UUID().uuidString)"
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        field("chat_id", chatID)
+        if !caption.isEmpty { field("caption", caption) }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"snapshot.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(jpeg)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     @discardableResult
