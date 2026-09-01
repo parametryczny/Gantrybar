@@ -101,7 +101,14 @@ public partial class App : Application
         _syncTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(45) };
         _syncTimer.Tick += (_, _) => _syncService.SyncNow();
         _syncTimer.Start();
+
+        // Two-way Telegram bot (/status, control, /photo, /all, /spools, /history, /mute, /watch). Starts
+        // only when enabled + configured; the Settings section re-syncs it after a change.
+        _telegramBot = new TelegramBot(_store);
+        _telegramBot.SyncWithSettings();
     }
+
+    private TelegramBot? _telegramBot;
 
     protected override void OnExit(ExitEventArgs e)
     {

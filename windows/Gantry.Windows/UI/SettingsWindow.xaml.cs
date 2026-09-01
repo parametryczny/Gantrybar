@@ -59,6 +59,15 @@ public partial class SettingsWindow : Window
         CardSpoolGramsCheckBox.Click += (_, _) => AppSettings.CardShowSpoolGrams = CardSpoolGramsCheckBox.IsChecked == true;
         MonochromeCheckBox.Click += (_, _) => AppSettings.Monochrome = MonochromeCheckBox.IsChecked == true;
         CheckUpdatesButton.Click += async (_, _) => await CheckUpdatesAsync();
+        TelegramEnableCheckBox.Click += (_, _) =>
+        {
+            AppSettings.TelegramEnabled = TelegramEnableCheckBox.IsChecked == true;
+            TelegramTokenBox.IsEnabled = TelegramChatBox.IsEnabled = TelegramTestButton.IsEnabled = TelegramEnableCheckBox.IsChecked == true;
+            TelegramBot.Shared?.SyncWithSettings();
+        };
+        TelegramTokenBox.LostFocus += (_, _) => { AppSettings.TelegramBotToken = TelegramTokenBox.Text.Trim(); TelegramBot.Shared?.SyncWithSettings(); };
+        TelegramChatBox.LostFocus += (_, _) => { AppSettings.TelegramChatId = TelegramChatBox.Text.Trim(); TelegramBot.Shared?.SyncWithSettings(); };
+        TelegramTestButton.Click += async (_, _) => await TelegramTestAsync();
         QuietHoursCheckBox.Click += (_, _) => { QuietHours.Enabled = QuietHoursCheckBox.IsChecked == true; QuietTimesRow.IsEnabled = QuietHoursCheckBox.IsChecked == true; };
         QuietStartBox.LostFocus += (_, _) => SaveQuietTimes();
         QuietEndBox.LostFocus += (_, _) => SaveQuietTimes();
@@ -185,6 +194,21 @@ public partial class SettingsWindow : Window
         QuietFromLabel.Text = AppSettings.Text("od", "from");
         QuietToLabel.Text = AppSettings.Text("do", "to");
 
+        TelegramHeading.Text = "TELEGRAM";
+        TelegramEnableCheckBox.Content = AppSettings.Text("Wysyłaj powiadomienia na Telegram", "Send notifications to Telegram");
+        TelegramTokenLabel.Text = AppSettings.Text("Token bota:", "Bot token:");
+        TelegramChatLabel.Text = "Chat ID:";
+        TelegramTestButton.Content = AppSettings.Text("Wyślij test", "Send test");
+        TelegramHint.Text = AppSettings.Text(
+            "Utwórz bota przez @BotFather (token), napisz do niego, a chat_id weź od @userinfobot. Wysyła te same zdarzenia co powyżej + komendy z czatu (/help).",
+            "Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as above + chat commands (/help).");
+        TelegramEnableCheckBox.IsChecked = AppSettings.TelegramEnabled;
+        TelegramTokenBox.Text = AppSettings.TelegramBotToken;
+        TelegramChatBox.Text = AppSettings.TelegramChatId;
+        TelegramTokenBox.IsEnabled = AppSettings.TelegramEnabled;
+        TelegramChatBox.IsEnabled = AppSettings.TelegramEnabled;
+        TelegramTestButton.IsEnabled = AppSettings.TelegramEnabled;
+
         UpdatesHeading.Text = AppSettings.Text("AKTUALIZACJE", "UPDATES");
         UpdateStatus.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion}", $"Version {UpdateChecker.CurrentVersion}");
         CheckUpdatesButton.Content = AppSettings.Text("Sprawdź aktualizacje", "Check for updates");
@@ -272,6 +296,26 @@ public partial class SettingsWindow : Window
     {
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
         catch { }
+    }
+
+    private async Task TelegramTestAsync()
+    {
+        AppSettings.TelegramBotToken = TelegramTokenBox.Text.Trim();
+        AppSettings.TelegramChatId = TelegramChatBox.Text.Trim();
+        TelegramBot.Shared?.SyncWithSettings();
+        var token = AppSettings.TelegramBotToken;
+        var chat = AppSettings.TelegramChatId;
+        if (token.Length == 0 || chat.Length == 0)
+        {
+            TelegramStatus.Text = AppSettings.Text("Wpisz token i chat_id.", "Enter a token and chat_id.");
+            return;
+        }
+        TelegramStatus.Text = AppSettings.Text("Wysyłanie…", "Sending…");
+        var text = TelegramService.Format("Gantry", AppSettings.Text("Test powiadomienia", "Test notification"),
+                                          AppSettings.Text("Połączenie działa.", "The connection works."));
+        bool ok = await TelegramService.SendMessageAsync(token, chat, text);
+        TelegramStatus.Text = ok ? AppSettings.Text("Wysłano ✓", "Sent ✓")
+                                 : AppSettings.Text("Nie udało się. Sprawdź token i chat_id.", "Failed. Check the token and chat_id.");
     }
 
     private async Task CheckUpdatesAsync()

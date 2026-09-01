@@ -162,6 +162,34 @@
                 </StackPanel>
             </Border>
 
+            <TextBlock x:Name="TelegramHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8" Text="TELEGRAM"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
+                <StackPanel>
+                    <CheckBox x:Name="TelegramEnableCheckBox" Margin="0,0,0,8"/>
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="TelegramTokenLabel" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,0" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
+                        <TextBox Grid.Column="1" x:Name="TelegramTokenBox" FontFamily="Consolas" FontSize="12" Padding="6,4" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
+                    </Grid>
+                    <Grid Margin="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="TelegramChatLabel" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,0" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
+                        <TextBox Grid.Column="1" x:Name="TelegramChatBox" FontFamily="Consolas" FontSize="12" Padding="6,4" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button x:Name="TelegramTestButton" MinWidth="120"/>
+                        <TextBlock x:Name="TelegramStatus" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
+                    </StackPanel>
+                    <TextBlock x:Name="TelegramHint" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource SettingsMutedBrush}"/>
+                </StackPanel>
+            </Border>
+
             <TextBlock x:Name="UpdatesHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
             <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>

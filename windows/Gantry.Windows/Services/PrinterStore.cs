@@ -797,9 +797,18 @@ public sealed class PrinterStore
     private void NotifyChanges(SavedPrinter printer, PrinterTelemetry? previous, PrinterTelemetry current)
     {
         bool pl = AppSettings.Polish;
+        // Fan every alert out to the native banner and (when enabled) Telegram, both gated by the same
+        // per-event toggles below.
+        void Push(string title, string body)
+        {
+            NotificationService.Post(title, body, printer.Name);
+            TelegramService.Notify(printer.Name, title, body);
+        }
+        if (current.State == PrinterState.Finished && previous?.State != PrinterState.Finished)
+            PrintHistory.Record(printer.Serial, printer.Name, current.JobName ?? "");
         if (AppSettings.NotifyPrintFinished && current.State == PrinterState.Finished && previous?.State != PrinterState.Finished)
-            NotificationService.Post(AppSettings.Text("Druk zakończony", "Print finished"),
-                current.JobName ?? AppSettings.Text("Zadanie zostało ukończone.", "The job has completed."), printer.Name);
+            Push(AppSettings.Text("Druk zakończony", "Print finished"),
+                current.JobName ?? AppSettings.Text("Zadanie zostało ukończone.", "The job has completed."));
 
         if (AppSettings.NotifyPrinterError && current.State == PrinterState.Error && (previous?.State != PrinterState.Error || !SequenceEqual(previous?.HmsCodes, current.HmsCodes)))
         {
@@ -807,12 +816,12 @@ public sealed class PrinterStore
                 ?? (current.ErrorCode != 0
                     ? string.Format(AppSettings.Text("Kod błędu: 0x{0:X}", "Error code: 0x{0:X}"), current.ErrorCode)
                     : AppSettings.Text("Drukarka zgłosiła błąd.", "The printer reported an error."));
-            NotificationService.Post(AppSettings.Text("Błąd drukarki", "Printer error"), description, printer.Name);
+            Push(AppSettings.Text("Błąd drukarki", "Printer error"), description);
         }
         else if (AppSettings.NotifyPrintPaused && current.State == PrinterState.Paused && previous?.State != PrinterState.Paused)
         {
-            NotificationService.Post(AppSettings.Text("Druk wstrzymany", "Print paused"),
-                current.JobName ?? AppSettings.Text("Drukarka oczekuje na działanie.", "The printer needs attention."), printer.Name);
+            Push(AppSettings.Text("Druk wstrzymany", "Print paused"),
+                current.JobName ?? AppSettings.Text("Drukarka oczekuje na działanie.", "The printer needs attention."));
         }
 
         // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
@@ -821,12 +830,12 @@ public sealed class PrinterStore
         var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(LowAndTrusted).Select(s => s.Id));
         var newLow = current.AmsSlots.Where(s => LowAndTrusted(s) && !previousLow.Contains(s.Id)).ToList();
         if (AppSettings.NotifyLowFilament && newLow.FirstOrDefault() is { } slot)
-            NotificationService.Post(AppSettings.Text("Niski poziom filamentu", "Low filament"),
-                $"{slot.Label} • {slot.Material} • {slot.RemainingPercent ?? 0}%", printer.Name);
+            Push(AppSettings.Text("Niski poziom filamentu", "Low filament"),
+                $"{slot.Label} • {slot.Material} • {slot.RemainingPercent ?? 0}%");
 
         if (AppSettings.NotifyHighAmsHumidity && IsHumidityHigh(current.AmsHumidity) && !IsHumidityHigh(previous?.AmsHumidity))
-            NotificationService.Post(AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity"),
-                AppSettings.Text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant."), printer.Name);
+            Push(AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity"),
+                AppSettings.Text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant."));
     }
 
     private static bool IsHumidityHigh(int? value)

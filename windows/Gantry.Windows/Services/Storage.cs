@@ -261,6 +261,29 @@ public static class AppSettings
         set => Defaults.SetBool("notifications-print-finished", value);
     }
 
+    // Telegram push + bot. Keys shared verbatim with macOS/Linux (see docs/telegram.md).
+    public static bool TelegramEnabled
+    {
+        get => Defaults.GetBool("telegram-enabled", false);
+        set => Defaults.SetBool("telegram-enabled", value);
+    }
+    public static string TelegramBotToken
+    {
+        get => Defaults.GetString("telegram-bot-token") ?? "";
+        set => Defaults.SetString("telegram-bot-token", value);
+    }
+    public static string TelegramChatId
+    {
+        get => Defaults.GetString("telegram-chat-id") ?? "";
+        set => Defaults.SetString("telegram-chat-id", value);
+    }
+    /// Alerts silenced (Telegram) until this UTC time; set by the bot's /mute. Null/past = not muted.
+    public static DateTime? TelegramMuteUntil
+    {
+        get { var s = Defaults.GetString("telegram-mute-until"); return DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var d) && d > DateTime.UtcNow ? d : null; }
+        set => Defaults.SetString("telegram-mute-until", value?.ToUniversalTime().ToString("o") ?? "");
+    }
+
     public static bool NotifyPrinterError
     {
         get => Defaults.GetBool("notifications-printer-error", true);
