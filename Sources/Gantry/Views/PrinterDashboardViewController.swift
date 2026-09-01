@@ -1418,13 +1418,16 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         stateDot.contentTintColor = stateColor(telemetry.state)
         jobStateDot.layer?.backgroundColor = stateColor(telemetry.state).cgColor
         updateCardEmphasis(for: telemetry.state)
-        let hasPrinterAlert = !telemetry.hmsCodes.isEmpty || telemetry.errorCode != 0 || telemetry.state == .error
+        let actionableHMS = HMSResolver.shared.actionableCodes(
+            telemetry.hmsCodes, serial: printer.serial, language: settings.language
+        )
+        let hasPrinterAlert = !actionableHMS.isEmpty || telemetry.errorCode != 0 || telemetry.state == .error
         printerAlertChip.isHidden = !hasPrinterAlert
         if hasPrinterAlert {
-            let count = max(1, telemetry.hmsCodes.count)
+            let count = max(1, actionableHMS.count)
             printerAlertChip.title = count > 1 ? "! \(count)" : "!"
             printerAlertChip.toolTip = HMSResolver.shared.description(
-                for: telemetry.hmsCodes, serial: printer.serial, language: settings.language
+                for: actionableHMS, serial: printer.serial, language: settings.language
             ) ?? settings.text("Drukarka zgłosiła uwagę lub błąd", "Printer reported an alert or error")
         }
 

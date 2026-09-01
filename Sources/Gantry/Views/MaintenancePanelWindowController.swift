@@ -180,8 +180,11 @@ final class MaintenancePanelViewController: NSViewController {
     @objc private func closePressed() { Self.dismiss() }
 
     private func alertMessages(settings s: AppSettings) -> [(title: String, code: String?)] {
-        if !telemetry.hmsCodes.isEmpty {
-            return telemetry.hmsCodes.map { code in
+        let actionableHMS = HMSResolver.shared.actionableCodes(
+            telemetry.hmsCodes, serial: printer.serial, language: s.language
+        )
+        if !actionableHMS.isEmpty {
+            return actionableHMS.map { code in
                 let description = HMSResolver.shared.description(
                     for: [code], serial: printer.serial, language: s.language
                 ) ?? "HMS \(code)"
@@ -250,7 +253,8 @@ final class MaintenancePanelViewController: NSViewController {
         }
         let subtitle = label(timing, 11, .regular, GantryTheme.secondary)
         let interval = NSTextField(string: String(Int(task.intervalHours.rounded())))
-        interval.alignment = .right
+        interval.cell = MaintenanceCenteredTextFieldCell(textCell: interval.stringValue)
+        interval.alignment = .center
         interval.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         interval.isBezeled = false
         interval.drawsBackground = true
@@ -363,4 +367,30 @@ private final class ClosureButton: NSButton {
 
 private final class MaintenanceFlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+/// NSTextField's borderless cell normally draws against the top of a custom-height field. Keep both
+/// display and field-editor text vertically centered inside Gantry's 28 pt input pill.
+private final class MaintenanceCenteredTextFieldCell: NSTextFieldCell {
+    private func centeredRect(_ rect: NSRect) -> NSRect {
+        var result = super.drawingRect(forBounds: rect)
+        let height = cellSize(forBounds: rect).height
+        result.origin.y += max(0, (result.height - height) / 2)
+        result.size.height = min(result.height, height)
+        return result
+    }
+
+    override func drawingRect(forBounds rect: NSRect) -> NSRect { centeredRect(rect) }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText,
+                       delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: centeredRect(rect), in: controlView, editor: textObj,
+                   delegate: delegate, event: event)
+    }
+
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText,
+                         delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: centeredRect(rect), in: controlView, editor: textObj,
+                     delegate: delegate, start: selStart, length: selLength)
+    }
 }
