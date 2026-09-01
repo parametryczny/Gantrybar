@@ -41,6 +41,11 @@ Token to „nadawca"; `chat_id` to **odbiorca** (Ty albo grupa).
      `https://api.telegram.org/bot<TOKEN>/getUpdates`
      i znajdź wartość `"chat":{"id":123456789,...}`.
 
+> ⚠️ **`getUpdates` pokazuje `{"result":[]}`?** To normalne, jeśli Gantry już działa z włączonym
+> Telegramem — bot cały czas pobiera wiadomości (long‑polling) i „zjada" je, więc dla Ciebie lista jest
+> pusta. Użyj **@userinfobot** (działa niezależnie) albo na chwilę **wyłącz** Telegram w Gantry, odczytaj
+> `getUpdates`, i włącz z powrotem.
+
 ---
 
 ## Krok 3. Wpisz kody w Gantry
