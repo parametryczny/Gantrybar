@@ -28,6 +28,7 @@ public sealed class DetailView : UserControl
     private readonly Grid _bar;   // segmented progress bar (32 blocks), matching the dashboard/macOS
     private readonly Canvas _graph;
     private readonly StackPanel _temps, _fans, _ams;
+    private readonly StackPanel _recentPrints, _maintenance, _statistics;
 
     // Camera
     private readonly PrinterKind _kind;
@@ -46,7 +47,7 @@ public sealed class DetailView : UserControl
     private StackPanel? _cardPanel;
     private readonly Dictionary<string, FrameworkElement> _cardByKey = new();
     private Point _cardDragStart;
-    private static readonly string[] DefaultCardOrder = { "status", "camera", "ams", "temps", "fans", "control" };
+    private static readonly string[] DefaultCardOrder = { "status", "recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control" };
 
     // Per-sensor colours (design/kolorystyka.md §5) — used for the chart series/legend only. The temp
     // READOUT values follow state (TempStyle), not these.
@@ -94,6 +95,25 @@ public sealed class DetailView : UserControl
         bottomRow.Children.Add(_remaining);
         Grid.SetColumn(_layers, 1); bottomRow.Children.Add(_layers);
         stack.Children.Add(Draggable("status", Card(new StackPanel { Children = { _state, titleRow, _bar, bottomRow } })));
+
+        // --- Recent prints / maintenance / statistics (same cards and order as macOS) ---
+        _recentPrints = new StackPanel();
+        var showAll = new Button { Content = _pl ? "Pokaż wszystkie" : "Show all", Padding = new Thickness(9, 3, 9, 3), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        showAll.Click += (_, _) => ShowHistory();
+        stack.Children.Add(Draggable("recent", Card(new StackPanel { Children = { SectionTitle(_pl ? "OSTATNIE WYDRUKI" : "RECENT PRINTS"), _recentPrints, showAll } })));
+
+        _maintenance = new StackPanel();
+        var openMaintenance = new Button { Content = _pl ? "Otwórz konserwację…" : "Open maintenance…", Padding = new Thickness(9, 3, 9, 3), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        openMaintenance.Click += (_, _) =>
+        {
+            if (_store.Printers.FirstOrDefault(value => value.Serial == _serial) is not { } value) return;
+            var tel = _store.Telemetry.TryGetValue(_serial, out var current) ? current : new PrinterTelemetry();
+            MaintenanceWindow.ShowFor(value, tel, Window.GetWindow(this));
+        };
+        stack.Children.Add(Draggable("maintenance", Card(new StackPanel { Children = { SectionTitle(_pl ? "KONSERWACJA" : "MAINTENANCE"), _maintenance, openMaintenance } })));
+
+        _statistics = new StackPanel { Orientation = Orientation.Horizontal };
+        stack.Children.Add(Draggable("stats", Card(new StackPanel { Children = { SectionTitle(_pl ? "STATYSTYKI" : "STATISTICS"), _statistics } })));
 
         // --- Temperatures card (graph + readouts) ---
         _graph = new Canvas { Height = 110, Background = GTheme.Brush(GTheme.Surface) };
@@ -276,7 +296,7 @@ public sealed class DetailView : UserControl
 
     // --- customizable modules ("Dostosuj") ---
 
-    private static readonly string[] HideableModules = { "camera", "ams", "temps", "fans", "control" };
+    private static readonly string[] HideableModules = { "recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control" };
 
     private static HashSet<string> HiddenModules()
         => AppSettings.DetailHiddenModules.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
@@ -291,6 +311,9 @@ public sealed class DetailView : UserControl
         "temps" => _pl ? "Temperatury" : "Temperatures",
         "fans" => _pl ? "Wentylatory" : "Fans",
         "control" => _pl ? "Sterowanie" : "Control",
+        "recent" => _pl ? "Ostatnie wydruki" : "Recent prints",
+        "maintenance" => _pl ? "Konserwacja" : "Maintenance",
+        "stats" => _pl ? "Statystyki" : "Statistics",
         _ => key
     };
 
@@ -349,6 +372,7 @@ public sealed class DetailView : UserControl
         else _remaining.Visibility = Visibility.Collapsed;
         _layers.Text = t.CurrentLayer is { } cl && t.TotalLayers is { } tl && tl > 0
             ? (_pl ? $"Warstwa {cl} / {tl}" : $"Layer {cl} / {tl}") : "";
+        RefreshInsights();
 
         // Temperatures
         _temps.Children.Clear();
@@ -379,6 +403,48 @@ public sealed class DetailView : UserControl
                 _ams.Children.Add(DashboardWindow.FilamentRow(groups.Skip(i).Take(2).ToList()));
         else
             _ams.Children.Add(new TextBlock { Text = _pl ? "Brak modułów filamentu" : "No filament modules", FontSize = 11, Foreground = Muted() });
+    }
+
+    private void RefreshInsights()
+    {
+        var snap = PrinterInsights.GetSnapshot(_serial, _pl);
+        _recentPrints.Children.Clear();
+        if (snap.History.Count == 0) _recentPrints.Children.Add(InsightLine(_pl ? "Brak zapisanej historii." : "No recorded history."));
+        foreach (var entry in snap.History.Take(3))
+        {
+            string icon = entry.Result == PrinterInsights.PrintResult.Completed ? "✓" : entry.Result == PrinterInsights.PrintResult.Failed ? "!" : "×";
+            int minutes = (int)(entry.DurationSeconds / 60);
+            string duration = minutes >= 60 ? $"{minutes / 60}h {minutes % 60}m" : $"{minutes}m";
+            _recentPrints.Children.Add(InsightLine($"{icon}  {(string.IsNullOrWhiteSpace(entry.Job) ? "—" : entry.Job)} · {duration}"));
+        }
+        _maintenance.Children.Clear();
+        foreach (var task in snap.Tasks.OrderByDescending(value => value.IsUrgent).ThenByDescending(value => value.IsDue).ThenBy(value => value.RemainingHours).Take(2))
+        {
+            string timing = task.IsDue ? (_pl ? $"przekroczono o {task.OverdueHours:0} h" : $"overdue by {task.OverdueHours:0} h")
+                                       : (_pl ? $"za {task.RemainingHours:0} h druku" : $"in {task.RemainingHours:0} print h");
+            _maintenance.Children.Add(InsightLine($"{(task.IsUrgent ? "!" : task.IsDue ? "⚠" : "○")}  {task.Title} · {timing}", task.IsUrgent ? new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x4E)) : task.IsDue ? new SolidColorBrush(Color.FromRgb(0xF2, 0xC9, 0x4C)) : Muted()));
+        }
+        _statistics.Children.Clear();
+        string success = snap.SuccessPercent is { } percent ? $"{percent}%" : "—";
+        _statistics.Children.Add(InsightMetric(_pl ? "CZAS PRACY" : "PRINT TIME", $"{snap.TotalPrintHours:0.0} h"));
+        _statistics.Children.Add(InsightMetric(_pl ? "SKUTECZNOŚĆ" : "SUCCESS", success));
+        _statistics.Children.Add(InsightMetric("FILAMENT", $"{snap.ConsumedGrams:0} g"));
+    }
+
+    private void ShowHistory()
+    {
+        var rows = PrinterInsights.GetSnapshot(_serial, _pl).History.Select(value => $"{value.EndedAt:g} · {(string.IsNullOrWhiteSpace(value.Job) ? "—" : value.Job)}");
+        MessageBox.Show(Window.GetWindow(this), string.Join("\n", rows.DefaultIfEmpty(_pl ? "Brak historii." : "No history.")),
+            _pl ? "Pełna historia" : "Full history", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private static TextBlock InsightLine(string text, Brush? color = null) => new() { Text = text, FontSize = 11.5, FontWeight = FontWeights.Medium, Foreground = color ?? Muted(), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 2) };
+    private static FrameworkElement InsightMetric(string title, string value)
+    {
+        var stack = new StackPanel { Width = 116, HorizontalAlignment = HorizontalAlignment.Center };
+        stack.Children.Add(new TextBlock { Text = title, FontSize = 8, FontWeight = FontWeights.Bold, Foreground = Muted(), HorizontalAlignment = HorizontalAlignment.Center });
+        stack.Children.Add(new TextBlock { Text = value, FontSize = 16, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), HorizontalAlignment = HorizontalAlignment.Center });
+        return stack;
     }
 
     private void DrawGraph()

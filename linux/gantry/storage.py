@@ -76,6 +76,7 @@ DEFAULTS: dict[str, Any] = {
     "telegram-chat-id": "",
     "telegram-mute-until": "",
     "print-history-v1": [],
+    "printer-insights-v1": {},
 }
 
 

@@ -38,6 +38,7 @@ class SettingsDialog(Gtk.Dialog):
         root.pack_start(self._cards(), False, False, 0)
         root.pack_start(self._notifications(), False, False, 0)
         root.pack_start(self._telegram(), False, False, 0)
+        root.pack_start(self._diagnostics(), False, False, 0)
         root.pack_start(self._updates(), False, False, 0)
         root.pack_start(self._about(), False, False, 0)
         self.show_all()
@@ -270,6 +271,21 @@ class SettingsDialog(Gtk.Dialog):
         hint.get_style_context().add_class("settings-hint")
         return self._section("AKTUALIZACJE" if self.pl else "UPDATES",
                              [row, self.release_link, self.install_update, self.auto_update, hint])
+
+    def _diagnostics(self) -> Gtk.Widget:
+        text = Gtk.Label(label=("Test sieci, MQTT, kamery i magazynu sekretów. Pokazuje również powód offline, "
+                                "opóźnienie i ocenę jakości połączenia." if self.pl else
+                                "Tests network, MQTT, camera and secret storage. Also shows offline reason, "
+                                "latency and connection quality."), xalign=0, wrap=True)
+        text.get_style_context().add_class("settings-hint")
+        button = Gtk.Button(label="Otwórz centrum diagnostyczne…" if self.pl else "Open Diagnostic Center…")
+        button.set_halign(Gtk.Align.START)
+        button.connect("clicked", lambda *_: self._open_diagnostics())
+        return self._section("CENTRUM DIAGNOSTYCZNE" if self.pl else "DIAGNOSTIC CENTER", [text, button])
+
+    def _open_diagnostics(self) -> None:
+        from .diagnostics import DiagnosticsDialog
+        DiagnosticsDialog(self.app).present()
 
     def _about(self) -> Gtk.Widget:
         wrapper = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)

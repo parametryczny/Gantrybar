@@ -15,6 +15,7 @@ final class PrinterDetailViewController: NSViewController {
     private let onOpenAdvanced: () -> Void
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
+    private var insightsSubscription: AnyCancellable?
     private var refreshScheduled = false
 
     // Reorderable section cards
@@ -22,7 +23,7 @@ final class PrinterDetailViewController: NSViewController {
     private var cardViews: [String: NSView] = [:]
     // Contract order (GANTRY-DESIGN-SYSTEM.md §Widok szczegółów): Status → Kamera → Filamenty/AMS →
     // Temperatury → Wentylatory → Sterowanie.
-    private static let defaultCardOrder = ["status", "camera", "ams", "temps", "fans", "control"]
+    private static let defaultCardOrder = ["status", "recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control"]
     private static let cardOrderKey = "detail-card-order"
 
     // Header
@@ -52,6 +53,11 @@ final class PrinterDetailViewController: NSViewController {
 
     // AMS / filaments — reuse the fleet card's dock so the layout logic stays identical.
     private let filamentDock = FilamentDockView()
+
+    // Local history / maintenance / statistics
+    private let recentPrintsStack = NSStackView()
+    private let maintenanceStack = NSStackView()
+    private let statisticsStack = NSStackView()
 
     // Camera
     private let cameraView = CameraView()
@@ -127,6 +133,9 @@ final class PrinterDetailViewController: NSViewController {
         let supportsControlCamera = kind == .bambu || kind == .klipper || kind == .elegooCC1 || kind == .elegooCC2
         cardViews = [
             "status": makeStatusCard(),
+            "recent": makeRecentPrintsCard(),
+            "maintenance": makeMaintenanceCard(),
+            "stats": makeStatisticsCard(),
             "temps": makeTemperatureCard(),
             "fans": makeFansCard(),
             "ams": makeAMSCard()
@@ -156,8 +165,11 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     // Movable/hideable sections (Status + Camera stay fixed, per the contract).
-    private static let hideableModules = ["camera", "ams", "temps", "fans", "control"]
+    private static let hideableModules = ["recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control"]
     private static let moduleTitles = ["camera": ("Kamera", "Camera"),
+                                       "recent": ("Ostatnie wydruki", "Recent prints"),
+                                       "maintenance": ("Konserwacja", "Maintenance"),
+                                       "stats": ("Statystyki", "Statistics"),
                                        "ams": ("Filamenty / AMS", "Filaments / AMS"),
                                        "temps": ("Temperatury", "Temperatures"),
                                        "fans": ("Wentylatory i prędkość", "Fans & speed"),
@@ -257,6 +269,8 @@ final class PrinterDetailViewController: NSViewController {
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
         }
+        insightsSubscription = NotificationCenter.default.publisher(for: PrinterInsightsStore.didChange)
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }
         refresh()
     }
 
@@ -418,6 +432,66 @@ final class PrinterDetailViewController: NSViewController {
         return box
     }
 
+    private func makeRecentPrintsCard() -> NSView {
+        let box = card()
+        recentPrintsStack.orientation = .vertical
+        recentPrintsStack.alignment = .leading
+        recentPrintsStack.spacing = 6
+        let showAll = NSButton(title: AppSettings.shared.text("Pokaż wszystkie", "Show all"), target: self, action: #selector(showPrintHistory))
+        showAll.bezelStyle = .rounded; showAll.controlSize = .small
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.text("Ostatnie wydruki", "Recent prints")), recentPrintsStack, showAll])
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 9
+        pin(stack, in: box, inset: 11)
+        recentPrintsStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return box
+    }
+
+    private func makeMaintenanceCard() -> NSView {
+        let box = card()
+        maintenanceStack.orientation = .vertical
+        maintenanceStack.alignment = .leading
+        maintenanceStack.spacing = 6
+        let open = NSButton(title: AppSettings.shared.text("Otwórz konserwację…", "Open maintenance…"),
+                            target: self, action: #selector(openMaintenance))
+        open.bezelStyle = .rounded; open.controlSize = .small
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.text("Konserwacja", "Maintenance")), maintenanceStack, open])
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 9
+        pin(stack, in: box, inset: 11)
+        maintenanceStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return box
+    }
+
+    private func makeStatisticsCard() -> NSView {
+        let box = card()
+        statisticsStack.orientation = .horizontal
+        statisticsStack.distribution = .fillEqually
+        statisticsStack.spacing = 8
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.text("Statystyki", "Statistics")), statisticsStack])
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 9
+        pin(stack, in: box, inset: 11)
+        statisticsStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return box
+    }
+
+    @objc private func openMaintenance() {
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        MaintenancePanelWindowController.show(printer: printer, telemetry: store.telemetry[serial] ?? PrinterTelemetry())
+    }
+
+    @objc private func showPrintHistory() {
+        let settings = AppSettings.shared
+        let entries = PrinterInsightsStore.shared.snapshot(serial: serial, polish: settings.language == .pl).history
+        let rows = entries.map { entry -> String in
+            let minutes = Int(entry.durationSeconds / 60)
+            let duration = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
+            return "\(entry.endedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.job.isEmpty ? "—" : entry.job) · \(duration)"
+        }
+        let alert = NSAlert()
+        alert.messageText = settings.text("Pełna historia", "Full history")
+        alert.informativeText = rows.isEmpty ? settings.text("Brak historii.", "No history.") : rows.joined(separator: "\n")
+        alert.runModal()
+    }
+
     private func makeControlCard() -> NSView {
         let box = card()
         let onButton = NSButton(title: AppSettings.shared.text("Światło wł.", "Light on"),
@@ -545,6 +619,66 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         renderAMS(t.filamentGroups)
+        refreshInsights(settings: settings)
+    }
+
+    private func refreshInsights(settings: AppSettings) {
+        let snapshot = PrinterInsightsStore.shared.snapshot(serial: serial, polish: settings.language == .pl)
+        func clear(_ stack: NSStackView) {
+            stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        }
+        func line(_ text: String, color: NSColor = GantryTheme.secondary, weight: NSFont.Weight = .regular) -> NSTextField {
+            let label = NSTextField(labelWithString: text)
+            label.font = .systemFont(ofSize: 11.5, weight: weight)
+            label.textColor = color
+            label.lineBreakMode = .byTruncatingTail
+            return label
+        }
+
+        clear(recentPrintsStack)
+        let recent = Array(snapshot.history.prefix(3))
+        if recent.isEmpty {
+            recentPrintsStack.addArrangedSubview(line(settings.text("Brak zapisanej historii.", "No recorded history.")))
+        } else {
+            for entry in recent {
+                let icon = entry.result == .completed ? "✓" : entry.result == .failed ? "!" : "×"
+                let minutes = Int(entry.durationSeconds / 60)
+                let duration = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
+                let job = entry.job.isEmpty ? settings.text("Bez nazwy", "Untitled") : entry.job
+                recentPrintsStack.addArrangedSubview(line("\(icon)  \(job)  ·  \(duration)",
+                    color: entry.result == .completed ? GantryTheme.secondary : .systemOrange,
+                    weight: .medium))
+            }
+        }
+
+        clear(maintenanceStack)
+        let shown = Array(snapshot.tasks.sorted { a, b in
+            if a.isUrgent != b.isUrgent { return a.isUrgent }
+            if a.isDue != b.isDue { return a.isDue }
+            return a.remainingHours < b.remainingHours
+        }.prefix(2))
+        for task in shown {
+            let timing = task.isDue
+                ? String(format: settings.text("przekroczono o %.0f h", "overdue by %.0f h"), task.overdueHours)
+                : String(format: settings.text("za %.0f h druku", "in %.0f print h"), task.remainingHours)
+            maintenanceStack.addArrangedSubview(line("\(task.isUrgent ? "!" : task.isDue ? "⚠" : "○")  \(task.title) · \(timing)",
+                color: task.isUrgent ? .systemRed : task.isDue ? .systemYellow : GantryTheme.secondary,
+                weight: task.isDue ? .semibold : .regular))
+        }
+
+        clear(statisticsStack)
+        func metric(_ value: String, _ title: String) -> NSView {
+            let valueLabel = line(value, color: GantryTheme.text, weight: .semibold)
+            valueLabel.font = .monospacedDigitSystemFont(ofSize: 16, weight: .semibold)
+            let titleLabel = line(title.uppercased(), color: GantryTheme.muted, weight: .bold)
+            titleLabel.font = .systemFont(ofSize: 8, weight: .bold)
+            let stack = NSStackView(views: [titleLabel, valueLabel])
+            stack.orientation = .vertical; stack.alignment = .centerX; stack.spacing = 3
+            return stack
+        }
+        statisticsStack.addArrangedSubview(metric(String(format: "%.1f h", snapshot.totalPrintHours), settings.text("Czas pracy", "Print time")))
+        statisticsStack.addArrangedSubview(metric(snapshot.successPercent.map { "\($0)%" } ?? "—", settings.text("Skuteczność", "Success")))
+        statisticsStack.addArrangedSubview(metric(String(format: "%.0f g", snapshot.consumedGrams), settings.text("Filament", "Filament")))
     }
 
     private func renderAMS(_ groups: [FilamentGroup]) {

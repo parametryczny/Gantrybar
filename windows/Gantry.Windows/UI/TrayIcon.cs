@@ -229,7 +229,7 @@ public sealed class TrayIcon : IDisposable
     {
         if (_settings is null)
         {
-            _settings = new SettingsWindow();
+            _settings = new SettingsWindow(_store);
             // Live-refresh the flyout's acrylic tint the moment Transparency changes (no restart).
             _settings.OnTransparencyChanged = () => _dashboard?.ApplyPanelTransparency();
             _settings.OnThemeChanged = () =>

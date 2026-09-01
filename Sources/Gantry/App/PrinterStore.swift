@@ -623,6 +623,9 @@ final class PrinterStore: ObservableObject {
             }
             recordTemperature(serial: serial, value: value)
             connectionMessages[serial] = nil
+            if let printer = printers.first(where: { $0.serial == serial }) {
+                PrinterInsightsStore.shared.observe(printer: printer, previous: previous, current: value)
+            }
             if printersWithTelemetry.contains(serial), let printer = printers.first(where: { $0.serial == serial }) {
                 notifyChanges(printer: printer, previous: previous, current: value)
                 // Decrement the assigned physical spool on a real finish (idempotent per job).

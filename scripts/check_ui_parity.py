@@ -93,9 +93,16 @@ require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
         "Windows refresh button does not match macOS reconnect + name refresh")
 require("linux/gantry/dashboard.py", r"refresh.*reconnect_and_refresh",
         "Linux refresh button does not match macOS reconnect + name refresh")
+detail_order = r'"status",\s*"recent",\s*"maintenance",\s*"stats",\s*"camera",\s*"ams",\s*"temps",\s*"fans",\s*"control"'
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        rf'defaultCardOrder\s*=\s*\[{detail_order}\]',
+        "macOS detail default order differs from the contract")
 require("windows/Gantry.Windows/UI/DetailWindow.cs",
-        r'DefaultCardOrder\s*=\s*\{\s*"status",\s*"camera",\s*"ams",\s*"temps",\s*"fans",\s*"control"\s*\}',
+        rf'DefaultCardOrder\s*=\s*\{{\s*{detail_order}\s*\}}',
         "Windows detail default order differs from macOS")
+require("linux/gantry/details.py",
+        rf'DEFAULT_ORDER\s*=\s*\[{detail_order}\]',
+        "Linux detail default order differs from macOS")
 require("windows/Gantry.Windows/UI/DetailWindow.cs",
         r"ResetLayout\(\)[\s\S]*?DetailCardOrder = string\.Empty;[\s\S]*?ApplyCardOrder\(\);",
         "Windows detail reset does not restore the default order")

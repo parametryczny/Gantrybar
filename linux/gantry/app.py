@@ -350,9 +350,12 @@ from .settings import SettingsDialog as SettingsDialog  # noqa: E402
 class Gantry:
     def __init__(self, background: bool = False) -> None:
         self.config, self.secrets = Config(), SecretStore()
+        from .insights import PrinterInsights
+        self.insights = PrinterInsights(self)
         self.language = str(self.config.data.get("language", "pl")); self.text = TEXT.get(self.language, TEXT["pl"])
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
+        self.connection_reasons: dict[str, str] = {}
         self.connections: dict[str, object] = {}; self.cards: dict[str, PrinterCard] = {}
         self.indicator_available = AppIndicator is not None
         self.stages = STAGES
@@ -984,11 +987,15 @@ class Gantry:
 
     def on_event(self, serial: str, event: str, value: object | None) -> bool:
         previous = self.telemetry.get(serial, Telemetry())
-        if event == "telemetry" and isinstance(value, Telemetry): self.telemetry[serial] = value
-        elif event == "disconnected": self.telemetry[serial] = Telemetry(state=PrinterState.OFFLINE)
+        if event == "telemetry" and isinstance(value, Telemetry):
+            self.telemetry[serial] = value; self.connection_reasons.pop(serial, None)
+        elif event == "disconnected":
+            self.telemetry[serial] = Telemetry(state=PrinterState.OFFLINE)
+            self.connection_reasons[serial] = str(value or ("Rozłączono" if self.language == "pl" else "Disconnected"))
         current = self.telemetry[serial]
         if event == "telemetry":
             self._record_temperature(serial, current)
+            self.insights.observe(serial, previous, current)
             if self.detail_window is not None and self.detail_window.serial == serial:
                 self.detail_window.update(current)
             if getattr(self, "automations", None) is not None:

@@ -66,12 +66,13 @@
   "header": {
     "spacing": 7,
     "align": "centerY",
-    "order": ["stateDot", "titleCluster", "detailsChip", "spacer", "dragHandle", "actionsButton"],
+    "order": ["stateDot", "titleCluster", "detailsChip", "spacer", "maintenanceSignal", "dragHandle", "actionsButton"],
     "stateDot": { "size": 14, "tint": "accent" },
     "titleCluster": { "align": "centerY", "spacing": 5 },
     "nameLabel": { "size": 14, "weight": "semibold", "color": "text" },
     "manufacturerPill": { "size": 10, "weight": "regular", "bg": "rgba(255,255,255,0.025)", "radius": 5 },
     "detailsChip": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "icon": "chart.xyaxis.line", "iconSize": 11 },
+    "maintenanceSignal": { "states": ["hidden", "planned", "due", "urgent"], "planned": "wrench", "due": "wrench + yellow count", "urgent": "red exclamation + count" },
     "dragHandle": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "dots": "2x3", "dotDiameter": 2.4, "dotStep": 6 },
     "actionsButton": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "icon": "ellipsis" }
   },
@@ -204,7 +205,7 @@
     "canvas": "#0C0D0E",
     "sectionCard": { "bg": "card @0.5", "border": "line 1px", "radius": 16, "inset": { "x": 14, "y": 12 } },
     "sectionTitle": { "size": 10, "weight": "semibold", "color": "muted", "uppercase": true },
-    "sections": ["APPEARANCE", "GENERAL", "PRINTER CARDS", "NOTIFICATIONS", "UPDATES"],
+    "sections": ["APPEARANCE", "GENERAL", "PRINTER CARDS", "NOTIFICATIONS", "TELEGRAM", "DIAGNOSTIC CENTER", "UPDATES"],
     "scroll": true,
     "window": { "width": 460, "height": 640, "resizable": true, "minWidth": 440, "minHeight": 360 }
   }

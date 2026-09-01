@@ -47,6 +47,7 @@ final class PrinterDashboardViewController: NSViewController {
     }
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
+    private var insightsSubscription: AnyCancellable?
     private var timerSubscription: AnyCancellable?
     private var cardsBySerial: [String: PrinterCardView] = [:]
     private var compactRowsBySerial: [String: CompactPrinterRowView] = [:]
@@ -83,6 +84,8 @@ final class PrinterDashboardViewController: NSViewController {
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.settingsChanged() }
         }
+        insightsSubscription = NotificationCenter.default.publisher(for: PrinterInsightsStore.didChange)
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.refreshDashboard() } }
         timerSubscription = Timer.publish(every: 15, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.refreshDashboard() }
@@ -630,6 +633,11 @@ final class PrinterDashboardViewController: NSViewController {
             },
             onOpenCamera: { [weak self] in self?.openBambuStudio(camera: true) },
             onShowDetails: { [weak self] in self?.onShowDetails(printer.serial) },
+            onShowMaintenance: { [weak self] in
+                guard let self, let current = self.store.printers.first(where: { $0.serial == printer.serial }) else { return }
+                MaintenancePanelWindowController.show(printer: current,
+                    telemetry: self.store.telemetry[printer.serial] ?? PrinterTelemetry())
+            },
             onOpenSlicer: { url in SlicerLauncher.open(url) },
             onCopyIP: { [weak self] in
                 guard let self, let host = self.store.printers.first(where: { $0.serial == printer.serial })?.host else { return }
@@ -881,6 +889,7 @@ private final class CompactPrinterRowView: NSView, NSDraggingSource {
 private final class PrinterCardView: NSView, NSDraggingSource {
     let serial: String
     private let onShowDetails: () -> Void
+    private let onShowMaintenance: () -> Void
     private let stateEmphasisLayer = CAGradientLayer()
     private let dropIndicatorLayer = CALayer()
     private let nameLabel = NSTextField(labelWithString: "")
@@ -907,6 +916,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     private let rightNozzleMetric = LabeledMetricView()
     private let bedMetric = LabeledMetricView()
     private let chamberMetric = LabeledMetricView()
+    private let maintenanceChip = NSButton()
     private let nozzleRow = NSStackView()
     private let envRow = NSStackView()
     private let tempBento = TemperatureBentoView()
@@ -953,6 +963,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         onReconnect: @escaping () -> Void,
         onOpenCamera: @escaping () -> Void,
         onShowDetails: @escaping () -> Void,
+        onShowMaintenance: @escaping () -> Void,
         onOpenSlicer: @escaping (URL) -> Void,
         onCopyIP: @escaping () -> Void,
         onRemove: @escaping () -> Void,
@@ -960,6 +971,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     ) {
         serial = printer.serial
         self.onShowDetails = onShowDetails
+        self.onShowMaintenance = onShowMaintenance
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = GantryTheme.cardRadius
@@ -1085,7 +1097,16 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         detailsChip.toolTip = AppSettings.shared.text("Szczegóły", "Details")
         detailsChip.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(detailsPressed)))
         detailsChip.setContentHuggingPriority(.required, for: .horizontal)
-        let header = NSStackView(views: [stateDot, titleCluster, detailsChip, NSView(), handle, actions])
+        maintenanceChip.bezelStyle = .recessed
+        maintenanceChip.isBordered = false
+        maintenanceChip.font = .systemFont(ofSize: 10, weight: .bold)
+        maintenanceChip.contentTintColor = .systemYellow
+        maintenanceChip.target = self
+        maintenanceChip.action = #selector(maintenancePressed)
+        maintenanceChip.toolTip = AppSettings.shared.text("Konserwacja", "Maintenance")
+        maintenanceChip.isHidden = true
+        maintenanceChip.setContentHuggingPriority(.required, for: .horizontal)
+        let header = NSStackView(views: [stateDot, titleCluster, detailsChip, NSView(), maintenanceChip, handle, actions])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 7
@@ -1293,6 +1314,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     }
 
     @objc private func detailsPressed() { onShowDetails() }
+    @objc private func maintenancePressed() { onShowMaintenance() }
 
     private func beginCardDrag(with event: NSEvent) {
         let item = NSPasteboardItem()
@@ -1378,6 +1400,25 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         stateDot.contentTintColor = stateColor(telemetry.state)
         jobStateDot.layer?.backgroundColor = stateColor(telemetry.state).cgColor
         updateCardEmphasis(for: telemetry.state)
+        switch PrinterInsightsStore.shared.signal(serial: printer.serial, hmsCodes: telemetry.hmsCodes) {
+        case .none:
+            maintenanceChip.isHidden = true
+        case .planned:
+            maintenanceChip.title = "🔧"
+            maintenanceChip.contentTintColor = GantryTheme.secondary
+            maintenanceChip.toolTip = settings.text("Zbliża się zaplanowana konserwacja", "Scheduled maintenance is approaching")
+            maintenanceChip.isHidden = false
+        case .due(let count):
+            maintenanceChip.title = "🔧 \(count)"
+            maintenanceChip.contentTintColor = .systemYellow
+            maintenanceChip.toolTip = settings.text("Wymagana konserwacja", "Maintenance due")
+            maintenanceChip.isHidden = false
+        case .urgent(let count):
+            maintenanceChip.title = "! \(count)"
+            maintenanceChip.contentTintColor = .systemRed
+            maintenanceChip.toolTip = settings.text("Pilna czynność lub błąd drukarki", "Urgent task or printer error")
+            maintenanceChip.isHidden = false
+        }
 
         if telemetry.state == .error {
             let errorDescription = HMSResolver.shared.description(for: telemetry.hmsCodes, serial: printer.serial, language: settings.language)

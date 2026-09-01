@@ -374,12 +374,15 @@ class PhaseStepper(Gtk.Box):
 
 
 class DetailPanel(Gtk.Box):
-    DEFAULT_ORDER = ["status", "camera", "ams", "temps", "fans", "control"]
+    DEFAULT_ORDER = ["status", "recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control"]
     TITLES = {
         "camera": ("Kamera", "Camera"), "ams": ("Filamenty / AMS", "Filaments / AMS"),
         "temps": ("Temperatury", "Temperatures"),
         "fans": ("Wentylatory i prędkość", "Fans & speed"),
         "control": ("Sterowanie i automatyzacje", "Control & automations"),
+        "recent": ("Ostatnie wydruki", "Recent prints"),
+        "maintenance": ("Konserwacja", "Maintenance"),
+        "stats": ("Statystyki", "Statistics"),
     }
 
     def __init__(self, app: Any, serial: str, on_back: Any) -> None:
@@ -446,6 +449,24 @@ class DetailPanel(Gtk.Box):
         self.ams = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         ams_body.pack_start(self.ams, False, False, 0)
 
+        recent, recent_body = self._card("recent", self._title("recent"))
+        self.recent = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        recent_body.pack_start(self.recent, False, False, 0)
+        all_prints = Gtk.Button(label="Pokaż wszystkie" if app.language == "pl" else "Show all")
+        all_prints.set_halign(Gtk.Align.START); all_prints.connect("clicked", self._show_history)
+        recent_body.pack_start(all_prints, False, False, 0)
+
+        maintenance, maintenance_body = self._card("maintenance", self._title("maintenance"))
+        self.maintenance = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        maintenance_body.pack_start(self.maintenance, False, False, 0)
+        open_maintenance = Gtk.Button(label="Otwórz konserwację…" if app.language == "pl" else "Open maintenance…")
+        open_maintenance.set_halign(Gtk.Align.START); open_maintenance.connect("clicked", self._open_maintenance)
+        maintenance_body.pack_start(open_maintenance, False, False, 0)
+
+        stats, stats_body = self._card("stats", self._title("stats"))
+        self.stats = Gtk.Box(spacing=8, homogeneous=True)
+        stats_body.pack_start(self.stats, False, False, 0)
+
         temps, temps_body = self._card("temps", self._title("temps"))
         self.graph = TempGraph(app, serial); self.graph.set_size_request(-1, 104)
         self.temps = Gtk.Box(spacing=8, homogeneous=True)
@@ -468,7 +489,9 @@ class DetailPanel(Gtk.Box):
 
         supports_camera = self.printer is not None and self.printer.kind in {
             PrinterKind.BAMBU, PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}
-        self.cards: dict[str, Gtk.Widget] = {"status": status, "ams": ams, "temps": temps, "fans": fans}
+        self.cards: dict[str, Gtk.Widget] = {"status": status, "recent": recent,
+                                             "maintenance": maintenance, "stats": stats,
+                                             "ams": ams, "temps": temps, "fans": fans}
         if supports_camera: self.cards["camera"] = camera
         if supports_camera and app.config.data.get("developer_mode", False): self.cards["control"] = control
         for card_id, card in self.cards.items(): self._make_draggable(card, card_id)
@@ -515,7 +538,7 @@ class DetailPanel(Gtk.Box):
 
     def _customize(self, button: Gtk.Button) -> None:
         menu = Gtk.Menu(); hidden = self._hidden()
-        for card_id in ("camera", "ams", "temps", "fans", "control"):
+        for card_id in ("recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control"):
             if card_id not in self.cards: continue
             item = Gtk.CheckMenuItem(label=self._title(card_id)); item.set_active(card_id not in hidden)
             item.connect("toggled", lambda value, key=card_id: self._toggle_module(key, value.get_active()))
@@ -608,7 +631,55 @@ class DetailPanel(Gtk.Box):
             self.remaining.set_text(f"{remaining} · {finish}")
         else: self.remaining.set_text("")
         self._fill_temperatures(tel, pl); self._fill_hardware(tel, pl); self._fill_filaments(tel)
+        self._fill_insights(pl)
         self.graph.queue_draw(); self.show_all()
+
+    def _fill_insights(self, pl: bool) -> None:
+        snap = self.app.insights.snapshot(self.serial, pl)
+        self._clear(self.recent)
+        recent = snap["history"][:3]
+        if not recent:
+            self.recent.pack_start(self._line("Brak zapisanej historii." if pl else "No recorded history."), False, False, 0)
+        for entry in recent:
+            icon = "✓" if entry.get("result") == "completed" else "!" if entry.get("result") == "failed" else "×"
+            minutes = int(float(entry.get("durationSeconds", 0)) / 60)
+            duration = f"{minutes // 60}h {minutes % 60}m" if minutes >= 60 else f"{minutes}m"
+            self.recent.pack_start(self._line(f"{icon}  {entry.get('job') or '—'} · {duration}"), False, False, 0)
+        self._clear(self.maintenance)
+        ordered = sorted(snap["tasks"], key=lambda task: (not task.urgent, not task.due, task.remaining_hours))[:2]
+        for task in ordered:
+            timing = (f"przekroczono o {task.overdue_hours:.0f} h" if pl else f"overdue by {task.overdue_hours:.0f} h") if task.due \
+                else (f"za {task.remaining_hours:.0f} h druku" if pl else f"in {task.remaining_hours:.0f} print h")
+            self.maintenance.pack_start(self._line(f"{'!' if task.urgent else '⚠' if task.due else '○'}  {task.title} · {timing}"), False, False, 0)
+        self._clear(self.stats)
+        success = "—" if snap["success"] is None else f"{snap['success']}%"
+        for title, value in ((("Czas pracy" if pl else "Print time"), f"{snap['total_hours']:.1f} h"),
+                             (("Skuteczność" if pl else "Success"), success),
+                             (("Filament"), f"{snap['consumed_grams']:.0f} g")):
+            self.stats.pack_start(self._metric(title, value), True, True, 0)
+
+    def _open_maintenance(self, *_args: object) -> None:
+        if self.printer is None: return
+        from .maintenance import MaintenanceDialog
+        tel = self.app.telemetry.get(self.serial, Telemetry())
+        MaintenanceDialog(self.app, self.printer, tel).present()
+
+    def _show_history(self, *_args: object) -> None:
+        snap = self.app.insights.snapshot(self.serial, self.app.language == "pl")
+        rows = [f"{str(item.get('endedAt', ''))[:16].replace('T', ' ')} · {item.get('job') or '—'}"
+                for item in snap["history"]]
+        dialog = Gtk.MessageDialog(transient_for=self.get_toplevel(), modal=True,
+                                   message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK,
+                                   text="Pełna historia" if self.app.language == "pl" else "Full history")
+        dialog.format_secondary_text("\n".join(rows[:100]) if rows else
+                                     ("Brak historii." if self.app.language == "pl" else "No history."))
+        dialog.run(); dialog.destroy()
+
+    @staticmethod
+    def _line(text: str) -> Gtk.Label:
+        label = Gtk.Label(label=text, xalign=0, ellipsize=2)
+        label.get_style_context().add_class("metric")
+        return label
 
     def _fill_temperatures(self, tel: Telemetry, pl: bool) -> None:
         self._clear(self.temps)

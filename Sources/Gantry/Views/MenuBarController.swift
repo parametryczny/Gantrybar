@@ -375,7 +375,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func showSettings() {
-        if settingsWindow == nil { settingsWindow = SettingsWindowController() }
+        if settingsWindow == nil { settingsWindow = SettingsWindowController(store: store) }
         settingsWindow?.presentCentered()
     }
 

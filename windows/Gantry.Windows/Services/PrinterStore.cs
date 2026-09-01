@@ -546,6 +546,8 @@ public sealed class PrinterStore
                                               $"{spoolId} returned to storage (NFC tag detected in {slot})"));
                 }
                 RecordTemperature(serial, value);
+                if (Printers.FirstOrDefault(p => p.Serial == serial) is { } observedPrinter)
+                    PrinterInsights.Observe(observedPrinter, previous, value);
                 ConnectionMessages[serial] = null;
                 if (_printersWithTelemetry.Contains(serial) && Printers.FirstOrDefault(p => p.Serial == serial) is { } printer)
                 {

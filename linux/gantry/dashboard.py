@@ -74,6 +74,8 @@ button.headericon:hover { background: alpha(#ffffff, 0.07); border-radius: 10px;
 .connection { color: %(muted)s; border: 1px solid alpha(#ffffff, 0.09); border-radius: 5px; padding: 0 4px; font-size: 10px; }
 button.cardmenu { background: alpha(#ffffff, 0.065); border: none; box-shadow: none; padding: 0; min-width: 24px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
 button.cardmenu:hover { background: alpha(#ffffff, 0.11); }
+button.maintenance-due { color: #f2c94c; font-size: 11px; font-weight: 700; }
+button.maintenance-urgent { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .status-dot { background: %(metric)s; border-radius: 3px; min-width: 6px; min-height: 6px; }
 .status { color: %(metric)s; font-size: 10px; font-weight: 600; }
 .job { color: %(text)s; font-size: 10px; font-weight: 600; }
@@ -328,12 +330,15 @@ class PrinterCard(Gtk.Frame):
         self.connection.get_style_context().add_class("connection")
         details = self._button("⌁", "Szczegóły" if app.language == "pl" else "Details")
         details.connect("clicked", lambda *_: app.open_details(printer.serial))
+        self.maintenance = self._button("", "Konserwacja" if app.language == "pl" else "Maintenance")
+        self.maintenance.set_no_show_all(True)
+        self.maintenance.connect("clicked", self._open_maintenance)
         grip = Gtk.Label(label="⠿")
         grip.get_style_context().add_class("metric")
         menu = self._button("⋯", "Menu")
         menu.connect("clicked", self._show_menu)
         for child, expand in ((icon, False), (self.name, True), (self.connection, False),
-                              (details, False), (grip, False), (menu, False)):
+                              (details, False), (self.maintenance, False), (grip, False), (menu, False)):
             top.pack_start(child, expand, expand, 0)
         self.box.pack_start(top, False, False, 0)
 
@@ -430,6 +435,10 @@ class PrinterCard(Gtk.Frame):
             menu.connect("deactivate", lambda *_: setattr(window, "_suppress_hide", False))
         menu.popup_at_widget(button, Gdk.Gravity.SOUTH_EAST, Gdk.Gravity.NORTH_EAST, None)
 
+    def _open_maintenance(self, *_args: object) -> None:
+        from .maintenance import MaintenanceDialog
+        MaintenanceDialog(self.app, self.printer, self._last_telemetry).present()
+
     def _drag_data_get(self, _widget: Gtk.Widget, _context: Gdk.DragContext,
                        selection: Gtk.SelectionData, _info: int, _timestamp: int) -> None:
         selection.set_text(self.printer.serial, -1)
@@ -458,6 +467,16 @@ class PrinterCard(Gtk.Frame):
 
     def update(self, telemetry: Telemetry, reason: str | None = None) -> None:
         self._last_telemetry = telemetry
+        signal, count = self.app.insights.signal(self.printer.serial, telemetry.hms_codes)
+        ctx = self.maintenance.get_style_context()
+        ctx.remove_class("maintenance-due"); ctx.remove_class("maintenance-urgent")
+        if signal == "none":
+            self.maintenance.set_no_show_all(True); self.maintenance.hide()
+        else:
+            self.maintenance.set_label(("!" if signal == "urgent" else "🔧") + (f" {count}" if count else ""))
+            if signal in ("urgent", "due"):
+                ctx.add_class("maintenance-urgent" if signal == "urgent" else "maintenance-due")
+            self.maintenance.set_no_show_all(False); self.maintenance.show()
         labels = self.app.text
         state = labels.get(telemetry.state.value, telemetry.state.value)
         stages = getattr(self.app, "stages", None)

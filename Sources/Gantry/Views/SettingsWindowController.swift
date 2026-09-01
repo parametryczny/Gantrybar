@@ -4,6 +4,7 @@ import CoreImage
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
+    private let store: PrinterStore
     private let titleLabel = NSTextField(labelWithString: "")
     private let authorLabel = NSTextField(labelWithString: "")
     private let githubButton = NSButton()
@@ -57,6 +58,10 @@ final class SettingsWindowController: NSWindowController {
     private let telegramHint = NSTextField(wrappingLabelWithString: "")
     private let telegramTokenCaption = NSTextField(labelWithString: "")
     private let telegramChatCaption = NSTextField(labelWithString: "")
+    private let diagnosticsSectionLabel = NSTextField(labelWithString: "")
+    private let diagnosticsHint = NSTextField(wrappingLabelWithString: "")
+    private let diagnosticsButton = NSButton()
+    private var diagnosticsWindow: DiagnosticCenterWindowController?
     private let webSectionLabel = NSTextField(labelWithString: "")
     private let webEnableLabel = NSTextField(labelWithString: "")
     private let webEnableSwitch = NSSwitch()
@@ -80,7 +85,8 @@ final class SettingsWindowController: NSWindowController {
     private let syncHint = NSTextField(wrappingLabelWithString: "")
     private var settingsSubscription: AnyCancellable?
 
-    init() {
+    init(store: PrinterStore) {
+        self.store = store
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 640),
             styleMask: [.titled, .closable, .resizable],
@@ -437,6 +443,13 @@ final class SettingsWindowController: NSWindowController {
         telegramBody.spacing = 8
         let telegramCard = sectionCard(title: telegramSectionLabel, body: telegramBody)
 
+        diagnosticsHint.font = .systemFont(ofSize: 11)
+        diagnosticsHint.textColor = GantryTheme.secondary
+        configureTextButton(diagnosticsButton, action: #selector(openDiagnostics))
+        let diagnosticsBody = NSStackView(views: [diagnosticsHint, diagnosticsButton])
+        diagnosticsBody.orientation = .vertical; diagnosticsBody.alignment = .leading; diagnosticsBody.spacing = 9
+        let diagnosticsCard = sectionCard(title: diagnosticsSectionLabel, body: diagnosticsBody)
+
         let webCard = sectionCard(title: webSectionLabel, body: webBody)
 
         // Synchronizacja: token + address to pair, a field to paste the shared token, the peer list.
@@ -484,7 +497,7 @@ final class SettingsWindowController: NSWindowController {
         header.alignment = .leading
         header.spacing = 8
 
-        let sectionCards = [appearanceCard, generalCard, cardsCard, notificationsCard, telegramCard, webCard, syncCard, updatesCard]
+        let sectionCards = [appearanceCard, generalCard, cardsCard, notificationsCard, telegramCard, diagnosticsCard, webCard, syncCard, updatesCard]
         let stack = NSStackView(views: [header] + sectionCards + [actionRow, supportStack])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -612,6 +625,11 @@ final class SettingsWindowController: NSWindowController {
         telegramTokenField.isEnabled = settings.telegramEnabled
         telegramChatField.isEnabled = settings.telegramEnabled
         telegramTestButton.isEnabled = settings.telegramEnabled
+        diagnosticsSectionLabel.stringValue = settings.text("CENTRUM DIAGNOSTYCZNE", "DIAGNOSTIC CENTER")
+        diagnosticsHint.stringValue = settings.text(
+            "Test sieci, MQTT, kamery i magazynu sekretów. Pokazuje powód offline, opóźnienie i jakość połączenia.",
+            "Tests network, MQTT, camera and secret storage. Shows offline reason, latency and connection quality.")
+        diagnosticsButton.title = settings.text("Otwórz centrum diagnostyczne…", "Open Diagnostic Center…")
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "0.1.19"
         versionLabel.stringValue = settings.text("Wersja \(version)", "Version \(version)") + " • \(AccessCodeStore.modeName)"
@@ -755,6 +773,11 @@ final class SettingsWindowController: NSWindowController {
         settings.cardShowFilaments = cardFilamentsCheck.state == .on
         settings.cardShowSpoolGrams = cardSpoolGramsCheck.state == .on
         settings.monochrome = monochromeCheck.state == .on
+    }
+
+    @objc private func openDiagnostics() {
+        if diagnosticsWindow == nil { diagnosticsWindow = DiagnosticCenterWindowController(store: store) }
+        diagnosticsWindow?.present()
     }
 
     @objc private func checkForUpdates() {

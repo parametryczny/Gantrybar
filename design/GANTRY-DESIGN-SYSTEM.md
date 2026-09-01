@@ -408,7 +408,7 @@ Plik konfiguracyjny użytkownika, na przykład:
   "basedOnLayoutVersion": "1.2.0",
   "density": "medium",
   "detail": {
-    "order": ["materials", "temperature", "fans", "controls"],
+    "order": ["status", "recent", "maintenance", "stats", "camera", "materials", "temperature", "fans", "controls"],
     "hidden": [],
     "spanOverrides": {}
   }
@@ -481,7 +481,7 @@ Nie trzeba współdzielić kodu renderującego Swift, C# i Python. Współdzielo
 ### Szczegóły
 
 - macOS i Windows: status i kamera są pełnoszerokie, a pozostałe sekcje układają się w dwóch niezależnych kolumnach;
-- kolejność domyślna zaczyna się od `status → camera → materials → temperature`;
+- kolejność domyślna zaczyna się od `status → recent → maintenance → stats → camera → materials → temperature`;
 - Linux: `DetailPanel` działa wewnątrz głównego panelu, używa tej samej pojedynczej kolumny 480 px, kolejności/przestawiania/ukrywania kart oraz osadzonego strumienia RTSPS/MJPEG.
 
 Implementacje nadal kodują część wartości natywnie. Następnym krokiem technicznym jest loader `gantry-layout.defaults.json` i `gantry-design-tokens.json`, aby usunąć duplikację wartości między Swift, C# i Pythonem.
