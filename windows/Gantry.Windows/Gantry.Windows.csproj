@@ -14,7 +14,7 @@
     <RootNamespace>Gantry</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>0.9.0</Version>
+    <Version>0.10.0</Version>
     <Product>Gantry</Product>
     <ApplicationIcon>gantry.ico</ApplicationIcon>
     <LangVersion>latest</LangVersion>

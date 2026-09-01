@@ -24,7 +24,7 @@ Grab the latest build from the **[Releases page](https://github.com/parametryczn
 
 - **macOS** — `Gantry-*-macOS.dmg` (drag‑to‑Applications installer / instalator przeciągnij‑do‑Programów)
 - **Windows x64** — `Gantry-Setup-Windows-x64.exe` (installer / instalator, zalecany) or portable `Gantry-Windows-x64.zip`
-- **GNU/Linux** — `.deb`, `.rpm` and portable `.AppImage` packages (beta, GTK)
+- **GNU/Linux** — packages in preparation: `.deb` / `.rpm` for classic system installation and a portable `.AppImage` containing the app and most required libraries (beta, GTK) / pakiety w przygotowaniu: `.deb` / `.rpm` do klasycznej instalacji systemowej oraz przenośny `.AppImage` z aplikacją i większością potrzebnych bibliotek
 
 Neither Windows download needs a separate .NET install. On macOS the app is self‑signed, so on first launch open it with right‑click → **Open**. / Żaden wariant Windows nie wymaga osobnej instalacji .NET. Na macOS aplikacja jest podpisana lokalnie — przy pierwszym uruchomieniu otwórz ją PPM → **Otwórz**.
 

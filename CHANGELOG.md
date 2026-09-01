@@ -2,6 +2,24 @@
 
 Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są opisane w tym pliku.
 
+## 0.10.0 - 2026-09-01
+
+To wydanie ujednolica macOS, Windows i GNU/Linux wokół dopracowanego interfejsu oraz flow wersji macOS. Windows i Linux otrzymują zgodny pulpit, proporcje sekcji AMS / AMS HT / EXT, krótkie pastylki filamentu, spójne okna Szczegółów, Ustawień, edycji i dodawania drukarki, a także poprawione Spoolbase i przypisywanie fizycznych rolek.
+
+### Najważniejsze
+
+- dodano obsługę **Elegoo Centauri Carbon (CC1)** przez lokalny SDCP/WebSocket oraz **Centauri Carbon 2 (CC2)** przez lokalny MQTT w trybie LAN-only, wraz z wykrywaniem, telemetrią i kamerą MJPEG;
+- zmiana motywu i przezroczystości odświeża interfejs natychmiast, także na Windows, bez przechodzenia do Szczegółów lub restartu;
+- ujednolicono zachowanie przycisków głównego paska, nawigację widoku Szczegółów i obsługę okien dodatkowych;
+- dodano automatyczny kontrakt zgodności UI dla macOS, Windows i Linux oraz testy układu kart;
+- przygotowano workflow i skrypty budowania Linuxa jako `.deb`, `.rpm` oraz przenośnego `.AppImage`.
+
+### GNU/Linux
+
+Pakiety Linux dla 0.10.0 są **w przygotowaniu** i przechodzą testy integracyjne. `.deb` i `.rpm` zapewnią klasyczną instalację systemową, a `.AppImage` będzie pojedynczym przenośnym plikiem z aplikacją i większością wymaganych bibliotek.
+
+Pełny opis wydania: [`docs/release-0.10.0.md`](docs/release-0.10.0.md).
+
 ## 0.9.0 - 2026-08-29
 
 Dalej dopracowujemy wygląd i wydajność oraz sukcesywnie dodajemy personalizację. W tym wydaniu dochodzą też duże rzeczy: **śledzenie fizycznych rolek filamentu w Spoolbase** (z automatycznym odejmowaniem wagi po wydruku), **podgląd floty w przeglądarce**, **synchronizacja między komputerami**, a na macOS **uniwersalny build (Intel + Apple Silicon)**. Na Windows dochodzi natywny efekt szkła i dopracowanie karty do parytetu 1:1 z macOS.

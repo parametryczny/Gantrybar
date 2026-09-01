@@ -14,21 +14,26 @@ Per-printer menus can open installed native or Flatpak editions of Bambu Studio,
 Creality Print and PrusaSlicer. For Bambu printers the Bambu Studio action also provides access
 to the camera view.
 
-## Installation packages
+## Installation packages — in preparation
 
-Gantry is published in three Linux formats:
+The Gantry 0.10.0 Linux packages are being prepared and integration-tested. The release workflow
+will provide three formats:
 
-- `Gantry-0.9.0-Linux-all.deb` — Ubuntu, Debian, Linux Mint and Pop!_OS
-- `Gantry-0.9.0-Linux-noarch.rpm` — Fedora and compatible RPM distributions
-- `Gantry-0.9.0-Linux-x86_64.AppImage` — portable x86_64 build with its own Python runtime,
+- `Gantry-0.10.0-Linux-all.deb` — Ubuntu, Debian, Linux Mint and Pop!_OS
+- `Gantry-0.10.0-Linux-noarch.rpm` — Fedora and compatible RPM distributions
+- `Gantry-0.10.0-Linux-x86_64.AppImage` — portable x86_64 build with its own Python runtime,
   GTK resources and most application libraries
+
+The `.deb` and `.rpm` packages provide classic system installation. The `.AppImage` is a single,
+portable application file containing Gantry and most required libraries. Until these artifacts
+appear on GitHub Releases, treat the Linux edition as a beta available from source.
 
 ### Ubuntu, Debian, Linux Mint or Pop!_OS
 
-Download `Gantry-0.9.0-Linux-all.deb` from GitHub Releases, then run:
+After the package is published, download `Gantry-0.10.0-Linux-all.deb` from GitHub Releases, then run:
 
 ```sh
-sudo apt install ./Gantry-0.9.0-Linux-all.deb
+sudo apt install ./Gantry-0.10.0-Linux-all.deb
 ```
 
 Open **Gantry** from the application menu. The app can be configured to start automatically
@@ -37,7 +42,7 @@ after login in **Settings**.
 ### Fedora or another RPM distribution
 
 ```sh
-sudo dnf install ./Gantry-0.9.0-Linux-noarch.rpm
+sudo dnf install ./Gantry-0.10.0-Linux-noarch.rpm
 ```
 
 ### Portable AppImage
@@ -45,8 +50,8 @@ sudo dnf install ./Gantry-0.9.0-Linux-noarch.rpm
 The AppImage does not require system installation:
 
 ```sh
-chmod +x Gantry-0.9.0-Linux-x86_64.AppImage
-./Gantry-0.9.0-Linux-x86_64.AppImage
+chmod +x Gantry-0.10.0-Linux-x86_64.AppImage
+./Gantry-0.10.0-Linux-x86_64.AppImage
 ```
 
 It bundles the application, Python runtime, GTK resources and most shared libraries. Desktop
@@ -92,7 +97,7 @@ Debian package (can also be produced on macOS through the portable ar fallback):
 sh linux/scripts/build-deb.sh
 ```
 
-The package is written to `linux/dist/Gantry-0.9.0-Linux-all.deb`. Set
+The package is written to `linux/dist/Gantry-0.10.0-Linux-all.deb`. Set
 `GANTRY_PACKAGE_SUFFIX=hotfix` only when producing a separately named hotfix. Core tests do not
 require a graphical session.
 
