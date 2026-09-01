@@ -70,6 +70,12 @@ DEFAULTS: dict[str, Any] = {
     "approved_script_rules": [],
     "printers": [],
     "certificate_pins": {},
+    # Telegram: same shared keys as macOS/Windows (docs/telegram.md). Token stays local, no shared bot.
+    "telegram-enabled": False,
+    "telegram-bot-token": "",
+    "telegram-chat-id": "",
+    "telegram-mute-until": "",
+    "print-history-v1": [],
 }
 
 

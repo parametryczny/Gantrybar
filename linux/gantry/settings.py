@@ -37,6 +37,7 @@ class SettingsDialog(Gtk.Dialog):
         root.pack_start(self._general(), False, False, 0)
         root.pack_start(self._cards(), False, False, 0)
         root.pack_start(self._notifications(), False, False, 0)
+        root.pack_start(self._telegram(), False, False, 0)
         root.pack_start(self._updates(), False, False, 0)
         root.pack_start(self._about(), False, False, 0)
         self.show_all()
@@ -173,6 +174,68 @@ class SettingsDialog(Gtk.Dialog):
         quiet_row.set_sensitive(self.quiet.get_active())
         widgets.extend((separator, self.quiet, quiet_row))
         return self._section("POWIADOMIENIA" if self.pl else "NOTIFICATIONS", widgets)
+
+    def _telegram(self) -> Gtk.Widget:
+        self.telegram_enabled = self._check(
+            "Wysyłaj powiadomienia i sterowanie przez Telegram" if self.pl
+            else "Send notifications and control over Telegram",
+            bool(self.app.config.data.get("telegram-enabled", False)))
+        form = Gtk.Grid(column_spacing=14, row_spacing=10)
+        self.telegram_token = Gtk.Entry(text=str(self.app.config.data.get("telegram-bot-token", "")))
+        self.telegram_token.set_placeholder_text("123456:ABC…")
+        self.telegram_token.set_hexpand(True)
+        self.telegram_chat = Gtk.Entry(text=str(self.app.config.data.get("telegram-chat-id", "")))
+        self.telegram_chat.set_placeholder_text("np. 8849748842")
+        self.telegram_chat.set_hexpand(True)
+        rows = (("Token bota" if self.pl else "Bot token", self.telegram_token),
+                ("Chat ID", self.telegram_chat))
+        for row, (text, widget) in enumerate(rows):
+            label = Gtk.Label(label=text, xalign=1)
+            label.get_style_context().add_class("settings-label")
+            form.attach(label, 0, row, 1, 1)
+            form.attach(widget, 1, row, 1, 1)
+        test_row = Gtk.Box(spacing=10)
+        self.telegram_test = Gtk.Button(label="Wyślij test" if self.pl else "Send test")
+        self.telegram_test.connect("clicked", self._telegram_test)
+        self.telegram_status = Gtk.Label(label="", xalign=0, wrap=True)
+        self.telegram_status.get_style_context().add_class("settings-hint")
+        test_row.pack_start(self.telegram_test, False, False, 0)
+        test_row.pack_start(self.telegram_status, True, True, 0)
+        hint = Gtk.Label(
+            label=("Utwórz własnego bota u @BotFather, wklej token i swój chat ID (z @userinfobot). "
+                   "Token zostaje tylko na tym komputerze. Instrukcja: docs/telegram-setup.md" if self.pl else
+                   "Create your own bot with @BotFather, paste the token and your chat ID (from @userinfobot). "
+                   "The token stays only on this computer. Guide: docs/telegram-setup.md"),
+            xalign=0, wrap=True)
+        hint.get_style_context().add_class("settings-hint")
+        return self._section("TELEGRAM", [self.telegram_enabled, form, test_row, hint])
+
+    def _telegram_test(self, *_args: object) -> None:
+        self.save()
+        token = self.telegram_token.get_text().strip()
+        chat = self.telegram_chat.get_text().strip()
+        if not token or not chat:
+            self.telegram_status.set_text(
+                "Podaj token i chat ID." if self.pl else "Enter a token and chat ID.")
+            return
+        self.telegram_test.set_sensitive(False)
+        self.telegram_status.set_text("Wysyłam…" if self.pl else "Sending…")
+
+        def work() -> None:
+            from .telegram import send_test
+            ok = send_test(token, chat,
+                           "Test" if self.pl else "Test",
+                           "Połączenie działa." if self.pl else "Connection works.")
+            GLib.idle_add(self._telegram_test_done, ok)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _telegram_test_done(self, ok: bool) -> bool:
+        self.telegram_test.set_sensitive(True)
+        self.telegram_status.set_text(
+            ("Wysłano — sprawdź Telegram." if self.pl else "Sent — check Telegram.") if ok
+            else ("Nie udało się. Sprawdź token i chat ID." if self.pl else "Failed. Check token and chat ID."))
+        return False
 
     def _updates(self) -> Gtk.Widget:
         row = Gtk.Box(spacing=10)
@@ -321,13 +384,16 @@ class SettingsDialog(Gtk.Dialog):
         for combo in (self.language, self.theme, self.transparency):
             combo.connect("changed", self._live_changed)
         checks = [self.autostart, self.spoolbase, self.developer, self.allow_scripts,
-                  self.spool_grams, self.monochrome, self.quiet, self.auto_update]
+                  self.spool_grams, self.monochrome, self.quiet, self.auto_update,
+                  self.telegram_enabled]
         checks.extend(self.card_options.values())
         checks.extend(self.notices.values())
         for check in checks:
             check.connect("toggled", self._live_changed)
         self.quiet_start.connect("focus-out-event", self._live_changed)
         self.quiet_end.connect("focus-out-event", self._live_changed)
+        self.telegram_token.connect("focus-out-event", self._live_changed)
+        self.telegram_chat.connect("focus-out-event", self._live_changed)
 
     def _live_changed(self, *_args: object) -> bool:
         if self._ready:
@@ -355,6 +421,9 @@ class SettingsDialog(Gtk.Dialog):
             allow_script_actions=self.allow_scripts.get_active(),
             auto_update_check=self.auto_update.get_active(),
         )
+        self.app.config.data["telegram-enabled"] = self.telegram_enabled.get_active()
+        self.app.config.data["telegram-bot-token"] = self.telegram_token.get_text().strip()
+        self.app.config.data["telegram-chat-id"] = self.telegram_chat.get_text().strip()
         for key, widget in self.notices.items():
             self.app.config.data[key] = widget.get_active()
         for key, widget in self.card_options.items():
@@ -385,4 +454,7 @@ class SettingsDialog(Gtk.Dialog):
         sync = getattr(self.app, "sync_service", None)
         if sync is not None:
             sync.note_settings_changed()
+        bot = getattr(self.app, "telegram_bot", None)
+        if bot is not None:
+            bot.sync()
         return True

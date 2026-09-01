@@ -377,6 +377,9 @@ class Gantry:
         if bool(self.config.data.get("web_dashboard_enabled", True)):
             self.web_server.start()
         self.sync_service.sync_now()
+        from .telegram import TelegramBot
+        self.telegram_bot = TelegramBot(self)
+        self.telegram_bot.sync()
         GLib.timeout_add_seconds(45, self._sync_tick)
         GLib.timeout_add_seconds(8, self._initial_update_check)
         GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
@@ -1010,6 +1013,9 @@ class Gantry:
         if quiet_hours_active(self.config): return False
         printer_name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
         if current.state != previous.state:
+            if current.state == PrinterState.FINISHED:
+                from . import telegram
+                telegram.record_history(self, serial, printer_name, current.job_name or "")
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key):
@@ -1018,6 +1024,8 @@ class Gantry:
                     from .hms import description
                     body = description(current.hms_codes, serial, self.language) or body
                 self.notify(printer_name, body)
+                from . import telegram
+                telegram.notify(self, printer_name, body, "")
             if event == "telemetry" and getattr(self, "physical_spools", None) is not None:
                 from .consumption import on_finish
                 on_finish(self, serial, previous, current)
@@ -1029,11 +1037,15 @@ class Gantry:
         if low and self.config.data.get("notify_low_filament"):
             body = f"Niski poziom filamentu: {low.label} ({low.remaining}%)" if self.language == "pl" else f"Low filament: {low.label} ({low.remaining}%)"
             self.notify(printer_name, body)
+            from . import telegram
+            telegram.notify(self, printer_name, body, "")
         humidity_high = current.ams_humidity is not None and current.ams_humidity >= 4
         humidity_was_high = previous.ams_humidity is not None and previous.ams_humidity >= 4
         if humidity_high and not humidity_was_high and self.config.data.get("notify_humidity"):
             body = "Wysoka wilgotność AMS" if self.language == "pl" else "High AMS humidity"
             self.notify(printer_name, body)
+            from . import telegram
+            telegram.notify(self, printer_name, body, "")
         return False
 
     @staticmethod
