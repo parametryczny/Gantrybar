@@ -3,8 +3,8 @@ from __future__ import annotations
 """Local print history, statistics and per-printer maintenance schedules.
 
 Firmware vendors expose different diagnostics and no stable maintenance counter. Gantry therefore
-counts time spent printing locally. Printer/HMS errors stay separate live alerts and raise the red
-maintenance signal without being presented as completed service history.
+counts time spent printing locally. Printer/HMS errors stay separate live alerts and are never
+presented as completed service history.
 """
 
 from dataclasses import dataclass
@@ -134,9 +134,9 @@ class PrinterInsights:
         return {"total_hours": hours, "tasks": tasks, "history": history,
                 "consumed_grams": grams, "completed": completed, "success": success}
 
-    def signal(self, serial: str, hms_codes: list[str]) -> tuple[str, int]:
+    def signal(self, serial: str, _hms_codes: list[str] | None = None) -> tuple[str, int]:
         tasks = self.snapshot(serial, True)["tasks"]
-        urgent = sum(1 for task in tasks if task.urgent) + (1 if hms_codes else 0)
+        urgent = sum(1 for task in tasks if task.urgent)
         if urgent:
             return "urgent", urgent
         due = sum(1 for task in tasks if task.due)

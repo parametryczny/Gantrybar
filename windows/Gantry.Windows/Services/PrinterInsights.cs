@@ -127,10 +127,10 @@ public static class PrinterInsights
         return new Snapshot(hours, record.History.AsEnumerable().Reverse().ToList(), tasks, grams);
     }
 
-    public static Signal GetSignal(string serial, IReadOnlyCollection<string> hmsCodes)
+    public static Signal GetSignal(string serial)
     {
         var tasks = GetSnapshot(serial, true).Tasks;
-        int urgent = tasks.Count(value => value.IsUrgent) + (hmsCodes.Count > 0 ? 1 : 0);
+        int urgent = tasks.Count(value => value.IsUrgent);
         if (urgent > 0) return new(SignalKind.Urgent, urgent);
         int due = tasks.Count(value => value.IsDue);
         if (due > 0) return new(SignalKind.Due, due);

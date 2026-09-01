@@ -76,6 +76,7 @@ button.cardmenu { background: alpha(#ffffff, 0.065); border: none; box-shadow: n
 button.cardmenu:hover { background: alpha(#ffffff, 0.11); }
 button.maintenance-due { color: #f2c94c; font-size: 11px; font-weight: 700; }
 button.maintenance-urgent { color: #ff5a4e; font-size: 11px; font-weight: 800; }
+button.printer-alert { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .status-dot { background: %(metric)s; border-radius: 3px; min-width: 6px; min-height: 6px; }
 .status { color: %(metric)s; font-size: 10px; font-weight: 600; }
 .job { color: %(text)s; font-size: 10px; font-weight: 600; }
@@ -114,6 +115,9 @@ button.maintenance-urgent { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .settings-author { color: %(secondary)s; font-size: 13px; font-weight: 600; }
 .settings-links { padding-top: 2px; }
 .settings-card { background: alpha(%(card)s, 0.72); border: 1px solid alpha(#ffffff, 0.09); border-radius: 16px; padding: 12px 14px; }
+.maintenance-backdrop { background: alpha(#000000, 0.30); }
+.maintenance-panel { background: alpha(%(card)s, 0.98); border: 1px solid %(line)s; border-radius: 16px; }
+.printer-alert-card { background: alpha(#ff5a4e, 0.08); border: 1px solid alpha(#ff5a4e, 0.38); border-radius: 10px; padding: 9px 12px; }
 .settings-section { color: %(muted)s; font-size: 10px; font-weight: 700; }
 .settings-label { color: %(secondary)s; font-size: 12px; }
 .settings-hint { color: %(muted)s; font-size: 10px; }
@@ -330,6 +334,10 @@ class PrinterCard(Gtk.Frame):
         self.connection.get_style_context().add_class("connection")
         details = self._button("⌁", "Szczegóły" if app.language == "pl" else "Details")
         details.connect("clicked", lambda *_: app.open_details(printer.serial))
+        self.printer_alert = self._button("", "Uwaga drukarki" if app.language == "pl" else "Printer alert")
+        self.printer_alert.set_no_show_all(True)
+        self.printer_alert.get_style_context().add_class("printer-alert")
+        self.printer_alert.connect("clicked", self._open_maintenance)
         self.maintenance = self._button("", "Konserwacja" if app.language == "pl" else "Maintenance")
         self.maintenance.set_no_show_all(True)
         self.maintenance.connect("clicked", self._open_maintenance)
@@ -338,7 +346,8 @@ class PrinterCard(Gtk.Frame):
         menu = self._button("⋯", "Menu")
         menu.connect("clicked", self._show_menu)
         for child, expand in ((icon, False), (self.name, True), (self.connection, False),
-                              (details, False), (self.maintenance, False), (grip, False), (menu, False)):
+                              (details, False), (self.printer_alert, False), (self.maintenance, False),
+                              (grip, False), (menu, False)):
             top.pack_start(child, expand, expand, 0)
         self.box.pack_start(top, False, False, 0)
 
@@ -467,16 +476,24 @@ class PrinterCard(Gtk.Frame):
 
     def update(self, telemetry: Telemetry, reason: str | None = None) -> None:
         self._last_telemetry = telemetry
-        signal, count = self.app.insights.signal(self.printer.serial, telemetry.hms_codes)
+        signal, count = self.app.insights.signal(self.printer.serial)
         ctx = self.maintenance.get_style_context()
         ctx.remove_class("maintenance-due"); ctx.remove_class("maintenance-urgent")
         if signal == "none":
             self.maintenance.set_no_show_all(True); self.maintenance.hide()
         else:
-            self.maintenance.set_label(("!" if signal == "urgent" else "🔧") + (f" {count}" if count else ""))
+            self.maintenance.set_label("🔧" + (f" {count}" if count else ""))
             if signal in ("urgent", "due"):
                 ctx.add_class("maintenance-urgent" if signal == "urgent" else "maintenance-due")
             self.maintenance.set_no_show_all(False); self.maintenance.show()
+        from .hms import actionable_codes
+        alerts = actionable_codes(telemetry.hms_codes, self.printer.serial, self.app.language)
+        has_alert = bool(alerts or getattr(telemetry, "error_code", 0) or telemetry.state == PrinterState.ERROR)
+        if has_alert:
+            self.printer_alert.set_label(f"! {len(alerts)}" if len(alerts) > 1 else "!")
+            self.printer_alert.set_no_show_all(False); self.printer_alert.show()
+        else:
+            self.printer_alert.set_no_show_all(True); self.printer_alert.hide()
         labels = self.app.text
         state = labels.get(telemetry.state.value, telemetry.state.value)
         stages = getattr(self.app, "stages", None)
@@ -799,12 +816,48 @@ class Dashboard(Gtk.Window):
         else:
             self.set_position(Gtk.WindowPosition.CENTER)
         self.connect("delete-event", self._hide)
+        self.window_overlay = Gtk.Overlay()
+        self.add(self.window_overlay)
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.add(self.stack)
+        self.window_overlay.add(self.stack)
+        self._maintenance_overlay: Gtk.Widget | None = None
         self.fleet = self._build_fleet()
         self.stack.add_named(self.fleet, "fleet")
         self.stack.set_visible_child_name("fleet")
+
+    def show_maintenance(self, printer: Any, telemetry: Any) -> None:
+        from .maintenance import MaintenancePanel
+        self.close_maintenance()
+        layer = Gtk.EventBox()
+        layer.set_visible_window(True)
+        layer.set_halign(Gtk.Align.FILL); layer.set_valign(Gtk.Align.FILL)
+        layer.get_style_context().add_class("maintenance-backdrop")
+        panel_guard = Gtk.EventBox(); panel_guard.set_visible_window(False)
+        panel = MaintenancePanel(self.app, printer, telemetry, self.close_maintenance)
+        panel_guard.add(panel)
+        panel_guard.set_halign(Gtk.Align.CENTER); panel_guard.set_valign(Gtk.Align.CENTER)
+        panel_guard.connect("button-press-event", lambda *_: True)
+        layer.add(panel_guard)
+        layer.connect("button-press-event", lambda *_: (self.close_maintenance(), True)[1])
+        self.window_overlay.add_overlay(layer)
+        self._maintenance_overlay = layer
+        self._suppress_hide = True
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor() if display else None
+        max_height = monitor.get_workarea().height - 24 if monitor else 820
+        width = max(self.get_size()[0], 544)
+        height = min(max_height, max(self.get_size()[1], 704))
+        self.resize(width, height)
+        layer.show_all()
+
+    def close_maintenance(self) -> None:
+        removed = self._maintenance_overlay is not None
+        if self._maintenance_overlay is not None:
+            self.window_overlay.remove(self._maintenance_overlay)
+            self._maintenance_overlay = None
+        self._suppress_hide = False
+        if removed: self.resize_for_content()
 
     def _build_fleet(self) -> Gtk.Widget:
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)

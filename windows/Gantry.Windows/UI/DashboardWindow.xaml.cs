@@ -64,6 +64,7 @@ public partial class DashboardWindow : Window
     private FrameworkElement? _cardMenu;
 
     private Grid? _spoolLayer;
+    private Grid? _maintenanceLayer;
     // While the slot-assignment overlay is open the window is grown to a comfortable height so plenty of
     // rolls/filaments show even for a single short printer card — and the per-tick content-fit is
     // suspended so it doesn't shrink the window back under the open panel (parity with macOS).
@@ -128,6 +129,44 @@ public partial class DashboardWindow : Window
         {
             _spoolOverlayActive = false;
             FitHeightToContent();   // restore the natural, content-driven height
+        }
+    }
+
+    internal void ShowMaintenance(SavedPrinter printer, PrinterTelemetry telemetry)
+    {
+        if (MenuLayer.Parent is not Grid host) return;
+        CloseMaintenance();
+        var backdrop = new Border { Background = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)) };
+        backdrop.MouseLeftButtonDown += (_, _) => CloseMaintenance();
+        var layer = new Grid();
+        layer.Children.Add(backdrop);
+        var panel = MaintenancePanel.Build(printer, telemetry, CloseMaintenance,
+            () => Dispatcher.BeginInvoke(new Action(Rebuild)));
+        layer.Children.Add(panel);
+        _maintenanceLayer = layer;
+        host.Children.Add(layer);
+        _spoolOverlayActive = true;
+        double maxH = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
+        double target = Math.Min(maxH, Math.Max(Height, 720));
+        if (target > Height + 1)
+        {
+            Height = target;
+            var area = SystemParameters.WorkArea;
+            Left = area.Right - Width - 8;
+            Top = area.Bottom - Height - 8;
+        }
+        panel.MaxHeight = Math.Max(420, Height - 24);
+        panel.MaxWidth = Math.Max(420, Width - 24);
+    }
+
+    internal void CloseMaintenance()
+    {
+        if (_maintenanceLayer is not null && MenuLayer.Parent is Grid host) host.Children.Remove(_maintenanceLayer);
+        _maintenanceLayer = null;
+        if (_spoolOverlayActive && _spoolLayer is null)
+        {
+            _spoolOverlayActive = false;
+            FitHeightToContent();
         }
     }
 
@@ -723,7 +762,7 @@ public partial class DashboardWindow : Window
         private readonly DashboardWindow _owner;
         private Point _dragStart;
         private readonly TextBlock _name, _connection, _pillText, _job, _jobSeparator, _percent, _eta, _layers, _message;
-        private readonly Button _maintenance;
+        private readonly Button _printerAlert, _maintenance;
         private readonly Border _noticeBanner;
         private readonly TextBlock _noticeText;
         private Action? _onDismissNotice;
@@ -749,6 +788,7 @@ public partial class DashboardWindow : Window
             var header = new Grid();
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // left cluster
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // gap
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // printer alert
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // maintenance
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // grip chip
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // more chip
@@ -790,22 +830,14 @@ public partial class DashboardWindow : Window
             Grid.SetColumn(leftCluster, 0);
             header.Children.Add(leftCluster);
 
-            _maintenance = new Button
+            _printerAlert = StatusButton(AppSettings.Text("Uwaga drukarki", "Printer alert"));
+            _maintenance = StatusButton(AppSettings.Text("Konserwacja", "Maintenance"));
+            foreach (var statusButton in new[] { _printerAlert, _maintenance })
             {
-                Content = "", FontSize = 10.5, FontWeight = FontWeights.Bold, Height = 20,
-                MinWidth = 24, Padding = new Thickness(5, 0, 5, 0), Margin = new Thickness(0, 0, 5, 0),
-                VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
-                Background = GTheme.Brush(GTheme.W(0.025)), BorderThickness = new Thickness(0),
-                ToolTip = AppSettings.Text("Konserwacja", "Maintenance")
-            };
-            _maintenance.Click += (_, _) =>
-            {
-                var currentPrinter = _owner._store.Printers.FirstOrDefault(value => value.Serial == Serial);
-                if (currentPrinter is null) return;
-                var telemetry = _owner._store.Telemetry.TryGetValue(Serial, out var value) ? value : new PrinterTelemetry();
-                MaintenanceWindow.ShowFor(currentPrinter, telemetry, Window.GetWindow(Root));
-            };
-            Grid.SetColumn(_maintenance, 2); header.Children.Add(_maintenance);
+                statusButton.Click += (_, _) => OpenMaintenance();
+            }
+            Grid.SetColumn(_printerAlert, 2); header.Children.Add(_printerAlert);
+            Grid.SetColumn(_maintenance, 3); header.Children.Add(_maintenance);
 
             // Right cluster (macOS layout): drag grip + "..." menu, each in a faint rounded chip.
             var grip = new TextBlock { Text = "⠿", FontSize = 13, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll };
@@ -825,12 +857,12 @@ public partial class DashboardWindow : Window
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
                 _owner.BeginCardDrag(Root!, Serial);
             };
-            Grid.SetColumn(gripChip, 3);
+            Grid.SetColumn(gripChip, 4);
             header.Children.Add(gripChip);
             var more = new Button { Content = "⋯", FontSize = 13, Width = 24, Height = 20, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = GTheme.Brush(GTheme.W(0.025)), BorderThickness = new Thickness(0), Foreground = Muted() };
             var menu = owner.BuildCardMenu(printer.Serial);
             more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
-            Grid.SetColumn(more, 4);
+            Grid.SetColumn(more, 5);
             header.Children.Add(more);
             jobStack.Children.Add(header);
 
@@ -952,17 +984,36 @@ public partial class DashboardWindow : Window
             _noticeBanner.Visibility = Visibility.Visible;
         }
 
+        private static Button StatusButton(string tooltip) => new()
+        {
+            Content = "", FontSize = 10.5, FontWeight = FontWeights.Bold, Height = 20,
+            MinWidth = 24, Padding = new Thickness(5, 0, 5, 0), Margin = new Thickness(0, 0, 5, 0),
+            VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
+            Background = GTheme.Brush(GTheme.W(0.025)), BorderThickness = new Thickness(0), ToolTip = tooltip
+        };
+
+        private void OpenMaintenance()
+        {
+            var currentPrinter = _owner._store.Printers.FirstOrDefault(value => value.Serial == Serial);
+            if (currentPrinter is null) return;
+            var telemetry = _owner._store.Telemetry.TryGetValue(Serial, out var value) ? value : new PrinterTelemetry();
+            _owner.ShowMaintenance(currentPrinter, telemetry);
+        }
+
         public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
         {
             _name.Text = printer.Name;
-            var maintenanceSignal = PrinterInsights.GetSignal(printer.Serial, t.HmsCodes);
+            var maintenanceSignal = PrinterInsights.GetSignal(printer.Serial);
             _maintenance.Visibility = maintenanceSignal.Kind == PrinterInsights.SignalKind.None ? Visibility.Collapsed : Visibility.Visible;
-            _maintenance.Content = maintenanceSignal.Kind == PrinterInsights.SignalKind.Urgent
-                ? $"! {maintenanceSignal.Count}" : maintenanceSignal.Kind == PrinterInsights.SignalKind.Planned
-                    ? "🔧" : $"🔧 {maintenanceSignal.Count}";
+            _maintenance.Content = maintenanceSignal.Kind == PrinterInsights.SignalKind.Planned ? "🔧" : $"🔧 {maintenanceSignal.Count}";
             _maintenance.Foreground = new SolidColorBrush(maintenanceSignal.Kind == PrinterInsights.SignalKind.Urgent
                 ? Color.FromRgb(0xFF, 0x5A, 0x4E) : maintenanceSignal.Kind == PrinterInsights.SignalKind.Due
                     ? Color.FromRgb(0xF2, 0xC9, 0x4C) : GTheme.Secondary);
+            var actionable = HmsResolver.ActionableCodes(t.HmsCodes, printer.Serial, pl);
+            bool hasPrinterAlert = actionable.Count > 0 || t.ErrorCode != 0 || t.State == PrinterState.Error;
+            _printerAlert.Visibility = hasPrinterAlert ? Visibility.Visible : Visibility.Collapsed;
+            _printerAlert.Content = actionable.Count > 1 ? $"! {actionable.Count}" : "!";
+            _printerAlert.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x4E));
             _connection.Text = printer.Kind switch
             {
                 PrinterKind.Bambu => "MQTT",

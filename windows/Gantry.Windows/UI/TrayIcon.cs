@@ -215,6 +215,8 @@ public sealed class TrayIcon : IDisposable
     // Menu items always show it.
     private void ShowDashboard() => EnsureDashboard().ShowPopover();
 
+    internal void ShowDashboardFromNotification() => ShowDashboard();
+
     private void ToggleSpoolbase()
     {
         if (_spoolbase is null)

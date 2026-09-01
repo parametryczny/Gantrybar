@@ -45,7 +45,8 @@ class InsightsTests(unittest.TestCase):
         self.assertEqual(store.signal("A", [])[0], "none")
         store.complete("A", "clean-rods")
         self.assertEqual(store.signal("A", [])[0], "none")
-        self.assertEqual(store.signal("A", ["HMS"])[0], "urgent")
+        # Live printer/HMS alerts are presented separately from the maintenance schedule.
+        self.assertEqual(store.signal("A", ["HMS"])[0], "none")
 
     def test_initial_stale_finished_state_is_not_a_new_history_entry(self):
         store = PrinterInsights(_App())

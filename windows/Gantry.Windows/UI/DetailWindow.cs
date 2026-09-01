@@ -108,7 +108,7 @@ public sealed class DetailView : UserControl
         {
             if (_store.Printers.FirstOrDefault(value => value.Serial == _serial) is not { } value) return;
             var tel = _store.Telemetry.TryGetValue(_serial, out var current) ? current : new PrinterTelemetry();
-            MaintenanceWindow.ShowFor(value, tel, Window.GetWindow(this));
+            if (Window.GetWindow(this) is DashboardWindow dashboard) dashboard.ShowMaintenance(value, tel);
         };
         stack.Children.Add(Draggable("maintenance", Card(new StackPanel { Children = { SectionTitle(_pl ? "KONSERWACJA" : "MAINTENANCE"), _maintenance, openMaintenance } })));
 

@@ -7,69 +7,111 @@ using Gantry.Services;
 
 namespace Gantry.UI;
 
-public sealed class MaintenanceWindow : Window
+/// <summary>Maintenance card shown inside the dashboard overlay, matching the macOS panel.</summary>
+internal sealed class MaintenancePanel
 {
     private readonly SavedPrinter _printer;
-    private PrinterTelemetry _telemetry;
-    private readonly StackPanel _body = new();
+    private readonly PrinterTelemetry _telemetry;
+    private readonly Action _close;
+    private readonly Action _changed;
+    private readonly ContentControl _content = new();
     private readonly bool _pl = AppSettings.Polish;
-    private static readonly Dictionary<string, MaintenanceWindow> Active = new();
 
-    public static void ShowFor(SavedPrinter printer, PrinterTelemetry telemetry, Window? owner = null)
+    public static FrameworkElement Build(SavedPrinter printer, PrinterTelemetry telemetry, Action close, Action changed)
+        => new MaintenancePanel(printer, telemetry, close, changed).Root;
+
+    private MaintenancePanel(SavedPrinter printer, PrinterTelemetry telemetry, Action close, Action changed)
     {
-        if (Active.TryGetValue(printer.Serial, out var existing))
+        _printer = printer; _telemetry = telemetry; _close = close; _changed = changed;
+        Root = new Border
         {
-            existing._telemetry = telemetry; existing.Rebuild(); existing.Activate(); return;
-        }
-        var window = new MaintenanceWindow(printer, telemetry) { Owner = owner };
-        Active[printer.Serial] = window;
-        window.Closed += (_, _) => Active.Remove(printer.Serial);
-        window.Show();
-    }
-
-    private MaintenanceWindow(SavedPrinter printer, PrinterTelemetry telemetry)
-    {
-        _printer = printer; _telemetry = telemetry;
-        Title = AppSettings.Text($"Konserwacja · {printer.Name}", $"Maintenance · {printer.Name}");
-        Width = 460; Height = 590; MinWidth = 420; MinHeight = 430;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = GTheme.Brush(GTheme.Canvas);
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _body };
+            Width = 520, Height = 680, MaxWidth = 560,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            Background = GTheme.Brush(GTheme.Card), BorderBrush = GTheme.Brush(GTheme.Line),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12),
+            ClipToBounds = true, Child = _content
+        };
         Rebuild();
     }
 
+    public Border Root { get; }
+
     private void Rebuild()
     {
-        _body.Children.Clear(); _body.Margin = new Thickness(18);
         var snap = PrinterInsights.GetSnapshot(_printer.Serial, _pl);
-        _body.Children.Add(Text(20, FontWeights.Bold, Title));
+        var body = new StackPanel { Margin = new Thickness(18) };
+        var title = Text(20, FontWeights.Bold, AppSettings.Text($"Konserwacja · {_printer.Name}", $"Maintenance · {_printer.Name}"));
+        var instructions = Button(_pl ? "Instrukcje" : "Instructions");
+        instructions.Click += (_, _) => ShowInstructions();
+        var close = Button("×");
+        close.Width = 28; close.Height = 28; close.FontSize = 18; close.Padding = new Thickness(0); close.ToolTip = _pl ? "Zamknij" : "Close";
+        close.Click += (_, _) => _close();
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(title);
+        Grid.SetColumn(instructions, 2); header.Children.Add(instructions);
+        Grid.SetColumn(close, 3); header.Children.Add(close);
+        body.Children.Add(header);
         string nozzle = _telemetry.NozzleDiameter is { } d ? $"{d:0.0} mm" : "—";
-        _body.Children.Add(Text(11, FontWeights.Normal,
+        body.Children.Add(Text(11, FontWeights.Normal,
             _pl ? $"{snap.TotalPrintHours:0.0} h druku · dysza {nozzle}" : $"{snap.TotalPrintHours:0.0} print h · nozzle {nozzle}", Muted()));
-        foreach (var task in snap.Tasks) _body.Children.Add(TaskCard(task));
-        _body.Children.Add(Section(_pl ? "OSTATNIE WYDRUKI" : "RECENT PRINTS"));
+
+        var alerts = PrinterAlerts();
+        if (alerts.Count > 0)
+        {
+            body.Children.Add(Section(_pl ? "UWAGI DRUKARKI" : "PRINTER ALERTS"));
+            foreach (var (message, code) in alerts) body.Children.Add(AlertCard(message, code));
+        }
+        foreach (var task in snap.Tasks) body.Children.Add(TaskCard(task));
+
+        body.Children.Add(Section(_pl ? "OSTATNIE WYDRUKI" : "RECENT PRINTS"));
         foreach (var entry in snap.History.Take(3))
         {
             string icon = entry.Result == PrinterInsights.PrintResult.Completed ? "✓" : entry.Result == PrinterInsights.PrintResult.Failed ? "!" : "×";
-            _body.Children.Add(Text(11, FontWeights.Medium, $"{icon}  {(string.IsNullOrWhiteSpace(entry.Job) ? "—" : entry.Job)} · {Duration(entry.DurationSeconds)}", Muted()));
+            body.Children.Add(Text(11, FontWeights.Medium, $"{icon}  {(string.IsNullOrWhiteSpace(entry.Job) ? "—" : entry.Job)} · {Duration(entry.DurationSeconds)}", Muted()));
         }
-        if (snap.History.Count == 0) _body.Children.Add(Text(11, FontWeights.Normal, _pl ? "Brak zapisanej historii." : "No recorded history.", Muted()));
+        if (snap.History.Count == 0) body.Children.Add(Text(11, FontWeights.Normal, _pl ? "Brak zapisanej historii." : "No recorded history.", Muted()));
         string success = snap.SuccessPercent is { } percent ? $"{percent}%" : "—";
-        _body.Children.Add(Text(10.5, FontWeights.SemiBold,
+        body.Children.Add(Text(10.5, FontWeights.SemiBold,
             _pl ? $"STATYSTYKI · {snap.CompletedCount} zakończonych · {success} skuteczności · {snap.ConsumedGrams:0} g"
                 : $"STATISTICS · {snap.CompletedCount} completed · {success} success · {snap.ConsumedGrams:0} g", Muted()));
-        var instructions = Button(_pl ? "Instrukcje" : "Instructions");
-        instructions.Click += (_, _) => MessageBox.Show(this,
-            _pl ? "Wyłącz i ostudź drukarkę. Oczyść prowadnice, zastosuj środek zalecany przez producenta, sprawdź paski i dyszę. Instrukcja producenta ma pierwszeństwo."
-                : "Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide takes precedence.",
-            instructions.Content?.ToString() ?? "", MessageBoxButton.OK, MessageBoxImage.Information);
-        var history = Button(_pl ? "Pełna historia" : "Full history");
-        history.Click += (_, _) => ShowHistory();
-        var footer = new Grid { Margin = new Thickness(0, 8, 0, 0) };
-        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        footer.Children.Add(instructions); Grid.SetColumn(history, 1); footer.Children.Add(history);
-        _body.Children.Add(footer);
+
+        _content.Content = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = body
+        };
+        _changed();
+    }
+
+    private List<(string Message, string? Code)> PrinterAlerts()
+    {
+        var codes = HmsResolver.ActionableCodes(_telemetry.HmsCodes, _printer.Serial, _pl);
+        if (codes.Count > 0)
+            return codes.Select(code => (HmsResolver.Description(new[] { code }, _printer.Serial, _pl) ?? $"HMS {code}", (string?)code)).ToList();
+        if (_telemetry.ErrorCode != 0)
+            return new() { (string.Format(AppSettings.Text("Kod błędu: 0x{0:X}", "Error code: 0x{0:X}"), _telemetry.ErrorCode), null) };
+        if (_telemetry.State == PrinterState.Error)
+            return new() { (AppSettings.Text("Drukarka zgłosiła błąd", "Printer reported an error"), null) };
+        return new();
+    }
+
+    private FrameworkElement AlertCard(string message, string? code)
+    {
+        var stack = new StackPanel();
+        stack.Children.Add(Text(12, FontWeights.SemiBold, $"!  {message}"));
+        if (!string.IsNullOrWhiteSpace(code)) stack.Children.Add(Text(10, FontWeights.Normal, code, Muted()));
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0x5A, 0x4E)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x62, 0xFF, 0x5A, 0x4E)),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9),
+            Padding = new Thickness(11, 8, 11, 8), Margin = new Thickness(0, 6, 0, 0), Child = stack
+        };
     }
 
     private FrameworkElement TaskCard(PrinterInsights.TaskStatus task)
@@ -80,23 +122,40 @@ public sealed class MaintenanceWindow : Window
         var stack = new StackPanel();
         stack.Children.Add(Text(12.5, FontWeights.SemiBold, $"{icon}  {task.Title}"));
         stack.Children.Add(Text(10.5, FontWeights.Normal, timing, Muted()));
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
+        var actions = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var done = Button(_pl ? "Wykonano" : "Done"); done.Click += (_, _) => { PrinterInsights.Complete(_printer.Serial, task.Id); Rebuild(); };
         var snooze = Button(_pl ? "Przypomnij za 7 dni" : "Remind in 7 days"); snooze.Click += (_, _) => { PrinterInsights.Snooze(_printer.Serial, task.Id); Rebuild(); };
-        var interval = new TextBox { Text = Math.Round(task.IntervalHours).ToString(CultureInfo.InvariantCulture), Width = 48, Margin = new Thickness(12, 0, 4, 0), VerticalContentAlignment = VerticalAlignment.Center };
-        var set = Button(_pl ? "Ustaw" : "Set"); set.Click += (_, _) => { if (double.TryParse(interval.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out var hours)) { PrinterInsights.SetInterval(_printer.Serial, task.Id, hours); Rebuild(); } };
-        actions.Children.Add(done); actions.Children.Add(snooze); actions.Children.Add(interval); actions.Children.Add(Text(10, FontWeights.Normal, "h", Muted())); actions.Children.Add(set);
+        actions.Children.Add(done); Grid.SetColumn(snooze, 1); actions.Children.Add(snooze);
+        var interval = new TextBox
+        {
+            Text = Math.Round(task.IntervalHours).ToString(CultureInfo.InvariantCulture), Width = 48, Height = 28,
+            TextAlignment = TextAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(0), Margin = new Thickness(5, 0, 5, 0), FontWeight = FontWeights.SemiBold,
+            Background = GTheme.Brush(GTheme.Surface), Foreground = GTheme.Brush(GTheme.Text), BorderBrush = GTheme.Brush(GTheme.Line)
+        };
+        var set = Button(_pl ? "Ustaw" : "Set");
+        set.Click += (_, _) => { if (double.TryParse(interval.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out var hours)) { PrinterInsights.SetInterval(_printer.Serial, task.Id, hours); Rebuild(); } };
+        var intervalRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        intervalRow.Children.Add(Text(10, FontWeights.Normal, _pl ? "Co" : "Every", Muted())); intervalRow.Children.Add(interval);
+        intervalRow.Children.Add(Text(10, FontWeights.Normal, "h", Muted())); intervalRow.Children.Add(set);
+        Grid.SetColumn(intervalRow, 3); actions.Children.Add(intervalRow);
         stack.Children.Add(actions);
-        return new Border { Background = GTheme.Brush(GTheme.Surface), BorderBrush = task.IsUrgent ? new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x4E)) : task.IsDue ? new SolidColorBrush(Color.FromRgb(0xF2, 0xC9, 0x4C)) : GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(11), Margin = new Thickness(0, 8, 0, 0), Child = stack };
+        return new Border
+        {
+            Background = GTheme.Brush(GTheme.Surface),
+            BorderBrush = task.IsUrgent ? new SolidColorBrush(Color.FromArgb(0x8C, 0xFF, 0x5A, 0x4E)) : task.IsDue ? new SolidColorBrush(Color.FromArgb(0x72, 0xF2, 0xC9, 0x4C)) : GTheme.Brush(GTheme.Line),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(11), Margin = new Thickness(0, 8, 0, 0), Child = stack
+        };
     }
 
-    private void ShowHistory()
-    {
-        var rows = PrinterInsights.GetSnapshot(_printer.Serial, _pl).History.Select(value =>
-            $"{value.EndedAt:g} · {(string.IsNullOrWhiteSpace(value.Job) ? "—" : value.Job)} · {Duration(value.DurationSeconds)}");
-        MessageBox.Show(this, string.Join("\n", rows.DefaultIfEmpty(_pl ? "Brak historii." : "No history.")),
-            _pl ? "Pełna historia" : "Full history", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
+    private void ShowInstructions() => MessageBox.Show(Window.GetWindow(Root),
+        _pl ? "Wyłącz i ostudź drukarkę. Oczyść prowadnice, zastosuj środek zalecany przez producenta, sprawdź paski i dyszę. Instrukcja producenta ma pierwszeństwo."
+            : "Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide takes precedence.",
+        _pl ? "Instrukcje konserwacji" : "Maintenance instructions", MessageBoxButton.OK, MessageBoxImage.Information);
 
     private static string Duration(double seconds) { int minutes = (int)(seconds / 60); return minutes >= 60 ? $"{minutes / 60}h {minutes % 60}m" : $"{minutes}m"; }
     private static TextBlock Text(double size, FontWeight weight, string value, Brush? color = null) => new() { Text = value, FontSize = size, FontWeight = weight, Foreground = color ?? GTheme.Brush(GTheme.Text), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };

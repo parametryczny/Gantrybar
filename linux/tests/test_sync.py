@@ -158,13 +158,15 @@ class HmsResolverTests(unittest.TestCase):
         root = Path(tempfile.mkdtemp())
         (root / "hms").mkdir()
         (root / "hms" / "hms_pl_01P.json").write_text(json.dumps([
-            {"ecode": "0000_0001", "intro": "Sprawdź prowadzenie filamentu"}
+            {"ecode": "0000_0001", "intro": "Sprawdź prowadzenie filamentu"},
+            {"ecode": "0500_0600_0002_0070", "intro": ""}
         ]), encoding="utf-8")
         hms._CACHE.clear()
         with patch("gantry.hms._roots", return_value=[root]):
             self.assertEqual(hms.description(["00000001"], "01P123", "pl"),
                              "Sprawdź prowadzenie filamentu")
             self.assertEqual(hms.description(["DEADBEEF"], "01P123", "pl"), "HMS DEADBEEF")
+            self.assertEqual(hms.actionable_codes(["0500060000020070"], "01P123", "pl"), [])
 
 
 class BambuDetailParseTests(unittest.TestCase):

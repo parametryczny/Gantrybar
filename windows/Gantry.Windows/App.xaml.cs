@@ -86,7 +86,12 @@ public partial class App : Application
         });
 
         _tray = new TrayIcon(_store);
-        NotificationService.Sink = (title, body, subtitle) => _tray.ShowNotification(title, body, subtitle);
+        WindowsToast.Initialize(() => dispatcher.BeginInvoke(_tray.ShowDashboardFromNotification));
+        NotificationService.Sink = (title, body, subtitle) =>
+        {
+            void Show() => _tray?.ShowNotification(title, body, subtitle);
+            if (dispatcher.CheckAccess()) Show(); else dispatcher.BeginInvoke(Show);
+        };
 
         if (LaunchAtLogin.IsEnabled) LaunchAtLogin.SetEnabled(true); // refresh path
 
