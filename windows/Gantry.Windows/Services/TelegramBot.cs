@@ -447,5 +447,8 @@ public sealed class TelegramBot
 
     /// <summary>Runs a store-touching read/action on the UI thread (the store is updated there).</summary>
     private static T OnUi<T>(Func<T> body)
-        => Application.Current?.Dispatcher.Invoke(body) ?? body();
+    {
+        var app = Application.Current;
+        return app != null ? app.Dispatcher.Invoke(body) : body();
+    }
 }
