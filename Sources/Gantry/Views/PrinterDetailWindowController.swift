@@ -474,8 +474,13 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     @objc private func openMaintenance() {
-        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
-        MaintenancePanelWindowController.show(printer: printer, telemetry: store.telemetry[serial] ?? PrinterTelemetry())
+        guard let printer = store.printers.first(where: { $0.serial == serial }),
+              let host = view.window?.contentView else { return }
+        MaintenancePanelViewController.show(
+            printer: printer,
+            telemetry: store.telemetry[serial] ?? PrinterTelemetry(),
+            in: host
+        )
     }
 
     @objc private func showPrintHistory() {

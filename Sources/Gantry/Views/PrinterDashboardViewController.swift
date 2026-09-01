@@ -635,7 +635,7 @@ final class PrinterDashboardViewController: NSViewController {
             onShowDetails: { [weak self] in self?.onShowDetails(printer.serial) },
             onShowMaintenance: { [weak self] in
                 guard let self, let current = self.store.printers.first(where: { $0.serial == printer.serial }) else { return }
-                MaintenancePanelWindowController.show(printer: current,
+                self.showMaintenanceOverlay(printer: current,
                     telemetry: self.store.telemetry[printer.serial] ?? PrinterTelemetry())
             },
             onOpenSlicer: { url in SlicerLauncher.open(url) },
@@ -651,6 +651,16 @@ final class PrinterDashboardViewController: NSViewController {
                 self?.store.movePrinter(serial: sourceSerial, relativeTo: targetSerial, insertAfter: insertAfter)
             }
         )
+    }
+
+    private func showMaintenanceOverlay(printer: SavedPrinter, telemetry: PrinterTelemetry) {
+        guard let host = view.window?.contentView else { return }
+        MaintenancePanelViewController.dismiss()
+        PrinterCardView.dismissSpoolOverlay()
+        beginSpoolOverlaySizing()
+        MaintenancePanelViewController.show(printer: printer, telemetry: telemetry, in: host) {
+            PrinterDashboardViewController.endSpoolOverlaySizing()
+        }
     }
 
     /// Toggles whether one printer's full card is shown beneath its compact row (accordion).

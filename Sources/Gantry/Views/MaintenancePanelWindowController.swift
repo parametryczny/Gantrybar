@@ -1,64 +1,88 @@
 import AppKit
 
-/// Small, non-modal per-printer maintenance panel opened from the card badge and Details.
+/// Dimmed in-window backdrop. Clicking outside the maintenance card closes it.
+private final class MaintenanceBackdropView: NSView {
+    var onClickOutside: (() -> Void)?
+    override func mouseDown(with event: NSEvent) { onClickOutside?() }
+}
+
+/// Per-printer maintenance card presented inside Gantry's existing popover/window.
 @MainActor
-final class MaintenancePanelWindowController: NSWindowController, NSWindowDelegate {
-    private static var active: [String: MaintenancePanelWindowController] = [:]
+final class MaintenancePanelViewController: NSViewController {
+    private static weak var activeBackdrop: NSView?
+    private static var activeController: MaintenancePanelViewController?
+    private static var activeOnDismiss: (() -> Void)?
 
     private let printer: SavedPrinter
     private var telemetry: PrinterTelemetry
     private var body = NSStackView()
 
-    static func show(printer: SavedPrinter, telemetry: PrinterTelemetry) {
-        if let existing = active[printer.serial] {
-            existing.telemetry = telemetry
-            existing.rebuild()
-            existing.present()
-            return
-        }
-        let controller = MaintenancePanelWindowController(printer: printer, telemetry: telemetry)
-        active[printer.serial] = controller
-        controller.present()
+    static func show(printer: SavedPrinter, telemetry: PrinterTelemetry, in host: NSView,
+                     onDismiss: (() -> Void)? = nil) {
+        dismiss()
+        let controller = MaintenancePanelViewController(printer: printer, telemetry: telemetry)
+        let backdrop = MaintenanceBackdropView(frame: host.bounds)
+        backdrop.autoresizingMask = [.width, .height]
+        backdrop.wantsLayer = true
+        backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.34).cgColor
+        backdrop.onClickOutside = { MaintenancePanelViewController.dismiss() }
+
+        let panel = controller.view
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        backdrop.addSubview(panel)
+        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 430)
+        preferredWidth.priority = .defaultHigh
+        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 560)
+        preferredHeight.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
+            panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
+            panel.widthAnchor.constraint(lessThanOrEqualTo: backdrop.widthAnchor, constant: -24),
+            panel.heightAnchor.constraint(lessThanOrEqualTo: backdrop.heightAnchor, constant: -24),
+            preferredWidth,
+            preferredHeight
+        ])
+        host.addSubview(backdrop)
+        activeBackdrop = backdrop
+        activeController = controller
+        activeOnDismiss = onDismiss
     }
 
-    private init(printer: SavedPrinter, telemetry: PrinterTelemetry) {
+    static func dismiss() {
+        activeBackdrop?.removeFromSuperview()
+        activeBackdrop = nil
+        activeController = nil
+        let completion = activeOnDismiss
+        activeOnDismiss = nil
+        completion?()
+    }
+
+    init(printer: SavedPrinter, telemetry: PrinterTelemetry) {
         self.printer = printer
         self.telemetry = telemetry
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 510),
-                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.minSize = NSSize(width: 390, height: 400)
-        window.isReleasedWhenClosed = false
-        window.collectionBehavior.insert(.moveToActiveSpace)
-        super.init(window: window)
-        window.delegate = self
-        rebuild()
+        super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { nil }
 
-    func windowWillClose(_ notification: Notification) {
-        Self.active[printer.serial] = nil
-    }
-
-    /// Gantry runs as an accessory/menu-bar app. Merely ordering an NSWindow is not enough when the
-    /// click originated inside a transient NSPopover: AppKit can close the popover without activating
-    /// the application, leaving the new window behind other apps. Use the same presentation sequence
-    /// as Settings and Advanced printer windows.
-    private func present() {
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    override func loadView() {
+        let panel = NSView(frame: NSRect(x: 0, y: 0, width: 430, height: 560))
+        panel.wantsLayer = true
+        panel.layer?.cornerRadius = 16
+        panel.layer?.borderWidth = 1
+        panel.layer?.borderColor = GantryTheme.line.cgColor
+        panel.layer?.backgroundColor = GantryTheme.canvas.withAlphaComponent(0.98).cgColor
+        panel.layer?.masksToBounds = true
+        view = panel
+        rebuild()
     }
 
     private func rebuild() {
-        guard let window else { return }
+        guard isViewLoaded else { return }
         let s = AppSettings.shared
-        window.appearance = s.appearance
-        window.title = s.text("Konserwacja · \(printer.name)", "Maintenance · \(printer.name)")
+        view.appearance = s.appearance
+        view.subviews.forEach { $0.removeFromSuperview() }
 
-        let content = NSView()
-        content.wantsLayer = true
-        content.layer?.backgroundColor = GantryTheme.canvas.cgColor
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -71,14 +95,30 @@ final class MaintenancePanelWindowController: NSWindowController, NSWindowDelega
 
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.language == .pl)
         let title = label(s.text("Konserwacja · \(printer.name)", "Maintenance · \(printer.name)"), 20, .bold)
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.text("Zamknij", "Close"))!,
+                             target: self, action: #selector(closePressed))
+        close.isBordered = false
+        close.contentTintColor = GantryTheme.secondary
+        close.toolTip = s.text("Zamknij", "Close")
+        let header = NSStackView(views: [title, NSView(), close])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 8
+        body.addArrangedSubview(header)
+        header.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         let summary = label(String(format: s.text("%.1f h druku · dysza %@", "%.1f print h · nozzle %@"),
                                    snapshot.totalPrintHours,
                                    telemetry.nozzleDiameter.map { String(format: "%.1f mm", $0) } ?? "—"),
                             12, .regular, GantryTheme.secondary)
-        body.addArrangedSubview(title)
         body.addArrangedSubview(summary)
 
-        for task in snapshot.tasks { body.addArrangedSubview(taskCard(task, settings: s)) }
+        for task in snapshot.tasks {
+            let card = taskCard(task, settings: s)
+            body.addArrangedSubview(card)
+            // The views must share a hierarchy before a cross-view constraint is activated.
+            // Activating this inside taskCard() caused an AppKit exception on every open.
+            card.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
+        }
 
         let historyTitle = label(s.text("OSTATNIE WYDRUKI", "RECENT PRINTS"), 10, .bold, GantryTheme.muted)
         body.addArrangedSubview(historyTitle)
@@ -111,22 +151,21 @@ final class MaintenancePanelWindowController: NSWindowController, NSWindowDelega
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(body)
         scroll.documentView = document
-        content.addSubview(scroll)
-        window.contentView = content
+        view.addSubview(scroll)
         NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: content.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
             body.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 18),
             body.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -18),
             body.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
-            body.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18),
-            title.widthAnchor.constraint(equalTo: body.widthAnchor)
+            body.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18)
         ])
-        window.center()
     }
+
+    @objc private func closePressed() { Self.dismiss() }
 
     private func taskCard(_ task: PrinterInsightsStore.TaskStatus, settings s: AppSettings) -> NSView {
         let box = NSView()
@@ -182,8 +221,7 @@ final class MaintenancePanelWindowController: NSWindowController, NSWindowDelega
             stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -10),
-            actions.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            box.widthAnchor.constraint(equalTo: body.widthAnchor)
+            actions.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
         return box
     }
