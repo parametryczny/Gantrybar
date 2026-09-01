@@ -182,9 +182,10 @@ final class TelegramBot {
             let loaded = group.slots.filter(\.isPresent)
             guard !loaded.isEmpty else { continue }
             let tiles = loaded.map { slot -> (String, String) in
-                let active = slot.isActive ? "● " : ""
-                let pct = slot.remainingPercent.map { " \($0)%" } ?? ""
-                let label = "\(colorDot(slot.colorHex))\(active)\(slot.label) \(slot.material ?? "")\(pct)"
+                // Keep it short so Telegram keeps four tiles on one row (long labels force full width).
+                let active = slot.isActive ? "●" : ""
+                let pct = slot.remainingPercent.map { "\($0)%" } ?? ""
+                let label = "\(colorDot(slot.colorHex))\(active)\(slot.material ?? "—") \(pct)"
                     .trimmingCharacters(in: .whitespaces)
                 return (label, "noop")
             }
