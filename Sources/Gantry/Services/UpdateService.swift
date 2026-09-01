@@ -81,7 +81,13 @@ enum UpdateService {
             }
             return nil
         }
-        guard let downloadURL = assetURL(matching: { $0.contains("macOS-Local") && $0.hasSuffix(".zip") })
+        // Pick the zip matching THIS install's signing variant, so the signature check below passes: a
+        // "Gantry Keychain.app" pulls the Keychain zip, a plain "Gantry.app" pulls the Local zip. Fall
+        // back to any macOS zip for older releases that shipped only one.
+        let isKeychain = Bundle.main.bundleURL.deletingPathExtension()
+            .lastPathComponent.localizedCaseInsensitiveContains("Keychain")
+        let variantTag = isKeychain ? "macOS-Keychain" : "macOS-Local"
+        guard let downloadURL = assetURL(matching: { $0.contains(variantTag) && $0.hasSuffix(".zip") })
             ?? assetURL(matching: { $0.contains("macOS") && $0.hasSuffix(".zip") }) else {
             throw UpdateError.noAsset
         }
