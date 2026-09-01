@@ -347,6 +347,330 @@ class DetailWindow(Gtk.Window):
         return False
 
 
+class PhaseStepper(Gtk.Box):
+    def __init__(self, pl: bool) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        self.labels = Gtk.Box()
+        self.prep = Gtk.Label(label="Przygotowanie" if pl else "Prep", xalign=0)
+        self.printing = Gtk.Label(label="Drukowanie" if pl else "Printing", xalign=0.5)
+        self.done = Gtk.Label(label="Zakończono" if pl else "Done", xalign=1)
+        for label in (self.prep, self.printing, self.done):
+            label.get_style_context().add_class("slot-id")
+            self.labels.pack_start(label, True, True, 0)
+        self.track = Gtk.ProgressBar(show_text=False)
+        self.track.set_size_request(-1, 8)
+        self.pack_start(self.labels, False, False, 0)
+        self.pack_start(self.track, False, False, 0)
+
+    def update(self, progress: int, state: PrinterState) -> None:
+        self.track.set_fraction(max(0, min(100, progress)) / 100)
+        active = 2 if state == PrinterState.FINISHED or progress >= 99 else (0 if progress < 2 else 1)
+        for index, label in enumerate((self.prep, self.printing, self.done)):
+            provider = Gtk.CssProvider()
+            provider.load_from_data(("label { color: %s; font-weight: %s; }" %
+                                     ("#f2f3f1" if index == active else "#6d716e",
+                                      "600" if index == active else "400")).encode())
+            label.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+
+
+class DetailPanel(Gtk.Box):
+    DEFAULT_ORDER = ["status", "camera", "ams", "temps", "fans", "control"]
+    TITLES = {
+        "camera": ("Kamera", "Camera"), "ams": ("Filamenty / AMS", "Filaments / AMS"),
+        "temps": ("Temperatury", "Temperatures"),
+        "fans": ("Wentylatory i prędkość", "Fans & speed"),
+        "control": ("Sterowanie i automatyzacje", "Control & automations"),
+    }
+
+    def __init__(self, app: Any, serial: str, on_back: Any) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.app, self.serial = app, serial
+        self.get_style_context().add_class("detail-root")
+        self.printer = next((p for p in app.printers if p.serial == serial), None)
+        self.printer_name = self.printer.name if self.printer else serial
+        self._camera_started = False
+
+        header = Gtk.Box(spacing=7)
+        back = Gtk.Button(label="‹ Wróć" if app.language == "pl" else "‹ Back")
+        back.set_relief(Gtk.ReliefStyle.NONE); back.get_style_context().add_class("cardmenu")
+        back.connect("clicked", lambda *_: on_back())
+        self.state_dot = Gtk.Label(label="")
+        self.state_dot.set_size_request(10, 10)
+        self.state_label = Gtk.Label(xalign=1)
+        self.state_label.get_style_context().add_class("status")
+        header.pack_start(back, False, False, 0)
+        header.pack_start(Gtk.Label(label=""), True, True, 0)
+        header.pack_start(self.state_dot, False, False, 0)
+        header.pack_start(self.state_label, False, False, 0)
+        self.pack_start(header, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.pack_start(scroll, True, True, 0)
+        self.card_stack = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.card_stack.set_border_width(2)
+        scroll.add(self.card_stack)
+
+        # Status card: large printer name / percent, file + layer, phase stepper and ETA.
+        status, status_body = self._card("status", None)
+        top = Gtk.Box(spacing=8)
+        self.name = Gtk.Label(label=self.printer_name, xalign=0, ellipsize=2)
+        self.name.get_style_context().add_class("title")
+        self.percent = Gtk.Label(label="0%", xalign=1); self.percent.get_style_context().add_class("percent")
+        top.pack_start(self.name, True, True, 0); top.pack_end(self.percent, False, False, 0)
+        file_row = Gtk.Box(spacing=8)
+        self.job = Gtk.Label(xalign=0, ellipsize=2); self.job.get_style_context().add_class("detail-value")
+        self.layer = Gtk.Label(xalign=1); self.layer.get_style_context().add_class("metric")
+        file_row.pack_start(self.job, True, True, 0); file_row.pack_end(self.layer, False, False, 0)
+        self.phase = PhaseStepper(app.language == "pl")
+        self.remaining = Gtk.Label(xalign=0); self.remaining.get_style_context().add_class("metric")
+        for widget in (top, file_row, self.phase, self.remaining): status_body.pack_start(widget, False, False, 0)
+
+        # Camera card embeds the same stream used by the standalone menu action.
+        camera, camera_body = self._card("camera", self._title("camera"))
+        from .camera import CameraView
+        access_code = None
+        if self.printer is not None and self.printer.kind == PrinterKind.BAMBU:
+            try: access_code = app.secrets.get(serial)
+            except Exception: access_code = None
+        self.camera_body = camera_body
+        self.camera_access_code = access_code
+        self.camera = CameraView(app, serial, access_code)
+        self.camera_body.pack_start(self.camera, False, False, 0)
+        advanced = Gtk.Button(label="Zaawansowane…" if app.language == "pl" else "Advanced…")
+        advanced.set_halign(Gtk.Align.END)
+        advanced.connect("clicked", lambda *_: app.open_advanced(serial))
+        self.camera_body.pack_start(advanced, False, False, 0)
+
+        ams, ams_body = self._card("ams", self._title("ams"))
+        self.ams = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        ams_body.pack_start(self.ams, False, False, 0)
+
+        temps, temps_body = self._card("temps", self._title("temps"))
+        self.graph = TempGraph(app, serial); self.graph.set_size_request(-1, 104)
+        self.temps = Gtk.Box(spacing=8, homogeneous=True)
+        temps_body.pack_start(self.graph, False, False, 0); temps_body.pack_start(self.temps, False, False, 0)
+
+        fans, fans_body = self._card("fans", self._title("fans"))
+        self.hardware = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        fans_body.pack_start(self.hardware, False, False, 0)
+
+        control, control_body = self._card("control", self._title("control"))
+        controls = Gtk.Box(spacing=6, homogeneous=True)
+        light_on = Gtk.Button(label="Światło wł." if app.language == "pl" else "Light on")
+        light_off = Gtk.Button(label="Światło wył." if app.language == "pl" else "Light off")
+        autos = Gtk.Button(label="Automatyzacje…" if app.language == "pl" else "Automations…")
+        light_on.connect("clicked", lambda *_: app.set_chamber_light(serial, True))
+        light_off.connect("clicked", lambda *_: app.set_chamber_light(serial, False))
+        autos.connect("clicked", lambda *_: app.open_automations(serial))
+        for button in (light_on, light_off, autos): controls.pack_start(button, True, True, 0)
+        control_body.pack_start(controls, False, False, 0)
+
+        supports_camera = self.printer is not None and self.printer.kind in {
+            PrinterKind.BAMBU, PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}
+        self.cards: dict[str, Gtk.Widget] = {"status": status, "ams": ams, "temps": temps, "fans": fans}
+        if supports_camera: self.cards["camera"] = camera
+        if supports_camera and app.config.data.get("developer_mode", False): self.cards["control"] = control
+        for card_id, card in self.cards.items(): self._make_draggable(card, card_id)
+
+        self.customize = Gtk.Button(label="Dostosuj" if app.language == "pl" else "Customize")
+        self.customize.set_relief(Gtk.ReliefStyle.NONE); self.customize.get_style_context().add_class("cardmenu")
+        self.customize.connect("clicked", self._customize)
+        self._layout_cards()
+        self.connect("map", self._start_camera)
+        self.connect("destroy", lambda *_: self.camera.stop())
+
+    def _title(self, card_id: str) -> str:
+        values = self.TITLES[card_id]
+        return values[0 if self.app.language == "pl" else 1]
+
+    def _card(self, card_id: str, title: str | None) -> tuple[Gtk.Box, Gtk.Box]:
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
+        card.get_style_context().add_class("detail-card")
+        if title:
+            heading = Gtk.Label(label=title.upper(), xalign=0); heading.get_style_context().add_class("detail-title")
+            card.pack_start(heading, False, False, 0)
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        card.pack_start(body, False, False, 0)
+        card._gantry_id = card_id  # type: ignore[attr-defined]
+        return card, body
+
+    def _order(self) -> list[str]:
+        saved = self.app.config.data.get("detail_card_order", [])
+        result = [value for value in saved if value in self.cards] if isinstance(saved, list) else []
+        return result + [value for value in self.DEFAULT_ORDER if value in self.cards and value not in result]
+
+    def _hidden(self) -> set[str]:
+        values = self.app.config.data.get("detail_hidden_modules", [])
+        return set(values) if isinstance(values, list) else set()
+
+    def _layout_cards(self) -> None:
+        for child in self.card_stack.get_children(): self.card_stack.remove(child)
+        hidden = self._hidden()
+        for card_id in self._order():
+            if card_id not in hidden: self.card_stack.pack_start(self.cards[card_id], False, False, 0)
+        self.card_stack.pack_start(self.customize, False, False, 0)
+        self.card_stack.show_all()
+        if "camera" in hidden: self.camera.stop()
+
+    def _customize(self, button: Gtk.Button) -> None:
+        menu = Gtk.Menu(); hidden = self._hidden()
+        for card_id in ("camera", "ams", "temps", "fans", "control"):
+            if card_id not in self.cards: continue
+            item = Gtk.CheckMenuItem(label=self._title(card_id)); item.set_active(card_id not in hidden)
+            item.connect("toggled", lambda value, key=card_id: self._toggle_module(key, value.get_active()))
+            menu.append(item)
+        menu.append(Gtk.SeparatorMenuItem())
+        reset = Gtk.MenuItem(label="Przywróć domyślny układ" if self.app.language == "pl" else "Restore default layout")
+        reset.connect("activate", lambda *_: self._reset_layout()); menu.append(reset)
+        menu.show_all()
+        window = getattr(self.app, "window", None)
+        if window is not None:
+            window._suppress_hide = True
+            menu.connect("deactivate", lambda *_: setattr(window, "_suppress_hide", False))
+        menu.popup_at_widget(button, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+
+    def _toggle_module(self, card_id: str, visible: bool) -> None:
+        hidden = self._hidden()
+        if visible: hidden.discard(card_id)
+        else: hidden.add(card_id)
+        self.app.config.data["detail_hidden_modules"] = sorted(hidden); self.app.config.save()
+        self._layout_cards()
+        if card_id == "camera":
+            if visible: self._replace_and_start_camera()
+            else:
+                self.camera.stop(); self._camera_started = False
+
+    def _reset_layout(self) -> None:
+        camera_was_hidden = "camera" in self._hidden()
+        self.app.config.data["detail_hidden_modules"] = []
+        self.app.config.data["detail_card_order"] = []
+        self.app.config.save(); self._layout_cards()
+        if camera_was_hidden and "camera" in self.cards: self._replace_and_start_camera()
+
+    def _make_draggable(self, card: Gtk.Widget, card_id: str) -> None:
+        target = Gtk.TargetEntry.new("application/x-gantry-detail-card", Gtk.TargetFlags.SAME_APP, 0)
+        card.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, [target], Gdk.DragAction.MOVE)
+        card.drag_dest_set(Gtk.DestDefaults.ALL, [target], Gdk.DragAction.MOVE)
+        card.connect("drag-data-get", lambda _w, _c, selection, _i, _t, key=card_id: selection.set_text(key, -1))
+        card.connect("drag-data-received", lambda _w, context, x, _y, selection, _i, timestamp, key=card_id:
+                     self._drop_card(context, x, selection, timestamp, key))
+
+    def _drop_card(self, context: Gdk.DragContext, x: int, selection: Gtk.SelectionData,
+                   timestamp: int, target: str) -> None:
+        source = selection.get_text() or ""
+        order = self._order()
+        if source in order and target in order and source != target:
+            order.remove(source); index = order.index(target)
+            width = max(1, self.cards[target].get_allocated_width())
+            order.insert(index + (1 if x >= width / 2 else 0), source)
+            self.app.config.data["detail_card_order"] = order; self.app.config.save(); self._layout_cards()
+        Gtk.drag_finish(context, True, True, timestamp)
+
+    def _start_camera(self, *_args: Any) -> None:
+        if self._camera_started or "camera" not in self.cards or "camera" in self._hidden(): return
+        self._camera_started = True; self.camera.start()
+
+    def _replace_and_start_camera(self) -> None:
+        from .camera import CameraView
+        self.camera.stop()
+        self.camera_body.remove(self.camera)
+        self.camera = CameraView(self.app, self.serial, self.camera_access_code)
+        self.camera_body.pack_start(self.camera, False, False, 0)
+        self.camera.show_all()
+        self._camera_started = True
+        self.camera.start()
+
+    def deactivate(self) -> None:
+        self.camera.stop()
+
+    def update(self, tel: Telemetry) -> None:
+        pl = self.app.language == "pl"
+        state = _STATES.get(tel.state, (tel.state.value, tel.state.value))[0 if pl else 1]
+        colors = {PrinterState.PRINTING: "#0a84ff", PrinterState.IDLE: "#30d158",
+                  PrinterState.FINISHED: "#30d158", PrinterState.PAUSED: "#ff9f0a",
+                  PrinterState.ERROR: "#ff453a", PrinterState.OFFLINE: "#8e8e93"}
+        color = colors[tel.state]
+        provider = Gtk.CssProvider(); provider.load_from_data(f"label {{ color: {color}; }}".encode())
+        self.state_dot.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        dot_provider = Gtk.CssProvider(); dot_provider.load_from_data(f"label {{ background: {color}; border-radius: 5px; }}".encode())
+        self.state_dot.get_style_context().add_provider(dot_provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        self.state_label.set_text(state); self.state_label.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        self.percent.set_text(f"{tel.progress}%"); self.phase.update(tel.progress, tel.state)
+        self.job.set_text(tel.job_name or "")
+        self.layer.set_text((f"Warstwa {tel.current_layer} / {tel.total_layers}" if pl else
+                             f"Layer {tel.current_layer} / {tel.total_layers}")
+                            if tel.current_layer is not None and tel.total_layers else "")
+        if tel.remaining_minutes and tel.state in {PrinterState.PRINTING, PrinterState.PAUSED}:
+            finish = (datetime.now() + timedelta(minutes=tel.remaining_minutes)).strftime("%H:%M")
+            remaining = (f"{tel.remaining_minutes // 60}h {tel.remaining_minutes % 60}m"
+                         if tel.remaining_minutes >= 60 else f"{tel.remaining_minutes}m")
+            self.remaining.set_text(f"{remaining} · {finish}")
+        else: self.remaining.set_text("")
+        self._fill_temperatures(tel, pl); self._fill_hardware(tel, pl); self._fill_filaments(tel)
+        self.graph.queue_draw(); self.show_all()
+
+    def _fill_temperatures(self, tel: Telemetry, pl: bool) -> None:
+        self._clear(self.temps)
+        nozzles = tel.nozzles; dual = any(n.position == "right" for n in nozzles)
+        values: list[tuple[str, float | None, float | None]] = []
+        if dual:
+            left = next((n for n in nozzles if n.position == "left"), nozzles[0])
+            right = next((n for n in nozzles if n.position == "right"), None)
+            values.extend([("L", left.current, left.target), ("P" if pl else "R", right.current if right else None, right.target if right else None)])
+        else:
+            nozzle = nozzles[0] if nozzles else None
+            values.append(("Dysza" if pl else "Nozzle", nozzle.current if nozzle else tel.nozzle,
+                           nozzle.target if nozzle else tel.nozzle_target))
+        values.append(("Stół" if pl else "Bed", tel.bed, tel.bed_target))
+        if tel.chamber is not None: values.append(("Komora" if pl else "Chamber", tel.chamber, None))
+        for name, current, target in values:
+            self.temps.pack_start(self._metric(name, self._temp(current, target)), True, True, 0)
+
+    def _fill_hardware(self, tel: Telemetry, pl: bool) -> None:
+        self._clear(self.hardware); fan = lambda value: "—" if value is None else f"{value}%"
+        fan_row = Gtk.Box(spacing=8, homogeneous=True)
+        for name, value in (("Part", fan(tel.part_fan)), ("Aux", fan(tel.aux_fan)), ("Chamber", fan(tel.chamber_fan))):
+            fan_row.pack_start(self._metric(name, value), True, True, 0)
+        self.hardware.pack_start(fan_row, False, False, 0)
+        if tel.speed_level or tel.speed_percent is not None:
+            speed = _SPEED_NAMES.get(tel.speed_level or 0, ("—", "—"))[0 if pl else 1]
+            if tel.speed_percent is not None: speed += f" · {tel.speed_percent}%"
+            self.hardware.pack_start(self._metric("Prędkość" if pl else "Speed", speed), False, False, 0)
+        if tel.nozzle_diameter:
+            self.hardware.pack_start(self._metric("Średnica dyszy" if pl else "Nozzle diameter", f"⌀ {tel.nozzle_diameter:.1f} mm"), False, False, 0)
+
+    def _fill_filaments(self, tel: Telemetry) -> None:
+        self._clear(self.ams)
+        for group in tel.filament_groups:
+            title = Gtk.Label(label=group.display_name, xalign=0); title.get_style_context().add_class("detail-value")
+            self.ams.pack_start(title, False, False, 0)
+            slots = Gtk.Box(spacing=5, homogeneous=True)
+            for slot in group.slots:
+                text = slot.material or "—"
+                if slot.remaining is not None: text += f" · {slot.remaining}%"
+                chip = Gtk.Label(label=f"{slot.label}\n{text}"); chip.get_style_context().add_class("metric")
+                slots.pack_start(chip, True, True, 0)
+            self.ams.pack_start(slots, False, False, 0)
+
+    @staticmethod
+    def _clear(container: Gtk.Container) -> None:
+        for child in container.get_children(): container.remove(child)
+
+    @staticmethod
+    def _metric(name: str, value: str) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        label = Gtk.Label(label=name.upper()); label.get_style_context().add_class("detail-title")
+        data = Gtk.Label(label=value); data.get_style_context().add_class("detail-value")
+        box.pack_start(label, False, False, 0); box.pack_start(data, False, False, 0)
+        return box
+
+    @staticmethod
+    def _temp(current: float | None, target: float | None) -> str:
+        if current is None: return "—"
+        return f"{current:.0f}° / {target:.0f}°" if target else f"{current:.0f}° / —"
+
+
 def _rounded(cr: Any, x: float, y: float, w: float, h: float, r: float) -> None:
     import math
     cr.new_sub_path()

@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Gantry.Models;
 using Gantry.Services;
 
@@ -16,6 +17,7 @@ namespace Gantry.UI;
 public partial class DashboardWindow : Window
 {
     private readonly PrinterStore _store;
+    private AddPrinterWindow? _printerWindow;
 
     public DashboardWindow(PrinterStore store)
     {
@@ -24,13 +26,19 @@ public partial class DashboardWindow : Window
         // Rounded corners, an acrylic backdrop and a native shadow — the Windows 11 flyout look,
         // closer to the macOS popover than a plain window. No-ops safely on older Windows.
         SourceInitialized += (_, _) => ApplyModernChrome();
-        ScanButton.Click += (_, _) => _store.Scan();
+        ScanButton.Click += (_, _) =>
+        {
+            // Same contract as the macOS ↻ button: reconnect immediately, then refresh any
+            // automatically-generated printer names in the background.
+            _store.ReconnectAll();
+            _store.RefreshPrinterNames();
+        };
         ClearButton.Click += (_, _) => _store.ResetCompletedStatuses();
         AddButton.Click += (_, _) => OpenAddWindow();
         CompactButton.Click += (_, _) => ToggleCompact();
         ColumnsButton.Click += (_, _) => { AppSettings.DashboardColumns = AppSettings.DashboardColumns == 2 ? 1 : 2; Rebuild(); };
         _store.Updated += OnStoreUpdated;
-        Closed += (_, _) => _store.Updated -= OnStoreUpdated;
+        Closed += (_, _) => { _store.Updated -= OnStoreUpdated; StopTransparencyRefresh(); };
         // A spool assignment should reflect on the cards immediately.
         SpoolbaseShared.Spools.Changed += OnSpoolsChanged;
         Closed += (_, _) => SpoolbaseShared.Spools.Changed -= OnSpoolsChanged;
@@ -47,6 +55,7 @@ public partial class DashboardWindow : Window
         // Accept drag-over across the whole panel so the drag "ghost" keeps following the cursor even
         // over gaps between cards (drops still reorder via each card's own Drop handler).
         PanelBody.AllowDrop = true;
+        ApplyThemeVisuals();
         Rebuild();
     }
 
@@ -58,6 +67,26 @@ public partial class DashboardWindow : Window
     // rolls/filaments show even for a single short printer card — and the per-tick content-fit is
     // suspended so it doesn't shrink the window back under the open panel (parity with macOS).
     private bool _spoolOverlayActive;
+    private DispatcherTimer? _transparencyRefreshTimer;
+    private DateTime _transparencyRefreshUntil;
+    private double? _transparencyPulseWidth;
+
+    public void RefreshTheme()
+    {
+        ApplyThemeVisuals();
+        ApplyModernChrome();
+        _views.Clear(); _renderedSerials = new(); Rebuild();
+    }
+
+    private void ApplyThemeVisuals()
+    {
+        Foreground = GTheme.Brush(GTheme.Text);
+        BrandText.Foreground = GTheme.Brush(GTheme.Text);
+        StatusLine.Foreground = GTheme.Brush(GTheme.Secondary);
+        FooterText.Foreground = GTheme.Brush(GTheme.Muted);
+        DetailLayer.Background = GTheme.Brush(GTheme.Canvas);
+        ApplyPanelTransparency();
+    }
     private void OnSpoolsChanged() => Dispatcher.Invoke(Rebuild);
 
     /// <summary>Shows the spool-assignment panel for a slot as a dimmed in-window overlay.</summary>
@@ -293,12 +322,19 @@ public partial class DashboardWindow : Window
     [DllImport("dwmapi.dll")]
     private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
 
+    [DllImport("user32.dll")]
+    private static extern bool RedrawWindow(IntPtr hwnd, IntPtr updateRect, IntPtr updateRegion, uint flags);
+
     // DWM attribute + backdrop constants used below.
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
     private const int DWMSBT_NONE = 1;              // no system backdrop (used to force a DWM recompose)
     private const int DWMSBT_TRANSIENTWINDOW = 3;   // Desktop Acrylic (transient flyout)
+    private const uint RDW_INVALIDATE = 0x0001;
+    private const uint RDW_ALLCHILDREN = 0x0080;
+    private const uint RDW_UPDATENOW = 0x0100;
+    private const uint RDW_FRAME = 0x0400;
 
     /// <summary>Turns the flyout into a real Desktop Acrylic (frosted glass) panel: a transparent WPF
     /// composition surface with the DWM frame extended across the whole window, so the acrylic backdrop
@@ -317,7 +353,7 @@ public partial class DashboardWindow : Window
         var margins = new MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
         try { DwmExtendFrameIntoClientArea(hwnd, ref margins); } catch { }
 
-        int dark = 1, round = 2;
+        int dark = GTheme.IsLight ? 0 : 1, round = 2;
         try
         {
             DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
@@ -347,7 +383,32 @@ public partial class DashboardWindow : Window
         // Fallback: if the OS has transparency effects off (or acrylic is unavailable), a translucent
         // tint would sit over a flat backdrop and look washed out — use a solid dark panel instead.
         if (!TransparencyEffectsEnabled()) alpha = 0xF2;
-        PanelBody.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x24, 0x24, 0x26));
+        var baseColor = GTheme.IsLight ? Color.FromRgb(0xF2, 0xF2, 0xF4) : Color.FromRgb(0x24, 0x24, 0x26);
+        var target = Color.FromArgb(alpha, baseColor.R, baseColor.G, baseColor.B);
+
+        // Keep one mutable brush and animate from its currently rendered colour. Reading Color before
+        // replacing a running animation also makes rapid Low → Medium → High clicks continue from the
+        // in-between frame instead of snapping back to the previous preset.
+        var brush = PanelBody.Background as SolidColorBrush;
+        var current = brush?.Color ?? target;
+        if (brush is null || brush.IsFrozen)
+        {
+            brush = new SolidColorBrush(current);
+            PanelBody.Background = brush;
+        }
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+        brush.Color = target; // base value retained after the animation finishes
+        if (IsLoaded && current != target)
+        {
+            brush.BeginAnimation(
+                SolidColorBrush.ColorProperty,
+                new ColorAnimation(current, target, TimeSpan.FromMilliseconds(200))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                    FillBehavior = FillBehavior.Stop,
+                },
+                HandoffBehavior.SnapshotAndReplace);
+        }
 
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
@@ -365,19 +426,56 @@ public partial class DashboardWindow : Window
         }
         catch { }
 
-        // What actually makes it show live is a window RESIZE (that is why entering/leaving details, which
-        // re-fits the height, refreshes the glass): DWM only recomposes the acrylic on a real size change.
-        // So nudge the height by 1px and restore it on the next frame — invisible, but it forces the
-        // recompose immediately without waiting for a layout rebuild.
-        if (IsVisible && !_spoolOverlayActive)
+        RefreshAcrylicDuringAnimation(hwnd);
+    }
+
+    /// <summary>DWM can cache the acrylic surface even though WPF is animating the tint brush. Keep a
+    /// real 1 px size change alive for the whole transition and request a native redraw on every frame;
+    /// restoring it on the next dispatcher frame was too fast and Windows coalesced both resizes.</summary>
+    private void RefreshAcrylicDuringAnimation(IntPtr hwnd)
+    {
+        _transparencyRefreshUntil = DateTime.UtcNow.AddMilliseconds(240);
+        if (IsVisible && _transparencyPulseWidth is null)
         {
-            double h = Height;
-            Height = h + 1;
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                if (IsVisible && !_spoolOverlayActive && Math.Abs(Height - (h + 1)) < 0.5) Height = h;
-            }), System.Windows.Threading.DispatcherPriority.Render);
+            _transparencyPulseWidth = Width;
+            Width += 1;
         }
+
+        _transparencyRefreshTimer ??= CreateTransparencyRefreshTimer();
+        if (!_transparencyRefreshTimer.IsEnabled) _transparencyRefreshTimer.Start();
+        ForceNativeRedraw(hwnd);
+    }
+
+    private DispatcherTimer CreateTransparencyRefreshTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        timer.Tick += (_, _) =>
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero) ForceNativeRedraw(hwnd);
+            if (DateTime.UtcNow < _transparencyRefreshUntil) return;
+            StopTransparencyRefresh();
+            hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero) ForceNativeRedraw(hwnd);
+        };
+        return timer;
+    }
+
+    private void StopTransparencyRefresh()
+    {
+        _transparencyRefreshTimer?.Stop();
+        if (_transparencyPulseWidth is not { } originalWidth) return;
+        // Do not overwrite a legitimate width change made while the animation was running.
+        if (Math.Abs(Width - (originalWidth + 1)) < 0.5) Width = originalWidth;
+        _transparencyPulseWidth = null;
+    }
+
+    private void ForceNativeRedraw(IntPtr hwnd)
+    {
+        PanelBody.InvalidateVisual();
+        InvalidateVisual();
+        RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero,
+            RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW);
     }
 
     /// <summary>Whether Windows has transparency effects enabled (Settings → Personalisation → Colours).
@@ -402,8 +500,22 @@ public partial class DashboardWindow : Window
 
     private void OpenAddWindow()
     {
-        var window = new AddPrinterWindow(_store) { Owner = this };
-        window.ShowDialog();
+        OpenPrinterWindow(null);
+    }
+
+    private void OpenPrinterWindow(SavedPrinter? editing)
+    {
+        if (_printerWindow is { IsVisible: true } existing)
+        {
+            existing.Activate();
+            existing.WindowState = WindowState.Normal;
+            return;
+        }
+        var window = new AddPrinterWindow(_store, editing) { Owner = this };
+        _printerWindow = window;
+        window.Closed += (_, _) => { if (ReferenceEquals(_printerWindow, window)) _printerWindow = null; };
+        window.Show();
+        window.Activate();
     }
 
     /// <summary>Opens the add-printer dialog — same as the panel's + button (used from the tray menu).</summary>
@@ -483,7 +595,7 @@ public partial class DashboardWindow : Window
             CardsPanel.RowDefinitions.Clear();
             if (compact)
             {
-                Width = 500;
+                Width = 512;
                 CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 for (int row = 0; row < _store.Printers.Count; row++)
                 {
@@ -496,10 +608,10 @@ public partial class DashboardWindow : Window
             }
             else
             {
-                // macOS contract: user picks 1 or 2 columns. A wide card (dual-nozzle / multi-AMS) spans
-                // the full width; a lone last card also stretches full width (the 2-2-1 rule).
+                // macOS contract: user picks 1 or 2 columns. A wide card (dual-nozzle / multi-AMS)
+                // spans the full width; the last card also fills an otherwise empty final row.
                 int cols = AppSettings.DashboardColumns;
-                Width = cols == 1 ? 400 : 600;
+                Width = cols == 1 ? 380 : 563;
                 for (int i = 0; i < cols; i++)
                     CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 int row = 0, column = 0;
@@ -509,8 +621,7 @@ public partial class DashboardWindow : Window
                     var printer = printers[idx];
                     int span = wideSerials.Contains(printer.Serial) ? cols : 1;
                     if (column + span > cols) { row++; column = 0; }
-                    // Last card, alone at the start of a fresh row → let it fill the width.
-                    if (cols > 1 && column == 0 && span == 1 && idx == printers.Count - 1) span = cols;
+                    if (idx == printers.Count - 1 && column == 0) span = cols;
                     while (CardsPanel.RowDefinitions.Count <= row)
                         CardsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                     var root = live[printer.Serial].Root;
@@ -691,7 +802,7 @@ public partial class DashboardWindow : Window
                 var p = e.GetPosition(null);
                 if (Math.Abs(p.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-                _owner.BeginCardDrag(Root, Serial);
+                _owner.BeginCardDrag(Root!, Serial);
             };
             Grid.SetColumn(gripChip, 2);
             header.Children.Add(gripChip);
@@ -765,7 +876,7 @@ public partial class DashboardWindow : Window
             // because an NFC roll was inserted into its slot).
             _noticeText = new TextBlock { FontSize = 10.5, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Text), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
             var noticeOk = new Button { Content = "OK", MinWidth = 40, Height = 24, Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(10, 0, 10, 0), FontSize = 11, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Background = GTheme.Brush(GTheme.Accent), Foreground = GTheme.Brush(GTheme.Canvas) };
-            noticeOk.Click += (_, _) => { _noticeBanner.Visibility = Visibility.Collapsed; _onDismissNotice?.Invoke(); };
+            noticeOk.Click += (_, _) => { _noticeBanner!.Visibility = Visibility.Collapsed; _onDismissNotice?.Invoke(); };
             var noticeGrid = new Grid();
             noticeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             noticeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -791,7 +902,8 @@ public partial class DashboardWindow : Window
                 BorderBrush = GTheme.Brush(GTheme.Line),
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(10, 6, 10, 6),
-                Margin = new Thickness(3),
+                Margin = new Thickness(GTheme.FleetColumnGap / 2, GTheme.FleetRowGap / 2,
+                                       GTheme.FleetColumnGap / 2, GTheme.FleetRowGap / 2),
                 Width = width,
                 Child = rootGrid
             };
@@ -828,6 +940,8 @@ public partial class DashboardWindow : Window
                 PrinterKind.Klipper => "KLIPPER",
                 PrinterKind.Prusa => "PRUSALINK",
                 PrinterKind.Snapmaker => "HTTP",
+                PrinterKind.ElegooCc1 => "SDCP",
+                PrinterKind.ElegooCc2 => "MQTT LAN",
                 _ => "LAN"
             };
             // Neutral card contract: state is carried by the label + icon, never by colour. Only the
@@ -995,7 +1109,7 @@ public partial class DashboardWindow : Window
                 var p = e.GetPosition(null);
                 if (Math.Abs(p.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-                _owner.BeginCardDrag(Root, Serial);
+                _owner.BeginCardDrag(Root!, Serial);
             };
             Grid.SetColumn(grip, 0); grid.Children.Add(grip);
 
@@ -1224,7 +1338,7 @@ public partial class DashboardWindow : Window
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.35, GridUnitType.Star), MinWidth = 60 });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.325, GridUnitType.Star) });
             var slot = group.Slots[0];
-            var chip = SlotChip(slot, group.IsExternal, SlotLoc(0), SlotTitle(slot), onSlotClick);
+            var chip = SlotChip(slot, group.IsExternal, SlotLoc(0), SlotTitle(slot), onSlotClick, isSingle: true);
             chip.HorizontalAlignment = HorizontalAlignment.Stretch;
             Grid.SetColumn(chip, 1);
             g.Children.Add(chip);
@@ -1269,7 +1383,8 @@ public partial class DashboardWindow : Window
     /// <summary>One filament slot: a big colour swatch that fills its share of the module, with the
     /// label beneath it. Active slot gets a white ring; empty slots stay grey and keep their spot.</summary>
     private static StackPanel SlotChip(FilamentSlot slot, bool external, SpoolLocation? location = null,
-        string title = "", Action<SpoolLocation, string, string?, string?>? onClick = null)
+        string title = "", Action<SpoolLocation, string, string?, string?>? onClick = null,
+        bool isSingle = false)
     {
         // A manually-assigned physical spool (Spoolbase) wins over the AMS reading for %/colour/grams.
         var assignedSpool = location != null ? SpoolbaseShared.Spools.SpoolAt(location) : null;
@@ -1282,9 +1397,17 @@ public partial class DashboardWindow : Window
             : Color.FromArgb(0x28, 0x8E, 0x8E, 0x93);
         if (AppSettings.Monochrome) color = MutedTowardGrey(color);   // calmer filament colours
         string materialText = slot.IsPresent ? (slot.Material ?? "—") : (assignedDef?.Type ?? "—");
-        const double SwatchHeight = 24;
+        // Exact macOS contract: multi-slot swatches cap at 56 DIP (AMS/CFS) or 92 DIP (external).
+        // A lone slot instead occupies 35% of its module with a 60 DIP floor; GroupBlock supplies that
+        // centred column, so it deliberately has no max-width cap here.
+        const double SwatchHeight = 18;
+        double swatchMaxWidth = external ? 92 : 56;
         double frac = present && effPct is { } fp ? Math.Clamp(fp / 100.0, 0, 1) : 1.0;
-        var swatchGrid = new Grid();
+        var swatchGrid = new Grid
+        {
+            MaxWidth = isSingle ? double.PositiveInfinity : swatchMaxWidth + 6,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
         var swatch = new Border
         {
             // Dim base + a solid fill rising from the bottom by the remaining amount (matches macOS).
@@ -1292,7 +1415,9 @@ public partial class DashboardWindow : Window
             CornerRadius = new CornerRadius(present ? 6 : 5),
             Height = SwatchHeight,
             MinWidth = 24,
-            Margin = new Thickness(3, 0, 3, 0),
+            MaxWidth = isSingle ? double.PositiveInfinity : swatchMaxWidth,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = isSingle ? new Thickness(0) : new Thickness(3, 0, 3, 0),
             ClipToBounds = true,
             BorderThickness = new Thickness(slot.IsActive ? 1.5 : 0.5),
             BorderBrush = slot.IsActive ? GTheme.Brush(GTheme.W(0.8)) : GTheme.Brush(present ? Color.FromArgb(0x1F, 0x00, 0x00, 0x00) : GTheme.Line),
@@ -1458,8 +1583,6 @@ public partial class DashboardWindow : Window
         }
 
         Item(AppSettings.Text("Szczegóły", "Details"), () => ShowDetail(serial));
-        Item(AppSettings.Text("Zaawansowane…", "Advanced…"), () => new AdvancedWindow(_store, serial) { Owner = this }.Show());
-
         Item(AppSettings.Text("Połącz ponownie", "Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 
         var slicers = SlicerLauncher.Installed();
@@ -1479,7 +1602,7 @@ public partial class DashboardWindow : Window
 
         Item(AppSettings.Text("Edytuj drukarkę", "Edit printer"), () =>
         {
-            if (Current() is { } p) { new AddPrinterWindow(_store, p) { Owner = this }.ShowDialog(); }
+            if (Current() is { } p) OpenPrinterWindow(p);
         });
         Item(AppSettings.Text("Usuń drukarkę", "Remove printer"), () =>
         {

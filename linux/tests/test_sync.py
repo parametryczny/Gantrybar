@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from gantry.physicalspool import PhysicalSpoolStore, same_slot, location_for
 from gantry.sync import make_token, normalize_address
@@ -51,6 +52,24 @@ class PhysicalSpoolMergeTests(unittest.TestCase):
         st.set_remaining(second["id"], 0)
         self.assertEqual(second["status"], "empty")
 
+    def test_create_rolls_correct_reset_and_delete(self):
+        st = _store()
+        changes = []
+        st.on_change = lambda: changes.append(True)
+        rolls = st.create_rolls("def-1", 2, 1000)
+        self.assertEqual([roll["id"] for roll in rolls], ["SP-00001", "SP-00002"])
+        self.assertEqual(rolls[0]["status"], "new")
+        self.assertEqual(rolls[0]["location"], {})
+        st.correct_weight(rolls[0]["id"], 700, 235)
+        self.assertEqual(rolls[0]["remainingWeightGrams"], 700)
+        self.assertEqual(rolls[0]["tareGrams"], 235)
+        st.reset_to_full(rolls[0]["id"])
+        self.assertEqual(rolls[0]["remainingWeightGrams"], 1000)
+        self.assertEqual(rolls[0]["status"], "new")
+        st.delete(rolls[1]["id"])
+        self.assertIsNone(st.spool(rolls[1]["id"]))
+        self.assertGreaterEqual(len(changes), 4)
+
     def test_percent_and_slot_match(self):
         st = _store()
         self.assertEqual(st.percent({"nominalWeightGrams": 1000, "remainingWeightGrams": 250}), 25)
@@ -81,14 +100,10 @@ except Exception:
     _HAS_GI = False
 
 
-@unittest.skipUnless(_HAS_GI, "spoolbase needs GTK (gi); skipped off-target")
 class CatalogMergeTests(unittest.TestCase):
     def test_last_write_wins_by_id(self):
-        from gantry.spoolbase import FilamentStore, Filament  # noqa: F401
-        store = FilamentStore.__new__(FilamentStore)
-        store.filaments = []
-        store.on_change = None
-        store._save = lambda: None
+        from gantry.filamentstore import FilamentStore
+        store = FilamentStore(Path(tempfile.mkdtemp()) / "inventory.json")
         base = {"id": "F1", "brand": "Bambu", "name": "Matte", "type": "PLA",
                 "colorName": "Pink", "colorHex": "E89CC6", "spoolCount": 2,
                 "updatedAt": "2026-08-27T10:00:00Z"}
@@ -125,17 +140,31 @@ class WebFleetTests(unittest.TestCase):
         self.assertEqual(snap["printers"][0]["job"], "")
 
 
-@unittest.skipUnless(_HAS_GI, "camera module imports gi; skipped off-target")
 class CameraSplitTests(unittest.TestCase):
     def test_split_jpegs(self):
-        from gantry.camera import _split_jpegs
+        from gantry.jpegstream import split_jpegs
         f1 = b"\xff\xd8AAA\xff\xd9"
         f2 = b"\xff\xd8BBBB\xff\xd9"
         buffer = bytearray(b"garble" + f1 + f2 + b"\xff\xd8partial")
         out = []
-        _split_jpegs(buffer, out.append)
+        split_jpegs(buffer, out.append)
         self.assertEqual(out, [f1, f2])
         self.assertTrue(bytes(buffer).startswith(b"\xff\xd8partial"))   # incomplete frame kept
+
+
+class HmsResolverTests(unittest.TestCase):
+    def test_reads_local_bambu_studio_catalogue_and_falls_back_to_code(self):
+        import gantry.hms as hms
+        root = Path(tempfile.mkdtemp())
+        (root / "hms").mkdir()
+        (root / "hms" / "hms_pl_01P.json").write_text(json.dumps([
+            {"ecode": "0000_0001", "intro": "Sprawdź prowadzenie filamentu"}
+        ]), encoding="utf-8")
+        hms._CACHE.clear()
+        with patch("gantry.hms._roots", return_value=[root]):
+            self.assertEqual(hms.description(["00000001"], "01P123", "pl"),
+                             "Sprawdź prowadzenie filamentu")
+            self.assertEqual(hms.description(["DEADBEEF"], "01P123", "pl"), "HMS DEADBEEF")
 
 
 class BambuDetailParseTests(unittest.TestCase):

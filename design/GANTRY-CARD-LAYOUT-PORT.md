@@ -68,11 +68,11 @@ Sterowana **liczbą kolumn** (1 lub 2), którą wybiera user (przełącznik), or
 | szerokość panelu — 2 kolumny | **563** px |
 | szerokość panelu — lista (compact) | **512** px |
 | szerokość treści | `panelWidth − 24` |
-| odstęp poziomy między kolumnami | `gap` = 8 |
-| odstęp pionowy między rzędami kart | **6** (compact: 3) |
+| odstęp poziomy między kolumnami | **10** |
+| odstęp pionowy między rzędami kart | **8** (compact: 3) |
 | wysokość nagłówka panelu | 36 |
 
-**Reguła „2-2-1" (ostatnia nieparzysta karta pełną szerokością):** przy 2 kolumnach, jeśli ostatnia karta jest sama w rzędzie, rozciąga się na obie kolumny (span = liczba kolumn). Pusty „spacer" w rzędzie ma szerokość `unit*remaining + gap*(remaining−1)`.
+**Reguła spanu:** zwykła karta zawsze zajmuje jedną kolumnę, również gdy jest ostatnia w niepełnym rzędzie. Pełną szerokość dostaje wyłącznie wariant szeroki (podwójna dysza albo co najmniej dwa niezewnętrzne moduły AMS). Pusty „spacer" w rzędzie ma szerokość `unit*remaining + gap*(remaining−1)`.
 
 **Wysokość panelu:** `min(maxHeight, chrome + zmierzona treść)`, gdzie `maxHeight = ekran.visibleFrame.height − 24`. Nagłówek nie może „uciec" nad pasek menu.
 
@@ -214,15 +214,15 @@ Kafel: biel α 0.075 + ramka `line` 1px + `tileRadius`.
     - próg „wysoka": skala 0–5 → `≥4`; skala %/inne → `≥40`
   - temperatura: ikona `thermometer.medium`, kolor `sensorTemp`
 - **Sloty:** stack poziomy, align top, spacing 5
-  - wiele slotów → `fillEqually` (rozciągają się na szerokość)
-  - **1 slot → wyśrodkowany chip w rozmiarze siatki** (spacery po obu stronach, równe): chip ≤ **60** (AMS) / ≤ **96** (EXT)
+  - wiele slotów → komórki `fillEqually`, ale sam swatch ma limit **56** (AMS/CFS) / **92** (EXT)
+  - **1 slot → wyśrodkowany swatch o szerokości 35% modułu**, minimum **60**, maksimum równe szerokości modułu
 
 ### 9b. Slot (FilamentSlotView)
 Pionowo: `[swatch, meta(materiał)]` — **procent jest W SWATCHU**, nie osobnym rzędem.
 | element | wartość |
 |---|---|
 | swatch wysokość | **18** |
-| swatch max szerokość | **56** (AMS) / **92** (EXT) |
+| swatch max szerokość | wiele slotów: **56** (AMS/CFS) / **92** (EXT); pojedynczy slot: reguła 35% / min. 60 |
 | swatch radius | 6 (fill) / 5 (solid/empty) |
 | slot present, fill | „FilamentSwatchView": tło = kolor α 0.20, wypełnienie od dołu = `remaining%` w pełnym kolorze |
 | slot present, brak fill | lity chip w kolorze, radius 5 |
@@ -289,14 +289,16 @@ Stosowane do procentu w swatchu (przy fill ≥ 50%). Przy fill < 50% pomiń regu
 | swatch + % w środku | `Grid` (chip + `TextBlock` na wierzchu) | `Gtk.Overlay` (chip + `Label`) |
 | cień tekstu | `DropShadowEffect` | CSS `text-shadow` |
 
-**Uwaga Linux:** GTK3 (nie GTK4). Kolejność `gi.require_version` przed importem `gi.repository`. Linux nie ma trybu Szczegóły/kamera na tym poziomie — port dotyczy głównie siatki kart, bento temperatur, doku filamentów i tokenów.
+**Uwaga Linux:** GTK3 (nie GTK4). Kolejność `gi.require_version` przed importem `gi.repository`.
+Dashboard, tryb listy, Szczegóły i osadzona kamera są zaimplementowane w `linux/gantry/dashboard.py`,
+`linux/gantry/details.py` i `linux/gantry/camera.py`; `app.py` pozostaje orkiestratorem usług systemowych.
 
 ---
 
 ## 14. Checklista portu (Definition of Done)
 
 - [ ] Tokeny (§1) wpięte jako jedno źródło kolorów/promieni.
-- [ ] Siatka 1/2 kolumny + reguła 2-2-1 + szerokości panelu (§2).
+- [ ] Siatka 1/2 kolumny + span zależny od wyposażenia + szerokości panelu (§2).
 - [ ] Karta: sekcje/insety/odstępy/min-height (§3), header centerY (§4), status line z marquee (§5).
 - [ ] Rząd postępu z warstwami + segmentowy pasek 32/wys.8 (§6).
 - [ ] Bento temp: neutralne kafle, kolor na wartości, ukrycie KOMORA, L→P (§7).

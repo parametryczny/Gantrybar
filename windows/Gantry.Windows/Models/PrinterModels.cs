@@ -137,7 +137,7 @@ public sealed class AmsSlot
 }
 
 /// <summary>Which physical filament system a group came from.</summary>
-public enum FilamentSourceType { Ams, AmsHT, Cfs, Mmu, External }
+public enum FilamentSourceType { Ams, AmsHT, Cfs, Mmu, External, Canvas }
 
 /// <summary>One physical filament module and its slots. Empty slots stay so the layout never
 /// collapses when a spool is removed.</summary>
@@ -205,7 +205,15 @@ public sealed class NozzleTelemetry
     public NozzleTelemetry Clone() => (NozzleTelemetry)MemberwiseClone();
 }
 
-public enum PrinterKind { Bambu, Klipper, Prusa, Snapmaker }
+public enum PrinterKind
+{
+    Bambu,
+    Klipper,
+    Prusa,
+    Snapmaker,
+    ElegooCc1,
+    ElegooCc2
+}
 
 public sealed class SavedPrinter
 {
@@ -232,4 +240,5 @@ public sealed class DiscoveredPrinter
     public string Name { get; set; } = "";
     public string Model { get; set; } = "Bambu Lab";
     public string Host { get; set; } = "";
+    public PrinterKind Kind { get; set; } = PrinterKind.Bambu;
 }

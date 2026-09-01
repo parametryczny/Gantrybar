@@ -43,7 +43,7 @@ internal sealed class SpoolAssignPanel
         _root = new Border
         {
             MaxHeight = 440,
-            Background = new SolidColorBrush(Color.FromRgb(0x15, 0x17, 0x19)),
+            Background = GTheme.Brush(GTheme.Card),
             CornerRadius = new CornerRadius(14),
             BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
@@ -268,7 +268,7 @@ internal sealed class SpoolAssignPanel
         }
         stack.Children.Add(presets);
 
-        var field = new TextBox { Width = 100, Margin = new Thickness(0, 0, 6, 0), Background = new SolidColorBrush(Color.FromRgb(0x2C, 0x2C, 0x2E)), Foreground = GTheme.Brush(GTheme.Text), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1) };
+        var field = new TextBox { Width = 100, Margin = new Thickness(0, 0, 6, 0), Background = GTheme.Brush(GTheme.Card), Foreground = GTheme.Brush(GTheme.Text), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1) };
         var create = Pill(T("Utwórz", "Create"), true, () =>
         {
             if (double.TryParse(field.Text.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var g) && g > 0)
@@ -368,7 +368,7 @@ internal sealed class SpoolAssignPanel
     private static TextBox Input(string text) => new()
     {
         Text = text, Width = 120, VerticalContentAlignment = VerticalAlignment.Center,
-        Background = new SolidColorBrush(Color.FromRgb(0x2C, 0x2C, 0x2E)), Foreground = GTheme.Brush(GTheme.Text),
+        Background = GTheme.Brush(GTheme.Card), Foreground = GTheme.Brush(GTheme.Text),
         BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), Padding = new Thickness(6, 3, 6, 3)
     };
 
@@ -398,7 +398,7 @@ internal sealed class SpoolAssignPanel
             Background = filled ? GTheme.Brush(GTheme.Accent) : GTheme.Brush(GTheme.Surface),
             BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(filled ? 0 : 1),
             Padding = new Thickness(12, 0, 12, 0), Cursor = Cursors.Hand,
-            Child = new TextBlock { Text = text, FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = filled ? new SolidColorBrush(Color.FromRgb(0x15, 0x17, 0x19)) : GTheme.Brush(GTheme.Text) }
+            Child = new TextBlock { Text = text, FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = filled ? GTheme.Brush(GTheme.ContrastInk(GTheme.Accent)) : GTheme.Brush(GTheme.Text) }
         };
         border.MouseLeftButtonUp += (_, _) => action();
         return border;

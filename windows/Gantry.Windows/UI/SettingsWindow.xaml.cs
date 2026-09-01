@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using Gantry.Services;
 
 namespace Gantry.UI;
@@ -11,11 +12,13 @@ public partial class SettingsWindow : Window
     /// Raised when the Transparency setting changes, so the tray owner can refresh the live flyout
     /// without a restart. Set by TrayIcon to re-apply the dashboard's acrylic tint immediately.
     public Action? OnTransparencyChanged;
+    public Action? OnThemeChanged;
 
     public SettingsWindow()
     {
         InitializeComponent();
         SourceInitialized += (_, _) => ApplyModernChrome();
+        ApplyThemeVisuals();
         ApplyLanguage();
         LoadSettings();
 
@@ -23,6 +26,15 @@ public partial class SettingsWindow : Window
         {
             AppSettings.Polish = !AppSettings.Polish;
             ApplyLanguage();
+            RefreshWebSync();
+        };
+        ThemeButton.Click += (_, _) =>
+        {
+            AppSettings.Theme = AppSettings.Theme == "dark" ? "light" : "dark";
+            ThemeButton.Content = AppSettings.Theme == "dark" ? AppSettings.Text("Ciemny", "Dark") : AppSettings.Text("Jasny", "Light");
+            ApplyThemeVisuals();
+            OnThemeChanged?.Invoke();
+            ApplyModernChrome();
         };
         TransparencyButton.Click += (_, _) =>
         {
@@ -138,9 +150,12 @@ public partial class SettingsWindow : Window
         Title = AppSettings.Text("Ustawienia Gantry", "Gantry Settings");
         Heading.Text = AppSettings.Text("Ustawienia", "Settings");
 
+        AppearanceHeading.Text = AppSettings.Text("WYGLĄD", "APPEARANCE");
         GeneralHeading.Text = AppSettings.Text("OGÓLNE", "GENERAL");
         LanguageLabel.Text = AppSettings.Text("Język", "Language");
         LanguageButton.Content = AppSettings.Polish ? "Polski" : "English";
+        ThemeLabel.Text = AppSettings.Text("Wygląd", "Appearance");
+        ThemeButton.Content = AppSettings.Theme == "dark" ? AppSettings.Text("Ciemny", "Dark") : AppSettings.Text("Jasny", "Light");
         TransparencyLabel.Text = AppSettings.Text("Przezroczystość", "Transparency");
         TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
@@ -174,7 +189,44 @@ public partial class SettingsWindow : Window
         UpdateStatus.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion}", $"Version {UpdateChecker.CurrentVersion}");
         CheckUpdatesButton.Content = AppSettings.Text("Sprawdź aktualizacje", "Check for updates");
 
-        CloseButton.Content = AppSettings.Text("Zamknij", "Close");
+        AboutHeading.Text = AppSettings.Text("O APLIKACJI", "ABOUT");
+        AboutVersion.Text = $"Gantry · {AppSettings.Text("wersja", "version")} {UpdateChecker.CurrentVersion} · DPAPI";
+        AboutAuthor.Text = "Kamil Grzegorczyk · @parametryczny";
+        GitHubButton.Content = "GitHub";
+        XButton.Content = "X / Twitter";
+        SupportButton.Content = AppSettings.Text("☕  Wesprzyj projekt", "☕  Support the project");
+        SupportSubtitle.Text = AppSettings.Text(
+            "Wirtualna kawa daje mi kofeinowego kopa do pracy nad kolejnymi wersjami Gantry. 🚀",
+            "A virtual coffee gives me a caffeine kick to keep improving Gantry. 🚀");
+
+        CloseButton.Content = AppSettings.Text("Gotowe", "Done");
+    }
+
+    /// <summary>
+    /// The settings window uses the same semantic palette as the dashboard. Replacing dynamic
+    /// resources makes every visible control repaint immediately; opening another view or
+    /// restarting the app is not required after changing the theme.
+    /// </summary>
+    private void ApplyThemeVisuals()
+    {
+        Resources["SettingsTextBrush"] = GTheme.Brush(GTheme.Text);
+        Resources["SettingsSecondaryBrush"] = GTheme.Brush(GTheme.Secondary);
+        Resources["SettingsMutedBrush"] = GTheme.Brush(GTheme.Muted);
+        Resources["SettingsPanelBrush"] = GTheme.Brush(GTheme.With(GTheme.Card, 0.94));
+        Resources["SettingsCardBrush"] = GTheme.Brush(GTheme.With(GTheme.Card, 0.82));
+        Resources["SettingsLineBrush"] = GTheme.Brush(GTheme.Line);
+        Resources["SettingsFieldBrush"] = GTheme.Brush(GTheme.With(GTheme.Card, 0.96));
+        Resources["SettingsSoftBrush"] = GTheme.Brush(GTheme.W(0.075));
+        Resources["SettingsSoftHoverBrush"] = GTheme.Brush(GTheme.W(0.12));
+        Resources["SettingsSoftPressedBrush"] = GTheme.Brush(GTheme.W(0.18));
+        Resources["SettingsCheckIdleBrush"] = GTheme.Brush(GTheme.W(0.10));
+        Resources["SettingsCheckBorderBrush"] = GTheme.Brush(GTheme.W(0.24));
+        Resources["SettingsCheckHoverBrush"] = GTheme.Brush(GTheme.W(0.42));
+        Resources["SettingsAccentBrush"] = GTheme.Brush(GTheme.Accent);
+        Resources["SettingsAccentInkBrush"] = GTheme.Brush(GTheme.Canvas);
+
+        Foreground = GTheme.Brush(GTheme.Text);
+        InvalidateVisual();
     }
 
     private static string TransparencyName(int level) => level switch
@@ -207,6 +259,19 @@ public partial class SettingsWindow : Window
         QuietEndBox.Text = MinutesToText(QuietHours.EndMinutes);
         QuietTimesRow.IsEnabled = QuietHours.Enabled;
         RefreshWebSync();
+        SupportButton.Click += (_, _) =>
+        {
+            try { Process.Start(new ProcessStartInfo("https://buycoffee.to/parametryczny") { UseShellExecute = true }); }
+            catch { }
+        };
+        GitHubButton.Click += (_, _) => OpenUrl("https://github.com/parametryczny");
+        XButton.Click += (_, _) => OpenUrl("https://x.com/parametryczny");
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch { }
     }
 
     private async Task CheckUpdatesAsync()
@@ -258,6 +323,8 @@ public partial class SettingsWindow : Window
         }
     }
 
+    public Task CheckForUpdatesFromTrayAsync() => CheckUpdatesAsync();
+
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
@@ -265,7 +332,7 @@ public partial class SettingsWindow : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
-        int dark = 1, round = 2, acrylic = 3;
+        int dark = GTheme.IsLight ? 0 : 1, round = 2, acrylic = 3;
         try
         {
             DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));    // DWMWA_USE_IMMERSIVE_DARK_MODE

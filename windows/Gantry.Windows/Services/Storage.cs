@@ -133,6 +133,12 @@ public static class Defaults
 /// <summary>User-facing settings mirroring the macOS AppSettings.</summary>
 public static class AppSettings
 {
+    public static string Theme
+    {
+        get => Defaults.GetString("app-theme") is "light" ? "light" : "dark";
+        set => Defaults.SetString("app-theme", value == "light" ? "light" : "dark");
+    }
+
     public static bool Polish
     {
         get => (Defaults.GetString("app-language") ?? DefaultLanguage()) == "pl";

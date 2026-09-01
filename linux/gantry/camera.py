@@ -1,9 +1,8 @@
 """Live camera view for the Linux dashboard, matching the macOS/Windows Details camera:
 
-  - Bambu: the printer's local RTSPS stream (rtsps://bblp:<access code>@host:322/streaming/live/1),
-    decoded by ffmpeg used purely as an H.264 decoder (as on Windows) into an MJPEG pipe. ffmpeg on
-    Linux speaks TLS through openssl/gnutls and accepts the printer's self-signed certificate, so no
-    custom TLS client is needed here. Requires the "LAN Mode Live View" toggle on the printer.
+  - Bambu: the printer's local RTSPS stream, decoded in-process by GStreamer. Credentials are passed
+    as rtspsrc properties and never exposed in a child process command line. Requires the printer's
+    "LAN Mode Live View" toggle.
   - Klipper / Moonraker and other MJPEG cameras: the multipart JPEG stream read directly in pure
     Python (no ffmpeg), so a webcam works even without the decoder installed.
 
@@ -13,73 +12,58 @@ work happens on a worker thread; the UI is only touched via GLib.idle_add.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 import threading
 import urllib.request
-from typing import Any, Callable
+from typing import Any
 
+import gi
+
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("GLib", "2.0")
+gi.require_version("Gtk", "3.0")
 from gi.repository import GdkPixbuf, GLib, Gtk  # type: ignore  # noqa: E402
 
 from .core import PrinterKind
+from .jpegstream import split_jpegs
+from .overrides import overrides_for
 
-_SOI = b"\xff\xd8"   # JPEG start of image
-_EOI = b"\xff\xd9"   # JPEG end of image
-
-
-def _split_jpegs(buffer: bytearray, emit: Callable[[bytes], None]) -> None:
-    """Pull every complete JPEG out of a growing byte buffer (in place)."""
-    while True:
-        start = buffer.find(_SOI)
-        if start < 0:
-            if len(buffer) > 4:
-                del buffer[:-2]
-            return
-        end = buffer.find(_EOI, start + 2)
-        if end < 0:
-            if start > 0:
-                del buffer[:start]
-            return
-        frame = bytes(buffer[start:end + 2])
-        del buffer[:end + 2]
-        emit(frame)
+try:
+    gi.require_version("Gst", "1.0")
+    from gi.repository import Gst  # type: ignore  # noqa: E402
+    Gst.init(None)
+except (ImportError, ValueError):
+    Gst = None  # type: ignore[assignment]
 
 
-class CameraWindow(Gtk.Window):
+class CameraView(Gtk.Box):
     def __init__(self, app: Any, serial: str, access_code: str | None) -> None:
-        super().__init__()
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.app = app
         self.serial = serial
         self.access_code = access_code or ""
         self.printer = next((p for p in app.printers if p.serial == serial), None)
+        self.camera_host = overrides_for(app.config, serial).get("cameraHost") or \
+            (self.printer.host if self.printer is not None else "")
         self._stop = threading.Event()
-        self._process: subprocess.Popen | None = None
+        self._pipeline: Any | None = None
         pl = app.language == "pl"
 
-        self.set_title(("Kamera" if pl else "Camera") + f" · {self.printer.name if self.printer else serial}")
-        self.set_default_size(720, 460)
-        self.set_transient_for(app.window)
-        self.set_position(Gtk.WindowPosition.CENTER)
-
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        root.set_border_width(8)
-        self.add(root)
+        self.set_border_width(2)
         self.image = Gtk.Image()
-        self.image.set_size_request(640, 360)
+        self.image.set_size_request(420, 230)
         frame = Gtk.EventBox()
         frame.get_style_context().add_class("card")
         frame.add(self.image)
-        root.pack_start(frame, True, True, 0)
+        self.pack_start(frame, True, True, 0)
         self.status = Gtk.Label(xalign=0)
         self.status.get_style_context().add_class("subtitle")
         self.status.set_text("Łączenie z kamerą…" if pl else "Connecting to camera…")
-        root.pack_start(self.status, False, False, 0)
+        self.pack_start(self.status, False, False, 0)
         self.badge = Gtk.Label(xalign=0)
         self.badge.get_style_context().add_class("meta")
-        root.pack_start(self.badge, False, False, 0)
+        self.pack_start(self.badge, False, False, 0)
 
         self.connect("destroy", self._on_destroy)
-        self.connect("delete-event", lambda *_: (self.stop(), False)[1])
 
     # --- lifecycle ------------------------------------------------------------
     def start(self) -> None:
@@ -88,9 +72,10 @@ class CameraWindow(Gtk.Window):
 
     def stop(self) -> None:
         self._stop.set()
-        if self._process is not None:
+        pipeline = self._pipeline
+        if pipeline is not None and Gst is not None:
             try:
-                self._process.terminate()
+                pipeline.set_state(Gst.State.NULL)
             except Exception:
                 pass
 
@@ -109,33 +94,95 @@ class CameraWindow(Gtk.Window):
 
     def _run_bambu(self) -> None:
         pl = self.app.language == "pl"
-        if not shutil.which("ffmpeg"):
-            self._set_status("Brak ffmpeg — zainstaluj pakiet ffmpeg, aby oglądać kamerę Bambu."
-                             if pl else "ffmpeg not found — install the ffmpeg package to view the Bambu camera.")
+        if Gst is None:
+            self._set_status("Brak GStreamera — doinstaluj obsługę GStreamer i kodek H.264."
+                             if pl else "GStreamer is unavailable — install GStreamer and the H.264 decoder.")
             return
-        host = self.printer.host
-        url = f"rtsps://bblp:{self.access_code}@{host}:322/streaming/live/1"
-        self._set_badge("RTSPS · 322")
-        cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp",
-               "-i", url, "-an", "-f", "mjpeg", "-q:v", "6", "-"]
-        self._process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
-        buffer = bytearray()
-        got_frame = False
-        assert self._process.stdout is not None
-        while not self._stop.is_set():
-            chunk = self._process.stdout.read(32768)
-            if not chunk:
-                break
-            buffer.extend(chunk)
+        if not self.access_code:
+            self._set_status("Brak kodu dostępu drukarki." if pl else "Printer access code is missing.")
+            return
 
-            def emit(frame: bytes) -> None:
-                nonlocal got_frame
-                got_frame = True
-                self._push_jpeg(frame)
-            _split_jpegs(buffer, emit)
-        if not got_frame and not self._stop.is_set():
-            self._set_status("Brak obrazu. Włącz „LAN Mode Live View” na drukarce."
-                             if pl else "No image. Enable \"LAN Mode Live View\" on the printer.")
+        pipeline = Gst.Pipeline.new(f"bambu-camera-{self.serial}")
+        source = Gst.ElementFactory.make("rtspsrc", "source")
+        depay = Gst.ElementFactory.make("rtph264depay", "depay")
+        parser = Gst.ElementFactory.make("h264parse", "parser")
+        decoder = Gst.ElementFactory.make("avdec_h264", "decoder")
+        convert = Gst.ElementFactory.make("videoconvert", "convert")
+        encoder = Gst.ElementFactory.make("jpegenc", "encoder")
+        sink = Gst.ElementFactory.make("appsink", "sink")
+        elements = (source, depay, parser, decoder, convert, encoder, sink)
+        if pipeline is None or any(element is None for element in elements):
+            self._set_status("Brak wtyczek GStreamer H.264/JPEG."
+                             if pl else "Required GStreamer H.264/JPEG plugins are missing.")
+            return
+
+        source.set_property("location", f"rtsps://{self.camera_host}:322/streaming/live/1")
+        source.set_property("user-id", "bblp")
+        source.set_property("user-pw", self.access_code)
+        source.set_property("latency", 120)
+        if source.find_property("protocols") is not None:
+            # GstRtsp.RTSPLowerTrans.TCP == 4; avoid another optional GI namespace.
+            source.set_property("protocols", 4)
+        if source.find_property("tls-validation-flags") is not None:
+            # Bambu printers use a local self-signed certificate.
+            source.set_property("tls-validation-flags", 0)
+
+        sink.set_property("emit-signals", True)
+        sink.set_property("sync", False)
+        sink.set_property("max-buffers", 1)
+        sink.set_property("drop", True)
+        encoder.set_property("quality", 82)
+        for element in elements:
+            pipeline.add(element)
+        if not depay.link(parser) or not parser.link(decoder) or not decoder.link(convert) \
+                or not convert.link(encoder) or not encoder.link(sink):
+            self._set_status("Nie można połączyć potoku kamery."
+                             if pl else "Could not link the camera pipeline.")
+            pipeline.set_state(Gst.State.NULL)
+            return
+
+        def pad_added(_source: Any, pad: Any) -> None:
+            target = depay.get_static_pad("sink")
+            if target is not None and not target.is_linked():
+                pad.link(target)
+
+        def new_sample(appsink: Any) -> Any:
+            sample = appsink.emit("pull-sample")
+            if sample is None:
+                return Gst.FlowReturn.ERROR
+            buffer = sample.get_buffer()
+            if buffer is not None:
+                self._push_jpeg(buffer.extract_dup(0, buffer.get_size()))
+            return Gst.FlowReturn.OK
+
+        source.connect("pad-added", pad_added)
+        sink.connect("new-sample", new_sample)
+        self._pipeline = pipeline
+        self._set_badge("RTSPS · 322")
+        result = pipeline.set_state(Gst.State.PLAYING)
+        if result == Gst.StateChangeReturn.FAILURE:
+            self._set_status("Nie można uruchomić kamery."
+                             if pl else "Could not start the camera stream.")
+            pipeline.set_state(Gst.State.NULL)
+            self._pipeline = None
+            return
+
+        bus = pipeline.get_bus()
+        while not self._stop.is_set():
+            message = bus.timed_pop_filtered(
+                250 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
+            if message is None:
+                continue
+            if message.type == Gst.MessageType.ERROR:
+                error, _debug = message.parse_error()
+                self._set_status(("Błąd kamery: " if pl else "Camera error: ") + error.message)
+            elif message.type == Gst.MessageType.EOS:
+                self._set_status("Strumień kamery został zakończony."
+                                 if pl else "The camera stream ended.")
+            break
+        pipeline.set_state(Gst.State.NULL)
+        if self._pipeline is pipeline:
+            self._pipeline = None
 
     def _run_mjpeg(self) -> None:
         pl = self.app.language == "pl"
@@ -152,10 +199,20 @@ class CameraWindow(Gtk.Window):
                 if not chunk:
                     break
                 buffer.extend(chunk)
-                _split_jpegs(buffer, self._push_jpeg)
+                split_jpegs(buffer, self._push_jpeg)
 
     def _mjpeg_url(self) -> str | None:
-        host, port = self.printer.host, self.printer.port
+        host, port = self.camera_host, self.printer.port
+        if self.printer.kind == PrinterKind.ELEGOO_CC2:
+            connection = self.app.connections.get(self.serial)
+            sender = getattr(connection, "send_method", None)
+            if callable(sender): sender(1042, {})
+            return f"http://{host}:8080/?action=stream"
+        if self.printer.kind == PrinterKind.ELEGOO_CC1:
+            connection = self.app.connections.get(self.serial)
+            sender = getattr(connection, "send_method", None)
+            if callable(sender): sender(386, {"Enable": 1})
+            return f"http://{host}:3031/video"
         if self.printer.kind == PrinterKind.KLIPPER:
             try:
                 raw = urllib.request.urlopen(
@@ -200,3 +257,26 @@ class CameraWindow(Gtk.Window):
 
     def _set_badge(self, text: str) -> None:
         GLib.idle_add(lambda: (self.badge.set_text(text), False)[1])
+
+
+class CameraWindow(Gtk.Window):
+    """Standalone host retained for the card menu; Details embeds CameraView directly."""
+
+    def __init__(self, app: Any, serial: str, access_code: str | None) -> None:
+        super().__init__()
+        printer = next((p for p in app.printers if p.serial == serial), None)
+        pl = app.language == "pl"
+        self.set_title(("Kamera" if pl else "Camera") + f" · {printer.name if printer else serial}")
+        self.set_default_size(720, 460)
+        self.set_transient_for(app.window)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.view = CameraView(app, serial, access_code)
+        self.view.set_border_width(8)
+        self.add(self.view)
+        self.connect("delete-event", lambda *_: (self.stop(), False)[1])
+
+    def start(self) -> None:
+        self.view.start()
+
+    def stop(self) -> None:
+        self.view.stop()

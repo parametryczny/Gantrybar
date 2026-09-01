@@ -265,7 +265,7 @@ final class PrinterDashboardViewController: NSViewController {
         let useCompactMode = supportsCompactMode && (compactModeChosen ? prefersCompactMode : store.printers.count > 8)
         // The reference dashboard is 840 px / three columns. Geometry no longer depends on printer
         // count: each normal card spans one column and a dual-nozzle or multi-AMS card spans two.
-        // User-chosen 1 or 2 card columns; the last odd card stretches to full width at the bottom.
+        // User-chosen 1 or 2 card columns; only telemetry-driven wide cards span the full row.
         let expandedColumnCount = useCompactMode ? 1 : preferredColumns
         let panelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 380 : 563)
         let wideSerials = Set(store.printers.compactMap { printer in
@@ -1034,7 +1034,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             .init(polishTitle: "Szczegóły", englishTitle: "Details", symbol: "chart.xyaxis.line", action: onShowDetails),
             .init(polishTitle: "Połącz ponownie", englishTitle: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)
         ]
-        // Camera lives in Bambu Studio, so it only makes sense for Bambu printers.
+        // Bambu still opens its slicer camera; Elegoo/Klipper cameras live in Gantry details.
         if printer.kind == .bambu {
             actionEntries.append(.init(polishTitle: "Kamera w Bambu Studio", englishTitle: "Camera in Bambu Studio",
                                        symbol: "video.fill", action: onOpenCamera))
@@ -1361,6 +1361,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         case .klipper: " KLIPPER "
         case .prusa: " PRUSALINK "
         case .snapmaker: " HTTP "
+        case .elegooCC1: " SDCP "
+        case .elegooCC2: " MQTT LAN "
         }
         manufacturerLabel.isHidden = false
         let dataAge = telemetry.lastUpdated.map { max(0, Date().timeIntervalSince($0)) }

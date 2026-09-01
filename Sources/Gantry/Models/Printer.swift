@@ -83,6 +83,7 @@ enum FilamentSourceType: String, Codable, Sendable {
     case cfs        // Creality Filament System
     case mmu        // Klipper / Happy Hare multi-material unit
     case external   // external spool (vt_tray, CFS type 1, …)
+    case canvas     // Elegoo Canvas (Centauri Carbon 2)
 }
 
 /// One physical filament module and its slots. Empty slots stay in the group so the layout never
@@ -169,6 +170,8 @@ enum PrinterKind: String, Codable, Sendable {
     case klipper
     case prusa
     case snapmaker
+    case elegooCC1 = "elegoo_cc1"
+    case elegooCC2 = "elegoo_cc2"
 }
 
 struct SavedPrinter: Codable, Identifiable, Hashable, Sendable {
@@ -215,4 +218,5 @@ struct DiscoveredPrinter: Identifiable, Hashable, Sendable {
     let name: String
     let model: String
     let host: String
+    var kind: PrinterKind = .bambu
 }

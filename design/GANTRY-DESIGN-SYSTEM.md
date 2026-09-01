@@ -283,7 +283,7 @@ Kafel specjalny przechodzi na `6/6` w trybie Wide albo `4/6` w trybie Expanded, 
 - drukarka ma co najmniej dwa moduły AMS;
 - użytkownik wymusi szeroki wariant w ustawieniach.
 
-Ostatni nieparzysty kafel nie jest automatycznie rozciągany. Puste miejsce pozostaje puste albo może zostać wykorzystane przez inny typ bento.
+Ostatni nieparzysty kafel, który zaczyna pusty rząd, automatycznie zajmuje pełną szerokość — tak jak w referencyjnym układzie macOS.
 
 ### Narożne światło statusu
 
@@ -341,13 +341,10 @@ Dla dwóch dysz pierwsza strefa zawiera dwa odczyty oznaczone `P` i `L`.
 
 ### Bazowa geometria
 
-- szerokość referencyjna: `640 px`;
-- siatka: 6 kolumn;
-- gap: `8 px`;
-- status: `6/6`;
-- kamera: `6/6`;
-- pozostałe sekcje: `3/6` w trybie Wide;
-- na mniejszej szerokości wszystkie sekcje przechodzą na pełną szerokość.
+- rozmiar widoku: `480 × 700 px`;
+- jedna przewijana kolumna;
+- gap między kartami: `8 px`;
+- każda karta zajmuje pełną szerokość.
 
 ### Domyślna kolejność
 
@@ -361,17 +358,14 @@ Dla dwóch dysz pierwsza strefa zawiera dwa odczyty oznaczone `P` i `L`.
 7. Dostosuj
 ```
 
-Status i kamera są stałe. Sekcje Filamenty, Temperatury, Wentylatory i Sterowanie mogą być przestawiane przez użytkownika.
+Status pozostaje widoczny. Kamera, Filamenty, Temperatury, Wentylatory i Sterowanie mogą być ukrywane, a wszystkie dostępne karty mogą być przestawiane przez użytkownika.
 
 ### Dynamiczna wysokość
 
-Widok używa pakowania masonry:
-
 - wysokość każdej karty wynika z jej treści;
 - nie zapisujemy wysokości w ustawieniach;
-- krótsza karta nie wymusza pustej przestrzeni do wysokości sąsiada;
-- kolejna karta w kolumnie podjeżdża bezpośrednio pod poprzednią;
-- układ jest przeliczany po zmianie rozmiaru lub zawartości.
+- kolejna karta podjeżdża bezpośrednio pod poprzednią;
+- nadmiar treści przewija się wewnątrz panelu.
 
 ### Przycisk `Dostosuj`
 
@@ -476,19 +470,19 @@ Natywne komponenty UI
 
 Nie trzeba współdzielić kodu renderującego Swift, C# i Python. Współdzielony jest kontrakt oraz dane wejściowe dla layoutu.
 
-## Stan wdrożenia 2026-08-22
+## Stan wdrożenia 2026-08-31
 
 ### Dashboard
 
-- macOS: natywna siatka trzech kolumn, span `2` dla X2D/dual-nozzle/multi-AMS, segmentowany postęp, badge połączenia, termiczne bento i czerwone światło aktywnego druku;
-- Windows: `WrapPanel` został zastąpiony deterministycznym `Grid`, usunięto rozciąganie ostatniej karty, dodano te same reguły spanów i akcentów;
-- Linux: usunięto zależność liczby kolumn od liczby drukarek oraz rozciąganie ostatniej karty; GTK używa tych samych reguł szerokiego kafla.
+- macOS: wybierana siatka jednej lub dwóch kolumn, pełny span dla X2D/dual-nozzle/multi-AMS oraz zwykłej ostatniej karty rozpoczynającej pusty rząd, segmentowany postęp oraz neutralne płaskie sekcje;
+- Windows: `WrapPanel` został zastąpiony deterministycznym `Grid`, z tymi samymi regułami spanów i akcentów co macOS;
+- Linux: dashboard został napisany od nowa z aktualnych klas Swift; używa szerokości 380/563 px, reguł 1/2 kolumny, spanu zależnego od wyposażenia drukarki, listy kompaktowej z akordeonem i tych samych sekcji karty.
 
 ### Szczegóły
 
 - macOS i Windows: status i kamera są pełnoszerokie, a pozostałe sekcje układają się w dwóch niezależnych kolumnach;
 - kolejność domyślna zaczyna się od `status → camera → materials → temperature`;
-- Linux: osobny widok szczegółów pozostaje do zaimplementowania; dashboard jest już zgodny z nowym kontraktem.
+- Linux: `DetailPanel` działa wewnątrz głównego panelu, używa tej samej pojedynczej kolumny 480 px, kolejności/przestawiania/ukrywania kart oraz osadzonego strumienia RTSPS/MJPEG.
 
 Implementacje nadal kodują część wartości natywnie. Następnym krokiem technicznym jest loader `gantry-layout.defaults.json` i `gantry-design-tokens.json`, aby usunąć duplikację wartości między Swift, C# i Pythonem.
 
@@ -500,7 +494,7 @@ Implementacje nadal kodują część wartości natywnie. Następnym krokiem tech
 4. Zaimplementować loader domyślnego layoutu.
 5. Zaimplementować scalanie ustawień użytkownika.
 6. Dokończyć kontenerowe breakpointy podczas natywnej zmiany rozmiaru okna.
-7. Dodać widok szczegółów do klienta GTK.
+7. Utrzymywać widok szczegółów klienta GTK przy kolejnych zmianach źródłowych w Swift.
 8. Podłączyć tryb `Dostosuj`.
 9. Zastąpić platformowe zapisy kolejności jednym dokumentem override JSON.
 10. Dodać testy snapshotów dla szerokości 440, 512, 640 i 840 px.

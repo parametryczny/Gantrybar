@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Gantry.Models;
 
 namespace Gantry.Services;
@@ -28,6 +29,7 @@ public sealed class PrinterStore
 
     private readonly SsdpDiscovery _discovery = new();
     private readonly SubnetDiscovery _subnetDiscovery = new();
+    private readonly ElegooDiscovery _elegooDiscovery = new();
     private readonly Dictionary<string, IPrinterConnection> _clients = new();
     private readonly Dictionary<string, CancellationTokenSource> _reconnectTasks = new();
     private readonly Dictionary<string, string> _sessionCodes = new();
@@ -116,8 +118,9 @@ public sealed class PrinterStore
         {
             var ssdp = _discovery.ScanAsync();
             var subnet = _subnetDiscovery.ScanAsync();
-            await Task.WhenAll(ssdp, subnet);
-            var combined = ssdp.Result.Concat(subnet.Result)
+            var elegoo = _elegooDiscovery.ScanAsync();
+            await Task.WhenAll(ssdp, subnet, elegoo);
+            var combined = ssdp.Result.Concat(subnet.Result).Concat(elegoo.Result)
                 .GroupBy(p => p.Serial).Select(g => g.First());
 
             _post(() =>
@@ -145,6 +148,46 @@ public sealed class PrinterStore
                 RaiseUpdated();
             });
         });
+    }
+
+    /// <summary>Refreshes names which still look automatically generated, without overwriting a
+    /// user-provided name. This is the Windows counterpart of macOS refreshPrinterNames().</summary>
+    public void RefreshPrinterNames()
+    {
+        _ = Task.Run(async () =>
+        {
+            var ssdp = _discovery.ScanAsync(4);
+            var subnet = _subnetDiscovery.ScanAsync();
+            var elegoo = _elegooDiscovery.ScanAsync(4);
+            await Task.WhenAll(ssdp, subnet, elegoo);
+            var results = ssdp.Result.Concat(subnet.Result).Concat(elegoo.Result)
+                .GroupBy(p => p.Serial).Select(g => g.First()).ToList();
+
+            _post(() =>
+            {
+                bool changed = false;
+                foreach (var found in results)
+                {
+                    var index = Printers.FindIndex(p => p.Serial == found.Serial);
+                    if (index < 0 || !ShouldReplaceAutomaticName(Printers[index].Name) ||
+                        ShouldReplaceAutomaticName(found.Name)) continue;
+                    Printers[index].Name = found.Name.Normalize();
+                    if (found.Model != "Bambu Lab") Printers[index].Model = found.Model;
+                    changed = true;
+                }
+                if (!changed) return;
+                SavedPrinterStore.Save(Printers);
+                RaiseUpdated();
+            });
+        });
+    }
+
+    private static bool ShouldReplaceAutomaticName(string? name)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (!trimmed.StartsWith("Bambu ", StringComparison.OrdinalIgnoreCase)) return trimmed.Length == 0;
+        var suffix = trimmed.Substring(6);
+        return suffix.Length <= 6 && suffix.All(char.IsLetterOrDigit);
     }
 
     // ---- Adding / editing ----------------------------------------------------------
@@ -211,6 +254,22 @@ public sealed class PrinterStore
         SavedPrinterStore.Save(Printers);
         Reconnect(printer);
         RaiseUpdated();
+    }
+
+    public void AddElegoo(string name, string serial, string host, int generation, string accessCode, int? port)
+    {
+        var cleanSerial = serial.Trim(); var cleanHost = host.Trim(); var cleanCode = accessCode.Trim();
+        if (cleanSerial.Length == 0 || cleanHost.Length == 0)
+            throw new ArgumentException(AppSettings.Text("Adres IP i numer seryjny Elegoo są wymagane.", "Elegoo IP address and serial number are required."));
+        if (generation == 2 && cleanCode.Length == 0)
+            throw new ArgumentException(AppSettings.Text("Podaj kod dostępu Elegoo CC2 i włącz tryb LAN-only.", "Enter the Elegoo CC2 access code and enable LAN-only mode."));
+        var printer = new SavedPrinter { Serial = cleanSerial,
+            Name = string.IsNullOrWhiteSpace(name) ? $"Centauri Carbon {(generation == 2 ? "2 " : "")}{cleanSerial[^Math.Min(4, cleanSerial.Length)..]}" : name.Trim(),
+            Model = generation == 2 ? "Elegoo Centauri Carbon 2" : "Elegoo Centauri Carbon", Host = cleanHost,
+            Kind = generation == 2 ? PrinterKind.ElegooCc2 : PrinterKind.ElegooCc1, Port = port ?? (generation == 2 ? 1883 : 3030) };
+        if (generation == 2) { AccessCodeStore.Save(cleanCode, cleanSerial); _sessionCodes[cleanSerial] = cleanCode; }
+        var index = Printers.FindIndex(p => p.Serial == cleanSerial); if (index >= 0) Printers[index] = printer; else Printers.Add(printer);
+        Telemetry[cleanSerial] = new PrinterTelemetry(); SavedPrinterStore.Save(Printers); Reconnect(printer); RaiseUpdated();
     }
 
     public void AddSnapmaker(string name, string host, int? port)
@@ -413,6 +472,11 @@ public sealed class PrinterStore
             RaiseUpdated();
             return;
         }
+        if (printer.Kind == PrinterKind.ElegooCc1)
+        {
+            var elegoo = new ElegooCc1Client(printer, evt => _post(() => Handle(evt, printer.Serial)));
+            _clients[printer.Serial] = elegoo; elegoo.Start(); RaiseUpdated(); return;
+        }
 
         string code;
         if (_sessionCodes.TryGetValue(printer.Serial, out var sessionCode))
@@ -434,7 +498,9 @@ public sealed class PrinterStore
             }
         }
 
-        var client = new MqttClient(printer, code, evt => _post(() => Handle(evt, printer.Serial)));
+        IPrinterConnection client = printer.Kind == PrinterKind.ElegooCc2
+            ? new ElegooCc2Client(printer, code, evt => _post(() => Handle(evt, printer.Serial)))
+            : new MqttClient(printer, code, evt => _post(() => Handle(evt, printer.Serial)));
         _clients[printer.Serial] = client;
         client.Start();
         RaiseUpdated();
@@ -537,8 +603,9 @@ public sealed class PrinterStore
     {
         var ssdp = _discovery.ScanAsync(3);
         var subnet = _subnetDiscovery.ScanAsync();
-        await Task.WhenAll(ssdp, subnet);
-        var results = ssdp.Result.Concat(subnet.Result).ToList();
+        var elegoo = _elegooDiscovery.ScanAsync(3);
+        await Task.WhenAll(ssdp, subnet, elegoo);
+        var results = ssdp.Result.Concat(subnet.Result).Concat(elegoo.Result).ToList();
         _post(() =>
         {
             bool changed = false;
@@ -572,6 +639,21 @@ public sealed class PrinterStore
         if (_clients.TryGetValue(serial, out var c) && c is MqttClient mqtt) mqtt.SendCommand(json);
     }
 
+    public void SendElegooMethod(string serial, int method, object? parameters = null)
+    {
+        if (!_clients.TryGetValue(serial, out var client)) return;
+        if (client is ElegooCc1Client cc1) cc1.SendMethod(method, parameters);
+        else if (client is ElegooCc2Client cc2) cc2.SendMethod(method, parameters);
+    }
+
+    private bool SendElegooRaw(string serial, string json)
+    {
+        JsonObject? value; try { value = JsonNode.Parse(json) as JsonObject; } catch { return false; }
+        if (value?["method"]?.GetValue<int>() is not int method) return false;
+        SendElegooMethod(serial, method, value["params"] as JsonObject ?? new JsonObject());
+        return true;
+    }
+
     /// Raw G-code line to a Klipper printer over Moonraker.
     public void SendGcode(string serial, string script)
     {
@@ -586,12 +668,18 @@ public sealed class PrinterStore
         var custom = on ? ov.LedOn : ov.LedOff;
         if (!string.IsNullOrEmpty(custom))
         {
-            if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.Klipper) SendGcode(serial, custom);
+            var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
+            if (kind == PrinterKind.Klipper) SendGcode(serial, custom);
+            else if (kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2) SendElegooRaw(serial, custom);
             else SendCommand(serial, custom);
             return;
         }
         if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.Klipper)
             SendGcode(serial, on ? "SET_PIN PIN=caselight VALUE=1" : "SET_PIN PIN=caselight VALUE=0");
+        else if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.ElegooCc1)
+            SendElegooMethod(serial, 403, new { LightStatus = new { SecondLight = on ? 1 : 0 } });
+        else if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.ElegooCc2)
+            SendElegooMethod(serial, 1029, new { power = on ? 1 : 0 });
         else
         {
             var mode = on ? "on" : "off";
@@ -605,7 +693,13 @@ public sealed class PrinterStore
         var printer = Printers.FirstOrDefault(p => p.Serial == serial);
         var name = printer?.Name ?? serial;
         bool isKlipper = printer?.Kind == PrinterKind.Klipper;
-        void PrintCmd(string bambu, string macro) { if (isKlipper) SendGcode(serial, macro); else SendCommand(serial, bambu); }
+        void PrintCmd(string bambu, string macro)
+        {
+            if (isKlipper) SendGcode(serial, macro);
+            else if (printer?.Kind == PrinterKind.ElegooCc1) SendElegooMethod(serial, bambu.Contains("\"pause\"") ? 129 : bambu.Contains("\"resume\"") ? 131 : 130);
+            else if (printer?.Kind == PrinterKind.ElegooCc2) SendElegooMethod(serial, bambu.Contains("\"pause\"") ? 1021 : bambu.Contains("\"resume\"") ? 1023 : 1022);
+            else SendCommand(serial, bambu);
+        }
 
         switch (auto.ActionKind)
         {
@@ -617,7 +711,9 @@ public sealed class PrinterStore
             case "notify": NotificationService.Post(name, auto.ActionText); break;
             case "command":
                 if (!AllowCodeAction(auto, name)) break;
-                if (isKlipper) SendGcode(serial, auto.ActionText); else SendCommand(serial, auto.ActionText);
+                if (isKlipper) SendGcode(serial, auto.ActionText);
+                else if (printer?.Kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2) SendElegooRaw(serial, auto.ActionText);
+                else SendCommand(serial, auto.ActionText);
                 break;
             case "script":
                 if (!AllowCodeAction(auto, name)) break;

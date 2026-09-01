@@ -1,3 +1,5 @@
+using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 
 namespace Gantry.UI;
@@ -13,14 +15,17 @@ internal static class GTheme
     public const double CardRadius = 16;
     public const double TileRadius = 10.5;
     public const double Gap = 8;
+    public const double FleetColumnGap = 10;
+    public const double FleetRowGap = 8;
 
     // Surfaces.
-    public static Color Canvas => Color.FromRgb(0x0C, 0x0D, 0x0E);
-    public static Color Card => Color.FromRgb(0x15, 0x17, 0x19);
-    public static Color Text => Color.FromRgb(0xF2, 0xF3, 0xF1);
-    public static Color Secondary => Color.FromRgb(0xA7, 0xAA, 0xA6);
-    public static Color Muted => Color.FromRgb(0x6D, 0x71, 0x6E);
-    public static Color Accent => Color.FromRgb(0xD4, 0xD7, 0xD3);   // neutral, not blue
+    public static bool IsLight => Gantry.Services.AppSettings.Theme == "light";
+    public static Color Canvas => IsLight ? Color.FromRgb(0xF2, 0xF2, 0xF4) : Color.FromRgb(0x0C, 0x0D, 0x0E);
+    public static Color Card => IsLight ? Color.FromRgb(0xFF, 0xFF, 0xFF) : Color.FromRgb(0x15, 0x17, 0x19);
+    public static Color Text => IsLight ? Color.FromRgb(0x1C, 0x1C, 0x1E) : Color.FromRgb(0xF2, 0xF3, 0xF1);
+    public static Color Secondary => IsLight ? Color.FromRgb(0x5D, 0x60, 0x5D) : Color.FromRgb(0xA7, 0xAA, 0xA6);
+    public static Color Muted => IsLight ? Color.FromRgb(0x8A, 0x8D, 0x89) : Color.FromRgb(0x6D, 0x71, 0x6E);
+    public static Color Accent => IsLight ? Color.FromRgb(0x3B, 0x3E, 0x3B) : Color.FromRgb(0xD4, 0xD7, 0xD3);
 
     // Thermal zones (warm nozzle / bed, cool chamber) + environment.
     public static Color Nozzle => Color.FromRgb(0xFF, 0x8A, 0x61);
@@ -35,7 +40,9 @@ internal static class GTheme
     public static Color StatusPaused => Color.FromRgb(0xEB, 0xB5, 0x5C);
 
     // white with alpha (α as 0..1).
-    public static Color W(double alpha) => Color.FromArgb(A(alpha), 0xFF, 0xFF, 0xFF);
+    public static Color W(double alpha) => IsLight
+        ? Color.FromArgb(A(alpha), 0x00, 0x00, 0x00)
+        : Color.FromArgb(A(alpha), 0xFF, 0xFF, 0xFF);
     // token with alpha.
     public static Color With(Color c, double alpha) => Color.FromArgb(A(alpha), c.R, c.G, c.B);
 
@@ -45,6 +52,91 @@ internal static class GTheme
     public static Color CardTranslucent => With(Card, 0.5);
 
     public static Brush Brush(Color c) => new SolidColorBrush(c);
+
+    /// <summary>Applies the current Gantry palette to code-built and legacy XAML dialogs. Keeping
+    /// this traversal in one place prevents auxiliary windows from being permanently dark while the
+    /// dashboard follows the light theme.</summary>
+    public static void ApplyWindowTheme(Window window)
+    {
+        window.Resources["GantryHoverBrush"] = Brush(W(0.12));
+        window.Resources["GantryPressedBrush"] = Brush(W(0.20));
+        window.Resources["GantryHoverBorderBrush"] = Brush(W(0.35));
+        window.Background = Brush(Canvas);
+        window.Foreground = Brush(Text);
+        if (window.Content is DependencyObject content) ApplyNode(content);
+    }
+
+    private static void ApplyNode(DependencyObject node)
+    {
+        switch (node)
+        {
+            case TextBox field:
+                field.Background = Brush(Card);
+                field.Foreground = Brush(Text);
+                field.CaretBrush = Brush(Text);
+                field.BorderBrush = Brush(Line);
+                break;
+            case ComboBox combo:
+                combo.Background = Brush(Card);
+                combo.Foreground = Brush(Text);
+                combo.BorderBrush = Brush(Line);
+                break;
+            case Button button:
+                button.Background = Brush(Surface);
+                button.Foreground = Brush(Text);
+                button.BorderBrush = Brush(Line);
+                break;
+            case CheckBox check:
+                check.Foreground = Brush(Text);
+                check.Background = Brush(Surface);
+                check.BorderBrush = Brush(Line);
+                break;
+            case RadioButton radio:
+                radio.Foreground = Brush(Text);
+                radio.Background = Brushes.Transparent;
+                break;
+            case TextBlock text:
+                text.Foreground = NeutralTextBrush(text.Foreground);
+                break;
+            case Border border when border.Background is SolidColorBrush fill:
+                border.Background = NeutralSurfaceBrush(fill.Color);
+                if (border.BorderBrush is SolidColorBrush stroke)
+                    border.BorderBrush = NeutralLineBrush(stroke.Color);
+                break;
+        }
+
+        foreach (var child in LogicalTreeHelper.GetChildren(node))
+            if (child is DependencyObject dependency) ApplyNode(dependency);
+    }
+
+    private static Brush NeutralTextBrush(Brush existing)
+    {
+        if (existing is not SolidColorBrush solid) return existing;
+        var c = solid.Color;
+        if (c.R == c.G && c.G == c.B)
+        {
+            if (c.R >= 0xE0) return Brush(Text);
+            if (c.R >= 0xA0) return Brush(Secondary);
+            if (c.R >= 0x70) return Brush(Muted);
+        }
+        return existing;
+    }
+
+    private static Brush NeutralSurfaceBrush(Color c)
+    {
+        if (c.R == 0x24 && c.G == 0x24 && c.B == 0x26) return Brush(With(Canvas, c.A / 255.0));
+        if (c.R == 0x2C && c.G == 0x2C && c.B == 0x2E) return Brush(Card);
+        if (c.R == 0x3A && c.G == 0x3A && c.B == 0x3C) return Brush(Surface);
+        if (c.R == 0xFF && c.G == 0xFF && c.B == 0xFF && c.A < 0xFF) return Brush(W(c.A / 255.0));
+        return new SolidColorBrush(c);
+    }
+
+    private static Brush NeutralLineBrush(Color c)
+    {
+        if (c.R == c.G && c.G == c.B && (c.R == 0xFF || c.R == 0x00))
+            return Brush(W(Math.Max(0.09, c.A / 255.0)));
+        return new SolidColorBrush(c);
+    }
 
     /// <summary>Neutral card contract: state is carried by the label + icon, never by colour.</summary>
     public static Color StatusColor(bool isError) => isError ? StatusPrinting : Accent;

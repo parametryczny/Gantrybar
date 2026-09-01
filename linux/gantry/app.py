@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import subprocess
 import threading
-from datetime import datetime, timedelta
+import time
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import gi
 
@@ -17,8 +19,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
-gi.require_version("Pango", "1.0")
-from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 try:
     gi.require_version("AyatanaAppIndicator3", "0.1")
@@ -27,11 +28,11 @@ except (ValueError, ImportError):
     AppIndicator = None
 
 from . import __version__
-from .core import Printer, PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state, expand_scan_targets
+from .core import Printer, PrinterKind, PrinterState, Telemetry, expand_scan_targets
 from .csvimport import parse_printer_csv
 from .discovery import scan
-from .desktop import installed_slicers, open_desktop_app
 from .http_clients import HttpConnection
+from .layout import needs_wide, place_cards
 from .mqtt import MqttConnection
 from .storage import Config, SecretStore, SecretStoreError, autostart_enabled, set_autostart
 from .studio import devices as studio_devices
@@ -105,721 +106,38 @@ def quiet_hours_active(config: Config, now: datetime | None = None) -> bool:
     end = str(config.data.get("quiet_hours_end", "07:00"))
     return start <= current < end if start < end else current >= start or current < end
 
-def css_for(theme: str, window_alpha: float = 1.0) -> bytes:
-    if theme == "light":
-        colors = ("#f2f2f7", "#1c1c1e", "#ffffff", "#d1d1d6", "#636366", "#f2f2f7", "#c7c7cc")
-    else:
-        # Matched 1:1 to the macOS design tokens (GantryTheme.swift): canvas / text / card / line /
-        # secondary / progress-trough / job-name.
-        colors = ("#0c0d0e", "#f2f3f1", "#151719", "#2a2c2e", "#a7aaa6", "#33363a", "#9da09c")
-    background, foreground, card, border, secondary, trough, job = colors
-    # Only the window backdrop gets the transparency; cards keep their solid background so their
-    # text stays readable at every level (matches the macOS/Windows behaviour).
-    return ("""
-window { background: %(background)s; color: %(foreground)s; }
-window.popover-window { background-color: alpha(%(background)s, %(walpha).2f); border: 1px solid %(border)s; border-radius: 14px; }
-.popover-window .header { padding: 12px 16px 8px; }
-.header { padding: 12px 16px 8px; }
-.title { font-size: 18px; font-weight: 700; }
-.subtitle { color: %(secondary)s; font-size: 11px; }
-.card { background: %(card)s; border: 1px solid alpha(#ffffff, 0.08); border-radius: 16px; padding: 9px; }
-.printer-icon { color: %(secondary)s; margin-right: 2px; }
-.printer-name { font-size: 13px; font-weight: 600; }
-.connection { color: %(secondary)s; border: 1px solid alpha(#ffffff, 0.12); border-radius: 6px; padding: 2px 6px; font-family: monospace; font-size: 9px; font-weight: 600; }
-.job-surface { background: transparent; border: none; padding: 2px 0 4px; }
-.card-notice { background: alpha(#ff6857, 0.16); border: 1px solid alpha(#ff6857, 0.34); border-radius: 9px; padding: 5px 6px 5px 9px; }
-.card-notice label { color: #f0d9d5; font-size: 10px; }
-.card-notice-ok { color: #ff8a7c; font-weight: 700; font-size: 10px; padding: 1px 8px; }
-.detail-body { padding: 10px 12px 14px; }
-.detail-body .status { font-size: 12px; }
-.job { color: %(job)s; font-weight: 600; font-size: 10px; }
-.meta { color: %(secondary)s; font-size: 11px; }
-.status { color: #d4d7d3; font-weight: 700; font-size: 10px; }
-.card.printing .status { color: #ff6857; }
-.percent { color: #d4d7d3; font-size: 22px; font-weight: 600; }
-.eta { color: #d4d7d3; border: 1px solid alpha(#ffffff, 0.10); border-radius: 8px; padding: 3px 7px; font-family: monospace; font-size: 10px; font-weight: 600; }
-.temp-bento { background: transparent; border: none; }
-.temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.09); }
-.temp-zone:first-child { border-left: none; }
-.temp-name { color: %(secondary)s; font-family: monospace; font-size: 7px; font-weight: 600; }
-/* Temperature value colour follows STATE (design/kolorystyka.md): at-temp = neutral metric, cold/idle
-   muted, heating warm, cooling cool. Same map for nozzle, bed and chamber. */
-.temp-value { color: #d4d7d3; font-family: monospace; font-size: 14px; font-weight: 600; }
-.temp-value.heat { color: #d18c82; }
-.temp-value.cool { color: #8ba9c7; }
-.temp-value.idle { color: #6d716e; }
-.temp-value.ready { color: #d4d7d3; }
-.temp-value.unavail { color: #6d716e; }
-.temp-value.hold { color: #f2f3f1; font-weight: 700; }
-.temp-value.err { color: #ff5a4e; font-weight: 700; }
-.temp-value.mono { color: %(secondary)s; }
-.temp-value.strong { color: %(foreground)s; }
-.ams { border-radius: 9px; border: 1px solid alpha(#ffffff, 0.10); }
-.ams.active { border: 2px solid #ffffff; box-shadow: 0 0 0 1px alpha(#000000, 0.5); }
-/* Empty slot: a faint diagonal hatch (like the macOS striped chip) instead of a flat grey block. */
-.ams.empty { background-image: repeating-linear-gradient(45deg, alpha(#ffffff, 0.05), alpha(#ffffff, 0.05) 1px, transparent 1px, transparent 6px); }
-.ams-group { background: transparent; padding: 4px 6px; }
-.slot-pct { font-size: 10px; font-weight: 700; }
-.slot-material { color: #d4d7d3; font-size: 10px; font-weight: 600; }
-.slot-material.empty { color: #6d716e; }
-.slot-id { color: alpha(#d4d7d3, 0.62); font-family: monospace; font-size: 7px; font-weight: 500; }
-.slot-grams { color: #d4d7d3; font-size: 10px; font-weight: 600; }
-button { border-radius: 10px; padding: 7px 12px; }
-button.cardmenu { background: alpha(#ffffff, 0.08); border: none; box-shadow: none; padding: 0; min-width: 26px; min-height: 24px; border-radius: 12px; color: %(secondary)s; font-size: 15px; }
-button.headericon { background: transparent; border: none; box-shadow: none; padding: 2px 6px; min-width: 26px; min-height: 24px; color: %(secondary)s; font-size: 15px; }
-button.headericon:hover { background: alpha(#ffffff, 0.08); border-radius: 8px; }
-entry { padding: 8px; border-radius: 8px; }
-progressbar trough { min-height: 7px; border-radius: 5px; background: %(trough)s; }
-progressbar progress { border-radius: 2px; background: #ff6857; }
-.sb-tile { border-radius: 11px; padding: 6px 8px; }
-.sb-tile:hover { background: alpha(#ffffff, 0.08); }
-.sb-color { font-size: 11px; font-weight: 600; }
-.sb-product { font-size: 8px; color: %(secondary)s; }
-.sb-type { font-size: 13px; font-weight: 600; }
-.sb-count { font-size: 10px; color: %(secondary)s; }
-.sb-badge { border-radius: 8px; padding: 1px 7px; font-size: 10px; font-weight: 600; }
-.sb-badge.zero { background: alpha(#9a9a9e, 0.18); color: %(secondary)s; }
-.sb-badge.red { background: alpha(#ff453a, 0.20); color: #ff6a5f; }
-.sb-badge.blue { background: alpha(#0a84ff, 0.20); color: #4aa8ff; }
-.sb-badge.green { background: alpha(#30d158, 0.20); color: #4ae37a; }
-.sb-swatch { border-radius: 15px; border: 1px solid alpha(#ffffff, 0.25); }
-.sb-empty { color: %(secondary)s; font-size: 12px; font-weight: 600; }
-""" % {"background": background, "foreground": foreground, "card": card, "border": border,
-         "secondary": secondary, "trough": trough, "job": job, "walpha": window_alpha}).encode()
-
-
-def _draw_glyph(widget: Gtk.Widget, cr: object, kind: str) -> bool:
-    """Draw a small monochrome icon with Cairo (chart / layers / reorder grip) so it never depends on
-    font glyphs. Some fonts lack the block/geometric characters and render them as tofu boxes."""
-    alloc = widget.get_allocation()
-    w, h = alloc.width, alloc.height
-    style = widget.get_style_context()
-    rgba = style.get_color(style.get_state())
-    cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, rgba.alpha)
-    cr.set_line_width(1.4)
-    cr.set_line_cap(1)   # round
-    cr.set_line_join(1)  # round
-    if kind == "chart":
-        pad = 1.5
-        pts = [(pad, h - pad - 1), (w * 0.34, h * 0.46), (w * 0.6, h * 0.6), (w - pad, pad + 1)]
-        cr.move_to(*pts[0])
-        for p in pts[1:]:
-            cr.line_to(*p)
-        cr.stroke()
-    elif kind == "layers":
-        for y in (h * 0.28, h * 0.52, h * 0.76):
-            cr.move_to(1, y)
-            cr.line_to(w - 1, y)
-        cr.stroke()
-    elif kind == "grip":
-        cx = w / 2
-        cr.move_to(cx - 3, h * 0.40); cr.line_to(cx, h * 0.28); cr.line_to(cx + 3, h * 0.40)  # ^
-        cr.move_to(cx - 3, h * 0.60); cr.line_to(cx, h * 0.72); cr.line_to(cx + 3, h * 0.60)  # v
-        cr.stroke()
-    return False
-
-
-def _muted_hex(hexcolor: str, amount: float = 0.62) -> str:
-    """Blend a colour toward its own grey (luminance) so filament colours read calmer in the
-    monochrome mode. amount 0..1: 0 keeps the colour, 1 is fully grey."""
-    try:
-        r, g, b = int(hexcolor[0:2], 16), int(hexcolor[2:4], 16), int(hexcolor[4:6], 16)
-        lum = 0.299 * r + 0.587 * g + 0.114 * b
-        r = int(r + (lum - r) * amount)
-        g = int(g + (lum - g) * amount)
-        b = int(b + (lum - b) * amount)
-        return f"{max(0, min(255, r)):02X}{max(0, min(255, g)):02X}{max(0, min(255, b)):02X}"
-    except Exception:
-        return hexcolor
-
-
-def _contrast_ink(hexcolor: str) -> str:
-    """Black on a light spool, white on a dark one, so the % printed inside the chip stays legible."""
-    try:
-        r, g, b = int(hexcolor[0:2], 16), int(hexcolor[2:4], 16), int(hexcolor[4:6], 16)
-        return "#111111" if (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 else "#ffffff"
-    except Exception:
-        return "#ffffff"
-
-
-def _icon(kind: str, width: int, height: int, css: str = "meta") -> Gtk.DrawingArea:
-    area = Gtk.DrawingArea()
-    area.set_size_request(width, height)
-    area.get_style_context().add_class(css)
-    area.connect("draw", lambda widget, cr: _draw_glyph(widget, cr, kind))
-    return area
-
-
-class PrinterCard(Gtk.Frame):
-    def __init__(self, app: "Gantry", printer: Printer) -> None:
-        super().__init__()
-        # A GtkFrame draws its own etched, square border by default — kill it so only the rounded
-        # CSS card border shows (otherwise a hard white rectangle boxes every card).
-        self.set_shadow_type(Gtk.ShadowType.NONE)
-        self.set_label(None)
-        self.app, self.printer = app, printer
-        self.get_style_context().add_class("card")
-        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        self.add(self.box)
-        # Small on-card notice (e.g. a Spoolbase roll auto-detached when an NFC spool was inserted).
-        self.notice = Gtk.Box(spacing=8)
-        self.notice.get_style_context().add_class("card-notice")
-        self.notice_label = Gtk.Label(xalign=0, wrap=True)
-        self._notice_ok = Gtk.Button(label="OK")
-        self._notice_ok.set_relief(Gtk.ReliefStyle.NONE)
-        self._notice_ok.get_style_context().add_class("card-notice-ok")
-        self._notice_ok.connect("clicked", lambda _b: self.notice.hide())
-        self.notice.pack_start(self.notice_label, True, True, 0)
-        self.notice.pack_start(self._notice_ok, False, False, 0)
-        self.notice.set_no_show_all(True)
-        self.box.pack_start(self.notice, False, False, 0)
-        self.job_surface = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        self.job_surface.get_style_context().add_class("job-surface")
-        self.box.pack_start(self.job_surface, False, False, 0)
-        # Header: name + drag handle (chevrons, like macOS) + menu. The whole card is the drag source.
-        top = Gtk.Box(spacing=6)
-        icon = Gtk.Image.new_from_icon_name("printer-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        icon.get_style_context().add_class("printer-icon")
-        self.name = Gtk.Label(label=printer.name, xalign=0)
-        self.name.get_style_context().add_class("printer-name")
-        connection_text = {PrinterKind.BAMBU: "MQTT", PrinterKind.KLIPPER: "KLIPPER",
-                           PrinterKind.PRUSA: "PRUSALINK", PrinterKind.SNAPMAKER: "HTTP"}[printer.kind]
-        self.connection = Gtk.Label(label=connection_text)
-        self.connection.get_style_context().add_class("connection")
-        top.pack_start(icon, False, False, 0)
-        drag = _icon("grip", 12, 18)
-        drag.set_tooltip_text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek"
-                              if self.app.language == "pl" else "Drag up/down to reorder printers")
-        chart = Gtk.Button(); chart.set_relief(Gtk.ReliefStyle.NONE); chart.get_style_context().add_class("cardmenu")
-        chart.add(_icon("chart", 18, 13, css="cardmenu"))
-        chart.set_tooltip_text("Szczegóły" if self.app.language == "pl" else "Details")
-        chart.connect("clicked", lambda *_: self.app.open_details(self.printer.serial))
-        menu = Gtk.Button(label="⋯"); menu.set_relief(Gtk.ReliefStyle.NONE); menu.get_style_context().add_class("cardmenu")
-        menu.connect("clicked", self._show_menu)
-        top.pack_start(self.name, True, True, 0)
-        top.pack_start(self.connection, False, False, 0)
-        top.pack_start(drag, False, False, 0)
-        top.pack_start(chart, False, False, 0)
-        top.pack_start(menu, False, False, 0)
-        self.job_surface.pack_start(top, False, False, 0)
-        # Status line carries the state on the left and time + layers on the right (macOS layout).
-        self.status_row = Gtk.Box(spacing=8)
-        self.status = Gtk.Label(xalign=0)
-        self.status.get_style_context().add_class("status")
-        self.progress_meta = Gtk.Label(xalign=1)
-        self.progress_meta.get_style_context().add_class("meta")
-        self.job = Gtk.Label(label="—", xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        self.job.get_style_context().add_class("job")
-        self.status_row.pack_start(self.status, False, False, 0)
-        self.status_row.pack_start(Gtk.Label(label="·"), False, False, 0)
-        self.status_row.pack_start(self.job, True, True, 0)
-        meta_box = Gtk.Box(spacing=4)
-        meta_box.pack_start(_icon("layers", 12, 11), False, False, 0)
-        meta_box.pack_start(self.progress_meta, False, False, 0)
-        self.status_row.pack_start(meta_box, False, False, 0)
-        self.job_surface.pack_start(self.status_row, False, False, 0)
-        progress_row = Gtk.Box(spacing=7)
-        self.progress = Gtk.ProgressBar(show_text=False)
-        self.percent = Gtk.Label(label="0%")
-        self.percent.get_style_context().add_class("percent")
-        self.eta = Gtk.Label(label="—")
-        self.eta.get_style_context().add_class("eta")
-        progress_row.pack_start(self.percent, False, False, 0)
-        progress_row.pack_start(self.eta, False, False, 0)
-        self.job_surface.pack_start(progress_row, False, False, 0)
-        self.job_surface.pack_start(self.progress, False, False, 0)
-        # Temperatures on their own row, coloured by activity (heating red / cooling blue).
-        self.temps = Gtk.Box(spacing=0, homogeneous=True)
-        self.temps.get_style_context().add_class("temp-bento")
-        self.box.pack_start(self.temps, False, False, 0)
-        # Filament modules laid out on a homogeneous grid so groups share the card width by weight
-        # (a multi-slot AMS takes 3 columns, a single EXT/HT takes 1), like macOS.
-        self.ams = Gtk.Grid(column_spacing=6, column_homogeneous=True)
-        self.box.pack_start(self.ams, False, False, 0)
-        target = Gtk.TargetEntry.new("application/x-gantry-printer", Gtk.TargetFlags.SAME_APP, 0)
-        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, [target], Gdk.DragAction.MOVE)
-        self.drag_dest_set(Gtk.DestDefaults.ALL, [target], Gdk.DragAction.MOVE)
-        self.connect("drag-data-get", self._drag_data_get)
-        self.connect("drag-data-received", self._drag_data_received)
-        self.update(Telemetry())
-
-    def _show_menu(self, button: Gtk.Button) -> None:
-        menu = Gtk.Menu()
-        details = Gtk.MenuItem(label="Szczegóły" if self.app.language == "pl" else "Details")
-        details.connect("activate", lambda *_: self.app.open_details(self.printer.serial))
-        menu.append(details)
-        autos = Gtk.MenuItem(label="Automatyzacje" if self.app.language == "pl" else "Automations")
-        autos.connect("activate", lambda *_: self.app.open_automations(self.printer.serial))
-        menu.append(autos)
-        if self.printer.kind in (PrinterKind.BAMBU, PrinterKind.KLIPPER):
-            cam = Gtk.MenuItem(label="Kamera na żywo" if self.app.language == "pl" else "Live camera")
-            cam.connect("activate", lambda *_: self.app.open_camera(self.printer.serial))
-            menu.append(cam)
-        menu.append(Gtk.SeparatorMenuItem())
-        slicers = installed_slicers()
-        bambu_studio = next((slicer for slicer in slicers if slicer.name == "Bambu Studio"), None)
-        if self.printer.kind == PrinterKind.BAMBU and bambu_studio:
-            camera = Gtk.MenuItem(label="Kamera w Bambu Studio" if self.app.language == "pl" else "Camera in Bambu Studio")
-            camera.connect("activate", lambda *_: open_desktop_app(bambu_studio))
-            menu.append(camera)
-        for slicer in slicers:
-            label = f"Otwórz w {slicer.name}" if self.app.language == "pl" else f"Open in {slicer.name}"
-            item = Gtk.MenuItem(label=label)
-            item.connect("activate", lambda *_, value=slicer: open_desktop_app(value))
-            menu.append(item)
-        if slicers:
-            menu.append(Gtk.SeparatorMenuItem())
-        edit = Gtk.MenuItem(label=self.app.text["edit"])
-        edit.connect("activate", lambda *_: self.app.open_printer_dialog(self.printer))
-        menu.append(edit)
-        remove = Gtk.MenuItem(label=self.app.text["remove"])
-        remove.connect("activate", lambda *_: self.app.remove_printer(self.printer))
-        menu.append(remove)
-        menu.show_all()
-        # Keep the popover panel open while its own card menu is up.
-        window = getattr(self.app, "window", None)
-        if window is not None:
-            window._suppress_hide = True
-            menu.connect("deactivate", lambda *_: setattr(window, "_suppress_hide", False))
-        menu.popup_at_widget(button, Gdk.Gravity.SOUTH_EAST, Gdk.Gravity.NORTH_EAST, None)
-
-    def _drag_data_get(self, _widget: Gtk.Widget, _context: Gdk.DragContext,
-                       selection: Gtk.SelectionData, _info: int, _time: int) -> None:
-        selection.set_text(self.printer.serial, -1)
-
-    def _drag_data_received(self, _widget: Gtk.Widget, context: Gdk.DragContext, _x: int, _y: int,
-                            selection: Gtk.SelectionData, _info: int, timestamp: int) -> None:
-        source = selection.get_text() or ""
-        if source and source != self.printer.serial:
-            self.app.move_printer(source, self.printer.serial)
-        Gtk.drag_finish(context, True, True, timestamp)
-
-    def set_compact(self, compact: bool, expanded: bool = False) -> None:
-        hidden = compact and not expanded
-        for widget in (self.status_row, self.percent.get_parent(), self.progress, self.temps, self.ams):
-            widget.set_no_show_all(hidden)
-            widget.set_visible(not hidden)
-        if compact:
-            self.connect("button-release-event", self._toggle_compact_card)
-
-    def _toggle_compact_card(self, _widget: Gtk.Widget, event: Gdk.EventButton) -> bool:
-        if event.button == 1:
-            self.app.toggle_compact_printer(self.printer.serial)
-            return True
-        return False
-
-    def update(self, telemetry: Telemetry, reason: str | None = None) -> None:
-        labels = self.app.text
-        state_key = telemetry.state.value
-        status = labels.get(state_key, state_key)
-        if telemetry.stage in STAGES and telemetry.state in {PrinterState.PRINTING, PrinterState.PAUSED}:
-            status = STAGES[telemetry.stage][0 if self.app.language == "pl" else 1]
-        if reason:
-            if "certificate-changed" in reason:
-                status = labels["certificate"]
-            elif "access-code-rejected" in reason:
-                status = labels["rejected"]
-        self.status.set_text(status)
-        context = self.status.get_style_context()
-        card_context = self.get_style_context()
-        for name in ("printing", "finished", "error"):
-            context.remove_class(name)
-            card_context.remove_class(name)
-        if telemetry.state == PrinterState.PRINTING:
-            card_context.add_class("printing")
-        # Only a running/paused print has a job to show; finished/idle still echoes the last file name,
-        # so treat those as "no active job" (matches macOS/Windows).
-        has_active_job = telemetry.state in {PrinterState.PRINTING, PrinterState.PAUSED} and bool(telemetry.job_name)
-        self.job.set_text(telemetry.job_name if has_active_job else "—")
-        self.progress.set_fraction(telemetry.progress / 100)
-        self.percent.set_text(f"{telemetry.progress}%")
-        if telemetry.remaining_minutes:
-            mins = telemetry.remaining_minutes
-            # Remaining time + estimated finish clock ("33m · 14:32"); now + remaining stays stable
-            # as the printer counts the remaining minutes down.
-            finish = (datetime.now() + timedelta(minutes=mins)).strftime("%H:%M")
-            eta = f"{mins // 60}h {mins % 60}m · {finish}" if mins >= 60 else f"{mins}m · {finish}"
-        else:
-            eta = "—"
-        layers = "—" if telemetry.current_layer is None else f"{telemetry.current_layer}/{telemetry.total_layers or '—'}"
-        self.eta.set_text(f"ETA {eta}")
-        self.progress_meta.set_text(layers)
-
-        pl = self.app.language == "pl"
-        mono = bool(self.app.config.data.get("monochrome", False))
-
-        def fmt(cur: float | None, tgt: float | None) -> str:
-            if cur is None:
-                return "—"
-            return f"{cur:.0f}/{tgt:.0f}°" if tgt else f"{cur:.0f}°"
-
-        printing = telemetry.state == PrinterState.PRINTING
-        errored = telemetry.state == PrinterState.ERROR
-
-        def temp_zone(label: str, cur: float | None, tgt: float | None) -> Gtk.Widget:
-            zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-            zone.get_style_context().add_class("temp-zone")
-            name = Gtk.Label(label=label.upper(), xalign=0)
-            name.get_style_context().add_class("temp-name")
-            # Colour by state (design/kolorystyka.md §3): at-temp neutral metric (white while holding during
-            # a print), cold/idle muted, heating warm, cooling cool, firmware alarm red. In monochrome mode
-            # hue is dropped but a leading glyph (↑ ● ↓ ○ ! —) keeps the state readable.
-            st = temp_state(cur, tgt, printing, errored and tgt is not None)
-            # Big current value (coloured by state via CSS class) + a small muted target, like macOS:
-            # "255°" then a quiet "/255°" — not one flat "255/255°".
-            sym = (TEMP_SYMBOLS[st] + " ") if mono else ""
-            cur_txt = f"{cur:.0f}°" if cur is not None else "—"
-            markup = GLib.markup_escape_text(sym + cur_txt)
-            if cur is not None and tgt:
-                markup += (f"<span size='xx-small' foreground='#6d716e'>"
-                           f" /{tgt:.0f}°</span>")
-            value = Gtk.Label(xalign=0.5)
-            value.set_markup(markup)
-            vctx = value.get_style_context()
-            vctx.add_class("temp-value")
-            vctx.add_class("mono" if mono else st)
-            zone.pack_start(name, False, False, 0)
-            zone.pack_start(value, False, False, 0)
-            return zone
-
-        # Nozzle(s) with explicit L/P (pl) or L/R (en) for dual-nozzle printers, plus chamber when real.
-        nozzles = telemetry.nozzles
-        dual = any(n.position == "right" for n in nozzles)
-        for child in self.temps.get_children():
-            self.temps.remove(child)
-        zones: list[Gtk.Widget] = []
-        if dual:
-            left = next((n for n in nozzles if n.position == "left"), nozzles[0])
-            right = next((n for n in nozzles if n.position == "right"), None)
-            zones.append(temp_zone("Dysze P" if pl else "Nozzles R", right.current if right else None, right.target if right else None))
-            zones.append(temp_zone("L", left.current, left.target))
-        else:
-            cur = nozzles[0].current if nozzles else telemetry.nozzle
-            tgt = nozzles[0].target if nozzles else telemetry.nozzle_target
-            zones.append(temp_zone("Dysza" if pl else "Nozzle", cur, tgt))
-        zones.append(temp_zone("Stół" if pl else "Bed", telemetry.bed, telemetry.bed_target))
-        zones.append(temp_zone("Komora" if pl else "Chamber", telemetry.chamber, None))
-        for zone in zones:
-            self.temps.pack_start(zone, True, True, 0)
-        self.temps.show_all()
-
-        # Physical filament modules as side-by-side groups (name + per-module humidity/temp, then slots).
-        for child in self.ams.get_children():
-            self.ams.remove(child)
-        spoolbase_on = bool(self.app.config.data.get("spoolbase_enabled", True))
-        store = getattr(self.app, "physical_spools", None) if spoolbase_on else None
-        column = 0
-        for group_index, group in enumerate(telemetry.filament_groups):
-            # A real multi-slot AMS is ~3x wider than a single EXT/HT, and a lone slot is a narrower,
-            # centred tile (matches the macOS grid).
-            weight = 3 if group.declared_capacity > 1 else 1
-            is_single = len(group.slots) <= 1
-            gbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-            gbox.get_style_context().add_class("ams-group")
-            gbox.set_hexpand(True)
-            # One compact, left-aligned line: "AMS · 🌡 38° · 💧 32%" (name, temperature, humidity). The
-            # env values are calm neutral metric text (kolorystyka.md); separators drop with a missing
-            # measurement, and colour emoji ignore the foreground so they keep their own hue.
-            env: list[str] = []
-            if group.temperature is not None:
-                env.append(f"🌡 {group.temperature:.0f}°")
-            if group.humidity is not None:
-                env.append("💧 " + (f"{group.humidity}/5" if group.humidity <= 5 else f"{group.humidity}%"))
-            # Short header name like macOS: "AMS A" → "AMS" (the letter already shows on the slot as A1),
-            # "AMS HT" → "HT" (keep the meaningful type); EXT / CFS stay as-is.
-            short = group.display_name
-            if short.startswith("AMS "):
-                rest = short[4:]
-                short = "AMS" if len(rest) == 1 else rest
-            header = Gtk.Label(xalign=0)
-            suffix = (f"<span foreground='#d4d7d3' alpha='73%'> · "
-                      f"{GLib.markup_escape_text(' · '.join(env))}</span>") if env else ""
-            header.set_markup(f"<b>{GLib.markup_escape_text(short)}</b>{suffix}")
-            gbox.pack_start(header, False, False, 0)
-            srow = Gtk.Box(spacing=4)
-            for slot_index, slot in enumerate(group.slots):
-                # A manually-assigned Spoolbase roll fills in colour/grams for a slot the printer cannot
-                # read itself (chipless spool), matching macOS/Windows.
-                assigned = None
-                if store is not None:
-                    from .physicalspool import location_for
-                    assigned = store.spool_at(location_for(self.printer.serial, group.external, group_index, slot_index))
-                assigned_def = None
-                if assigned is not None and getattr(self.app, "filament_store", None) is not None:
-                    assigned_def = next((f for f in self.app.filament_store.filaments
-                                         if f.id == assigned.get("filamentDefinitionID")), None)
-                sbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-                swatch = Gtk.Label(label="")
-                if is_single:
-                    swatch.set_size_request(64, 38)          # lone slot: narrower, centred
-                    swatch.set_halign(Gtk.Align.CENTER)
-                else:
-                    swatch.set_size_request(40, 38)          # AMS slots stretch to fill the group evenly
-                    swatch.set_hexpand(True)
-                    swatch.set_halign(Gtk.Align.FILL)
-                ctx = swatch.get_style_context()
-                ctx.add_class("ams")
-                if slot.active:
-                    ctx.add_class("active")
-                present = slot.present or assigned is not None
-                if slot.present:
-                    color = (slot.color or "8E8E93FF").lstrip("#")[:6]
-                elif assigned_def is not None:
-                    color = str(assigned_def.colorHex).lstrip("#")[:6]
-                else:
-                    color = "1D1F22"            # dim base; the .empty hatch draws the striped look over it
-                    ctx.add_class("empty")
-                if mono:
-                    color = _muted_hex(color)   # calmer filament colours in monochrome mode
-                # Set the colour through a per-widget CSS provider rather than the deprecated
-                # override_background_color(), which paints a flat fill over the CSS border and hides
-                # the white ring on the active slot.
-                try:
-                    provider = Gtk.CssProvider()
-                    provider.load_from_data((".ams { background-color: #%s; }" % color).encode())
-                    ctx.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-                except Exception:
-                    pass
-                # Remaining %: an assigned Spoolbase roll wins, otherwise the AMS reading. Material name:
-                # from the slot, or the assigned roll's filament (matches macOS).
-                effective_pct = None
-                if assigned is not None and store is not None:
-                    effective_pct = store.percent(assigned)
-                elif slot.remaining is not None:
-                    effective_pct = slot.remaining
-                if slot.present:
-                    material_text = slot.material or "—"
-                elif assigned_def is not None:
-                    material_text = assigned_def.type or assigned_def.name or "—"
-                else:
-                    material_text = "—"
-                # The % sits inside the colour chip (contrasting ink), like macOS.
-                overlay = Gtk.Overlay()
-                overlay.add(swatch)
-                if present and effective_pct is not None:
-                    pct_lbl = Gtk.Label(label=f"{int(effective_pct)}%")
-                    pctx = pct_lbl.get_style_context()
-                    pctx.add_class("slot-pct")
-                    pct_lbl.set_halign(Gtk.Align.CENTER)
-                    pct_lbl.set_valign(Gtk.Align.CENTER)
-                    try:
-                        pp = Gtk.CssProvider()
-                        pp.load_from_data((".slot-pct { color: %s; }" % _contrast_ink(color)).encode())
-                        pctx.add_provider(pp, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-                    except Exception:
-                        pass
-                    overlay.add_overlay(pct_lbl)
-                # Low-filament marker (red corner dot) — only when the level is trustworthy. External
-                # spools and chipless AMS spools both report remain=0 as "unknown", so warn only for a
-                # real RFID/NFC tag (weight known), never a chipless spool (issue #27).
-                trusted_level = slot.remaining_weight_g is not None
-                low = present and not group.external and trusted_level and (slot.remaining if slot.remaining is not None else 100) <= 15
-                if low:
-                    dot = Gtk.Label(label="")
-                    dot.set_size_request(7, 7)
-                    dot.set_halign(Gtk.Align.END)
-                    dot.set_valign(Gtk.Align.START)
-                    dot.set_margin_top(3)
-                    dot.set_margin_end(3)
-                    dctx = dot.get_style_context()
-                    dctx.add_class("lowdot")
-                    try:
-                        dp = Gtk.CssProvider()
-                        dp.load_from_data(b".lowdot { background-color: #ff3b30; border-radius: 4px; border: 1px solid #202020; }")
-                        dctx.add_provider(dp, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-                    except Exception:
-                        pass
-                    overlay.add_overlay(dot)
-                swatch_widget: Gtk.Widget = overlay
-                # Caption: material name centered (primary), the slot id quiet at the leading edge (macOS).
-                caption = Gtk.Overlay()
-                material_lbl = Gtk.Label(label=material_text, xalign=0.5, ellipsize=Pango.EllipsizeMode.END)
-                mctx = material_lbl.get_style_context()
-                mctx.add_class("slot-material")
-                if not present:
-                    mctx.add_class("empty")
-                caption.add(material_lbl)
-                if not group.external:
-                    id_lbl = Gtk.Label(label=slot.label)
-                    id_lbl.get_style_context().add_class("slot-id")
-                    id_lbl.set_halign(Gtk.Align.START)
-                    id_lbl.set_valign(Gtk.Align.CENTER)
-                    caption.add_overlay(id_lbl)
-                sbox.pack_start(swatch_widget, False, False, 0)
-                sbox.pack_start(caption, False, False, 0)
-                # Grams on the spool: the AMS NFC/RFID tag, or a manually-assigned Spoolbase roll.
-                grams_value = slot.remaining_weight_g
-                if grams_value is None and assigned is not None:
-                    grams_value = assigned.get("remainingWeightGrams")
-                if grams_value and self.app.config.data.get("card_show_spool_grams"):
-                    grams = Gtk.Label(xalign=0.5)
-                    grams.get_style_context().add_class("slot-grams")
-                    grams.set_text(f"{int(grams_value)} g")
-                    sbox.pack_start(grams, False, False, 0)
-                # Click a slot to assign / edit / detach its physical roll (Spoolbase only).
-                if store is not None:
-                    event_box = Gtk.EventBox()
-                    event_box.add(sbox)
-                    event_box.connect("button-press-event",
-                                      lambda _w, _e, g=group, gi=group_index, s=slot, si=slot_index:
-                                      self._open_slot_assign(g, gi, s, si))
-                    srow.pack_start(event_box, True, True, 0)
-                else:
-                    srow.pack_start(sbox, True, True, 0)
-            gbox.pack_start(srow, False, False, 0)
-            self.ams.attach(gbox, column, 0, weight, 1)
-            column += weight
-        self.ams.show_all()
-
-    def show_notice(self, text: str) -> None:
-        self.notice_label.set_text(text)
-        self.notice.show()
-        self.notice_label.show()
-        self._notice_ok.show()
-
-    def _open_slot_assign(self, group: Any, group_index: int, slot: Any, slot_index: int) -> bool:
-        try:
-            from .spoolassign import open_assign_dialog
-            open_assign_dialog(self.app, self.printer.serial, group, group_index, slot, slot_index)
-        except Exception:
-            pass
-        return True
-
-
-class Dashboard(Gtk.Window):
-    def __init__(self, app: "Gantry") -> None:
-        super().__init__()
-        self.app = app
-        self._just_shown = False
-        self._suppress_hide = False
-        # Use an RGBA visual (before realize) so a translucent panel background can show the desktop
-        # when the transparency setting is medium/high. Harmless when the background is opaque.
-        _rgba = self.get_screen().get_rgba_visual()
-        if _rgba is not None:
-            self.set_visual(_rgba)
-        # With a system tray, behave like the macOS menu-bar popover: a borderless panel with no
-        # taskbar entry that drops near the tray and closes when you click elsewhere. Without a tray
-        # (no AppIndicator) fall back to a normal titled window so it stays reachable.
-        self.tray_mode = AppIndicator is not None
-        self.set_title("Gantry")
-        if self.tray_mode:
-            self.set_default_size(840, 640)
-            self.set_decorated(False)
-            self.set_skip_taskbar_hint(True)
-            self.set_skip_pager_hint(True)
-            self.set_resizable(False)
-            self.set_keep_above(True)
-            try:
-                self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-            except Exception:
-                pass
-            self.get_style_context().add_class("popover-window")
-            self.connect("focus-out-event", self._on_focus_out)
-            # Request a compositor blur behind the popover once it has a native window, and again each
-            # time it is shown (a compositor can drop the property when the surface changes). Best-effort:
-            # real blur only happens on KDE/KWin X11; elsewhere the RGBA transparency alone remains.
-            self._backdrop_mode = "transparency"
-            self.connect("realize", lambda *_: self._apply_backdrop())
-            self.connect("map", lambda *_: self._apply_backdrop())
-        else:
-            self.set_title("Gantry")
-            self.set_default_size(840, 720)
-            self.set_position(Gtk.WindowPosition.CENTER)
-        self.connect("delete-event", self._hide)
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.add(root)
-        header = Gtk.Box(spacing=10)
-        header.get_style_context().add_class("header")
-        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        title = Gtk.Label(label="GANTRY", xalign=0); title.get_style_context().add_class("title")
-        self.subtitle = Gtk.Label(xalign=0); self.subtitle.get_style_context().add_class("subtitle")
-        titles.pack_start(title, False, False, 0); titles.pack_start(self.subtitle, False, False, 0)
-        self.collapse = Gtk.Button(); self.collapse.connect("clicked", self._toggle)
-        clear = Gtk.Button(label="✕"); clear.connect("clicked", lambda _b: app.reset_completed())
-        clear.set_tooltip_text("Wyczyść zakończone" if app.language == "pl" else "Clear finished")
-        refresh = Gtk.Button(label="↻"); refresh.connect("clicked", lambda _b: app.reconnect_all())
-        refresh.set_tooltip_text("Połącz ponownie" if app.language == "pl" else "Reconnect")
-        add = Gtk.Button(label="＋"); add.connect("clicked", lambda _b: app.open_printer_dialog())
-        add.set_tooltip_text("Dodaj drukarkę" if app.language == "pl" else "Add printer")
-        for _b in (self.collapse, clear, refresh, add):
-            _b.set_relief(Gtk.ReliefStyle.NONE); _b.get_style_context().add_class("headericon")
-        header.pack_start(titles, True, True, 0)
-        header.pack_start(self.collapse, False, False, 0); header.pack_start(clear, False, False, 0)
-        header.pack_start(refresh, False, False, 0); header.pack_start(add, False, False, 0)
-        root.pack_start(header, False, False, 0)
-        scroll = Gtk.ScrolledWindow(); scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.grid = Gtk.Grid(column_spacing=10, row_spacing=10, margin=12)
-        scroll.add(self.grid); root.pack_start(scroll, True, True, 0)
-        # Light, unobtrusive tagline under the cards (matches the macOS panel).
-        footer = Gtk.Label(
-            label=("Drukuj spokojnie — wszystko pod kontrolą" if app.language == "pl"
-                   else "Print in peace — everything under control"))
-        footer.get_style_context().add_class("subtitle")
-        footer.set_margin_top(2); footer.set_margin_bottom(8)
-        root.pack_start(footer, False, False, 0)
-
-    def _apply_backdrop(self, *_args: object) -> None:
-        # Ask the compositor to blur behind the popover (KDE/KWin X11). Safe no-op everywhere else, so
-        # the RGBA-translucent background stays intact. Never raises.
-        try:
-            from .backdrop import apply_backdrop
-            self._backdrop_mode = apply_backdrop(self)
-        except Exception:
-            self._backdrop_mode = "transparency"
-
-    def _hide(self, *_args: object) -> bool:
-        self.hide(); return True
-
-    def _on_focus_out(self, *_args: object) -> bool:
-        # Close on click-away, like a popover — but not right after opening, and not while a child
-        # dialog (Add printer / Settings) has taken focus.
-        if not self._just_shown and not self._suppress_hide:
-            self.hide()
-        return False
-
-    def position_top_right(self) -> None:
-        display = Gdk.Display.get_default()
-        if display is None:
-            return
-        monitor = display.get_primary_monitor() or display.get_monitor(0)
-        if monitor is None:
-            return
-        geometry = monitor.get_geometry()
-        width, height = self.get_size()
-        self.move(geometry.x + geometry.width - width - 10, geometry.y + 10)
-
-    def _toggle(self, _button: Gtk.Button) -> None:
-        self.app.config.data["collapsed"] = not self.app.is_compact()
-        self.app.config.data["collapsed_chosen"] = True
-        self.app.expanded_compact_serial = None
-        self.app.config.save(); self.app.rebuild_cards()
-
-    def update_header(self) -> None:
-        online = sum(1 for value in self.app.telemetry.values() if value.state != PrinterState.OFFLINE)
-        self.subtitle.set_text(f"{len(self.app.printers)} {self.app.text['printers']} • {online} {self.app.text['online']}")
-        self.collapse.set_label(self.app.text["expand"] if self.app.is_compact() else self.app.text["collapse"])
-        self.collapse.set_visible(len(self.app.printers) >= 4)
-
-
 class PrinterDialog(Gtk.Dialog):
     def __init__(self, app: "Gantry", printer: Printer | None = None) -> None:
-        super().__init__(title=app.text["edit"] if printer else app.text["add"], transient_for=app.window, modal=True)
+        super().__init__(title=app.text["edit"] if printer else app.text["add"], transient_for=app.window, modal=False)
         self.app, self.printer = app, printer
         self.add_button(app.text["cancel"], Gtk.ResponseType.CANCEL)
-        if printer:
-            self.add_button(app.text["remove"], Gtk.ResponseType.REJECT)
         self.add_button(app.text["save"], Gtk.ResponseType.OK)
         self.set_default_size(590, 620)
         box = self.get_content_area(); box.set_spacing(10); box.set_border_width(18)
 
-        box.pack_start(Gtk.Label(label=app.text["kind"], xalign=0), False, False, 0)
+        self.kind_label = Gtk.Label(label=app.text["kind"], xalign=0)
+        box.pack_start(self.kind_label, False, False, 0)
         self.kind = Gtk.ComboBoxText()
-        for value, label in (("bambu", "Bambu Lab"), ("klipper", "Klipper / Moonraker"),
+        for value, label in (("bambu", "Bambu Lab"), ("elegoo", "Elegoo"),
+                             ("klipper", "Klipper / Moonraker"),
                              ("prusa", "Prusa / PrusaLink"), ("snapmaker", "Snapmaker")):
             self.kind.append(value, label)
-        self.kind.set_active_id((printer.kind if printer else PrinterKind.BAMBU).value)
+        selected_brand = "elegoo" if printer and printer.kind in {PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2} \
+            else (printer.kind if printer else PrinterKind.BAMBU).value
+        self.kind.set_active_id(selected_brand)
         self.kind.connect("changed", lambda _combo: self._apply_kind())
         box.pack_start(self.kind, False, False, 0)
+        self.elegoo_model_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.elegoo_model_row.pack_start(Gtk.Label(
+            label="Model Elegoo" if app.language == "pl" else "Elegoo model", xalign=0), False, False, 0)
+        self.elegoo_model = Gtk.ComboBoxText()
+        self.elegoo_model.append(PrinterKind.ELEGOO_CC1.value, "Centauri Carbon")
+        self.elegoo_model.append(PrinterKind.ELEGOO_CC2.value, "Centauri Carbon 2")
+        self.elegoo_model.set_active_id(printer.kind.value if printer and printer.kind in {
+            PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2} else PrinterKind.ELEGOO_CC1.value)
+        self.elegoo_model.connect("changed", lambda _combo: self._apply_kind())
+        self.elegoo_model_row.pack_start(self.elegoo_model, False, False, 0)
+        box.pack_start(self.elegoo_model_row, False, False, 0)
         csv_button = Gtk.Button(label="Importuj wiele drukarek z CSV" if app.language == "pl" else "Import multiple printers from CSV")
         csv_button.connect("clicked", lambda _button: app.import_csv_on_screen(self))
         box.pack_start(csv_button, False, False, 0)
@@ -852,7 +170,8 @@ class PrinterDialog(Gtk.Dialog):
         self.fields: dict[str, Gtk.Entry] = {}
         self.rows: dict[str, Gtk.Box] = {}
         defaults = {"name": printer.name if printer else "", "host": printer.host if printer else "",
-                    "serial": printer.serial if printer and printer.kind == PrinterKind.BAMBU else "",
+                    "serial": printer.serial if printer and printer.kind in {
+                        PrinterKind.BAMBU, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2} else "",
                     "code": "", "port": str(printer.port if printer else 8883)}
         for key in ("name", "host", "serial", "code", "port"):
             row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -872,37 +191,63 @@ class PrinterDialog(Gtk.Dialog):
         self.code_label = self.rows["code"].get_children()[0]
         self.info = Gtk.Label(xalign=0, wrap=True); self.info.get_style_context().add_class("meta")
         box.pack_start(self.info, False, False, 0)
+        self.progress_check = Gtk.CheckButton(
+            label=("Pokaż postęp tej drukarki na panelu systemowym" if app.language == "pl"
+                   else "Show this printer's progress in the system panel"))
+        self.progress_check.set_no_show_all(True)
+        self.progress_check.set_active(bool(printer and app.config.is_progress_pinned(printer.serial)))
+        self.progress_check.set_visible(printer is not None)
+        box.pack_start(self.progress_check, False, False, 0)
         self.error = Gtk.Label(xalign=0, wrap=True); self.error.get_style_context().add_class("status")
         box.pack_start(self.error, False, False, 0)
         self.discovered: list[Printer] = []
         self.show_all(); self._apply_kind()
+        if printer:
+            # Keep the brand fixed while editing, like macOS/Windows. The Elegoo generation
+            # selector remains available, matching the reference implementation.
+            self.kind_label.set_visible(False)
+            self.kind.set_visible(False)
         if not printer: self.start_scan()
 
     @property
     def selected_kind(self) -> PrinterKind:
-        try: return PrinterKind(self.kind.get_active_id() or "bambu")
+        value = self.kind.get_active_id() or "bambu"
+        if value == "elegoo": value = self.elegoo_model.get_active_id() or PrinterKind.ELEGOO_CC1.value
+        try: return PrinterKind(value)
         except ValueError: return PrinterKind.BAMBU
 
     def _apply_kind(self) -> None:
         kind = self.selected_kind
-        self.bambu_section.set_visible(kind == PrinterKind.BAMBU)
-        self.rows["serial"].set_visible(kind == PrinterKind.BAMBU)
+        is_elegoo = kind in {PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}
+        self.elegoo_model_row.set_visible(self.kind.get_active_id() == "elegoo")
+        self.bambu_section.set_visible(kind == PrinterKind.BAMBU or is_elegoo)
+        self.rows["serial"].set_visible(kind == PrinterKind.BAMBU or is_elegoo)
         # Snapmaker authorizes via the printer's touchscreen — no access code / API key field.
-        self.rows["code"].set_visible(kind != PrinterKind.SNAPMAKER)
+        self.rows["code"].set_visible(kind not in {PrinterKind.SNAPMAKER, PrinterKind.ELEGOO_CC1})
         defaults = {PrinterKind.BAMBU: 8883, PrinterKind.KLIPPER: 7125,
-                    PrinterKind.PRUSA: 80, PrinterKind.SNAPMAKER: 8080}
+                    PrinterKind.PRUSA: 80, PrinterKind.SNAPMAKER: 8080,
+                    PrinterKind.ELEGOO_CC1: 3030, PrinterKind.ELEGOO_CC2: 1883}
         if not self.printer or self.printer.kind != kind:
             self.fields["port"].set_text(str(defaults[kind]))
         if kind == PrinterKind.BAMBU:
             self.code_label.set_text(self.app.text["code"].split(" /")[0])
-            self.info.set_text("MQTT/TLS • port 8883. Dodatkowy adres VPN wpisz wyżej i przeskanuj ponownie.")
+            self.info.set_text(
+                "MQTT/TLS • port 8883. Dodatkowy adres VPN wpisz wyżej i przeskanuj ponownie."
+                if self.app.language == "pl" else
+                "MQTT/TLS • port 8883. Enter an additional VPN address above and scan again.")
         elif kind == PrinterKind.KLIPPER:
             self.code_label.set_text(self.app.text["api_optional"])
-            self.info.set_text("Moonraker • port 7125. Happy Hare MMU i Creality CFS są wykrywane automatycznie.")
+            self.info.set_text(
+                "Moonraker • port 7125. Happy Hare MMU i Creality CFS są wykrywane automatycznie."
+                if self.app.language == "pl" else
+                "Moonraker • port 7125. Happy Hare MMU and Creality CFS are detected automatically.")
         elif kind == PrinterKind.PRUSA:
-            self.code_label.set_text("Klucz API PrusaLink")
-            self.info.set_text("PrusaLink • port 80 • połączenie lokalne, bez konta Prusy.")
-        else:
+            self.code_label.set_text("Klucz API PrusaLink" if self.app.language == "pl" else "PrusaLink API key")
+            self.info.set_text(
+                "PrusaLink • port 80 • połączenie lokalne, bez konta Prusy."
+                if self.app.language == "pl" else
+                "PrusaLink • port 80 • local connection, no Prusa account required.")
+        elif kind == PrinterKind.SNAPMAKER:
             self.info.set_text(
                 "Snapmaker 2.0 / Artisan • HTTP, port 8080. Po dodaniu NA EKRANIE DRUKARKI pojawi się "
                 "prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym "
@@ -910,9 +255,20 @@ class PrinterDialog(Gtk.Dialog):
                 if self.app.language == "pl" else
                 "Snapmaker 2.0 / Artisan • HTTP, port 8080. After adding, the PRINTER SCREEN shows a "
                 "permission request — tap “Allow” to authorize. Re-authorize after each power cycle.")
+        elif kind == PrinterKind.ELEGOO_CC1:
+            self.info.set_text(
+                "Elegoo Centauri Carbon • SDCP WebSocket, port 3030 • bez kodu dostępu. Kamera: port 3031."
+                if self.app.language == "pl" else
+                "Elegoo Centauri Carbon • SDCP WebSocket, port 3030 • no access code. Camera: port 3031.")
+        else:
+            self.code_label.set_text("Kod dostępu Elegoo" if self.app.language == "pl" else "Elegoo access code")
+            self.info.set_text(
+                "Elegoo Centauri Carbon 2 • MQTT LAN, port 1883. Włącz tryb LAN-only w drukarce. Kamera: MJPEG 8080."
+                if self.app.language == "pl" else
+                "Elegoo Centauri Carbon 2 • MQTT LAN, port 1883. Enable LAN-only mode on the printer. Camera: MJPEG 8080.")
 
     def start_scan(self) -> None:
-        if self.selected_kind != PrinterKind.BAMBU: return
+        if self.selected_kind not in {PrinterKind.BAMBU, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}: return
         try:
             expand_scan_targets(self.targets.get_text())
         except ValueError:
@@ -922,6 +278,9 @@ class PrinterDialog(Gtk.Dialog):
         self.combo.remove_all(); self.combo.append("manual", self.app.text["searching"]); self.combo.set_active(0)
         def work() -> None:
             values = scan(targets)
+            selected = self.selected_kind
+            if selected == PrinterKind.BAMBU: values = [value for value in values if value.kind == PrinterKind.BAMBU]
+            else: values = [value for value in values if value.kind == selected]
             GLib.idle_add(self._scan_done, values)
         threading.Thread(target=work, daemon=True).start()
 
@@ -962,115 +321,30 @@ class PrinterDialog(Gtk.Dialog):
         kind = self.selected_kind
         try: port = int(values["port"])
         except ValueError: port = 0
-        serial = values["serial"] if kind == PrinterKind.BAMBU else f"{kind.value}-{values['host']}-{port}"
-        secret_required = kind in {PrinterKind.BAMBU, PrinterKind.PRUSA}
+        serial = values["serial"] if kind in {PrinterKind.BAMBU, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2} \
+            else f"{kind.value}-{values['host']}-{port}"
+        secret_required = kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2}
         if not values["name"] or not values["host"] or not serial or not 1 <= port <= 65535 or (secret_required and not values["code"] and not self.printer):
             self.error.set_text(self.app.text["invalid"]); return None
         model = {PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper",
-                 PrinterKind.PRUSA: "Prusa", PrinterKind.SNAPMAKER: "Snapmaker"}[kind]
+                 PrinterKind.PRUSA: "Prusa", PrinterKind.SNAPMAKER: "Snapmaker",
+                 PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
+                 PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2"}[kind]
         return Printer(serial, values["name"], values["host"], model=model, port=port, kind=kind), values["code"]
 
 
-class SettingsDialog(Gtk.Dialog):
-    def __init__(self, app: "Gantry") -> None:
-        super().__init__(title=app.text["settings"], transient_for=app.window, modal=True)
-        self.app = app; self.add_button(app.text["cancel"], Gtk.ResponseType.CANCEL); self.add_button(app.text["save"], Gtk.ResponseType.OK)
-        self.set_default_size(520, 420)
-        box = self.get_content_area(); box.set_spacing(12); box.set_border_width(20)
-        self.language = Gtk.ComboBoxText(); self.language.append("pl", "Polski"); self.language.append("en", "English"); self.language.set_active_id(app.language)
-        self.theme = Gtk.ComboBoxText(); self.theme.append("dark", app.text["dark"]); self.theme.append("light", app.text["light"]); self.theme.set_active_id(str(app.config.data.get("theme", "dark")))
-        _pl = app.language == "pl"
-        self.transparency = Gtk.ComboBoxText()
-        self.transparency.append("low", "Niska" if _pl else "Low")
-        self.transparency.append("medium", "Średnia" if _pl else "Medium")
-        self.transparency.append("high", "Wysoka" if _pl else "High")
-        self.transparency.set_active_id(str(app.config.data.get("panel_transparency", "low")))
-        _transparency_label = "Przezroczystość" if _pl else "Transparency"
-        for label, widget in ((app.text["language"], self.language), (app.text["theme"], self.theme),
-                              (_transparency_label, self.transparency)):
-            box.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0); box.pack_start(widget, False, False, 0)
-        self.autostart = Gtk.CheckButton(label=app.text["autostart"]); self.autostart.set_active(autostart_enabled()); box.pack_start(self.autostart, False, False, 0)
-        self.spoolbase = Gtk.CheckButton(label="Spoolbase — magazyn filamentów" if app.language == "pl" else "Spoolbase — filament stock")
-        self.spoolbase.set_active(bool(app.config.data.get("spoolbase_enabled", True)))
-        box.pack_start(self.spoolbase, False, False, 0)
-        self.spool_grams = Gtk.CheckButton(label="Gramy na rolce (AMS NFC / Spoolbase)" if app.language == "pl" else "Grams on spool (AMS NFC / Spoolbase)")
-        self.spool_grams.set_active(bool(app.config.data.get("card_show_spool_grams", False)))
-        box.pack_start(self.spool_grams, False, False, 0)
-        self.monochrome = Gtk.CheckButton(label="Kolorystyka monochromatyczna" if _pl else "Monochrome colours")
-        self.monochrome.set_active(bool(app.config.data.get("monochrome", False)))
-        self.monochrome.set_tooltip_text("Temperatury na szaro, kolory AMS wyciszone" if _pl else "Grey temperatures, calmer AMS colours")
-        box.pack_start(self.monochrome, False, False, 0)
-        # Security: allow automations whose action runs code (raw command / shell script). Off by default.
-        self.allow_scripts = Gtk.CheckButton(label="Zezwól automatyzacjom na komendy i skrypty" if _pl else "Allow command and script automations")
-        self.allow_scripts.set_active(bool(app.config.data.get("allow_script_actions", False)))
-        box.pack_start(self.allow_scripts, False, False, 0)
-        # Web dashboard (LAN) + sync between the user's own computers.
-        self.web_dashboard = Gtk.CheckButton(label="Serwer podglądu w przeglądarce (sieć lokalna)" if _pl else "Web preview server (local network)")
-        self.web_dashboard.set_active(bool(app.config.data.get("web_dashboard_enabled", True)))
-        box.pack_start(self.web_dashboard, False, False, 0)
-        from .webserver import local_ipv4
-        _ip = local_ipv4()
-        _addr = f"http://{_ip}:8787" if _ip else ("brak adresu IP" if _pl else "no IP address")
-        _web_addr = Gtk.Label(label=_addr, xalign=0); _web_addr.get_style_context().add_class("meta"); box.pack_start(_web_addr, False, False, 0)
-        _sync = getattr(app, "sync_service", None)
-        if _sync is not None:
-            box.pack_start(Gtk.Label(label=("Synchronizacja między komputerami" if _pl else "Sync between computers"), xalign=0), False, False, 0)
-            self.sync_token = Gtk.Entry(text=_sync.token); box.pack_start(self.sync_token, False, False, 0)
-            _peer_row = Gtk.Box(spacing=8)
-            self.sync_peer = Gtk.Entry(); self.sync_peer.set_placeholder_text("adres drugiego komputera, np. 192.168.1.20" if _pl else "other computer address, e.g. 192.168.1.20")
-            _add = Gtk.Button(label="Dodaj" if _pl else "Add"); _add.connect("clicked", lambda *_: (_sync.add_peer(self.sync_peer.get_text()), self.sync_peer.set_text("")))
-            _peer_row.pack_start(self.sync_peer, True, True, 0); _peer_row.pack_start(_add, False, False, 0); box.pack_start(_peer_row, False, False, 0)
-            _btn_row = Gtk.Box(spacing=8)
-            _newtok = Gtk.Button(label="Nowy token" if _pl else "New token"); _newtok.connect("clicked", lambda *_: (_sync.regenerate_token(), self.sync_token.set_text(_sync.token)))
-            _settok = Gtk.Button(label="Ustaw token" if _pl else "Set token"); _settok.connect("clicked", lambda *_: _sync.set_token(self.sync_token.get_text()))
-            _syncnow = Gtk.Button(label="Synchronizuj teraz" if _pl else "Sync now"); _syncnow.connect("clicked", lambda *_: _sync.sync_now())
-            _btn_row.pack_start(_newtok, False, False, 0); _btn_row.pack_start(_settok, False, False, 0); _btn_row.pack_start(_syncnow, False, False, 0); box.pack_start(_btn_row, False, False, 0)
-            _peers = _sync.peers()
-            _plist = (", ".join(p.get("address", "") for p in _peers)) if _peers else ("brak sparowanych" if _pl else "no paired computers")
-            _peer_lbl = Gtk.Label(label=_plist, xalign=0); _peer_lbl.get_style_context().add_class("meta"); box.pack_start(_peer_lbl, False, False, 0)
-        box.pack_start(Gtk.Label(label=app.text["notifications"], xalign=0), False, False, 0)
-        self.notices: dict[str, Gtk.CheckButton] = {}
-        for key, config_key in (("finished_notice", "notify_finished"), ("error_notice", "notify_error"),
-                                ("paused_notice", "notify_paused"), ("low_notice", "notify_low_filament"),
-                                ("humidity_notice", "notify_humidity"), ("offline_notice", "notify_offline")):
-            check = Gtk.CheckButton(label=app.text[key]); check.set_active(bool(app.config.data.get(config_key))); self.notices[config_key] = check; box.pack_start(check, False, False, 0)
-        self.quiet = Gtk.CheckButton(label=app.text["quiet"]); self.quiet.set_active(bool(app.config.data.get("quiet_hours_enabled", True)))
-        box.pack_start(self.quiet, False, False, 0)
-        quiet_row = Gtk.Box(spacing=8)
-        self.quiet_start = Gtk.Entry(text=str(app.config.data.get("quiet_hours_start", "22:00")))
-        self.quiet_end = Gtk.Entry(text=str(app.config.data.get("quiet_hours_end", "07:00")))
-        quiet_row.pack_start(self.quiet_start, True, True, 0); quiet_row.pack_start(Gtk.Label(label="—"), False, False, 0); quiet_row.pack_start(self.quiet_end, True, True, 0)
-        box.pack_start(quiet_row, False, False, 0)
-        about = Gtk.Label(xalign=0)
-        about.set_markup(f"Gantry • {app.text['version']} {__version__}\nKamil Grzegorczyk / parametryczny · <a href=\"https://suppi.pl/parametryczny\">suppi.pl</a>")
-        about.get_style_context().add_class("meta"); box.pack_end(about, False, False, 0); self.show_all()
 
-    def save(self) -> bool:
-        try:
-            datetime.strptime(self.quiet_start.get_text().strip(), "%H:%M")
-            datetime.strptime(self.quiet_end.get_text().strip(), "%H:%M")
-        except ValueError:
-            return False
-        self.app.config.data.update(language=self.language.get_active_id(), theme=self.theme.get_active_id(),
-                                    panel_transparency=self.transparency.get_active_id() or "low")
-        self.app.config.data.update(quiet_hours_enabled=self.quiet.get_active(),
-                                    quiet_hours_start=self.quiet_start.get_text().strip(),
-                                    quiet_hours_end=self.quiet_end.get_text().strip())
-        for key, widget in self.notices.items(): self.app.config.data[key] = widget.get_active()
-        self.app.config.data["spoolbase_enabled"] = self.spoolbase.get_active()
-        self.app.config.data["card_show_spool_grams"] = self.spool_grams.get_active()
-        self.app.config.data["monochrome"] = self.monochrome.get_active()
-        self.app.config.data["allow_script_actions"] = self.allow_scripts.get_active()
-        self.app.config.data["web_dashboard_enabled"] = self.web_dashboard.get_active()
-        web_server = getattr(self.app, "web_server", None)
-        if web_server is not None:
-            web_server.start() if self.web_dashboard.get_active() else web_server.stop()
-        self.app.config.save(); set_autostart(self.autostart.get_active())
-        self.app.rebuild_cards()   # pick up monochrome / grams / card changes immediately
-        sync = getattr(self.app, "sync_service", None)
-        if sync is not None:
-            sync.note_settings_changed()
-        return True
+# Clean port of the current macOS dashboard implementation. Re-exporting the helpers preserves the
+# public surface used by preview scripts and detail widgets while app.py stays the Linux orchestrator.
+from .dashboard import (  # noqa: E402
+    CompactPrinterRow as CompactPrinterRow,
+    Dashboard as Dashboard,
+    PrinterCard as PrinterCard,
+    _contrast_ink as _contrast_ink,
+    _muted_hex as _muted_hex,
+    css_for as css_for,
+)
+from .settings import SettingsDialog as SettingsDialog  # noqa: E402
 
 
 class Gantry:
@@ -1079,10 +353,12 @@ class Gantry:
         self.language = str(self.config.data.get("language", "pl")); self.text = TEXT.get(self.language, TEXT["pl"])
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
-        self.connections: dict[str, MqttConnection | HttpConnection] = {}; self.cards: dict[str, PrinterCard] = {}
+        self.connections: dict[str, object] = {}; self.cards: dict[str, PrinterCard] = {}
+        self.indicator_available = AppIndicator is not None
+        self.stages = STAGES
         # Rolling temperature history per printer (time, nozzle, bed, chamber), drawn by the Details graph.
         self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
-        self.detail_window: DetailWindow | None = None
+        self.detail_window: Any | None = None
         self.expanded_compact_serial: str | None = None
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         self.reconnect_all()
@@ -1102,6 +378,10 @@ class Gantry:
             self.web_server.start()
         self.sync_service.sync_now()
         GLib.timeout_add_seconds(45, self._sync_tick)
+        GLib.timeout_add_seconds(8, self._initial_update_check)
+        GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
+        if AppIndicator is None and not background:
+            self.window.show_all()
 
     def _sync_tick(self) -> bool:
         try:
@@ -1109,42 +389,144 @@ class Gantry:
         except Exception:
             pass
         return True  # keep the periodic timer running
-        # With a tray, start hidden like a menu-bar app — the panel opens from the tray. Without a
-        # tray there is no other entry point, so show the (regular) window.
-        if AppIndicator is None: self.window.show_all()
 
-    def apply_theme(self) -> None:
-        settings = Gtk.Settings.get_default(); settings.set_property("gtk-application-prefer-dark-theme", self.config.data.get("theme") == "dark")
+    def _initial_update_check(self) -> bool:
+        if bool(self.config.data.get("auto_update_check", False)):
+            self.check_updates_background()
+        return False
+
+    def _periodic_update_check(self) -> bool:
+        if bool(self.config.data.get("auto_update_check", False)):
+            self.check_updates_background()
+        return True
+
+    def check_updates_background(self) -> None:
+        if getattr(self, "_update_check_running", False):
+            return
+        self._update_check_running = True
+
+        def work() -> None:
+            try:
+                from .updater import is_newer, latest_release
+                release = latest_release()
+                if is_newer(release.version, __version__):
+                    GLib.idle_add(self._announce_update, release.version)
+            except Exception:
+                pass
+            finally:
+                self._update_check_running = False
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _announce_update(self, version: str) -> bool:
+        if self.config.data.get("update_notified_version") == version:
+            return False
+        self.config.data["update_notified_version"] = version
+        self.config.save()
+        body = (f"Wersja {version} jest dostępna. Otwórz Ustawienia → Aktualizacje."
+                if self.language == "pl" else
+                f"Version {version} is available. Open Settings → Updates.")
+        self.notify("Gantry", body)
+        return False
+
+    @staticmethod
+    def _panel_alpha(level: object) -> float:
+        return {"low": 0.82, "medium": 0.68, "high": 0.52}.get(str(level), 0.82)
+
+    def _install_theme_css(self, theme: str, alpha: float) -> None:
+        """Replace the application provider instead of stacking a new provider every frame."""
+        screen = Gdk.Screen.get_default()
+        previous = getattr(self, "_theme_provider", None)
+        if previous is not None:
+            Gtk.StyleContext.remove_provider_for_screen(screen, previous)
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css_for(theme, alpha))
+        Gtk.StyleContext.add_provider_for_screen(
+            screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self._theme_provider = provider
+
+    def _stop_transparency_animation(self) -> None:
+        source = getattr(self, "_transparency_animation_id", None)
+        if source is not None:
+            GLib.source_remove(source)
+            self._transparency_animation_id = None
+
+    def apply_theme(self, panel_transparency: object | None = None, animate: bool = False) -> None:
+        theme = str(self.config.data.get("theme", "dark"))
+        settings = Gtk.Settings.get_default()
+        settings.set_property("gtk-application-prefer-dark-theme", theme == "dark")
         # Background-only alpha for the frosted-glass popover (cards stay solid). Lower = more see-through:
         # low is the most opaque glass, high shows the compositor blur most. Not a whole-window opacity.
-        alpha = {"low": 0.82, "medium": 0.68, "high": 0.52}.get(str(self.config.data.get("panel_transparency", "low")), 0.82)
+        level = (self.config.data.get("panel_transparency", "low")
+                 if panel_transparency is None else panel_transparency)
+        target_alpha = self._panel_alpha(level)
         # Give the panel window an RGBA visual so the translucent backdrop shows the desktop through
         # (needs a running compositor; falls back to opaque otherwise). Cards stay solid.
         window = getattr(self, "window", None)
-        if window is not None and alpha < 1.0:
+        if window is not None and target_alpha < 1.0:
             rgba = window.get_screen().get_rgba_visual()
             if rgba is not None:
                 window.set_visual(rgba)
-        provider = Gtk.CssProvider(); provider.load_from_data(css_for(str(self.config.data.get("theme", "dark")), alpha)); Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self._stop_transparency_animation()
+        start_alpha = getattr(self, "_current_panel_alpha", None)
+        if not animate or start_alpha is None or abs(start_alpha - target_alpha) < 0.001:
+            self._current_panel_alpha = target_alpha
+            self._install_theme_css(theme, target_alpha)
+            return
+
+        started_at = time.monotonic()
+        duration = 0.20
+
+        def animation_frame() -> bool:
+            progress = min(1.0, (time.monotonic() - started_at) / duration)
+            eased = 1.0 - (1.0 - progress) ** 3  # cubic ease-out, matching Windows
+            alpha = start_alpha + (target_alpha - start_alpha) * eased
+            self._current_panel_alpha = alpha
+            self._install_theme_css(theme, alpha)
+            if progress >= 1.0:
+                self._transparency_animation_id = None
+                return False
+            return True
+
+        self._transparency_animation_id = GLib.timeout_add(16, animation_frame)
+
+    def preview_panel_transparency(self, level: object) -> None:
+        """Animate the panel immediately; the settings dialog persists the same value live."""
+        self.apply_theme(panel_transparency=level, animate=True)
 
     def _tray(self) -> None:
         if getattr(self, "indicator", None) is not None:
             self.indicator.set_status(AppIndicator.IndicatorStatus.PASSIVE)
         menu = Gtk.Menu()
         panel_label = "Panel Gantry" if self.language == "pl" else "Gantry panel"
-        for label, callback in ((panel_label, lambda *_: self.toggle_panel()), (self.text["scan"], lambda *_: self.scan_and_import()),
-                                (self.text["add"], lambda *_: self.open_printer_dialog())):
-            item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
+        item = Gtk.MenuItem(label=panel_label); item.connect("activate", lambda *_: self.toggle_panel()); menu.append(item)
         if bool(self.config.data.get("spoolbase_enabled", True)):
             spoolbase_label = "Spoolbase — magazyn filamentów" if self.language == "pl" else "Spoolbase — filament stock"
             item = Gtk.MenuItem(label=spoolbase_label); item.connect("activate", lambda *_: self.toggle_spoolbase()); menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
+
+        for label, callback in ((self.text["scan"], lambda *_: self.scan_and_import()),
+                                (self.text["add"], lambda *_: self.open_printer_dialog())):
+            item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
+        reconnect = Gtk.MenuItem(label="Połącz ponownie (wszystkie)" if self.language == "pl" else "Reconnect (all)")
+        reconnect.connect("activate", lambda *_: self.reconnect_all()); menu.append(reconnect)
+        menu.append(Gtk.SeparatorMenuItem())
+
+        language = Gtk.MenuItem(label="Język: PL" if self.language == "pl" else "Language: EN")
+        language.connect("activate", lambda *_: self._toggle_language()); menu.append(language)
         quiet = Gtk.CheckMenuItem(label=self.text["quiet"]); quiet.set_active(bool(self.config.data.get("quiet_hours_enabled", True)))
         quiet.connect("toggled", lambda item: self._toggle_quiet(item.get_active())); menu.append(quiet)
+        updates = Gtk.MenuItem(label=("Sprawdź aktualizacje…" if self.language == "pl" else "Check for updates…"))
+        updates.connect("activate", lambda *_: self.check_updates_background()); menu.append(updates)
+        settings = Gtk.MenuItem(label=self.text["settings"]); settings.connect("activate", lambda *_: self.open_settings()); menu.append(settings)
         legend = Gtk.MenuItem(label="Legenda kolorów" if self.language == "pl" else "Color legend")
         legend_menu = Gtk.Menu()
-        for label in (("Niebieski — drukowanie", "Blue — printing"), ("Zielony — zakończono", "Green — finished"),
-                      ("Czerwony — błąd", "Red — error"), ("Szary — offline / bezczynna", "Gray — offline / idle")):
+        for label in (("Niebieski — drukowanie (świeże dane)", "Blue — printing (live data)"),
+                      ("Zielony — gotowe / zakończone", "Green — ready / finished"),
+                      ("Pomarańczowy — pauza, stare dane lub wilgotność AMS", "Orange — paused, stale data, or AMS humidity"),
+                      ("Czerwony — błąd drukarki", "Red — printer error"),
+                      ("Szary — offline / brak / informacja neutralna", "Gray — offline / none / neutral")):
             item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
         legend_menu.append(Gtk.SeparatorMenuItem())
         slot_header = Gtk.MenuItem(label="Sloty filamentu:" if self.language == "pl" else "Filament slots:")
@@ -1152,9 +534,12 @@ class Gantry:
         for label in (("Biały pierścień — aktywny slot", "White ring — active slot"),):
             item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
         legend.set_submenu(legend_menu); menu.append(legend)
+        support = Gtk.MenuItem(label="Wesprzyj projekt ☕" if self.language == "pl" else "Support the project ☕")
+        support.connect("activate", lambda *_: Gtk.show_uri_on_window(
+            None, "https://buycoffee.to/parametryczny", Gdk.CURRENT_TIME)); menu.append(support)
         menu.append(Gtk.SeparatorMenuItem())
-        for label, callback in ((self.text["settings"], lambda *_: self.open_settings()), (self.text["quit"], lambda *_: self.quit())):
-            item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
+        quit_item = Gtk.MenuItem(label=("Zakończ Gantry" if self.language == "pl" else "Quit Gantry"))
+        quit_item.connect("activate", lambda *_: self.quit()); menu.append(quit_item)
         menu.show_all()
         if AppIndicator:
             installed_icon = Path("/usr/share/icons/hicolor/scalable/apps/gantry.svg")
@@ -1162,6 +547,56 @@ class Gantry:
             icon = str(installed_icon) if installed_icon.exists() else str(local_icons / "gantry.svg")
             self.indicator = AppIndicator.Indicator.new("gantry", icon, AppIndicator.IndicatorCategory.APPLICATION_STATUS)
             self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE); self.indicator.set_menu(menu)
+        self._refresh_progress_indicators()
+
+    def _toggle_language(self) -> None:
+        self.language = "en" if self.language == "pl" else "pl"
+        self.config.data["language"] = self.language
+        self.config.save(); self.text = TEXT.get(self.language, TEXT["pl"])
+        self.rebuild_cards(); self._tray()
+
+    def _refresh_progress_indicators(self) -> None:
+        existing = getattr(self, "progress_indicators", {})
+        if AppIndicator is None:
+            for indicator in existing.values():
+                indicator.set_status(AppIndicator.IndicatorStatus.PASSIVE) if AppIndicator else None
+            self.progress_indicators = {}
+            return
+        valid = [printer.serial for printer in self.printers]
+        self.config.prune_progress_pins(valid)
+        pinned = set(self.config.progress_serials())
+        ordered = [printer for printer in self.printers if printer.serial in pinned]
+        first = ordered[0] if ordered else None
+        extras = {printer.serial: printer for printer in ordered[1:]}
+        if getattr(self, "indicator", None) is not None:
+            if first is None:
+                self.indicator.set_label("", "")
+            else:
+                tel = self.telemetry.get(first.serial, Telemetry())
+                suffix = f" {tel.progress}%" if tel.state in {PrinterState.PRINTING, PrinterState.PAUSED} else ""
+                self.indicator.set_label(first.name + suffix, first.name + " 100%")
+        for serial in set(existing) - set(extras):
+            existing[serial].set_status(AppIndicator.IndicatorStatus.PASSIVE)
+            del existing[serial]
+        installed_icon = Path("/usr/share/icons/hicolor/scalable/apps/gantry.svg")
+        local_icons = Path(__file__).resolve().parent.parent / "assets"
+        icon = str(installed_icon) if installed_icon.exists() else str(local_icons / "gantry.svg")
+        for serial, printer in extras.items():
+            indicator = existing.get(serial)
+            if indicator is None:
+                indicator = AppIndicator.Indicator.new(
+                    "gantry-progress-" + "".join(char if char.isalnum() else "-" for char in serial),
+                    icon, AppIndicator.IndicatorCategory.APPLICATION_STATUS)
+                popup = Gtk.Menu()
+                details = Gtk.MenuItem(label="Szczegóły" if self.language == "pl" else "Details")
+                details.connect("activate", lambda *_, value=serial: self.open_details(value))
+                popup.append(details); popup.show_all(); indicator.set_menu(popup)
+                indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+                existing[serial] = indicator
+            tel = self.telemetry.get(serial, Telemetry())
+            suffix = f" {tel.progress}%" if tel.state in {PrinterState.PRINTING, PrinterState.PAUSED} else ""
+            indicator.set_label(printer.name + suffix, f"{printer.name} 100%")
+        self.progress_indicators = existing
 
     def _toggle_quiet(self, enabled: bool) -> None:
         self.config.data["quiet_hours_enabled"] = enabled; self.config.save()
@@ -1178,8 +613,24 @@ class Gantry:
             del history[:len(history) - 240]
 
     def send_command(self, serial: str, json_str: str) -> bool:
-        """Publish a raw MQTT command to a Bambu printer (chamber light, pause, custom)."""
+        """Send a normalized/raw command through the printer's live transport."""
         connection = self.connections.get(serial)
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is not None and printer.kind in {PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}:
+            method = getattr(connection, "send_method", None)
+            if callable(method):
+                try:
+                    payload = json.loads(json_str)
+                    if isinstance(payload, dict) and "method" in payload:
+                        return bool(method(int(payload["method"]), payload.get("params") or {}))
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    return False
+                lowered = json_str.lower()
+                if '"command":"pause"' in lowered: action = 129 if printer.kind == PrinterKind.ELEGOO_CC1 else 1021
+                elif '"command":"resume"' in lowered: action = 131 if printer.kind == PrinterKind.ELEGOO_CC1 else 1023
+                elif '"command":"stop"' in lowered: action = 130 if printer.kind == PrinterKind.ELEGOO_CC1 else 1022
+                else: return False
+                return bool(method(action, {}))
         sender = getattr(connection, "send_command", None)
         return bool(sender(json_str)) if callable(sender) else False
 
@@ -1191,8 +642,24 @@ class Gantry:
 
     def set_chamber_light(self, serial: str, on: bool) -> None:
         printer = next((p for p in self.printers if p.serial == serial), None)
+        from .overrides import overrides_for
+        custom = overrides_for(self.config, serial).get("ledOn" if on else "ledOff")
+        if custom:
+            if printer is not None and printer.kind == PrinterKind.KLIPPER:
+                self.send_gcode(serial, custom)
+            else:
+                self.send_command(serial, custom)
+            return
         if printer is not None and printer.kind == PrinterKind.KLIPPER:
             self.send_gcode(serial, "SET_PIN PIN=caselight VALUE=1" if on else "SET_PIN PIN=caselight VALUE=0")
+        elif printer is not None and printer.kind in {PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}:
+            connection = self.connections.get(serial)
+            sender = getattr(connection, "send_method", None)
+            if callable(sender):
+                if printer.kind == PrinterKind.ELEGOO_CC1:
+                    sender(403, {"LightStatus": {"SecondLight": 1 if on else 0}})
+                else:
+                    sender(1029, {"power": 1 if on else 0})
         else:
             from .automation import light_payload
             self.send_command(serial, light_payload(on))
@@ -1250,18 +717,39 @@ class Gantry:
         window.show_all()
         window.present()
 
+    def open_advanced(self, serial: str) -> None:
+        from .advanced import AdvancedDialog
+        dialogs = getattr(self, "advanced_dialogs", {})
+        existing = dialogs.get(serial)
+        if existing is not None:
+            existing.present(); return
+        dialog = AdvancedDialog(self, serial)
+        dialogs[serial] = dialog
+        self.advanced_dialogs = dialogs
+        dialog.set_modal(False)
+        self.window._suppress_hide = True
+        def destroyed(*_args: object) -> None:
+            dialogs.pop(serial, None)
+            self.window._suppress_hide = False
+        dialog.connect("destroy", destroyed)
+        def respond(_dialog: Gtk.Dialog, response: int) -> None:
+            if response == Gtk.ResponseType.OK:
+                dialog.save()
+                self.reconnect_all()
+                if self.detail_window is not None and self.detail_window.serial == serial:
+                    self.open_details(serial)
+            dialog.destroy()
+        dialog.connect("response", respond)
+        dialog.show_all()
+        dialog.present()
+
     def open_details(self, serial: str) -> None:
-        from .details import DetailWindow
+        from .details import DetailPanel
         tel = self.telemetry.get(serial, Telemetry())
-        if self.detail_window is not None:
-            try:
-                self.detail_window.destroy()
-            except Exception:
-                pass
-            self.detail_window = None
-        self.detail_window = DetailWindow(self, serial)
-        self.detail_window.update(tel)
-        self.detail_window.present_panel()
+        panel = DetailPanel(self, serial, on_back=self.window.show_fleet)
+        panel.update(tel)
+        self.detail_window = panel
+        self.window.show_detail(panel)
 
     def toggle_spoolbase(self) -> None:
         window = getattr(self, "spoolbase_window", None)
@@ -1297,34 +785,23 @@ class Gantry:
         for child in self.window.grid.get_children(): self.window.grid.remove(child)
         self.cards = {}
         compact = self.is_compact()
-        columns = 1 if compact else 3
-        row = 0
-        column = 0
-        for printer in self.printers:
-            card = PrinterCard(self, printer)
-            card.set_compact(compact, self.expanded_compact_serial == printer.serial)
+        columns = 1 if compact else max(1, min(2, int(self.config.data.get("dashboard_columns", 2))))
+        placements = place_cards([printer.serial for printer in self.printers], self.telemetry, columns, compact)
+        for printer, placement in zip(self.printers, placements):
+            card = (CompactPrinterRow(self, printer, self.expanded_compact_serial == printer.serial)
+                    if compact else PrinterCard(self, printer))
             card.set_hexpand(True)
             card.set_vexpand(True)
             self.cards[printer.serial] = card
             telemetry = self.telemetry.get(printer.serial, Telemetry())
-            span = 2 if not compact and self._needs_wide(telemetry) else 1
-            if column + span > columns:
-                row += 1
-                column = 0
-            self.window.grid.attach(card, column, row, span, 1)
+            self.window.grid.attach(card, placement.column, placement.row, placement.span, 1)
             if printer.serial in self.telemetry: card.update(self.telemetry[printer.serial])
-            column += span
-            if column == columns:
-                row += 1
-                column = 0
         # Show the card widgets, but don't force the popover window open on every rebuild.
-        self.window.update_header(); self.window.grid.show_all()
+        self.window.update_header(); self.window.grid.show_all(); self.window.resize_for_content()
 
     @staticmethod
     def _needs_wide(telemetry: Telemetry) -> bool:
-        dual_nozzle = any(nozzle.position == "right" for nozzle in telemetry.nozzles)
-        ams_count = sum(1 for group in telemetry.filament_groups if not group.external)
-        return dual_nozzle or ams_count >= 2
+        return needs_wide(telemetry)
 
     def toggle_compact_printer(self, serial: str) -> None:
         if not self.is_compact():
@@ -1353,33 +830,98 @@ class Gantry:
         self.config.printers = self.printers; self.rebuild_cards()
 
     def open_printer_dialog(self, printer: Printer | None = None) -> None:
+        existing = getattr(self, "printer_dialog", None)
+        if existing is not None:
+            existing.present(); return
         dialog = PrinterDialog(self, printer)
+        self.printer_dialog = dialog
         self.window._suppress_hide = True
-        dialog.connect("destroy", lambda *_: setattr(self.window, "_suppress_hide", False))
-        while True:
-            response = dialog.run()
-            if response == Gtk.ResponseType.CANCEL or response == Gtk.ResponseType.DELETE_EVENT: dialog.destroy(); return
-            if response == Gtk.ResponseType.REJECT and printer:
-                self.remove_printer(printer); dialog.destroy(); return
+        def destroyed(*_args: object) -> None:
+            self.printer_dialog = None
+            self.window._suppress_hide = False
+        dialog.connect("destroy", destroyed)
+        def respond(_dialog: Gtk.Dialog, response: int) -> None:
+            if response in (Gtk.ResponseType.CANCEL, Gtk.ResponseType.DELETE_EVENT):
+                dialog.destroy(); return
             value = dialog.value()
-            if not value: continue
+            if not value: return
             updated, code = value
             try:
                 try:
                     existing_code = self.secrets.get(printer.serial) if printer else None
                 except SecretStoreError:
-                    if updated.kind != PrinterKind.KLIPPER: raise
+                    if updated.kind not in {PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1}: raise
                     existing_code = None
                 credential = code or existing_code
-                if updated.kind in {PrinterKind.BAMBU, PrinterKind.PRUSA} and not credential:
-                    dialog.error.set_text(self.text["code"]); continue
+                if updated.kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2} and not credential:
+                    dialog.error.set_text(self.text["code"]); return
                 if printer and printer.serial != updated.serial:
                     self.remove_printer(printer)
                 if credential:
                     self.secrets.set(updated.serial, credential)
             except SecretStoreError:
-                dialog.error.set_text(self.text["secret_error"]); continue
-            self.upsert_printer(updated); dialog.destroy(); self.reconnect_all(); return
+                dialog.error.set_text(self.text["secret_error"]); return
+            self.upsert_printer(updated)
+            if printer is not None:
+                self.config.set_progress_pinned(updated.serial, dialog.progress_check.get_active())
+                self._refresh_progress_indicators()
+            dialog.destroy(); self.reconnect_all(); return
+        dialog.connect("response", respond)
+        dialog.present()
+
+    @staticmethod
+    def _automatic_printer_name(name: str) -> bool:
+        value = name.strip()
+        if not value.lower().startswith("bambu "):
+            return not value
+        suffix = value[6:]
+        return len(suffix) <= 6 and suffix.isalnum()
+
+    def refresh_printer_names(self) -> None:
+        targets = str(self.config.data.get("scan_targets", ""))
+
+        def apply(values: list[Printer]) -> bool:
+            changed = False
+            by_serial = {value.serial: value for value in values}
+            for current in self.printers:
+                found = by_serial.get(current.serial)
+                if found is None or not self._automatic_printer_name(current.name) \
+                        or self._automatic_printer_name(found.name):
+                    continue
+                current.name = found.name
+                if found.model != "Bambu Lab": current.model = found.model
+                changed = True
+            if changed:
+                self.config.printers = self.printers
+                self.rebuild_cards()
+            return False
+
+        def work() -> None:
+            try: values = scan(targets)
+            except Exception: return
+            GLib.idle_add(apply, values)
+
+        threading.Thread(target=work, name="gantry-refresh-names", daemon=True).start()
+
+    def reconnect_and_refresh(self) -> None:
+        self.reconnect_all()
+        self.refresh_printer_names()
+
+    def confirm_remove_printer(self, printer: Printer, parent: Gtk.Window | Gtk.Dialog | None = None) -> bool:
+        pl = self.language == "pl"
+        dialog = Gtk.MessageDialog(
+            transient_for=parent or self.window, modal=True, message_type=Gtk.MessageType.WARNING,
+            buttons=Gtk.ButtonsType.NONE,
+            text=(f"Usunąć drukarkę {printer.name}?" if pl else f"Remove printer {printer.name}?"))
+        dialog.format_secondary_text(
+            "Zapisany kod dostępu i pin certyfikatu tej drukarki zostaną usunięte."
+            if pl else "This printer's saved access code and certificate pin will be removed.")
+        dialog.add_button("Anuluj" if pl else "Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Usuń" if pl else "Remove", Gtk.ResponseType.OK)
+        result = dialog.run() == Gtk.ResponseType.OK
+        dialog.destroy()
+        if result: self.remove_printer(printer)
+        return result
 
     def remove_printer(self, printer: Printer) -> None:
         connection = self.connections.pop(printer.serial, None)
@@ -1389,7 +931,9 @@ class Gantry:
         try: self.secrets.delete(printer.serial)
         except SecretStoreError: pass
         if printer.kind == PrinterKind.BAMBU: self.config.remove_pin(printer.serial)
-        self.config.printers = self.printers; self.rebuild_cards()
+        self.config.printers = self.printers
+        self.config.prune_progress_pins([value.serial for value in self.printers])
+        self.rebuild_cards(); self._refresh_progress_indicators()
 
     def reset_completed(self) -> None:
         """Tidy the fleet: drop the last job name from printers that are not printing/paused and rebuild,
@@ -1403,18 +947,37 @@ class Gantry:
         for connection in self.connections.values(): connection.stop()
         self.connections = {}
         for printer in self.printers:
-            try: code = self.secrets.get(printer.serial)
-            except SecretStoreError: code = None
-            callback = lambda event, value, serial=printer.serial: GLib.idle_add(self.on_event, serial, event, value)
-            if printer.kind == PrinterKind.BAMBU:
-                if not code: continue
-                connection = MqttConnection(printer, code, self.config, callback)
-            elif printer.kind == PrinterKind.PRUSA:
-                if not code: continue
-                connection = HttpConnection(printer, code, callback)
-            else:
-                connection = HttpConnection(printer, code, callback)
-            self.connections[printer.serial] = connection; connection.start()
+            self._start_connection(printer)
+
+    def reconnect_printer(self, serial: str) -> None:
+        connection = self.connections.pop(serial, None)
+        if connection: connection.stop()
+        printer = next((value for value in self.printers if value.serial == serial), None)
+        if printer is not None: self._start_connection(printer)
+
+    def _start_connection(self, printer: Printer) -> None:
+        try: code = self.secrets.get(printer.serial)
+        except SecretStoreError: code = None
+        callback = lambda event, value, serial=printer.serial: GLib.idle_add(self.on_event, serial, event, value)
+        if printer.kind == PrinterKind.BAMBU:
+            if not code: return
+            connection = MqttConnection(printer, code, self.config, callback)
+        elif printer.kind == PrinterKind.ELEGOO_CC1:
+            from .elegoo import ElegooCC1Connection
+            connection = ElegooCC1Connection(printer, callback)
+        elif printer.kind == PrinterKind.ELEGOO_CC2:
+            if not code: return
+            from .elegoo import ElegooCC2Connection
+            connection = ElegooCC2Connection(printer, code, callback)
+        elif printer.kind == PrinterKind.PRUSA:
+            if not code: return
+            connection = HttpConnection(printer, code, callback)
+        else:
+            from .overrides import moonraker_objects, overrides_for
+            objects = moonraker_objects(overrides_for(self.config, printer.serial)) \
+                if printer.kind == PrinterKind.KLIPPER else None
+            connection = HttpConnection(printer, code, callback, objects)
+        self.connections[printer.serial] = connection; connection.start()
 
     def on_event(self, serial: str, event: str, value: object | None) -> bool:
         previous = self.telemetry.get(serial, Telemetry())
@@ -1443,12 +1006,18 @@ class Gantry:
         elif card := self.cards.get(serial):
             card.update(current, str(value) if event == "disconnected" else None)
         self.window.update_header()
+        self._refresh_progress_indicators()
         if quiet_hours_active(self.config): return False
         printer_name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
         if current.state != previous.state:
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
-            if key and self.config.data.get(key): self.notify(printer_name, self.text[current.state.value])
+            if key and self.config.data.get(key):
+                body = self.text[current.state.value]
+                if current.state == PrinterState.ERROR and current.hms_codes:
+                    from .hms import description
+                    body = description(current.hms_codes, serial, self.language) or body
+                self.notify(printer_name, body)
             if event == "telemetry" and getattr(self, "physical_spools", None) is not None:
                 from .consumption import on_finish
                 on_finish(self, serial, previous, current)
@@ -1498,7 +1067,9 @@ class Gantry:
             kind = PrinterKind(str(record.get("kind", "bambu")))
             printer = Printer(
                 serial=str(record["serial"]), name=str(record["name"]), host=str(record["host"]),
-                model={PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa"}[kind],
+                model={PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa",
+                       PrinterKind.SNAPMAKER: "Snapmaker", PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
+                       PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2"}[kind],
                 port=int(record["port"]), kind=kind,
             )
             by_serial[printer.serial] = printer
@@ -1534,16 +1105,26 @@ class Gantry:
         dialog.run(); dialog.destroy()
 
     def open_settings(self) -> None:
+        existing = getattr(self, "settings_dialog", None)
+        if existing is not None:
+            existing.present(); return
         dialog = SettingsDialog(self)
+        self.settings_dialog = dialog
+        dialog.set_modal(False)
         self.window._suppress_hide = True
-        dialog.connect("destroy", lambda *_: setattr(self.window, "_suppress_hide", False))
-        while True:
-            response = dialog.run()
+        def destroyed(*_args: object) -> None:
+            self.settings_dialog = None
+            self.window._suppress_hide = False
+        dialog.connect("destroy", destroyed)
+        def respond(_dialog: Gtk.Dialog, response: int) -> None:
             if response != Gtk.ResponseType.OK:
                 dialog.destroy(); return
             if dialog.save():
-                dialog.destroy(); self.language = str(self.config.data.get("language", "pl")); self.text = TEXT.get(self.language, TEXT["pl"]); self.apply_theme(); self.rebuild_cards(); self._tray(); return
+                dialog.destroy(); return
             dialog.quiet_start.get_style_context().add_class("error"); dialog.quiet_end.get_style_context().add_class("error")
+        dialog.connect("response", respond)
+        dialog.show_all()
+        dialog.present()
 
     def quit(self) -> None:
         for connection in self.connections.values(): connection.stop()

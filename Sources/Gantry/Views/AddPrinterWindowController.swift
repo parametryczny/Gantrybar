@@ -27,7 +27,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     private let hostLabel = NSTextField(labelWithString: "")
     private let serialLabel = NSTextField(labelWithString: "")
     private let codeLabel = NSTextField(labelWithString: "")
-    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Klipper", "Prusa", "Snapmaker"], trackingMode: .selectOne, target: nil, action: nil)
+    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Elegoo", "Klipper", "Prusa", "Snapmaker"], trackingMode: .selectOne, target: nil, action: nil)
+    private let elegooModelLabel = NSTextField(labelWithString: "Model Elegoo:")
+    private let elegooModelPopup = NSPopUpButton()
     private let portField = NSTextField()
     private let apiKeyField = NSTextField()
     private let portLabel = NSTextField(labelWithString: "")
@@ -94,6 +96,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         typeControl.target = self
         typeControl.action = #selector(kindChanged)
         typeControl.segmentStyle = .rounded
+        elegooModelPopup.addItems(withTitles: ["Centauri Carbon", "Centauri Carbon 2"])
+        elegooModelPopup.target = self
+        elegooModelPopup.action = #selector(elegooModelChanged)
 
         // Host takes the width; the short Port sits beside it (inline) instead of on its own row.
         portField.setContentHuggingPriority(.required, for: .horizontal)
@@ -106,6 +111,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         hostPortRow.alignment = .firstBaseline
 
         form = NSGridView(views: [
+            [elegooModelLabel, elegooModelPopup],
             [detectedLabel, discoveryRow],
             [bambuStudioLabel, importColumn],
             [nameLabel, nameField],
@@ -171,31 +177,36 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
 
     private var selectedKind: PrinterKind {
         switch typeControl.selectedSegment {
-        case 1: return .klipper
-        case 2: return .prusa
-        case 3: return .snapmaker
+        case 1: return elegooModelPopup.indexOfSelectedItem == 1 ? .elegooCC2 : .elegooCC1
+        case 2: return .klipper
+        case 3: return .prusa
+        case 4: return .snapmaker
         default: return .bambu
         }
     }
     /// Klipper and Prusa both connect over HTTP with host/port/API key; Bambu uses discovery + code.
-    private var usesHostFields: Bool { selectedKind != .bambu }
+    private var usesHostFields: Bool { ![PrinterKind.bambu, .elegooCC1, .elegooCC2].contains(selectedKind) }
 
     /// Shows the fields for the selected printer type.
     private func applyKind() {
         let hostBased = usesHostFields
-        // rows: 0 detected, 1 Bambu Studio, 2 name, 3 host+port, 4 serial, 5 code, 6 API key
-        form.row(at: 0).isHidden = hostBased
+        let isElegoo = selectedKind == .elegooCC1 || selectedKind == .elegooCC2
+        // rows: 0 Elegoo model, 1 detected, 2 Bambu Studio, 3 name, 4 host+port, 5 serial, 6 code, 7 API key
+        form.row(at: 0).isHidden = !isElegoo
         form.row(at: 1).isHidden = hostBased
-        form.row(at: 4).isHidden = hostBased
+        form.row(at: 2).isHidden = selectedKind != .bambu
         form.row(at: 5).isHidden = hostBased
-        form.row(at: 6).isHidden = !hostBased || selectedKind == .snapmaker   // API key; Snapmaker: none
-        subnetSection.isHidden = hostBased   // extra scan targets apply to Bambu discovery only
+        form.row(at: 6).isHidden = hostBased || selectedKind == .elegooCC1
+        form.row(at: 7).isHidden = !hostBased || selectedKind == .snapmaker
+        subnetSection.isHidden = selectedKind != .bambu
         let settings = AppSettings.shared
         switch selectedKind {
         case .bambu: portField.placeholderString = "8883"
         case .prusa: portField.placeholderString = "80"
         case .klipper: portField.placeholderString = "7125"
         case .snapmaker: portField.placeholderString = "8080"
+        case .elegooCC1: portField.placeholderString = "3030"
+        case .elegooCC2: portField.placeholderString = "1883"
         }
         switch selectedKind {
         case .klipper:
@@ -217,13 +228,24 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
                 + (AccessCodeStore.usesKeychain
                     ? settings.text("Kod zostanie zapisany w pęku kluczy macOS.", "The code is stored in macOS Keychain.")
                     : settings.text("Kod zostanie zapisany w lokalnych ustawieniach tego Maca.", "The code is stored in this Mac's local preferences."))
+        case .elegooCC1:
+            infoLabel.stringValue = settings.text(
+                "Elegoo Centauri Carbon łączy się lokalnie przez SDCP/WebSocket na porcie 3030. Kod dostępu nie jest wymagany; kamera działa na porcie 3031.",
+                "Elegoo Centauri Carbon connects locally over SDCP/WebSocket on port 3030. No access code is required; camera uses port 3031.")
+        case .elegooCC2:
+            infoLabel.stringValue = settings.text(
+                "Elegoo Centauri Carbon 2 używa MQTT LAN na porcie 1883. Włącz LAN-only w drukarce i wpisz jej kod dostępu. Kamera MJPEG działa na porcie 8080.",
+                "Elegoo Centauri Carbon 2 uses LAN MQTT on port 1883. Enable LAN-only on the printer and enter its access code. MJPEG camera uses port 8080.")
         }
     }
 
     @objc private func kindChanged() {
         statusLabel.stringValue = ""
         applyKind()
+        refreshDiscovery()
     }
+
+    @objc private func elegooModelChanged() { statusLabel.stringValue = ""; applyKind(); refreshDiscovery() }
 
     /// Applies every language-dependent string. Called on each open so the form follows the
     /// current language even though the window is built once and reused.
@@ -328,7 +350,14 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             statusLabel.stringValue = ""
             statusLabel.textColor = .systemRed
         }
-        let results = store.discovered
+        let results = store.discovered.filter { found in
+            switch selectedKind {
+            case .bambu: found.kind == .bambu
+            case .elegooCC1: found.kind == .elegooCC1
+            case .elegooCC2: found.kind == .elegooCC2
+            default: false
+            }
+        }
         guard results != popupPrinters else { return }
         // Preserve the user's current pick across a rescan so re-populating the list doesn't
         // silently reset the fields to the first result while they're typing.
@@ -361,6 +390,10 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     }
 
     private func fill(with printer: DiscoveredPrinter) {
+        if printer.kind == .elegooCC1 || printer.kind == .elegooCC2 {
+            elegooModelPopup.selectItem(at: printer.kind == .elegooCC2 ? 1 : 0)
+            applyKind()
+        }
         nameField.stringValue = printer.name
         hostField.stringValue = printer.host
         serialField.stringValue = printer.serial
@@ -432,6 +465,13 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             case .snapmaker:
                 try store.addSnapmaker(name: nameField.stringValue, host: host, port: port)
                 dropOldEntryIfIdentifierChanged("snapmaker-\(host)")
+            case .elegooCC1, .elegooCC2:
+                let serial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let editingSerial, editingSerial != serial,
+                   let old = store.printers.first(where: { $0.serial == editingSerial }) { store.remove(old) }
+                try store.addElegoo(name: nameField.stringValue, serial: serial, host: host,
+                                    generation: selectedKind == .elegooCC2 ? 2 : 1,
+                                    accessCode: codeField.stringValue, port: port)
             case .bambu:
                 if let editingSerial {
                     try store.update(
@@ -453,6 +493,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
                 case .klipper: finalSerial = "klipper-\(host)"
                 case .prusa: finalSerial = "prusa-\(host)"
                 case .snapmaker: finalSerial = "snapmaker-\(host)"
+                case .elegooCC1, .elegooCC2: finalSerial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 case .bambu: finalSerial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 MenuBarProgressPreference.setEnabled(progressCheck.state == .on, for: finalSerial)
@@ -496,9 +537,11 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         editingKind = printer.kind
         switch printer.kind {
         case .bambu: typeControl.selectedSegment = 0
-        case .klipper: typeControl.selectedSegment = 1
-        case .prusa: typeControl.selectedSegment = 2
-        case .snapmaker: typeControl.selectedSegment = 3
+        case .elegooCC1: typeControl.selectedSegment = 1; elegooModelPopup.selectItem(at: 0)
+        case .elegooCC2: typeControl.selectedSegment = 1; elegooModelPopup.selectItem(at: 1)
+        case .klipper: typeControl.selectedSegment = 2
+        case .prusa: typeControl.selectedSegment = 3
+        case .snapmaker: typeControl.selectedSegment = 4
         }
         typeControl.isHidden = true          // kind is fixed when editing
         progressCheck.isHidden = false
@@ -512,14 +555,15 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         statusLabel.stringValue = ""
         statusLabel.textColor = .systemRed
         portField.stringValue = printer.port.map(String.init) ?? ""   // Bambu too (tunnel port)
-        if printer.kind != .bambu {
+        if printer.kind == .klipper || printer.kind == .prusa {
             // The key now lives in the secure store (Keychain), not the config — prefill from there
             // so editing keeps it. A legacy config may still carry it inline; prefer that if present.
             apiKeyField.stringValue = printer.apiKey ?? AccessCodeStore.accessCode(for: printer.serial) ?? ""
-        } else {
+        } else if printer.kind == .bambu || printer.kind == .elegooCC1 || printer.kind == .elegooCC2 {
             serialField.stringValue = printer.serial
             codeField.stringValue = ""
-            codeField.placeholderString = settings.text("Pozostaw puste, aby zachować obecny kod", "Leave blank to keep the current code")
+            if printer.kind == .elegooCC2, let code = AccessCodeStore.accessCode(for: printer.serial) { codeField.stringValue = code }
+            codeField.placeholderString = printer.kind == .elegooCC1 ? "" : settings.text("Pozostaw puste, aby zachować obecny kod", "Leave blank to keep the current code")
             printerPopup.removeAllItems()
             printerPopup.addItem(withTitle: settings.text("Edycja zapisanej drukarki", "Editing saved printer"))
             printerPopup.isEnabled = false

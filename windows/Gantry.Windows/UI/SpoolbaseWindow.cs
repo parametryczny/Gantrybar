@@ -21,13 +21,19 @@ public sealed class SpoolbaseWindow : Window
     private readonly FilamentStore _store = SpoolbaseShared.Filaments;
     private readonly TextBox _search = new();
     private readonly StackPanel _list = new();
+    private readonly StackPanel _chips = new() { Orientation = Orientation.Horizontal };
     private readonly TextBlock _summary = new();
     private string _query = "";
+    private string? _selectedType;
+    private string? _selectedBrand;
+    private bool _lowOnly;
+    private Point _dragStart;
+    private bool _dragging;
     private bool _modalOpen;
 
-    private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF7));
-    private static Brush Muted() => new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E));
-    private static Brush Surface() => new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
+    private static Brush Ink => GTheme.Brush(GTheme.Text);
+    private static Brush Muted() => GTheme.Brush(GTheme.Muted);
+    private static Brush Surface() => GTheme.Brush(GTheme.Surface);
 
     public SpoolbaseWindow()
     {
@@ -57,7 +63,7 @@ public sealed class SpoolbaseWindow : Window
         var root = new Border
         {
             CornerRadius = new CornerRadius(12),
-            Background = new SolidColorBrush(Color.FromArgb(0xF0, 0x24, 0x24, 0x26)),
+            Background = GTheme.Brush(Color.FromArgb(0xF0, GTheme.Canvas.R, GTheme.Canvas.G, GTheme.Canvas.B)),
             SnapsToDevicePixels = true
         };
         var dock = new DockPanel { Margin = new Thickness(2) };
@@ -89,8 +95,8 @@ public sealed class SpoolbaseWindow : Window
         var searchBox = new Border
         {
             CornerRadius = new CornerRadius(9),
-            Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
-            Margin = new Thickness(16, 0, 16, 8),
+            Background = Surface(),
+            Margin = new Thickness(0),
             Padding = new Thickness(10, 6, 10, 6)
         };
         _search.BorderThickness = new Thickness(0);
@@ -114,8 +120,21 @@ public sealed class SpoolbaseWindow : Window
         searchGrid.Children.Add(_search);
         searchGrid.Children.Add(placeholder);
         searchBox.Child = searchGrid;
-        DockPanel.SetDock(searchBox, Dock.Top);
-        dock.Children.Add(searchBox);
+        var filter = new Button
+        {
+            Content = Pl ? "☷  Filtry" : "☷  Filters", MinWidth = 82, Height = 32,
+            Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(9, 0, 9, 0)
+        };
+        StyleSoftButton(filter);
+        filter.Click += (_, _) => ShowFilters(filter);
+        var toolbar = new Grid { Margin = new Thickness(16, 0, 16, 8) };
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.Children.Add(searchBox); Grid.SetColumn(filter, 1); toolbar.Children.Add(filter);
+        DockPanel.SetDock(toolbar, Dock.Top); dock.Children.Add(toolbar);
+
+        _chips.Margin = new Thickness(16, 0, 16, 5);
+        DockPanel.SetDock(_chips, Dock.Top); dock.Children.Add(_chips);
 
         // List
         var scroll = new ScrollViewer
@@ -134,6 +153,7 @@ public sealed class SpoolbaseWindow : Window
     private void Render()
     {
         _list.Children.Clear();
+        RenderChips();
         var items = Filtered();
 
         var spools = _store.Filaments.Sum(f => f.SpoolCount);
@@ -174,7 +194,7 @@ public sealed class SpoolbaseWindow : Window
             panel.Children.Add(new Border
             {
                 Height = 1,
-                Background = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF)),
+                Background = GTheme.Brush(GTheme.W(0.09)),
                 Margin = new Thickness(0, 0, 0, 8)
             });
         }
@@ -204,7 +224,7 @@ public sealed class SpoolbaseWindow : Window
         {
             Width = 30, Height = 30, CornerRadius = new CornerRadius(15),
             Background = new SolidColorBrush(Filament.ColorFromHex(item.ColorHex)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)),
+            BorderBrush = GTheme.Brush(GTheme.W(0.33)),
             BorderThickness = new Thickness(0.5),
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -238,9 +258,37 @@ public sealed class SpoolbaseWindow : Window
             Child = row,
             ToolTip = Pl ? "Kliknij, aby zmienić liczbę szpul" : "Click to change spool count"
         };
-        tile.MouseEnter += (_, _) => tile.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+        tile.MouseEnter += (_, _) => tile.Background = Surface();
         tile.MouseLeave += (_, _) => tile.Background = Brushes.Transparent;
-        tile.MouseLeftButtonUp += (_, _) => ShowQuickStock(item, tile, badge);
+        tile.PreviewMouseLeftButtonDown += (_, e) => { _dragStart = e.GetPosition(null); _dragging = false; };
+        tile.PreviewMouseMove += (_, e) =>
+        {
+            if (e.LeftButton != MouseButtonState.Pressed) return;
+            var point = e.GetPosition(null);
+            if (Math.Abs(point.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(point.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            _dragging = true;
+            DragDrop.DoDragDrop(tile, item.Id.ToString(), DragDropEffects.Move);
+        };
+        tile.MouseLeftButtonUp += (_, _) =>
+        {
+            if (_dragging) { _dragging = false; return; }
+            ShowQuickStock(item, tile, badge);
+        };
+        tile.AllowDrop = true;
+        tile.DragOver += (_, e) =>
+        {
+            e.Effects = Guid.TryParse(e.Data.GetData(DataFormats.Text) as string, out var source) &&
+                        _store.Filaments.Any(f => f.Id == source && f.Type == item.Type)
+                ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+        };
+        tile.Drop += (_, e) =>
+        {
+            if (Guid.TryParse(e.Data.GetData(DataFormats.Text) as string, out var source))
+                _store.Move(source, item.Id);
+            _dragging = false; e.Handled = true;
+        };
         tile.ContextMenu = BuildTileMenu(item);
         return tile;
     }
@@ -317,8 +365,8 @@ public sealed class SpoolbaseWindow : Window
         popup.Child = new Border
         {
             CornerRadius = new CornerRadius(12),
-            Background = new SolidColorBrush(Color.FromArgb(0xF5, 0x2E, 0x2E, 0x30)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
+            Background = GTheme.Brush(Color.FromArgb(0xF5, GTheme.Card.R, GTheme.Card.G, GTheme.Card.B)),
+            BorderBrush = GTheme.Brush(GTheme.Line),
             BorderThickness = new Thickness(1),
             Child = stack
         };
@@ -330,10 +378,53 @@ public sealed class SpoolbaseWindow : Window
         var q = _query.ToLowerInvariant();
         return _store.Filaments.Where(item =>
         {
+            if (_selectedType != null && item.Type != _selectedType) return false;
+            if (_selectedBrand != null && item.Brand != _selectedBrand) return false;
+            if (_lowOnly && item.SpoolCount > StockLevels.RedMaximum) return false;
             if (q.Length == 0) return true;
             var text = string.Join(" ", item.Brand, item.Name, item.Type, item.ColorName, item.ColorHex, item.ManufacturerCode).ToLowerInvariant();
             return text.Contains(q);
         }).ToList();
+    }
+
+    private void ShowFilters(Button anchor)
+    {
+        var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+        var typeHeader = new MenuItem { Header = Pl ? "Typ" : "Type", IsEnabled = false };
+        menu.Items.Add(typeHeader);
+        foreach (var value in FilamentCatalogMeta.Types.Where(type => _store.Filaments.Any(f => f.Type == type)))
+        {
+            var item = new MenuItem { Header = value, IsCheckable = true, IsChecked = value == _selectedType };
+            item.Click += (_, _) => { _selectedType = _selectedType == value ? null : value; Render(); };
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new Separator());
+        var low = new MenuItem { Header = Pl ? "Niski stan" : "Low stock", IsCheckable = true, IsChecked = _lowOnly };
+        low.Click += (_, _) => { _lowOnly = !_lowOnly; Render(); }; menu.Items.Add(low);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = Pl ? "Marka" : "Brand", IsEnabled = false });
+        foreach (var value in _store.Filaments.Select(f => f.Brand).Where(value => value.Length > 0).Distinct().OrderBy(value => value))
+        {
+            var item = new MenuItem { Header = value, IsCheckable = true, IsChecked = value == _selectedBrand };
+            item.Click += (_, _) => { _selectedBrand = _selectedBrand == value ? null : value; Render(); };
+            menu.Items.Add(item);
+        }
+        menu.IsOpen = true;
+    }
+
+    private void RenderChips()
+    {
+        _chips.Children.Clear();
+        void Add(string text, Action clear)
+        {
+            var button = new Button { Content = text + "  ×", Height = 25, FontSize = 10,
+                Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(8, 0, 8, 0) };
+            StyleSoftButton(button); button.Click += (_, _) => { clear(); Render(); }; _chips.Children.Add(button);
+        }
+        if (_selectedType != null) Add(_selectedType, () => _selectedType = null);
+        if (_selectedBrand != null) Add(_selectedBrand, () => _selectedBrand = null);
+        if (_lowOnly) Add(Pl ? "Niski stan" : "Low stock", () => _lowOnly = false);
+        _chips.Visibility = _chips.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OpenCatalog()
@@ -382,7 +473,7 @@ public sealed class SpoolbaseWindow : Window
     private void ApplyModernChrome()
     {
         var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-        int dark = 1, round = 2, backdrop = 2; // dark mode, rounded corners, Mica
+        int dark = GTheme.IsLight ? 0 : 1, round = 2, backdrop = 2; // theme, rounded corners, Mica
         try
         {
             DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));
@@ -407,7 +498,7 @@ public sealed class SpoolbaseWindow : Window
     private static void StyleSoftButton(Button b)
     {
         b.Foreground = Ink;
-        b.Background = new SolidColorBrush(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
+        b.Background = GTheme.Brush(GTheme.W(0.12));
         b.BorderThickness = new Thickness(0);
         b.Cursor = Cursors.Hand;
     }

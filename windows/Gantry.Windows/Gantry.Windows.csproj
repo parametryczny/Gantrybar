@@ -13,6 +13,7 @@
     <AssemblyName>Gantry</AssemblyName>
     <RootNamespace>Gantry</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Version>0.9.0</Version>
     <Product>Gantry</Product>
     <ApplicationIcon>gantry.ico</ApplicationIcon>
@@ -25,6 +26,8 @@
     <!-- Native Windows toast notifications (Action Center). Auto-registers an AUMID + Start Menu
          shortcut for this unpackaged app on first Show(); see UI/WindowsToast.cs. -->
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <!-- Camera frames are supplied by the Windows MediaCapture API; ZXing decodes the raw BGRA pixels. -->
+    <PackageReference Include="ZXing.Net" Version="0.16.11" />
     <!-- Bambu chamber camera (rtsps/H.264) is decoded by a bundled ffmpeg.exe into an MJPEG pipe;
          see UI/DetailWindow.cs. ffmpeg.exe is fetched and placed next to the app by CI (windows.yml). -->
   </ItemGroup>

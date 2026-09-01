@@ -59,6 +59,13 @@ enum MQTTCodec {
         return body.subdata(in: offset..<body.count)
     }
 
+    static func publishTopic(header: UInt8, body: Data) -> String? {
+        guard header >> 4 == 3, body.count >= 2 else { return nil }
+        let length = Int(body[0]) << 8 | Int(body[1])
+        guard body.count >= 2 + length else { return nil }
+        return String(data: body.subdata(in: 2..<(2 + length)), encoding: .utf8)
+    }
+
     private static func packet(header: UInt8, body: Data) -> Data {
         var result = Data([header])
         var length = body.count

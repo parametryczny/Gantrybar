@@ -38,6 +38,7 @@ public sealed class DetailView : UserControl
     private TextBlock? _cameraStatus;
     private Border? _cameraBadge;           // shows the resolved mode + resolution (e.g. "RTSPS · 1920×1080")
     private BambuCameraStream? _bambuCam;   // Bambu: native RTSPS/RTSP/JPEG client, ffmpeg used only to decode H.264
+    private ElegooMjpegStream? _elegooCam;
     private string? _cameraMode;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
 
@@ -45,6 +46,7 @@ public sealed class DetailView : UserControl
     private StackPanel? _cardPanel;
     private readonly Dictionary<string, FrameworkElement> _cardByKey = new();
     private Point _cardDragStart;
+    private static readonly string[] DefaultCardOrder = { "status", "camera", "ams", "temps", "fans", "control" };
 
     // Per-sensor colours (design/kolorystyka.md §5) — used for the chart series/legend only. The temp
     // READOUT values follow state (TempStyle), not these.
@@ -94,7 +96,7 @@ public sealed class DetailView : UserControl
         stack.Children.Add(Draggable("status", Card(new StackPanel { Children = { _state, titleRow, _bar, bottomRow } })));
 
         // --- Temperatures card (graph + readouts) ---
-        _graph = new Canvas { Height = 110, Background = new SolidColorBrush(Color.FromArgb(0x50, 0x2C, 0x2C, 0x2E)) };
+        _graph = new Canvas { Height = 110, Background = GTheme.Brush(GTheme.Surface) };
         _graph.SizeChanged += (_, _) => DrawGraph();
         _temps = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(_pl ? "TEMPERATURY" : "TEMPERATURES"), _graph, _temps } })));
@@ -115,7 +117,7 @@ public sealed class DetailView : UserControl
         stack.Children.Add(Draggable("ams", Card(new StackPanel { Children = { SectionTitle(_pl ? "FILAMENTY / AMS" : "FILAMENTS / AMS"), _ams } })));
 
         // --- Control + automations card (developer mode only; Bambu/Klipper) ---
-        if (AppSettings.DeveloperMode && printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
+        if (AppSettings.DeveloperMode && printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
         {
             var lightOn = new Button { Content = _pl ? "Światło wł." : "Light on", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
             lightOn.Click += (_, _) => _store.SetChamberLight(true, _serial);
@@ -128,7 +130,7 @@ public sealed class DetailView : UserControl
         }
 
         // --- Camera card (Bambu native RTSPS/RTSP/JPEG → ffmpeg decode, Klipper MJPEG snapshots) ---
-        if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
+        if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
         {
             var container = new Grid { Height = 230, Background = new SolidColorBrush(Colors.Black) };
             _cameraStatus = new TextBlock { Foreground = White(), FontSize = 11, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12) };
@@ -260,8 +262,9 @@ public sealed class DetailView : UserControl
     {
         if (_cardPanel is null) return;
         var saved = AppSettings.DetailCardOrder.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var order = saved.Concat(DefaultCardOrder).Distinct();
         int insertAt = 0;
-        foreach (var key in saved)
+        foreach (var key in order)
         {
             if (!_cardByKey.TryGetValue(key, out var el) || _cardPanel.Children.IndexOf(el) < 0) continue;
             _cardPanel.Children.Remove(el);
@@ -312,6 +315,7 @@ public sealed class DetailView : UserControl
     {
         AppSettings.DetailHiddenModules = string.Empty;
         AppSettings.DetailCardOrder = string.Empty;
+        ApplyCardOrder();
         ApplyHiddenModules();
     }
 
@@ -320,7 +324,7 @@ public sealed class DetailView : UserControl
         int active = (int)Math.Round(Math.Clamp(progress, 0, 100) / 100.0 * bar.Children.Count);
         for (int i = 0; i < bar.Children.Count; i++)
             if (bar.Children[i] is Border seg)
-                seg.Background = new SolidColorBrush(i < active ? accent : Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF));
+                seg.Background = GTheme.Brush(i < active ? accent : GTheme.W(0.14));
     }
 
     private void Refresh()
@@ -397,7 +401,7 @@ public sealed class DetailView : UserControl
         for (int i = 0; i <= 4; i++)
         {
             double y = pad + plotH * i / 4.0;
-            _graph.Children.Add(new Line { X1 = left, Y1 = y, X2 = w - pad, Y2 = y, Stroke = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), StrokeThickness = 0.5 });
+            _graph.Children.Add(new Line { X1 = left, Y1 = y, X2 = w - pad, Y2 = y, Stroke = GTheme.Brush(GTheme.Line), StrokeThickness = 0.5 });
             var lbl = new TextBlock { Text = ((int)(maxTemp * (4 - i) / 4.0)) + "°", FontSize = 8, Foreground = Muted() };
             Canvas.SetLeft(lbl, 2); Canvas.SetTop(lbl, y - 7); _graph.Children.Add(lbl);
         }
@@ -445,6 +449,15 @@ public sealed class DetailView : UserControl
             cam.Failed += msg => Dispatcher.Invoke(() => { if (_cameraStatus is { Visibility: Visibility.Visible }) _cameraStatus.Text = msg; });
             _bambuCam = cam;
             cam.Start(host, code!);
+        }
+        else if (_kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
+        {
+            bool cc2 = _kind == PrinterKind.ElegooCc2;
+            _store.SendElegooMethod(_serial, cc2 ? 1042 : 386, cc2 ? new { } : new { Enable = 1 });
+            var cam = new ElegooMjpegStream(); cam.FrameReady += ShowJpegFrame;
+            cam.Failed += message => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Text = message; });
+            _elegooCam = cam; _cameraMode = cc2 ? "MJPEG · 8080" : "MJPEG · 3031"; UpdateBadge();
+            cam.Start($"http://{host}:{(cc2 ? 8080 : 3031)}/{(cc2 ? "?action=stream" : "video")}");
         }
         else
         {
@@ -557,6 +570,8 @@ public sealed class DetailView : UserControl
         _cameraTimer?.Stop();
         try { _bambuCam?.Stop(); } catch { }
         _bambuCam = null;
+        try { _elegooCam?.Stop(); } catch { }
+        _elegooCam = null;
     }
 
     // --- small builders ---
@@ -580,7 +595,7 @@ public sealed class DetailView : UserControl
 
     private static TextBlock Text(double size, FontWeight weight, Brush? color = null) => new()
     {
-        FontSize = size, FontWeight = weight, Foreground = color ?? new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7)),
+        FontSize = size, FontWeight = weight, Foreground = color ?? GTheme.Brush(GTheme.Text),
         VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
     };
 
@@ -601,12 +616,12 @@ public sealed class DetailView : UserControl
             Foreground = TempStyle.BrushFor(st, mono)
         };
         var stack = new StackPanel { Children = { titleRow, valueBlock } };
-        return new Border { Background = new SolidColorBrush(Color.FromArgb(0x50, 0x2C, 0x2C, 0x2E)), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 8, 0), Child = stack };
+        return new Border { Background = GTheme.Brush(GTheme.Surface), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 8, 0), Child = stack };
     }
 
     private UIElement FanChip(string title, int? percent)
     {
-        var value = new TextBlock { Text = percent is { } p ? $"{p}%" : "—", FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = percent is null ? Muted() : new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7)) };
+        var value = new TextBlock { Text = percent is { } p ? $"{p}%" : "—", FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = percent is null ? Muted() : GTheme.Brush(GTheme.Text) };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0), Children = {
             new TextBlock { Text = "❋ ", FontSize = 11, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center },
             new TextBlock { Text = title + " ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center },
@@ -623,8 +638,8 @@ public sealed class DetailView : UserControl
         _ => "—"
     };
 
-    private static Brush Muted() => new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93));
-    private static Brush White() => new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7));
+    private static Brush Muted() => GTheme.Brush(GTheme.Muted);
+    private static Brush White() => GTheme.Brush(GTheme.Text);
 
     private static Color ParseHex(string hex)
     {

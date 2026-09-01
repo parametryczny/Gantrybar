@@ -10,10 +10,23 @@ from gantry.discovery import parse_ssdp
 from gantry.desktop import installed_slicers
 from gantry.http_clients import parse_cfs, parse_moonraker, parse_prusalink, parse_snapmaker
 from gantry.mqtt import connect_packet, publish_packet, publish_payload, subscribe_packet
+from gantry.storage import Config
 from gantry.webconfig import config_page, pairing_code, validate_printer_form
 
 
 class CoreTests(unittest.TestCase):
+    def test_per_printer_progress_pins(self):
+        config = Config.__new__(Config)
+        config.data = {"menu_bar_progress_serials": []}
+        config.save = lambda: None
+        config.set_progress_pinned("A", True)
+        config.set_progress_pinned("B", True)
+        self.assertTrue(config.is_progress_pinned("A"))
+        config.set_progress_pinned("A", False)
+        self.assertEqual(config.progress_serials(), ["B"])
+        config.prune_progress_pins(["A"])
+        self.assertEqual(config.progress_serials(), [])
+
     def test_scan_targets(self):
         self.assertEqual(expand_scan_targets("192.168.1.5"), ["192.168.1.5"])
         self.assertEqual(len(expand_scan_targets("192.168.1.0/30")), 2)
@@ -148,6 +161,7 @@ class CoreTests(unittest.TestCase):
         })
         self.assertEqual(snap.state, PrinterState.PRINTING)
         self.assertEqual(snap.nozzle, 205)
+
         self.assertEqual(snap.bed_target, 60)
         self.assertEqual(snap.progress, 42)            # 0…1 fraction scaled to percent
         self.assertEqual(snap.remaining_minutes, 20)
@@ -164,6 +178,22 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(cfs[0].slots[0].active)
         self.assertFalse(cfs[0].slots[3].present)
         self.assertTrue(cfs[1].external)
+
+    def test_moonraker_custom_object_names(self):
+        value = parse_moonraker({"result": {"status": {
+            "print_stats": {"state": "standby"},
+            "my_hotend": {"temperature": 211, "target": 215},
+            "heater_generic buildplate": {"temperature": 58, "target": 60},
+            "temperature_sensor enclosure": {"temperature": 37},
+            "fan_generic part": {"speed": .42},
+        }}}, objects={
+            "nozzle": "my_hotend", "bed": "heater_generic buildplate",
+            "chamber": "temperature_sensor enclosure", "fan": "fan_generic part",
+        })
+        self.assertEqual(value.nozzle, 211)
+        self.assertEqual(value.bed, 58)
+        self.assertEqual(value.chamber, 37)
+        self.assertEqual(value.part_fan, 42)
 
     def test_csv_rejects_duplicate_serial(self):
         content = "name,host,serial,access_code,port\nA,192.168.1.2,S1,C1,8883\nB,192.168.1.3,S1,C2,8883\n"

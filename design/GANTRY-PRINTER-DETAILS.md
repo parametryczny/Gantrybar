@@ -11,19 +11,22 @@ Ten dokument opisuje produkcyjny układ widoku `Szczegóły drukarki`. Źródłe
 
 ## Układ domyślny
 
-Szerokość referencyjna widoku wynosi `640 px`. Status i kamera zajmują pełną szerokość. Pozostałe sekcje tworzą dwie niezależne kolumny, dzięki czemu niższa karta nie zostawia pustej przestrzeni pod sobą.
+Aktualny kod macOS ustala widok na `480 × 700 px`. Wszystkie sekcje są pełnoszerokimi kartami w jednej przewijanej kolumnie.
 
 ```text
 ┌──────────────────────────────────────────┐
 │ Status wydruku                           │
 ├──────────────────────────────────────────┤
 │ Kamera                                   │
-├────────────────────┬─────────────────────┤
-│ Filamenty / AMS    │ Temperatury         │
-│                    ├─────────────────────┤
-├────────────────────┤ Sterowanie          │
-│ Wentylatory        │                     │
-└────────────────────┴─────────────────────┘
+├──────────────────────────────────────────┤
+│ Filamenty / AMS                          │
+├──────────────────────────────────────────┤
+│ Temperatury                              │
+├──────────────────────────────────────────┤
+│ Wentylatory i prędkość                   │
+├──────────────────────────────────────────┤
+│ Sterowanie i automatyzacje               │
+└──────────────────────────────────────────┘
 ```
 
 Domyślna kolejność:
@@ -35,16 +38,16 @@ Domyślna kolejność:
 5. Wentylatory i prędkość.
 6. Sterowanie i automatyzacje.
 
-Status i kamera są pełnoszerokie. Pozostałe sekcje są rozdzielane naprzemiennie między lewą i prawą kolumnę. Wysokości nie są zapisywane — zawsze wynikają z treści.
+Wysokości nie są zapisywane — zawsze wynikają z treści. Status pozostaje widoczny; kamerę, AMS, temperatury, wentylatory i sterowanie można ukrywać. Kolejność kart można zmieniać przeciąganiem.
 
 ## Zachowanie
 
 - przeciągnięcie uchwytu zmienia kolejność sekcji;
 - kolejność jest wspólna dla wszystkich drukarek na danej platformie;
-- stary zapis kolejności jest migrowany do wersji `v2`, aby nowy domyślny układ nie odziedziczył wcześniejszego układu jednokolumnowego;
+- zapis kolejności jest współdzielony przez wszystkie drukarki na danej platformie;
 - brak kamery nie usuwa karty: karta pokazuje komunikat o niedostępnym strumieniu;
 - Filamenty / AMS znajdują się bezpośrednio pod kamerą;
-- przy szerokości poniżej breakpointu wszystkie sekcje powinny przejść do jednej kolumny;
+- widok zawsze pozostaje w jednej kolumnie;
 - temperatura używa tych samych tokenów dyszy, stołu i komory co dashboard;
 - aktywny druk używa czerwonego akcentu `#FF6857`; pozostałe stany pozostają neutralne.
 
@@ -66,16 +69,17 @@ Status i kamera są pełnoszerokie. Pozostałe sekcje są rozdzielane naprzemien
 
 ### Linux
 
-- [app.py](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/linux/gantry/app.py>)
-- dashboard korzysta już z nowego kontraktu kafli;
-- osobny produkcyjny widok szczegółów nie istniał wcześniej w kliencie GTK i nadal wymaga dodania. Jego przyszła implementacja ma użyć dokładnie tej kolejności i breakpointów, bez własnych reguł platformowych.
+- [dashboard.py](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/linux/gantry/dashboard.py>)
+- [details.py](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/linux/gantry/details.py>)
+- `DetailPanel` jest podmieniany wewnątrz głównego panelu GTK, bez osobnego okna;
+- wszystkie karty są pełnoszerokie w jednej przewijanej kolumnie 480 px, zgodnie z aktualnym `PrinterDetailViewController`;
+- `CameraView` osadza istniejący strumień RTSPS/MJPEG bezpośrednio w karcie Szczegółów.
 
 ## Kryteria odbioru
 
-- status i kamera mają identyczną szerokość;
-- Filamenty / AMS zaczynają pierwszą kolumnę bezpośrednio pod kamerą;
-- Temperatury zaczynają drugą kolumnę;
-- karty w kolumnach nie wymuszają wspólnej wysokości rzędu;
+- wszystkie karty mają identyczną szerokość w jednej kolumnie;
+- Filamenty / AMS znajdują się bezpośrednio pod kamerą;
+- Temperatury znajdują się pod Filamentami / AMS;
 - zmiana zawartości AMS nie powoduje nakładania kart;
 - przeciągnięcie sekcji zapisuje i odtwarza kolejność;
 - brak telemetrii wyświetla `—`, bez zmiany geometrii całego widoku.

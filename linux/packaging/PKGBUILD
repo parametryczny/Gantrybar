@@ -11,9 +11,9 @@ arch=('any')
 url="https://github.com/parametryczny/Gantrybar"
 license=('MIT')
 depends=('python' 'python-gobject' 'gtk3' 'libayatana-appindicator' 'librsvg'
-         'python-websocket-client' 'libnotify' 'libsecret')
-optdepends=('ffmpeg: live camera view for Bambu printers'
-            'gnome-keyring: secret storage on non-KDE desktops (KDE uses KWallet)')
+         'python-websocket-client' 'libnotify' 'libsecret' 'gstreamer'
+         'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav')
+optdepends=('gnome-keyring: secret storage on non-KDE desktops (KDE uses KWallet)')
 provides=('gantry')
 conflicts=('gantry')
 makedepends=('git')

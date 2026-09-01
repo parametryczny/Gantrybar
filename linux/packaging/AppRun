@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+APPDIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export PATH="$APPDIR/usr/bin${PATH:+:$PATH}"
+export XDG_DATA_DIRS="$APPDIR/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+export GST_PLUGIN_PATH="$APPDIR/usr/lib/gstreamer-1.0:$APPDIR/usr/lib${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
+# linuxdeploy framework plugins place their runtime setup here (GTK themes, schemas, typelibs,
+# pixbuf loaders, and library paths). Source every hook before starting the frozen Python app.
+for hook in "$APPDIR"/apprun-hooks/*.sh; do
+  [ -f "$hook" ] && . "$hook"
+done
+exec "$APPDIR/usr/lib/gantry/Gantry" "$@"

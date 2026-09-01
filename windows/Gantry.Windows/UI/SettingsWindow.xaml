@@ -1,16 +1,32 @@
 <Window x:Class="Gantry.UI.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Gantry" Width="440" SizeToContent="Height"
+        Title="Gantry" Width="460" Height="640" MinWidth="440" MinHeight="360"
         WindowStartupLocation="CenterScreen"
-        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="True"
+        WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="True"
         AllowsTransparency="False" Background="Transparent"
-        Foreground="#FFF5F5F7" FontFamily="Segoe UI Variable, Segoe UI">
+        Foreground="{DynamicResource SettingsTextBrush}" FontFamily="Segoe UI Variable, Segoe UI">
     <Window.Resources>
+        <!-- Values are replaced from GTheme whenever the user switches appearance. -->
+        <SolidColorBrush x:Key="SettingsTextBrush" Color="#FFF2F3F1"/>
+        <SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#FFA7AAA6"/>
+        <SolidColorBrush x:Key="SettingsMutedBrush" Color="#FF6D716E"/>
+        <SolidColorBrush x:Key="SettingsPanelBrush" Color="#E6151719"/>
+        <SolidColorBrush x:Key="SettingsCardBrush" Color="#CC151719"/>
+        <SolidColorBrush x:Key="SettingsLineBrush" Color="#17FFFFFF"/>
+        <SolidColorBrush x:Key="SettingsFieldBrush" Color="#FF2C2C2E"/>
+        <SolidColorBrush x:Key="SettingsSoftBrush" Color="#1EFFFFFF"/>
+        <SolidColorBrush x:Key="SettingsSoftHoverBrush" Color="#33FFFFFF"/>
+        <SolidColorBrush x:Key="SettingsSoftPressedBrush" Color="#4DFFFFFF"/>
+        <SolidColorBrush x:Key="SettingsCheckIdleBrush" Color="#22FFFFFF"/>
+        <SolidColorBrush x:Key="SettingsCheckBorderBrush" Color="#55FFFFFF"/>
+        <SolidColorBrush x:Key="SettingsCheckHoverBrush" Color="#99FFFFFF"/>
+        <SolidColorBrush x:Key="SettingsAccentBrush" Color="#FFD4D7D3"/>
+        <SolidColorBrush x:Key="SettingsAccentInkBrush" Color="#FF151719"/>
         <!-- Soft, readable buttons instead of the classic WPF chrome. -->
         <Style TargetType="Button">
-            <Setter Property="Foreground" Value="#FFF5F5F7"/>
-            <Setter Property="Background" Value="#1EFFFFFF"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SettingsSoftBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="13"/>
@@ -24,10 +40,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#33FFFFFF"/>
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource SettingsSoftHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#4DFFFFFF"/>
+                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource SettingsSoftPressedBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -36,7 +52,7 @@
         </Style>
         <!-- Rounded checkbox with an accent fill when checked; high contrast on the dark card. -->
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#FFF5F5F7"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -44,23 +60,23 @@
                     <ControlTemplate TargetType="CheckBox">
                         <StackPanel Orientation="Horizontal" Background="Transparent">
                             <Border x:Name="box" Width="20" Height="20" CornerRadius="6"
-                                    Background="#22FFFFFF" BorderBrush="#55FFFFFF" BorderThickness="1"
+                                    Background="{DynamicResource SettingsCheckIdleBrush}" BorderBrush="{DynamicResource SettingsCheckBorderBrush}" BorderThickness="1"
                                     VerticalAlignment="Center">
                                 <TextBlock x:Name="check" Text="✓" FontSize="13" FontWeight="Bold"
-                                           Foreground="White" HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource SettingsAccentInkBrush}" HorizontalAlignment="Center"
                                            VerticalAlignment="Center" Opacity="0"/>
                             </Border>
                             <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="box" Property="Background" Value="#FFD4D7D3"/>
-                                <Setter TargetName="box" Property="BorderBrush" Value="#FFD4D7D3"/>
-                                <Setter TargetName="check" Property="Foreground" Value="#FF151719"/>
+                                <Setter TargetName="box" Property="Background" Value="{DynamicResource SettingsAccentBrush}"/>
+                                <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
+                                <Setter TargetName="check" Property="Foreground" Value="{DynamicResource SettingsAccentInkBrush}"/>
                                 <Setter TargetName="check" Property="Opacity" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="box" Property="BorderBrush" Value="#99FFFFFF"/>
+                                <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource SettingsCheckHoverBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -69,13 +85,13 @@
         </Style>
     </Window.Resources>
 
-    <Border CornerRadius="12" Background="#B3242426" SnapsToDevicePixels="True">
+    <Border CornerRadius="12" Background="{DynamicResource SettingsPanelBrush}" SnapsToDevicePixels="True">
       <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="760">
         <StackPanel Margin="24,20,24,20">
             <TextBlock x:Name="Heading" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4"/>
 
-            <TextBlock x:Name="GeneralHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,16,0,8"/>
-            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="AppearanceHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,16,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>
                     <Grid Margin="0,4">
                         <Grid.ColumnDefinitions>
@@ -90,19 +106,33 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ThemeLabel" VerticalAlignment="Center" FontSize="13"/>
+                        <Button Grid.Column="1" x:Name="ThemeButton" MinWidth="96"/>
+                    </Grid>
+                    <Grid Margin="0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
                         <TextBlock x:Name="TransparencyLabel" VerticalAlignment="Center" FontSize="13"/>
                         <Button Grid.Column="1" x:Name="TransparencyButton" MinWidth="96"/>
                     </Grid>
-                    <CheckBox x:Name="StartupCheckBox" Margin="0,10,0,4"/>
-                    <CheckBox x:Name="SpoolbaseCheckBox" Margin="0,7,0,4"/>
-                    <CheckBox x:Name="DeveloperCheckBox" Margin="0,7,0,4"/>
-                    <CheckBox x:Name="ScriptActionsCheckBox" Margin="0,7,0,0"/>
-                    <TextBlock x:Name="ScriptActionsHint" FontSize="10" Foreground="#FF9A9A9E" TextWrapping="Wrap" Margin="24,1,0,4"/>
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="CardsHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
-            <Border Background="#80151719" CornerRadius="16" Padding="16,10" BorderBrush="#17FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="GeneralHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
+                <StackPanel>
+                    <CheckBox x:Name="StartupCheckBox" Margin="0,4"/>
+                    <CheckBox x:Name="SpoolbaseCheckBox" Margin="0,7,0,4"/>
+                    <CheckBox x:Name="DeveloperCheckBox" Margin="0,7,0,4"/>
+                    <CheckBox x:Name="ScriptActionsCheckBox" Margin="0,7,0,0"/>
+                    <TextBlock x:Name="ScriptActionsHint" FontSize="10" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="24,1,0,4"/>
+                </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="CardsHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,10" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>
                     <CheckBox x:Name="CardFileNameCheckBox" Margin="0,6"/>
                     <CheckBox x:Name="CardProgressCheckBox" Margin="0,6"/>
@@ -113,71 +143,85 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="NotificationsHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
-            <Border Background="#80151719" CornerRadius="16" Padding="16,10" BorderBrush="#17FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="NotificationsHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,10" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>
                     <CheckBox x:Name="PrintFinishedCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="PrinterErrorCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="PrintPausedCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="LowFilamentCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="HighHumidityCheckBox" Margin="0,7"/>
-                    <Border Height="1" Background="#18FFFFFF" Margin="0,9"/>
+                    <Border Height="1" Background="{DynamicResource SettingsLineBrush}" Margin="0,9"/>
                     <CheckBox x:Name="QuietHoursCheckBox" Margin="0,4"/>
                     <StackPanel x:Name="QuietTimesRow" Orientation="Horizontal" Margin="30,6,0,2">
-                        <TextBlock x:Name="QuietFromLabel" VerticalAlignment="Center" FontSize="12" Foreground="#FFC7C7CC" Margin="0,0,6,0"/>
-                        <TextBox x:Name="QuietStartBox" Width="58" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1" TextAlignment="Center"/>
-                        <TextBlock x:Name="QuietToLabel" VerticalAlignment="Center" FontSize="12" Foreground="#FFC7C7CC" Margin="10,0,6,0"/>
-                        <TextBox x:Name="QuietEndBox" Width="58" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1" TextAlignment="Center"/>
+                        <TextBlock x:Name="QuietFromLabel" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,0,6,0"/>
+                        <TextBox x:Name="QuietStartBox" Width="58" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1" TextAlignment="Center"/>
+                        <TextBlock x:Name="QuietToLabel" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="10,0,6,0"/>
+                        <TextBox x:Name="QuietEndBox" Width="58" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1" TextAlignment="Center"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="UpdatesHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
-            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="UpdatesHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="UpdateStatus" VerticalAlignment="Center" FontSize="12" Foreground="#FF9A9A9E" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="UpdateStatus" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap"/>
                         <Button Grid.Column="1" x:Name="CheckUpdatesButton" MinWidth="120" Margin="10,0,0,0"/>
                     </Grid>
                     <CheckBox x:Name="AutoUpdateCheckBox" Margin="0,12,0,0"/>
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="WebHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
-            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="WebHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>
                     <CheckBox x:Name="WebDashboardCheckBox" Margin="0,0,0,8"/>
-                    <TextBlock x:Name="WebAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="#FFC7C7CC" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="WebAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="SyncHeading" FontSize="12" FontWeight="SemiBold" Foreground="#FF6D716E" Margin="0,18,0,8"/>
-            <Border Background="#80151719" CornerRadius="16" Padding="16,12" BorderBrush="#17FFFFFF" BorderThickness="1">
+            <TextBlock x:Name="SyncHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>
-                    <TextBlock x:Name="SyncTokenLabel" FontSize="11" Foreground="#FF9A9A9E"/>
+                    <TextBlock x:Name="SyncTokenLabel" FontSize="11" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
                     <Grid Margin="0,3,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBox x:Name="SyncTokenBox" IsReadOnly="True" FontFamily="Consolas" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                        <TextBox x:Name="SyncTokenBox" IsReadOnly="True" FontFamily="Consolas" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
                         <Button Grid.Column="1" x:Name="SyncNewTokenButton" MinWidth="60" Margin="8,0,0,0"/>
                     </Grid>
-                    <TextBlock x:Name="SyncAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="#FFC7C7CC" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="SyncAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBox x:Name="SyncPeerBox" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                        <TextBox x:Name="SyncPeerBox" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
                         <Button Grid.Column="1" x:Name="SyncAddPeerButton" MinWidth="70" Margin="8,0,0,0"/>
                     </Grid>
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBox x:Name="SyncSetTokenBox" FontSize="13" Padding="6,3" Background="#FF2C2C2E" Foreground="#FFF5F5F7" CaretBrush="#FFF5F5F7" BorderBrush="#33FFFFFF" BorderThickness="1"/>
+                        <TextBox x:Name="SyncSetTokenBox" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
                         <Button Grid.Column="1" x:Name="SyncSetTokenButton" MinWidth="90" Margin="8,0,0,0"/>
                     </Grid>
                     <StackPanel x:Name="SyncPeersList"/>
                     <Button x:Name="SyncNowButton" MinWidth="150" HorizontalAlignment="Left" Margin="0,6,0,0"/>
-                    <TextBlock x:Name="SyncHint" FontSize="10" Foreground="#FF9A9A9E" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                    <TextBlock x:Name="SyncHint" FontSize="10" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="AboutHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
+            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock x:Name="AboutVersion" FontSize="12" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="AboutAuthor" FontSize="10.5" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,3,0,10"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button x:Name="GitHubButton" Margin="0,0,8,0"/>
+                        <Button x:Name="XButton"/>
+                    </StackPanel>
+                    <Button x:Name="SupportButton" HorizontalAlignment="Left"/>
+                    <TextBlock x:Name="SupportSubtitle" FontSize="10" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
                 </StackPanel>
             </Border>
 

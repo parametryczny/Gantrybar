@@ -28,6 +28,99 @@ def _filament_label(app: Any, definition_id: str | None) -> str:
     return definition_id
 
 
+def _location_label(app: Any, location: dict[str, Any]) -> str:
+    if not location or location.get("printerSerial") is None:
+        return "magazyn" if _pl(app) else "storage"
+    serial = str(location.get("printerSerial"))
+    printer = next((p for p in app.printers if p.serial == serial), None)
+    printer_name = printer.name if printer is not None else serial
+    if location.get("feeder") == "ext":
+        slot = "EXT"
+    else:
+        slot = f"AMS {int(location.get('amsIndex', 0)) + 1} · A{int(location.get('slot', 0)) + 1}"
+    return f"{printer_name} · {slot}"
+
+
+def _definition(app: Any, definition_id: str | None) -> Any | None:
+    inventory = getattr(app, "filament_store", None)
+    if inventory is None:
+        return None
+    return next((item for item in inventory.filaments if item.id == definition_id), None)
+
+
+def _normal_color(value: str | None) -> str:
+    text = (value or "").replace("#", "").upper()
+    return text[:6] if len(text) >= 6 else text
+
+
+def _matches_slot(app: Any, spool: dict[str, Any], slot: Any) -> bool:
+    definition = _definition(app, spool.get("filamentDefinitionID"))
+    material = (getattr(slot, "material", "") or "").upper()
+    color = _normal_color(getattr(slot, "color", ""))
+    if definition is None or not material:
+        return False
+    return (definition.type or "").upper() == material and (not color or _normal_color(definition.colorHex) == color)
+
+
+def _confirm(parent: Gtk.Window, title: str, detail: str) -> bool:
+    prompt = Gtk.MessageDialog(
+        transient_for=parent, modal=True, message_type=Gtk.MessageType.QUESTION,
+        buttons=Gtk.ButtonsType.YES_NO, text=title)
+    prompt.format_secondary_text(detail)
+    result = prompt.run() == Gtk.ResponseType.YES
+    prompt.destroy()
+    return result
+
+
+def _correct_weight(parent: Gtk.Window, app: Any, store: Any, spool: dict[str, Any]) -> bool:
+    pl = _pl(app)
+    sheet = Gtk.Dialog(title="Skoryguj wagę" if pl else "Correct weight", transient_for=parent, modal=True)
+    sheet.set_default_size(330, -1)
+    box = sheet.get_content_area()
+    box.set_spacing(7); box.set_border_width(12)
+    fields: dict[str, Gtk.Entry] = {}
+    values = {
+        "net": str(int(float(spool.get("remainingWeightGrams", 0) or 0))),
+        "gross": "",
+        "tare": str(int(float(spool.get("tareGrams", 0) or 0))) if spool.get("tareGrams") is not None else "",
+    }
+    labels = {
+        "net": "Netto (g)" if pl else "Net (g)",
+        "gross": "Brutto (g)" if pl else "Gross (g)",
+        "tare": "Tara pustej szpuli (g)" if pl else "Empty-spool tare (g)",
+    }
+    for key in ("net", "gross", "tare"):
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label=labels[key], xalign=0), True, True, 0)
+        entry = Gtk.Entry(text=values[key]); entry.set_width_chars(9)
+        fields[key] = entry
+        row.pack_start(entry, False, False, 0)
+        box.pack_start(row, False, False, 0)
+    hint = Gtk.Label(
+        label=("Wpisz netto albo brutto i tarę — tara zostanie odjęta."
+               if pl else "Enter net, or gross and tare — tare will be subtracted."),
+        xalign=0, wrap=True)
+    hint.get_style_context().add_class("subtitle")
+    box.pack_start(hint, False, False, 0)
+    sheet.add_button("Anuluj" if pl else "Cancel", Gtk.ResponseType.CANCEL)
+    sheet.add_button("Zapisz" if pl else "Save", Gtk.ResponseType.OK)
+    sheet.show_all()
+    saved = False
+    if sheet.run() == Gtk.ResponseType.OK:
+        def number(entry: Gtk.Entry) -> float | None:
+            try:
+                return float(entry.get_text().strip().replace(",", "."))
+            except ValueError:
+                return None
+        gross, tare, net = number(fields["gross"]), number(fields["tare"]), number(fields["net"])
+        result = max(0.0, gross - tare) if gross is not None and tare is not None else net
+        if result is not None:
+            store.correct_weight(spool["id"], result, tare)
+            saved = True
+    sheet.destroy()
+    return saved
+
+
 def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot: Any, slot_index: int) -> None:
     store = getattr(app, "physical_spools", None)
     inventory = getattr(app, "filament_store", None)
@@ -74,8 +167,13 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         pct.set_text(f"{percent}% · {int(nominal)} g nominał" if pl else f"{percent}% · {int(nominal)} g nominal")
         content.pack_start(pct, False, False, 0)
 
-        detach = Gtk.Button(label=("Odłącz (do magazynu)" if pl else "Detach (to storage)"))
-        content.pack_start(detach, False, False, 0)
+        actions = Gtk.Box(spacing=6)
+        weigh = Gtk.Button(label=("Skoryguj" if pl else "Weigh"))
+        reset = Gtk.Button(label=("Zeruj" if pl else "Reset"))
+        detach = Gtk.Button(label=("Odepnij" if pl else "Unassign"))
+        for button in (weigh, reset, detach):
+            actions.pack_start(button, True, True, 0)
+        content.pack_start(actions, False, False, 0)
 
         def do_save(_b: Gtk.Button) -> None:
             store.set_remaining(assigned["id"], spin.get_value())
@@ -87,7 +185,28 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
             _refresh(app, serial)
             dialog.destroy()
 
+        def do_weigh(_b: Gtk.Button) -> None:
+            if _correct_weight(dialog, app, store, assigned):
+                spin.set_value(float(assigned.get("remainingWeightGrams", 0) or 0))
+                pct.set_text(
+                    f"{store.percent(assigned)}% · {int(nominal)} g nominał" if pl
+                    else f"{store.percent(assigned)}% · {int(nominal)} g nominal")
+                _refresh(app, serial)
+
+        def do_reset(_b: Gtk.Button) -> None:
+            if not _confirm(
+                    dialog, "Wyzerować rolkę?" if pl else "Reset roll?",
+                    (f"{assigned.get('id')} · ustaw pełny stan {int(nominal)} g."
+                     if pl else f"{assigned.get('id')} · set a full {int(nominal)} g.")):
+                return
+            store.reset_to_full(assigned["id"])
+            spin.set_value(nominal)
+            pct.set_text(f"100% · {int(nominal)} g nominał" if pl else f"100% · {int(nominal)} g nominal")
+            _refresh(app, serial)
+
         save.connect("clicked", do_save)
+        weigh.connect("clicked", do_weigh)
+        reset.connect("clicked", do_reset)
         detach.connect("clicked", do_detach)
         content.pack_start(Gtk.Separator(), False, False, 4)
 
@@ -99,21 +218,32 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
     combo = Gtk.ComboBoxText()
     combo.append("__new__", ("Nowa rolka" if pl else "New roll"))
     # Existing rolls that are in storage (or elsewhere) can be moved into this slot.
-    for spool in store.spools:
+    available = [spool for spool in store.spools
+                 if spool is not assigned and spool.get("status") != "archived"]
+    available.sort(key=lambda spool: (
+        not _matches_slot(app, spool, slot),
+        (spool.get("location") or {}).get("printerSerial") is not None,
+        str(spool.get("id", ""))))
+    for spool in available:
         if spool is assigned:
             continue
         loc = spool.get("location") or {}
-        where = "magazyn" if loc.get("printerSerial") is None else str(loc.get("printerSerial"))
-        if not pl and loc.get("printerSerial") is None:
-            where = "storage"
+        where = _location_label(app, loc)
+        match = "★ " if _matches_slot(app, spool, slot) else ""
         combo.append(f"spool:{spool.get('id')}",
-                     f"{spool.get('id')} · {_filament_label(app, spool.get('filamentDefinitionID'))} · {where}")
+                     f"{match}{spool.get('id')} · {_filament_label(app, spool.get('filamentDefinitionID'))} · "
+                     f"{int(float(spool.get('remainingWeightGrams', 0) or 0))} g · {where}")
     # The user's Spoolbase inventory: creating a roll from a known filament links it for consumption.
     if inventory is not None:
         for f in inventory.filaments:
             combo.append(f"def:{f.id}", f"{f.brand} {f.name} · {f.colorName} ({f.type})")
     combo.set_active_id("__new__")
     content.pack_start(combo, False, False, 0)
+
+    delete_row = Gtk.Box()
+    delete_selected = Gtk.Button(label=("Usuń wybraną rolkę" if pl else "Delete selected roll"))
+    delete_row.pack_end(delete_selected, False, False, 0)
+    content.pack_start(delete_row, False, False, 0)
 
     nom_row = Gtk.Box(spacing=8)
     nom_row.pack_start(Gtk.Label(label=("Nominał (g):" if pl else "Nominal (g):"), xalign=0), False, False, 0)
@@ -122,20 +252,55 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
     nom_row.pack_start(nominal_spin, True, True, 0)
     content.pack_start(nom_row, False, False, 0)
 
+    presets = Gtk.Box(spacing=6)
+    for grams in (1000, 750, 500):
+        button = Gtk.Button(label=f"{grams} g")
+        button.connect("clicked", lambda _button, value=grams: nominal_spin.set_value(value))
+        presets.pack_start(button, True, True, 0)
+    content.pack_start(presets, False, False, 0)
+
     dialog.add_button(("Anuluj" if pl else "Cancel"), Gtk.ResponseType.CANCEL)
     dialog.add_button(("Przypisz" if pl else "Assign"), Gtk.ResponseType.OK)
+
+    def delete_choice(_button: Gtk.Button) -> None:
+        choice = combo.get_active_id() or ""
+        if not choice.startswith("spool:"):
+            return
+        spool_id = choice.split(":", 1)[1]
+        if not _confirm(dialog, "Usunąć rolkę?" if pl else "Delete roll?", spool_id):
+            return
+        store.delete(spool_id)
+        dialog.destroy()
+        GLib.idle_add(lambda: (open_assign_dialog(app, serial, group, group_index, slot, slot_index), False)[1])
+
+    delete_selected.connect("clicked", delete_choice)
 
     def on_response(_d: Gtk.Dialog, response: int) -> None:
         if response == Gtk.ResponseType.OK:
             choice = combo.get_active_id() or "__new__"
             if choice.startswith("spool:"):
-                store.assign(choice.split(":", 1)[1], location)
+                spool = store.spool(choice.split(":", 1)[1])
+                if spool is not None:
+                    old_location = spool.get("location") or {}
+                    if old_location.get("printerSerial") is not None:
+                        if not _confirm(
+                                dialog, "Przenieść rolkę?" if pl else "Move roll?",
+                                (f"{spool.get('id')} jest teraz: {_location_label(app, old_location)}"
+                                 if pl else f"{spool.get('id')} is currently at {_location_label(app, old_location)}")):
+                            return
+                    store.assign(spool["id"], location)
             elif choice.startswith("def:"):
                 nominal = nominal_spin.get_value()
                 store.create_spool(choice.split(":", 1)[1], nominal, nominal, location)
             else:
                 nominal = nominal_spin.get_value()
-                store.create_spool(None, nominal, nominal, location)
+                matched = None
+                if inventory is not None:
+                    matched = next((definition for definition in inventory.filaments
+                                    if (definition.type or "").upper() == (getattr(slot, "material", "") or "").upper()
+                                    and (not _normal_color(getattr(slot, "color", ""))
+                                         or _normal_color(definition.colorHex) == _normal_color(getattr(slot, "color", "")))), None)
+                store.create_spool(matched.id if matched is not None else None, nominal, nominal, location)
             _refresh(app, serial)
         dialog.destroy()
 

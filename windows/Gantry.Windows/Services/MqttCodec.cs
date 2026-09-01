@@ -83,6 +83,13 @@ public static class MqttCodec
         return payload;
     }
 
+    public static string? PublishTopic(byte header, byte[] body)
+    {
+        if ((header >> 4) != 3 || body.Length < 2) return null;
+        int length = (body[0] << 8) | body[1];
+        return body.Length < 2 + length ? null : Encoding.UTF8.GetString(body, 2, length);
+    }
+
     private static byte[] Packet(byte header, List<byte> body)
     {
         var result = new List<byte> { header };

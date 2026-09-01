@@ -10,172 +10,20 @@ so importing gi.repository names here reuses the already-loaded GTK 3 bindings.
 """
 from __future__ import annotations
 
-import json
-import os
 import uuid
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from gi.repository import Gtk, Gdk  # type: ignore  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # type: ignore  # noqa: E402
 
-TYPES = ["PLA", "PETG", "ABS", "ASA", "TPU", "PA", "PC", "ESD", "PVA", "Support"]
+try:
+    import gi
+    gi.require_version("Gst", "1.0")
+    from gi.repository import Gst  # type: ignore  # noqa: E402
+    Gst.init(None)
+except (ImportError, ValueError):
+    Gst = None  # type: ignore[assignment]
 
-_DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "Spoolbase"
-_INVENTORY = _DATA_DIR / "inventory-v2.json"
-_CATALOG_EDIT = _DATA_DIR / "catalog.json"
-_CATALOG_BUNDLED = Path(__file__).resolve().parent / "data" / "filament-catalog.json"
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _parse_iso(value: Any) -> datetime:
-    if not isinstance(value, str) or not value:
-        return datetime.min.replace(tzinfo=timezone.utc)
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return datetime.min.replace(tzinfo=timezone.utc)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
-def normalized_hex(value: str) -> str:
-    filtered = (value or "").strip().lstrip("#").upper()
-    if len(filtered) == 6 and all(c in "0123456789ABCDEF" for c in filtered):
-        return filtered
-    return "8E8E93"
-
-
-@dataclass
-class Filament:
-    brand: str
-    name: str
-    type: str
-    colorName: str
-    colorHex: str
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    catalogID: str | None = None
-    manufacturerCode: str = ""
-    spoolCount: int = 0
-    notes: str = ""
-    updatedAt: str = field(default_factory=_now)
-
-    def __post_init__(self) -> None:
-        self.colorHex = normalized_hex(self.colorHex)
-        self.spoolCount = max(0, int(self.spoolCount))
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Filament":
-        return cls(
-            brand=data.get("brand", ""), name=data.get("name", ""), type=data.get("type", ""),
-            colorName=data.get("colorName", ""), colorHex=data.get("colorHex", "8E8E93"),
-            id=data.get("id", str(uuid.uuid4())), catalogID=data.get("catalogID"),
-            manufacturerCode=data.get("manufacturerCode", ""), spoolCount=data.get("spoolCount", 0),
-            notes=data.get("notes", ""), updatedAt=data.get("updatedAt", _now()),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-def load_catalog() -> list[dict[str, Any]]:
-    for path in (_CATALOG_EDIT, _CATALOG_BUNDLED):
-        try:
-            if path.exists():
-                items = json.loads(path.read_text())
-                if isinstance(items, list):
-                    return items
-        except (OSError, ValueError):
-            continue
-    return []
-
-
-def save_catalog(catalog: list[dict[str, Any]]) -> None:
-    try:
-        _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        _CATALOG_EDIT.write_text(json.dumps(catalog, indent=2, sort_keys=True))
-    except OSError:
-        pass
-
-
-class FilamentStore:
-    """Loads/saves the inventory and notifies on change."""
-
-    def __init__(self) -> None:
-        self.filaments: list[Filament] = []
-        self.on_change: Callable[[], None] | None = None
-        try:
-            if _INVENTORY.exists():
-                self.filaments = [Filament.from_dict(d) for d in json.loads(_INVENTORY.read_text())]
-            else:
-                self._save()
-        except (OSError, ValueError):
-            self.filaments = []
-
-    def add(self, filament: Filament) -> None:
-        if filament.catalogID is not None:
-            for existing in self.filaments:
-                if existing.catalogID == filament.catalogID:
-                    existing.spoolCount += max(1, filament.spoolCount)
-                    existing.updatedAt = _now()
-                    self._changed()
-                    return
-        self.filaments.append(filament)
-        self._changed()
-
-    def update(self, filament: Filament) -> None:
-        for index, existing in enumerate(self.filaments):
-            if existing.id == filament.id:
-                self.filaments[index] = filament
-                self._changed()
-                return
-
-    def delete(self, filament_id: str) -> None:
-        self.filaments = [f for f in self.filaments if f.id != filament_id]
-        self._changed()
-
-    def adjust(self, filament_id: str, spools: int) -> None:
-        for existing in self.filaments:
-            if existing.id == filament_id:
-                existing.spoolCount = max(0, existing.spoolCount + spools)
-                existing.updatedAt = _now()
-                self._changed()
-                return
-
-    def merge_remote(self, remote: list[dict[str, Any]]) -> bool:
-        """Reconcile a peer's catalogue by id, last-write-wins on updatedAt (LAN sync)."""
-        by_id = {f.id: f for f in self.filaments}
-        changed = False
-        for data in remote or []:
-            incoming = Filament.from_dict(data)
-            local = by_id.get(incoming.id)
-            if local is None:
-                self.filaments.append(incoming)
-                by_id[incoming.id] = incoming
-                changed = True
-            elif _parse_iso(incoming.updatedAt) > _parse_iso(local.updatedAt):
-                self.filaments[self.filaments.index(local)] = incoming
-                by_id[incoming.id] = incoming
-                changed = True
-        if changed:
-            self._changed()
-        return changed
-
-    def _changed(self) -> None:
-        self._save()
-        if self.on_change:
-            self.on_change()
-
-    def _save(self) -> None:
-        try:
-            _DATA_DIR.mkdir(parents=True, exist_ok=True)
-            data = [asdict(f) for f in self.filaments]
-            _INVENTORY.write_text(json.dumps(data, indent=2, sort_keys=True))
-        except OSError:
-            pass
+from .filamentstore import Filament, FilamentStore, TYPES, load_catalog, normalized_hex, save_catalog
 
 
 def _badge_class(count: int, red_max: int, blue_max: int) -> str:
@@ -198,6 +46,40 @@ def _variant_word(n: int, pl: bool) -> str:
     return "wariantów"
 
 
+class FilamentIcon(Gtk.DrawingArea):
+    """Cairo port of the code-drawn filament mark used by the macOS Spoolbase header."""
+
+    def __init__(self, size: int = 28) -> None:
+        super().__init__()
+        self.set_size_request(size, size)
+        self.get_style_context().add_class("sb-icon")
+        self.connect("draw", self._draw)
+
+    def _draw(self, _widget: Gtk.Widget, context: Any) -> bool:
+        width = float(self.get_allocated_width())
+        height = float(self.get_allocated_height())
+        color = self.get_style_context().get_color(Gtk.StateFlags.NORMAL)
+        context.set_source_rgba(color.red, color.green, color.blue, color.alpha)
+        context.set_line_width(max(1.4, min(width, height) * 0.075))
+        context.set_line_cap(1)
+        context.set_line_join(1)
+        context.move_to(width * 0.71, height * 0.07)
+        context.curve_to(width * 0.39, height * 0.10, width * 0.17, height * 0.24,
+                         width * 0.19, height * 0.47)
+        context.curve_to(width * 0.20, height * 0.74, width * 0.32, height * 0.88,
+                         width * 0.51, height * 0.88)
+        context.curve_to(width * 0.73, height * 0.89, width * 0.85, height * 0.76,
+                         width * 0.83, height * 0.57)
+        context.curve_to(width * 0.81, height * 0.39, width * 0.70, height * 0.29,
+                         width * 0.60, height * 0.28)
+        context.stroke()
+        context.arc(width * 0.535, height * 0.545, width * 0.235, 0, 6.2832)
+        context.stroke()
+        context.arc(width * 0.535, height * 0.545, width * 0.165, 0, 6.2832)
+        context.stroke()
+        return False
+
+
 class SpoolbaseWindow(Gtk.Window):
     """Tray-anchored filament inventory, styled to match the Gantry dashboard."""
 
@@ -209,6 +91,9 @@ class SpoolbaseWindow(Gtk.Window):
         self._suppress_hide = False
         self._just_shown = False
         self._query = ""
+        self._selected_type: str | None = None
+        self._selected_brand: str | None = None
+        self._low_only = False
         self.red_max = int(app.config.data.get("stock_red_max", 1))
         self.blue_max = int(app.config.data.get("stock_blue_max", 5))
 
@@ -236,31 +121,44 @@ class SpoolbaseWindow(Gtk.Window):
         self.connect("delete-event", self._hide)
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        root.get_style_context().add_class("sb-root")
         self.add(root)
 
         header = Gtk.Box(spacing=10)
-        header.get_style_context().add_class("header")
-        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        header.get_style_context().add_class("sb-header")
+        identity = Gtk.Box(spacing=9)
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         title = Gtk.Label(label="Spoolbase", xalign=0)
-        title.get_style_context().add_class("title")
+        title.get_style_context().add_class("sb-title")
         self.summary = Gtk.Label(xalign=0)
-        self.summary.get_style_context().add_class("subtitle")
+        self.summary.get_style_context().add_class("sb-summary")
         titles.pack_start(title, False, False, 0)
         titles.pack_start(self.summary, False, False, 0)
+        identity.pack_start(FilamentIcon(), False, False, 0)
+        identity.pack_start(titles, False, False, 0)
         add = Gtk.Button(label="＋")
+        add.set_tooltip_text("Dodaj filament" if self._pl else "Add filament")
         add.connect("clicked", lambda _b: self._open_catalog())
-        header.pack_start(titles, True, True, 0)
+        header.pack_start(identity, True, True, 0)
         header.pack_start(add, False, False, 0)
         root.pack_start(header, False, False, 0)
 
         self.search = Gtk.SearchEntry()
+        self.search.get_style_context().add_class("sb-search")
         self.search.set_placeholder_text(
             "Szukaj nazwy, koloru lub kodu…" if self._pl else "Search name, colour or code…")
         self.search.connect("search-changed", self._on_search)
-        search_row = Gtk.Box(); search_row.set_margin_start(16); search_row.set_margin_end(16)
-        search_row.set_margin_bottom(8)
-        search_row.pack_start(self.search, True, True, 0)
-        root.pack_start(search_row, False, False, 0)
+        toolbar = Gtk.Box(spacing=8)
+        toolbar.get_style_context().add_class("sb-toolbar")
+        toolbar.pack_start(self.search, True, True, 0)
+        filters = Gtk.Button(label=("☷  Filtry" if self._pl else "☷  Filters"))
+        filters.get_style_context().add_class("sb-filter")
+        filters.connect("clicked", self._show_filters)
+        toolbar.pack_start(filters, False, False, 0)
+        root.pack_start(toolbar, False, False, 0)
+        self.chips = Gtk.Box(spacing=6)
+        self.chips.get_style_context().add_class("sb-chips")
+        root.pack_start(self.chips, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -283,19 +181,24 @@ class SpoolbaseWindow(Gtk.Window):
         self._render()
 
     def _filtered(self) -> list[Filament]:
-        if not self._query:
-            return list(self.store.filaments)
         result = []
         for item in self.store.filaments:
+            if self._selected_type and item.type != self._selected_type:
+                continue
+            if self._selected_brand and item.brand != self._selected_brand:
+                continue
+            if self._low_only and item.spoolCount > self.red_max:
+                continue
             text = " ".join([item.brand, item.name, item.type, item.colorName,
                              item.colorHex, item.manufacturerCode]).lower()
-            if self._query in text:
+            if not self._query or self._query in text:
                 result.append(item)
         return result
 
     def _render(self) -> None:
         for child in self.list_box.get_children():
             self.list_box.remove(child)
+        self._render_chips()
 
         spools = sum(f.spoolCount for f in self.store.filaments)
         variants = len(self.store.filaments)
@@ -323,6 +226,65 @@ class SpoolbaseWindow(Gtk.Window):
         for index, type_name in enumerate(ordered):
             self.list_box.pack_start(self._section(type_name, grouped[type_name], index > 0), False, False, 0)
         self.list_box.show_all()
+
+    def _show_filters(self, button: Gtk.Button) -> None:
+        menu = Gtk.Menu()
+        types = [value for value in TYPES if any(item.type == value for item in self.store.filaments)]
+        brands = sorted({item.brand for item in self.store.filaments if item.brand})
+
+        type_title = Gtk.MenuItem(label="Typ" if self._pl else "Type")
+        type_title.set_sensitive(False)
+        menu.append(type_title)
+        for value in types:
+            item = Gtk.CheckMenuItem(label=value)
+            item.set_active(value == self._selected_type)
+            item.connect("activate", lambda _item, selected=value: self._set_filter("type", selected))
+            menu.append(item)
+        menu.append(Gtk.SeparatorMenuItem())
+        low = Gtk.CheckMenuItem(label="Niski stan" if self._pl else "Low stock")
+        low.set_active(self._low_only)
+        low.connect("activate", lambda *_: self._set_filter("low", "1"))
+        menu.append(low)
+        menu.append(Gtk.SeparatorMenuItem())
+        brand_title = Gtk.MenuItem(label="Marka" if self._pl else "Brand")
+        brand_title.set_sensitive(False)
+        menu.append(brand_title)
+        for value in brands:
+            item = Gtk.CheckMenuItem(label=value)
+            item.set_active(value == self._selected_brand)
+            item.connect("activate", lambda _item, selected=value: self._set_filter("brand", selected))
+            menu.append(item)
+        menu.show_all()
+        menu.popup_at_widget(button, Gdk.Gravity.SOUTH_EAST, Gdk.Gravity.NORTH_EAST, None)
+
+    def _set_filter(self, kind: str, value: str | None) -> None:
+        if kind == "type":
+            self._selected_type = None if self._selected_type == value else value
+        elif kind == "brand":
+            self._selected_brand = None if self._selected_brand == value else value
+        elif kind == "low":
+            self._low_only = not self._low_only
+        self._render()
+
+    def _render_chips(self) -> None:
+        for child in self.chips.get_children():
+            self.chips.remove(child)
+        values = (("type", self._selected_type), ("brand", self._selected_brand),
+                  ("low", "Niski stan" if self._pl else "Low stock") if self._low_only else ("low", None))
+        for kind, value in values:
+            if not value:
+                continue
+            chip = Gtk.Button(label=f"{value}  ×")
+            chip.get_style_context().add_class("sb-chip")
+            chip.connect("clicked", lambda _button, selected=kind: self._clear_filter(selected))
+            self.chips.pack_start(chip, False, False, 0)
+        self.chips.show_all()
+
+    def _clear_filter(self, kind: str) -> None:
+        if kind == "type": self._selected_type = None
+        elif kind == "brand": self._selected_brand = None
+        elif kind == "low": self._low_only = False
+        self._render()
 
     def _section(self, type_name: str, items: list[Filament], separator: bool) -> Gtk.Widget:
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -462,10 +424,10 @@ class SpoolbaseWindow(Gtk.Window):
         finally:
             self._suppress_hide = False
 
-    def _open_editor(self, item: Filament | None) -> None:
+    def _open_editor(self, item: Filament | None, prefilled_code: str | None = None) -> None:
         self._suppress_hide = True
         try:
-            dialog = EditorDialog(self, self.store, item)
+            dialog = EditorDialog(self, self.store, item, prefilled_code)
             dialog.run()
             dialog.destroy()
         finally:
@@ -507,6 +469,103 @@ class SpoolbaseWindow(Gtk.Window):
         return False
 
 
+class BarcodeScannerDialog(Gtk.Dialog):
+    """Webcam barcode reader using GStreamer's zbar element, with an in-window live preview."""
+
+    def __init__(self, parent: Gtk.Window, on_code: Any, pl: bool) -> None:
+        super().__init__(title="Skanuj kod filamentu" if pl else "Scan filament code",
+                         transient_for=parent, modal=True)
+        self.on_code = on_code
+        self.pl = pl
+        self.pipeline: Any | None = None
+        self.handled = False
+        self.set_default_size(520, 380)
+        content = self.get_content_area()
+        content.set_spacing(8)
+        content.set_margin_top(12); content.set_margin_bottom(8)
+        content.set_margin_start(14); content.set_margin_end(14)
+        title = Gtk.Label(label=("Skanuj kod z etykiety szpuli" if pl else "Scan the code on the spool label"), xalign=0)
+        title.get_style_context().add_class("title")
+        content.pack_start(title, False, False, 0)
+        self.status = Gtk.Label(label=("Wypełnij kodem ramkę i przytrzymaj etykietę nieruchomo"
+                                       if pl else "Fill the frame with the code and hold the label still"), xalign=0)
+        self.status.get_style_context().add_class("subtitle")
+        content.pack_start(self.status, False, False, 0)
+        frame = Gtk.Overlay()
+        frame.set_size_request(480, 270)
+        frame.get_style_context().add_class("card")
+        self.preview = Gtk.Image()
+        frame.add(self.preview)
+        guide = Gtk.Frame()
+        guide.set_size_request(280, 105)
+        guide.set_halign(Gtk.Align.CENTER); guide.set_valign(Gtk.Align.CENTER)
+        guide.set_shadow_type(Gtk.ShadowType.IN)
+        frame.add_overlay(guide)
+        content.pack_start(frame, True, True, 0)
+        self.add_button("Anuluj" if pl else "Cancel", Gtk.ResponseType.CANCEL)
+        self.connect("destroy", self._stop)
+        self.show_all()
+        GLib.idle_add(self._start)
+
+    def _start(self) -> bool:
+        if Gst is None:
+            self._error("Brak obsługi GStreamer." if self.pl else "GStreamer support is unavailable.")
+            return False
+        if Gst.ElementFactory.find("zbar") is None:
+            self._error(("Brak dekodera kodów. Zainstaluj pakiet gstreamer1.0-plugins-bad."
+                         if self.pl else "Barcode decoder missing. Install gstreamer1.0-plugins-bad."))
+            return False
+        try:
+            self.pipeline = Gst.parse_launch(
+                "autovideosrc ! videoconvert ! tee name=t "
+                "t. ! queue ! videoconvert ! video/x-raw,format=RGB ! "
+                "appsink name=preview emit-signals=true max-buffers=1 drop=true sync=false "
+                "t. ! queue ! videoconvert ! zbar message=true ! fakesink sync=false")
+            sink = self.pipeline.get_by_name("preview")
+            sink.connect("new-sample", self._new_sample)
+            bus = self.pipeline.get_bus(); bus.add_signal_watch(); bus.connect("message", self._message)
+            if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+                self._error("Nie można uruchomić kamery." if self.pl else "Could not start the camera.")
+        except Exception as exc:
+            self._error(str(exc))
+        return False
+
+    def _new_sample(self, sink: Any) -> Any:
+        sample = sink.emit("pull-sample")
+        if sample is None: return Gst.FlowReturn.ERROR
+        caps = sample.get_caps().get_structure(0)
+        width, height = caps.get_value("width"), caps.get_value("height")
+        buffer = sample.get_buffer()
+        data = buffer.extract_dup(0, buffer.get_size())
+        pixels = GLib.Bytes.new(data)
+        pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(pixels, GdkPixbuf.Colorspace.RGB, False, 8,
+                                                  width, height, width * 3)
+        scaled = pixbuf.scale_simple(480, 270, GdkPixbuf.InterpType.BILINEAR)
+        GLib.idle_add(self.preview.set_from_pixbuf, scaled)
+        return Gst.FlowReturn.OK
+
+    def _message(self, _bus: Any, message: Any) -> None:
+        if message.type == Gst.MessageType.ELEMENT:
+            structure = message.get_structure()
+            if structure is not None and structure.get_name() == "barcode":
+                code = str(structure.get_value("symbol") or "").strip()
+                if code and not self.handled:
+                    self.handled = True
+                    self.response(Gtk.ResponseType.OK)
+                    GLib.idle_add(self.on_code, code)
+        elif message.type == Gst.MessageType.ERROR:
+            error, _debug = message.parse_error()
+            self._error(str(error))
+
+    def _error(self, message: str) -> None:
+        self.status.set_text(("Nie można uruchomić skanera: " if self.pl else "Could not start scanner: ") + message)
+
+    def _stop(self, *_args: Any) -> None:
+        if self.pipeline is not None and Gst is not None:
+            self.pipeline.set_state(Gst.State.NULL)
+            self.pipeline = None
+
+
 class CatalogDialog(Gtk.Dialog):
     """Searchable catalog picker — add a filament from the bundled catalog."""
 
@@ -527,7 +586,25 @@ class CatalogDialog(Gtk.Dialog):
         self.search = Gtk.SearchEntry()
         self.search.set_placeholder_text("Szukaj…" if pl else "Search…")
         self.search.connect("search-changed", lambda _e: self.filter.refilter())
-        content.pack_start(self.search, False, False, 0)
+        search_row = Gtk.Box(spacing=8)
+        search_row.pack_start(self.search, True, True, 0)
+        scan = Gtk.Button(label="▣  Skanuj kod…" if pl else "▣  Scan code…")
+        scan.connect("clicked", self._scan_code)
+        search_row.pack_start(scan, False, False, 0)
+        content.pack_start(search_row, False, False, 0)
+
+        options = Gtk.Box(spacing=8)
+        options.pack_start(Gtk.Label(label="Liczba szpul" if pl else "Spools"), False, False, 0)
+        self.quantity = Gtk.SpinButton.new_with_range(1, 999, 1)
+        self.quantity.set_value(1)
+        self.quantity.set_width_chars(4)
+        options.pack_start(self.quantity, False, False, 0)
+        options.pack_start(Gtk.Label(label="Waga (g)" if pl else "Weight (g)"), False, False, 0)
+        self.weight = Gtk.SpinButton.new_with_range(100, 5000, 50)
+        self.weight.set_value(1000)
+        self.weight.set_width_chars(6)
+        options.pack_start(self.weight, False, False, 0)
+        content.pack_start(options, False, False, 0)
 
         # id, hexcolor, display, sub, haystack
         self.model = Gtk.ListStore(str, str, str, str, str)
@@ -567,6 +644,47 @@ class CatalogDialog(Gtk.Dialog):
         self.connect("response", self._on_response)
         self.show_all()
 
+    def _scan_code(self, _button: Gtk.Button) -> None:
+        scanner = BarcodeScannerDialog(self, self._handle_code, self.parent_window._pl)
+        scanner.run()
+        scanner.destroy()
+
+    @staticmethod
+    def _normalize_code(value: str) -> str:
+        return "".join(ch for ch in value.upper() if ch.isalnum())
+
+    def _handle_code(self, code: str) -> None:
+        normalized = self._normalize_code(code)
+        match = next((entry for entry in self.catalog
+                      if self._normalize_code(entry.get("manufacturerCode", "")) == normalized), None)
+        self.search.set_text(match.get("manufacturerCode", code) if match else code)
+        self.filter.refilter()
+        if match is not None:
+            target_id = match.get("id")
+            it = self.filter.get_iter_first()
+            while it is not None:
+                if self.filter[it][0] == target_id:
+                    path = self.filter.get_path(it)
+                    self.tree.get_selection().select_path(path)
+                    self.tree.scroll_to_cell(path, None, True, 0.5, 0.0)
+                    return
+                if not self.filter.iter_next(it):
+                    break
+        prompt = Gtk.MessageDialog(
+            transient_for=self, modal=True, message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.NONE,
+            text="Nie znaleziono kodu w bazie" if self.parent_window._pl else "Code not found in catalog")
+        prompt.format_secondary_text((f"Odczytany kod: {code}\nMożesz dodać własny filament z tym kodem."
+                                      if self.parent_window._pl else
+                                      f"Scanned code: {code}\nYou can add a custom filament with this code."))
+        prompt.add_button("OK", Gtk.ResponseType.CANCEL)
+        prompt.add_button("Dodaj własny" if self.parent_window._pl else "Add custom", Gtk.ResponseType.OK)
+        add_custom = prompt.run() == Gtk.ResponseType.OK
+        prompt.destroy()
+        if add_custom:
+            self.destroy()
+            self.parent_window._open_editor(None, code)
+
     def _visible(self, model: Gtk.TreeModel, it: Gtk.TreeIter, _data: Any) -> bool:
         query = self.search.get_text().strip().lower()
         if not query:
@@ -588,10 +706,15 @@ class CatalogDialog(Gtk.Dialog):
         entry = next((c for c in self.catalog if c.get("id") == catalog_id), None)
         if entry is None:
             return
-        self.store.add(Filament(
+        quantity = int(self.quantity.get_value())
+        definition = self.store.add(Filament(
             brand=entry.get("brand", ""), name=entry.get("name", ""), type=entry.get("type", ""),
             colorName=entry.get("colorName", ""), colorHex=entry.get("colorHex", "8E8E93"),
-            catalogID=entry.get("id"), manufacturerCode=entry.get("manufacturerCode", ""), spoolCount=1))
+            catalogID=entry.get("id"), manufacturerCode=entry.get("manufacturerCode", ""),
+            spoolCount=quantity))
+        physical = getattr(self.parent_window.app, "physical_spools", None)
+        if physical is not None:
+            physical.create_rolls(definition.id, quantity, self.weight.get_value())
         self.destroy()
 
     def _on_response(self, _dialog: Gtk.Dialog, response: int) -> None:
@@ -608,7 +731,8 @@ class CatalogDialog(Gtk.Dialog):
 class EditorDialog(Gtk.Dialog):
     """Add or edit a single filament (all fields + spool count)."""
 
-    def __init__(self, parent: SpoolbaseWindow, store: FilamentStore, item: Filament | None) -> None:
+    def __init__(self, parent: SpoolbaseWindow, store: FilamentStore, item: Filament | None,
+                 prefilled_code: str | None = None) -> None:
         pl = parent._pl
         is_new = item is None
         super().__init__(
@@ -616,6 +740,7 @@ class EditorDialog(Gtk.Dialog):
             else ("Edytuj filament" if pl else "Edit filament"),
             transient_for=parent, modal=True)
         self.store = store
+        self.parent_window = parent
         self.original = item
         self.is_new = is_new
         self.set_default_size(360, 400)
@@ -626,7 +751,8 @@ class EditorDialog(Gtk.Dialog):
         content.set_margin_start(14); content.set_margin_end(14)
 
         base = item or Filament(brand="", name="", type="PLA",
-                                 colorName="Nowy" if pl else "New", colorHex="8E8E93")
+                                 colorName="Nowy" if pl else "New", colorHex="8E8E93",
+                                 manufacturerCode=prefilled_code or "")
         self.brand = self._field(content, "Marka" if pl else "Brand", base.brand)
         self.name = self._field(content, "Nazwa" if pl else "Name", base.name)
 
@@ -645,6 +771,14 @@ class EditorDialog(Gtk.Dialog):
         self.count = Gtk.SpinButton.new_with_range(0, 9999, 1)
         self.count.set_value(base.spoolCount)
         content.pack_start(self.count, False, False, 0)
+
+        self.weight: Gtk.SpinButton | None = None
+        if is_new:
+            content.pack_start(self._label("Waga pełnej szpuli (g)" if pl else "Full spool weight (g)"),
+                               False, False, 0)
+            self.weight = Gtk.SpinButton.new_with_range(100, 5000, 50)
+            self.weight.set_value(1000)
+            content.pack_start(self.weight, False, False, 0)
 
         self.add_button(parent.app.text.get("cancel", "Anuluj"), Gtk.ResponseType.CANCEL)
         save = self.add_button(parent.app.text.get("save", "Zapisz"), Gtk.ResponseType.OK)
@@ -681,7 +815,10 @@ class EditorDialog(Gtk.Dialog):
         )
         if self.is_new:
             updated.catalogID = updated.catalogID or f"custom-{uuid.uuid4().hex}"
-            self.store.add(updated)
+            definition = self.store.add(updated)
+            physical = getattr(self.parent_window.app, "physical_spools", None)
+            if physical is not None and self.weight is not None:
+                physical.create_rolls(definition.id, updated.spoolCount, self.weight.get_value())
         else:
             self._upsert_catalog(updated)
             self.store.update(updated)

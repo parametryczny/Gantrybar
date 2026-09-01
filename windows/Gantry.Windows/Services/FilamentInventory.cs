@@ -233,6 +233,22 @@ public sealed class FilamentStore
         Save();
     }
 
+    /// <summary>Reorder definitions within one material group, matching the macOS Spoolbase drag.</summary>
+    public void Move(Guid sourceId, Guid beforeTargetId)
+    {
+        if (sourceId == beforeTargetId) return;
+        var sourceIndex = _filaments.FindIndex(f => f.Id == sourceId);
+        var target = _filaments.FirstOrDefault(f => f.Id == beforeTargetId);
+        if (sourceIndex < 0 || target is null || _filaments[sourceIndex].Type != target.Type) return;
+        var source = _filaments[sourceIndex];
+        _filaments.RemoveAt(sourceIndex);
+        var targetIndex = _filaments.FindIndex(f => f.Id == beforeTargetId);
+        if (targetIndex < 0) return;
+        _filaments.Insert(targetIndex, source);
+        Changed?.Invoke(this, EventArgs.Empty);
+        Save();
+    }
+
     private void Save()
     {
         try

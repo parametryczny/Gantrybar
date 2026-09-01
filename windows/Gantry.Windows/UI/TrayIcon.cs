@@ -114,10 +114,6 @@ public sealed class TrayIcon : IDisposable
         bool pl = AppSettings.Polish;
 
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Pokaż drukarki", "Show printers"), null, (_, _) => ShowDashboard()));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Szukaj drukarek…", "Scan for printers…"), null, (_, _) => { ShowDashboard(); _store.Scan(); }));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Dodaj drukarkę…", "Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Połącz ponownie", "Reconnect all"), null, (_, _) => _store.ReconnectAll()));
-
         if (AppSettings.SpoolbaseEnabled)
         {
             menu.Items.Add(new ToolStripMenuItem(
@@ -126,19 +122,14 @@ public sealed class TrayIcon : IDisposable
         }
         menu.Items.Add(new ToolStripSeparator());
 
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Ustawienia…", "Settings…"), null, (_, _) => ShowSettings()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Szukaj drukarek…", "Scan for printers…"), null, (_, _) => { ShowDashboard(); _store.Scan(); }));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Dodaj drukarkę…", "Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Połącz ponownie (wszystkie)", "Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
+        menu.Items.Add(new ToolStripSeparator());
 
-        var language = new ToolStripMenuItem(AppSettings.Text("Język: Polski", "Language: English"));
+        var language = new ToolStripMenuItem(AppSettings.Text("Język: PL", "Language: EN"));
         language.Click += (_, _) => { AppSettings.Polish = !AppSettings.Polish; RebuildMenu(); };
         menu.Items.Add(language);
-
-        var startup = new ToolStripMenuItem(AppSettings.Text("Uruchamiaj z Windows", "Start with Windows"))
-        {
-            Checked = LaunchAtLogin.IsEnabled,
-            CheckOnClick = true
-        };
-        startup.Click += (_, _) => LaunchAtLogin.SetEnabled(startup.Checked);
-        menu.Items.Add(startup);
 
         var quiet = new ToolStripMenuItem(
             AppSettings.Text($"Godziny ciszy ({QuietHours.RangeLabel()})", $"Quiet hours ({QuietHours.RangeLabel()})"))
@@ -149,6 +140,10 @@ public sealed class TrayIcon : IDisposable
         quiet.Click += (_, _) => QuietHours.Enabled = quiet.Checked;
         menu.Items.Add(quiet);
 
+        menu.Items.Add(new ToolStripMenuItem(
+            AppSettings.Text($"Sprawdź aktualizacje… (v{UpdateChecker.CurrentVersion})", $"Check for updates… (v{UpdateChecker.CurrentVersion})"),
+            null, (_, _) => ShowUpdateChecker()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Ustawienia…", "Settings…"), null, (_, _) => ShowSettings()));
         menu.Items.Add(BuildColourLegend());
 
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Postaw kawę ☕️", "Buy me a coffee ☕️"), null, (_, _) =>
@@ -158,7 +153,7 @@ public sealed class TrayIcon : IDisposable
         }));
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Zakończ", "Quit"), null, (_, _) => Application.Current.Shutdown()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Zakończ Gantry", "Quit Gantry"), null, (_, _) => Application.Current.Shutdown()));
         _ = pl;
         return menu;
     }
@@ -237,11 +232,22 @@ public sealed class TrayIcon : IDisposable
             _settings = new SettingsWindow();
             // Live-refresh the flyout's acrylic tint the moment Transparency changes (no restart).
             _settings.OnTransparencyChanged = () => _dashboard?.ApplyPanelTransparency();
+            _settings.OnThemeChanged = () =>
+            {
+                _dashboard?.RefreshTheme();
+                if (_spoolbase is not null) { _spoolbase.Close(); _spoolbase = null; }
+            };
             _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); };
         }
         _settings.Show();
         _settings.Activate();
         _settings.WindowState = System.Windows.WindowState.Normal;
+    }
+
+    private async void ShowUpdateChecker()
+    {
+        ShowSettings();
+        if (_settings is not null) await _settings.CheckForUpdatesFromTrayAsync();
     }
 
     public void ShowNotification(string title, string body, string? subtitle)

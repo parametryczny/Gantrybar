@@ -31,17 +31,18 @@ def parse_printer_csv(content: str, maximum: int = 200) -> list[dict[str, Any]]:
             continue
         name, host = values.get("name", ""), values.get("host", "")
         kind = values.get("kind", "bambu").lower() or "bambu"
-        if kind not in {"bambu", "klipper", "prusa"}:
+        if kind not in {"bambu", "klipper", "prusa", "snapmaker", "elegoo_cc1", "elegoo_cc2"}:
             raise ValueError(f"Wiersz {line_number}: nieznany typ drukarki {kind}.")
-        default_port = {"bambu": 8883, "klipper": 7125, "prusa": 80}[kind]
+        default_port = {"bambu": 8883, "klipper": 7125, "prusa": 80, "snapmaker": 8080,
+                        "elegoo_cc1": 3030, "elegoo_cc2": 1883}[kind]
         serial, code = values.get("serial", ""), values.get("access_code", "")
         try:
             port = int(values.get("port") or str(default_port))
         except ValueError as error:
             raise ValueError(f"Wiersz {line_number}: niepoprawny port.") from error
-        if kind != "bambu" and not serial:
+        if kind not in {"bambu", "elegoo_cc1", "elegoo_cc2"} and not serial:
             serial = f"{kind}-{host}-{port}"
-        if not name or not host or not serial or (kind in {"bambu", "prusa"} and not code):
+        if not name or not host or not serial or (kind in {"bambu", "prusa", "elegoo_cc2"} and not code):
             raise ValueError(f"Wiersz {line_number}: brakuje wymaganych danych.")
         if not 1 <= port <= 65535 or any(character.isspace() for character in host):
             raise ValueError(f"Wiersz {line_number}: niepoprawny adres lub port.")

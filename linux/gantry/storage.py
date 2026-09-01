@@ -35,6 +35,7 @@ DEFAULTS: dict[str, Any] = {
     "language": "pl",
     "theme": "dark",
     "panel_transparency": "low",
+    "dashboard_columns": 2,
     "collapsed": False,
     "scan_targets": "",
     "notify_finished": True,
@@ -47,9 +48,21 @@ DEFAULTS: dict[str, Any] = {
     "quiet_hours_start": "22:00",
     "quiet_hours_end": "07:00",
     "spoolbase_enabled": True,
+    "developer_mode": False,
+    "card_show_filename": True,
+    "card_show_progress": True,
+    "card_show_temperatures": True,
+    "card_show_filaments": True,
     "card_show_spool_grams": False,
     "monochrome": False,
     "web_dashboard_enabled": True,
+    # Linux keeps package installation under the desktop package manager's control. This setting
+    # enables periodic release checks and a native notification/link to the signed release page.
+    "auto_update_check": False,
+    # Same key and semantics as macOS/Windows: selected printers are pinned individually.
+    # ``tray_progress_enabled`` is retained only for one-time migration from older Linux builds.
+    "menu_bar_progress_serials": [],
+    "tray_progress_enabled": False,
     # Automations: {serial: [rule, ...]}. Off-by-default kill switch gates the two code-running actions
     # (raw command / shell script); approved rule ids remember a one-time consent per rule.
     "automations": {},
@@ -74,6 +87,13 @@ class Config:
             value = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             if isinstance(value, dict):
                 self.data.update(value)
+                # Older Linux builds exposed one global "active prints" switch. Preserve that choice
+                # by pinning every saved printer once, then use the per-printer model from now on.
+                if "menu_bar_progress_serials" not in value and value.get("tray_progress_enabled"):
+                    self.data["menu_bar_progress_serials"] = [
+                        str(item.get("serial")) for item in value.get("printers", [])
+                        if isinstance(item, dict) and item.get("serial")
+                    ]
         except (FileNotFoundError, OSError, json.JSONDecodeError):
             pass
 
@@ -108,6 +128,30 @@ class Config:
         pins.pop(serial, None)
         self.data["certificate_pins"] = pins
         self.save()
+
+    def progress_serials(self) -> list[str]:
+        values = self.data.get("menu_bar_progress_serials", [])
+        return [str(value) for value in values if isinstance(value, str) and value]
+
+    def is_progress_pinned(self, serial: str) -> bool:
+        return serial in self.progress_serials()
+
+    def set_progress_pinned(self, serial: str, enabled: bool) -> None:
+        current = self.progress_serials()
+        if enabled and serial not in current:
+            current.append(serial)
+        elif not enabled:
+            current = [value for value in current if value != serial]
+        self.data["menu_bar_progress_serials"] = current
+        self.save()
+
+    def prune_progress_pins(self, valid_serials: list[str]) -> None:
+        valid = set(valid_serials)
+        current = self.progress_serials()
+        filtered = [serial for serial in current if serial in valid]
+        if filtered != current:
+            self.data["menu_bar_progress_serials"] = filtered
+            self.save()
 
 
 class SecretStoreError(RuntimeError):

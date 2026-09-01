@@ -4,10 +4,22 @@ on:
   push:
     paths:
       - 'windows/**'
+      - 'Sources/Gantry/App/GantryTheme.swift'
+      - 'Sources/Gantry/Views/PrinterDashboardViewController.swift'
+      - 'linux/gantry/dashboard.py'
+      - 'linux/gantry/layout.py'
+      - 'design/gantry-card-layout.impl.json'
+      - 'scripts/check_ui_parity.py'
       - '.github/workflows/windows.yml'
   pull_request:
     paths:
       - 'windows/**'
+      - 'Sources/Gantry/App/GantryTheme.swift'
+      - 'Sources/Gantry/Views/PrinterDashboardViewController.swift'
+      - 'linux/gantry/dashboard.py'
+      - 'linux/gantry/layout.py'
+      - 'design/gantry-card-layout.impl.json'
+      - 'scripts/check_ui_parity.py'
       - '.github/workflows/windows.yml'
   workflow_dispatch:
 
@@ -24,6 +36,9 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
+      - name: Check macOS / Windows / Linux UI parity
+        working-directory: .
+        run: python scripts/check_ui_parity.py
       - name: Restore
         run: dotnet restore Gantry.Windows/Gantry.Windows.csproj
       - name: Build

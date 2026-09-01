@@ -35,12 +35,18 @@ public partial class AddPrinterWindow : Window
             PortBox.Text = editing.Port?.ToString() ?? "";   // Bambu too (tunnel port)
             if (editing.Kind != PrinterKind.Bambu)
             {
-                if (editing.Kind == PrinterKind.Klipper) KlipperRadio.IsChecked = true;
+                if (editing.Kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
+                {
+                    ElegooRadio.IsChecked = true; ElegooModelBox.SelectedIndex = editing.Kind == PrinterKind.ElegooCc2 ? 1 : 0;
+                    if (editing.Kind == PrinterKind.ElegooCc2) CodeBox.Text = AccessCodeStore.AccessCode(editing.Serial) ?? "";
+                }
+                else if (editing.Kind == PrinterKind.Klipper) KlipperRadio.IsChecked = true;
                 else if (editing.Kind == PrinterKind.Snapmaker) SnapmakerRadio.IsChecked = true;
                 else PrusaRadio.IsChecked = true;
                 // The key now lives in DPAPI, not the config — prefill from there so editing keeps
                 // it. A legacy config may still carry it inline; prefer that if present.
-                ApiKeyBox.Text = editing.ApiKey ?? AccessCodeStore.AccessCode(editing.Serial) ?? "";
+                if (editing.Kind is PrinterKind.Klipper or PrinterKind.Prusa)
+                    ApiKeyBox.Text = editing.ApiKey ?? AccessCodeStore.AccessCode(editing.Serial) ?? "";
             }
             // The tray-pin checkbox is offered only when editing a saved printer (its serial is known).
             ProgressCheck.Visibility = Visibility.Visible;
@@ -48,9 +54,11 @@ public partial class AddPrinterWindow : Window
         }
 
         BambuRadio.Checked += (_, _) => ApplyKind();
+        ElegooRadio.Checked += (_, _) => ApplyKind();
         KlipperRadio.Checked += (_, _) => ApplyKind();
         PrusaRadio.Checked += (_, _) => ApplyKind();
         SnapmakerRadio.Checked += (_, _) => ApplyKind();
+        ElegooModelBox.SelectionChanged += (_, _) => { ApplyKind(); RefreshDetected(); };
         ScanButton.Click += (_, _) => _store.Scan();
         ImportButton.Click += (_, _) => ImportFromStudio();
         // Reading the slicer config is opt-in: it holds access codes, so gate the button on consent.
@@ -62,6 +70,8 @@ public partial class AddPrinterWindow : Window
         CancelButton.Click += (_, _) => Close();
         DetectedList.SelectionChanged += OnDetectedSelected;
         ApplyKind();
+        GTheme.ApplyWindowTheme(this);
+        Background = System.Windows.Media.Brushes.Transparent;
 
         _store.Updated += OnStoreUpdated;
         Closed += (_, _) => _store.Updated -= OnStoreUpdated;
@@ -90,9 +100,11 @@ public partial class AddPrinterWindow : Window
         SerialLabel.Text = AppSettings.Text("Numer seryjny", "Serial number");
         CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN");
         BambuRadio.Content = "Bambu";
+        ElegooRadio.Content = "Elegoo";
         KlipperRadio.Content = "Klipper";
         PrusaRadio.Content = "Prusa";
         SnapmakerRadio.Content = "Snapmaker";
+        ElegooModelLabel.Text = AppSettings.Text("Model Elegoo", "Elegoo model");
         SnapmakerHint.Text = AppSettings.Text(
             "Snapmaker 2.0 / Artisan (HTTP, port 8080). Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
             "Snapmaker 2.0 / Artisan (HTTP, port 8080). After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle.");
@@ -106,6 +118,8 @@ public partial class AddPrinterWindow : Window
     private bool IsKlipper => KlipperRadio.IsChecked == true;
     private bool IsPrusa => PrusaRadio.IsChecked == true;
     private bool IsSnapmaker => SnapmakerRadio.IsChecked == true;
+    private bool IsElegoo => ElegooRadio.IsChecked == true;
+    private bool IsElegooCc2 => IsElegoo && ElegooModelBox.SelectedIndex == 1;
     // Klipper, Prusa and Snapmaker all connect over HTTP with a host + port.
     private bool UsesHostFields => IsKlipper || IsPrusa || IsSnapmaker;
 
@@ -114,13 +128,16 @@ public partial class AddPrinterWindow : Window
     private void ApplyKind()
     {
         bool hostBased = UsesHostFields;
+        ElegooModelSection.Visibility = IsElegoo ? Visibility.Visible : Visibility.Collapsed;
         DiscoverySection.Visibility = (hostBased || _editing is not null) ? Visibility.Collapsed : Visibility.Visible;
         SerialLabel.Visibility = SerialBox.Visibility = hostBased ? Visibility.Collapsed : Visibility.Visible;
-        CodeLabel.Visibility = CodeBox.Visibility = hostBased ? Visibility.Collapsed : Visibility.Visible;
+        CodeLabel.Visibility = CodeBox.Visibility = (hostBased || (IsElegoo && !IsElegooCc2)) ? Visibility.Collapsed : Visibility.Visible;
         PortLabel.Visibility = PortBox.Visibility = Visibility.Visible;   // Bambu too (optional — tunnels)
         // Snapmaker authorizes via the touchscreen — no API key field.
         ApiKeyLabel.Visibility = ApiKeyBox.Visibility = (hostBased && !IsSnapmaker) ? Visibility.Visible : Visibility.Collapsed;
         SnapmakerHintBox.Visibility = IsSnapmaker ? Visibility.Visible : Visibility.Collapsed;
+        ImportConsent.Visibility = ImportHint.Visibility = ImportButton.Visibility = IsElegoo ? Visibility.Collapsed : Visibility.Visible;
+        SubnetTargetsLabel.Visibility = SubnetTargetsBox.Visibility = SubnetTargetsError.Visibility = SubnetTargetsHint.Visibility = IsElegoo ? Visibility.Collapsed : Visibility.Visible;
         HostLabel.Text = hostBased
             ? AppSettings.Text("Adres IP / nazwa hosta", "IP address / host name")
             : AppSettings.Text("Adres IP", "IP address");
@@ -130,7 +147,13 @@ public partial class AddPrinterWindow : Window
                 ? AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)")
                 : IsSnapmaker
                     ? AppSettings.Text("Port Snapmaker (domyślnie 8080)", "Snapmaker port (default 8080)")
+                    : IsElegooCc2
+                        ? AppSettings.Text("Port MQTT Elegoo (domyślnie 1883)", "Elegoo MQTT port (default 1883)")
+                        : IsElegoo
+                            ? AppSettings.Text("Port SDCP (domyślnie 3030)", "SDCP port (default 3030)")
                     : AppSettings.Text("Port (zwykle 8883 — zmień przy tunelu, np. socat)", "Port (usually 8883 — change for a tunnel, e.g. socat)");
+        if (IsElegooCc2) CodeLabel.Text = AppSettings.Text("Kod dostępu Elegoo (LAN-only)", "Elegoo access code (LAN-only)");
+        else if (!IsElegoo) CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN");
         ApiKeyLabel.Text = IsPrusa
             ? AppSettings.Text("Klucz API PrusaLink", "PrusaLink API key")
             : AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
@@ -143,11 +166,13 @@ public partial class AddPrinterWindow : Window
         if (_editing is not null) return;
         var selectedSerial = (DetectedList.SelectedItem as DiscoveredItem)?.Printer.Serial;
         DetectedList.Items.Clear();
-        foreach (var d in _store.Discovered)
+        var expectedKind = IsElegoo ? (IsElegooCc2 ? PrinterKind.ElegooCc2 : PrinterKind.ElegooCc1) : PrinterKind.Bambu;
+        var filtered = _store.Discovered.Where(value => value.Kind == expectedKind).ToList();
+        foreach (var d in filtered)
             DetectedList.Items.Add(new DiscoveredItem(d));
         DetectedLabel.Text = _store.IsScanning
             ? AppSettings.Text("Skanowanie…", "Scanning…")
-            : AppSettings.Text($"Wykryte drukarki ({_store.Discovered.Count})", $"Detected printers ({_store.Discovered.Count})");
+            : AppSettings.Text($"Wykryte drukarki ({filtered.Count})", $"Detected printers ({filtered.Count})");
         if (selectedSerial is not null)
         {
             _restoringSelection = true;
@@ -165,6 +190,8 @@ public partial class AddPrinterWindow : Window
             NameBox.Text = item.Printer.Name;
             HostBox.Text = item.Printer.Host;
             SerialBox.Text = item.Printer.Serial;
+            if (item.Printer.Kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
+                ElegooModelBox.SelectedIndex = item.Printer.Kind == PrinterKind.ElegooCc2 ? 1 : 0;
             CodeBox.Focus();
         }
     }
@@ -197,7 +224,12 @@ public partial class AddPrinterWindow : Window
                     throw new ArgumentException(AppSettings.Text("Nieprawidłowy port.", "Invalid port."));
                 port = parsed;
             }
-            if (UsesHostFields)
+            if (IsElegoo)
+            {
+                if (_editing is not null && _editing.Serial != SerialBox.Text.Trim()) _store.Remove(_editing);
+                _store.AddElegoo(NameBox.Text, SerialBox.Text, HostBox.Text, IsElegooCc2 ? 2 : 1, CodeBox.Text, port);
+            }
+            else if (UsesHostFields)
             {
                 // Editing may change the host, which changes the derived serial; drop the old entry first.
                 if (_editing is not null && _editing.Host != HostBox.Text.Trim())
@@ -267,7 +299,7 @@ public partial class AddPrinterWindow : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
-        int dark = 1, round = 2, acrylic = 3;
+        int dark = GTheme.IsLight ? 0 : 1, round = 2, acrylic = 3;
         try
         {
             DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));

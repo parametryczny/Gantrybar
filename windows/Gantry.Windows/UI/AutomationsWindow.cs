@@ -33,7 +33,8 @@ public sealed class AutomationsWindow : Window
         _pl = AppSettings.Polish;
         Title = (_pl ? "Automatyzacje — " : "Automations — ") + (store.Printers.FirstOrDefault(p => p.Serial == serial)?.Name ?? serial);
         Width = 600; Height = 640; MinWidth = 520; MinHeight = 420;
-        Background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x18));
+        Background = GTheme.Brush(GTheme.Canvas);
+        Foreground = GTheme.Brush(GTheme.Text);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var root = new DockPanel { Margin = new Thickness(16) };
@@ -60,6 +61,7 @@ public sealed class AutomationsWindow : Window
         Content = root;
 
         foreach (var auto in AutomationStore.For(serial)) AddRow(auto);
+        GTheme.ApplyWindowTheme(this);
     }
 
     private sealed class Row
@@ -129,7 +131,8 @@ public sealed class AutomationsWindow : Window
         row.ActionText = new TextBox { Text = auto.ActionText, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 44, MaxHeight = 120, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 6, 0, 0), FontFamily = new FontFamily("Consolas") };
         stack.Children.Add(row.ActionText);
 
-        row.Root = new Border { Background = new SolidColorBrush(Color.FromArgb(0x48, 0x3A, 0x3A, 0x3C)), CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 12), Child = stack };
+        row.Root = new Border { Background = GTheme.Brush(GTheme.Surface), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 12), Child = stack };
+        GTheme.ApplyWindowTheme(this);
         _rows.Add(row);
         _list.Children.Add(row.Root);
     }
@@ -163,6 +166,6 @@ public sealed class AutomationsWindow : Window
         return box;
     }
 
-    private static Brush White() => new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7));
-    private static Brush Muted() => new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93));
+    private static Brush White() => GTheme.Brush(GTheme.Text);
+    private static Brush Muted() => GTheme.Brush(GTheme.Muted);
 }

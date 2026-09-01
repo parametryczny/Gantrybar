@@ -1,9 +1,9 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.0.0",
-    "date": "2026-08-24",
-    "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port. See GANTRY-CARD-LAYOUT-PORT.md. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
+    "version": "1.1.0",
+    "date": "2026-08-31",
+    "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
 
   "tokens": {
@@ -37,8 +37,8 @@
     "columns": { "min": 1, "max": 2, "default": 2, "userDefaultsKey": "gantry.dashboard.columns" },
     "panelWidth": { "oneColumn": 380, "twoColumns": 563, "list": 512 },
     "contentWidthInset": 24,
-    "columnGap": 8,
-    "rowGap": { "cards": 6, "list": 3 },
+    "columnGap": 10,
+    "rowGap": { "cards": 8, "list": 3 },
     "headerHeight": 36,
     "lastOddCardSpansFullWidth": true,
     "maxPanelHeight": "screen.visibleFrame.height - 24"

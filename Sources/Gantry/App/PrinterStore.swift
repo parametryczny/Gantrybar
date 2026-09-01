@@ -23,6 +23,7 @@ final class PrinterStore: ObservableObject {
     private let persistence = PrinterPersistence()
     private let discovery = SSDPDiscovery()
     private let subnetDiscovery = BambuSubnetDiscovery()
+    private let elegooDiscovery = ElegooDiscovery()
     private var clients: [String: PrinterConnection] = [:]
     private var reconnectTasks: [String: Task<Void, Never>] = [:]
     private var permissionRetryTask: Task<Void, Never>?
@@ -60,6 +61,20 @@ final class PrinterStore: ObservableObject {
         (clients[serial] as? MQTTClient)?.sendCommand(json)
     }
 
+    func sendElegooMethod(serial: String, method: Int, params: [String: Any] = [:]) {
+        if let client = clients[serial] as? ElegooCC1Client { client.sendMethod(method, data: params) }
+        else if let client = clients[serial] as? ElegooCC2Client { client.sendMethod(method, params: params) }
+    }
+
+    @discardableResult
+    private func sendElegooRaw(serial: String, json: String) -> Bool {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let method = (object["method"] as? NSNumber)?.intValue else { return false }
+        sendElegooMethod(serial: serial, method: method, params: object["params"] as? [String: Any] ?? [:])
+        return true
+    }
+
     /// Sends a raw G-code line to a Klipper printer over Moonraker (chamber light, pause, custom).
     func sendGcode(serial: String, script: String) {
         (clients[serial] as? MoonrakerClient)?.sendGcode(script)
@@ -72,8 +87,11 @@ final class PrinterStore: ObservableObject {
         let custom = on ? PrinterOverridesStore.shared.overrides(for: serial).ledOn
                         : PrinterOverridesStore.shared.overrides(for: serial).ledOff
         if let custom, !custom.isEmpty {
-            if printers.first(where: { $0.serial == serial })?.kind == .klipper {
+            let kind = printers.first(where: { $0.serial == serial })?.kind
+            if kind == .klipper {
                 sendGcode(serial: serial, script: custom)
+            } else if kind == .elegooCC1 || kind == .elegooCC2 {
+                _ = sendElegooRaw(serial: serial, json: custom)
             } else {
                 sendCommand(serial: serial, json: custom)
             }
@@ -82,6 +100,10 @@ final class PrinterStore: ObservableObject {
         switch printers.first(where: { $0.serial == serial })?.kind {
         case .klipper:
             sendGcode(serial: serial, script: on ? "SET_PIN PIN=caselight VALUE=1" : "SET_PIN PIN=caselight VALUE=0")
+        case .elegooCC1:
+            sendElegooMethod(serial: serial, method: 403, params: ["LightStatus": ["SecondLight": on ? 1 : 0]])
+        case .elegooCC2:
+            sendElegooMethod(serial: serial, method: 1029, params: ["power": on ? 1 : 0])
         default:
             let mode = on ? "on" : "off"
             sendCommand(serial: serial, json: "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}")
@@ -96,6 +118,13 @@ final class PrinterStore: ObservableObject {
 
         func printCommand(bambu: String, klipperMacro: String) {
             if isKlipper { sendGcode(serial: serial, script: klipperMacro) }
+            else if printer?.kind == .elegooCC1 {
+                let command = bambu.contains("\"pause\"") ? 129 : bambu.contains("\"resume\"") ? 131 : 130
+                sendElegooMethod(serial: serial, method: command)
+            } else if printer?.kind == .elegooCC2 {
+                let command = bambu.contains("\"pause\"") ? 1021 : bambu.contains("\"resume\"") ? 1023 : 1022
+                sendElegooMethod(serial: serial, method: command)
+            }
             else { sendCommand(serial: serial, json: bambu) }
         }
 
@@ -108,7 +137,9 @@ final class PrinterStore: ObservableObject {
         case .command(let payload):
             // Bambu: raw MQTT JSON. Klipper: raw G-code line.
             guard allowCodeAction(auto, printerName: name) else { break }
-            if isKlipper { sendGcode(serial: serial, script: payload) } else { sendCommand(serial: serial, json: payload) }
+            if isKlipper { sendGcode(serial: serial, script: payload) }
+            else if printer?.kind == .elegooCC1 || printer?.kind == .elegooCC2 { _ = sendElegooRaw(serial: serial, json: payload) }
+            else { sendCommand(serial: serial, json: payload) }
         case .script(let content):
             guard allowCodeAction(auto, printerName: name) else { break }
             ScriptRunner.shared.run(auto.id, script: content)
@@ -186,7 +217,8 @@ final class PrinterStore: ObservableObject {
             let extraTargets = AppSettings.shared.subnetScanTargets
             async let ssdpResults = discovery.scan()
             async let subnetResults = subnetDiscovery.scan(extraTargets: extraTargets)
-            let combined = await ssdpResults + subnetResults
+            async let elegooResults = elegooDiscovery.scan()
+            let combined = await ssdpResults + subnetResults + elegooResults
             guard scanToken == token else { return }
             let results = Array(Dictionary(grouping: combined, by: \.serial).compactMap { $0.value.first })
             discovered = results.filter { candidate in !printers.contains { $0.serial == candidate.serial } }
@@ -226,6 +258,23 @@ final class PrinterStore: ObservableObject {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         try upsert(SavedPrinter(serial: cleanSerial, name: cleanName.isEmpty ? "Bambu \(cleanSerial.suffix(4))" : cleanName,
                                 host: cleanHost, port: port), accessCode: cleanCode)
+    }
+
+    func addElegoo(name: String, serial: String, host: String, generation: Int, accessCode: String, port: Int?) throws {
+        let cleanSerial = serial.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanCode = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanSerial.isEmpty, !cleanHost.isEmpty else { throw ValidationError("Adres IP i numer seryjny Elegoo są wymagane.") }
+        guard generation == 1 || !cleanCode.isEmpty else { throw ValidationError("Podaj kod dostępu Elegoo CC2 i włącz tryb LAN-only.") }
+        let kind: PrinterKind = generation == 1 ? .elegooCC1 : .elegooCC2
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let printer = SavedPrinter(serial: cleanSerial,
+            name: cleanName.isEmpty ? "Centauri Carbon \(generation == 1 ? "" : "2 ")\(cleanSerial.suffix(4))" : cleanName,
+            model: generation == 1 ? "Elegoo Centauri Carbon" : "Elegoo Centauri Carbon 2",
+            host: cleanHost, kind: kind, port: port ?? (generation == 1 ? 3030 : 1883))
+        if generation == 2 { try AccessCodeStore.save(accessCode: cleanCode, for: cleanSerial); sessionCodes[cleanSerial] = cleanCode }
+        if let index = printers.firstIndex(where: { $0.serial == cleanSerial }) { printers[index] = printer } else { printers.append(printer) }
+        telemetry[cleanSerial] = PrinterTelemetry(); persistence.save(printers); reconnect(printer)
     }
 
     /// Adds a Klipper printer (Moonraker). No access code — only host, optional port and API key.
@@ -411,6 +460,16 @@ final class PrinterStore: ObservableObject {
             client = PrusaLinkClient(printer: hydratedWithSecret(printer), onEvent: handler)
         case .snapmaker:
             client = SnapmakerClient(printer: printer, onEvent: handler)
+        case .elegooCC1:
+            client = ElegooCC1Client(printer: printer, onEvent: handler)
+        case .elegooCC2:
+            let code: String
+            if let sessionCode = sessionCodes[printer.serial] { code = sessionCode }
+            else {
+                do { code = try AccessCodeStore.readAccessCode(for: printer.serial); sessionCodes[printer.serial] = code }
+                catch { connectionMessages[printer.serial] = error.localizedDescription; return }
+            }
+            client = ElegooCC2Client(printer: printer, accessCode: code, onEvent: handler)
         case .bambu:
             let code: String
             if let sessionCode = sessionCodes[printer.serial] {
@@ -630,7 +689,8 @@ final class PrinterStore: ObservableObject {
     private func refreshAddresses() async {
         async let ssdpResults = discovery.scan(seconds: 3)
         async let subnetResults = subnetDiscovery.scan()
-        let results = await ssdpResults + subnetResults
+        async let elegooResults = elegooDiscovery.scan(seconds: 3)
+        let results = await ssdpResults + subnetResults + elegooResults
         var changed = false
         for found in results {
             guard let index = printers.firstIndex(where: { $0.serial == found.serial }) else { continue }

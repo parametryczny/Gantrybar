@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import ipaddress
+import json
 import os
 import select
 import socket
@@ -10,7 +11,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 
-from .core import Printer, expand_scan_targets
+from .core import Printer, PrinterKind, expand_scan_targets
 
 
 SSDP_MESSAGE = (b'M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n'
@@ -198,12 +199,70 @@ def subnet_scan(extra_targets: str = "", budget: float = 9.0) -> list[Printer]:
 
 
 def scan(extra_targets: str = "") -> list[Printer]:
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         ssdp = pool.submit(ssdp_scan)
         subnet = pool.submit(subnet_scan, extra_targets)
+        cc1 = pool.submit(elegoo_scan, PrinterKind.ELEGOO_CC1)
+        cc2 = pool.submit(elegoo_scan, PrinterKind.ELEGOO_CC2)
         merged: dict[str, Printer] = {}
         for printer in subnet.result():
             merged[printer.serial] = printer
         for printer in ssdp.result():
             merged[printer.serial] = printer
+        for printer in cc1.result() + cc2.result():
+            merged[printer.serial] = printer
     return sorted(merged.values(), key=lambda item: item.name.casefold())
+
+
+def _recursive_value(value: object, *keys: str) -> str:
+    wanted = {key.casefold() for key in keys}
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if str(key).casefold() in wanted and child is not None:
+                return str(child)
+        for child in value.values():
+            found = _recursive_value(child, *keys)
+            if found: return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _recursive_value(child, *keys)
+            if found: return found
+    return ""
+
+
+def parse_elegoo_discovery(data: bytes, host: str, kind: PrinterKind) -> Printer | None:
+    try: payload = json.loads(data)
+    except (json.JSONDecodeError, UnicodeDecodeError): return None
+    if kind == PrinterKind.ELEGOO_CC2:
+        result = payload.get("result") if isinstance(payload, dict) else None
+        if not isinstance(result, dict): return None
+        serial = str(result.get("sn") or "").strip()
+        name = str(result.get("host_name") or "Centauri Carbon 2").strip()
+        model = str(result.get("machine_model") or "Centauri Carbon 2").strip()
+        return Printer(serial, name, host, model=f"Elegoo {model}", port=1883, kind=kind) if serial else None
+    serial = _recursive_value(payload, "MainboardID", "MainboardId", "mainboard_id", "SerialNumber", "sn").strip()
+    if not serial: return None
+    name = _recursive_value(payload, "MachineName", "Name", "DeviceName") or f"Centauri Carbon {serial[-4:]}"
+    model = _recursive_value(payload, "MachineModel", "Model") or "Centauri Carbon"
+    return Printer(serial, name, host, model=f"Elegoo {model}", port=3030, kind=kind)
+
+
+def elegoo_scan(kind: PrinterKind, seconds: float = 3.5) -> list[Printer]:
+    """Broadcast discovery for one Elegoo generation; direct/manual entry remains available for VLANs."""
+    if kind not in {PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}: return []
+    port = 3000 if kind == PrinterKind.ELEGOO_CC1 else 52700
+    message = b"M99999" if kind == PrinterKind.ELEGOO_CC1 else b'{"id":0,"method":7000}'
+    found: dict[str, Printer] = {}
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1); sock.bind(("", 0)); sock.settimeout(.25)
+        sock.sendto(message, ("255.255.255.255", port))
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            try: data, address = sock.recvfrom(16384)
+            except socket.timeout: continue
+            printer = parse_elegoo_discovery(data, address[0], kind)
+            if printer: found[printer.serial] = printer
+    except OSError: pass
+    finally: sock.close()
+    return list(found.values())

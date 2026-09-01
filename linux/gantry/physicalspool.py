@@ -92,6 +92,44 @@ class PhysicalSpoolStore:
         if callable(self.on_change):
             self.on_change()
 
+    def create_rolls(self, definition_id: str, count: int, weight: float,
+                     remaining: float | None = None) -> list[dict[str, Any]]:
+        """Create real rolls for a Spoolbase definition and leave them in storage."""
+        created: list[dict[str, Any]] = []
+        nominal = max(0.0, float(weight))
+        for _ in range(max(0, int(count))):
+            rest = nominal if remaining is None else max(0.0, min(float(remaining), nominal))
+            now = _now_iso()
+            spool = {
+                "id": self.next_spool_id(),
+                "filamentDefinitionID": definition_id,
+                "nominalWeightGrams": nominal,
+                "remainingWeightGrams": rest,
+                "status": "new" if rest >= nominal else "active",
+                "location": {},
+                "notes": "",
+                "createdAt": now,
+                "updatedAt": now,
+                "openedAt": None if rest >= nominal else now,
+                "totalConsumedGrams": 0.0,
+            }
+            self.spools.append(spool)
+            created.append(spool)
+        if created:
+            self._save()
+            if callable(self.on_change):
+                self.on_change()
+        return created
+
+    def delete(self, spool_id: str) -> None:
+        before = len(self.spools)
+        self.spools = [spool for spool in self.spools if spool.get("id") != spool_id]
+        if len(self.spools) == before:
+            return
+        self._save()
+        if callable(self.on_change):
+            self.on_change()
+
     def create_spool(self, definition_id: str | None, nominal: float, remaining: float,
                      location: dict[str, Any]) -> dict[str, Any]:
         """Make a new physical roll and drop it straight into a slot (bumping whatever was there)."""
@@ -151,6 +189,43 @@ class PhysicalSpoolStore:
         if callable(self.on_change):
             self.on_change()
 
+    def correct_weight(self, spool_id: str, net_grams: float, tare: float | None = None) -> None:
+        spool = self.spool(spool_id)
+        if spool is None:
+            return
+        nominal = float(spool.get("nominalWeightGrams", 0) or 0)
+        spool["remainingWeightGrams"] = max(0.0, min(float(net_grams), nominal))
+        if tare is not None:
+            spool["tareGrams"] = max(0.0, float(tare))
+        spool["weighedAt"] = _now_iso()
+        if spool["remainingWeightGrams"] <= 0:
+            spool["status"] = "empty"
+            spool["emptiedAt"] = _now_iso()
+        elif spool.get("status") == "empty":
+            spool["status"] = "stored" if spool.get("location", {}).get("printerSerial") is None else "active"
+            spool.pop("emptiedAt", None)
+        spool["updatedAt"] = _now_iso()
+        self._save()
+        if callable(self.on_change):
+            self.on_change()
+
+    def reset_to_full(self, spool_id: str, nominal: float | None = None) -> None:
+        spool = self.spool(spool_id)
+        if spool is None:
+            return
+        full = max(0.0, float(nominal if nominal is not None else spool.get("nominalWeightGrams", 0) or 0))
+        spool["nominalWeightGrams"] = full
+        spool["remainingWeightGrams"] = full
+        spool["totalConsumedGrams"] = 0.0
+        spool["openedAt"] = None
+        spool.pop("emptiedAt", None)
+        spool.pop("weighedAt", None)
+        spool["status"] = "new" if spool.get("location", {}).get("printerSerial") is None else "active"
+        spool["updatedAt"] = _now_iso()
+        self._save()
+        if callable(self.on_change):
+            self.on_change()
+
     # --- mutation -------------------------------------------------------------
     def clear_slot(self, location: dict[str, Any]) -> None:
         spool = self.spool_at(location)
@@ -161,6 +236,8 @@ class PhysicalSpoolStore:
             spool["status"] = "stored"
         spool["updatedAt"] = _now_iso()
         self._save()
+        if callable(self.on_change):
+            self.on_change()
 
     # --- sync merge -----------------------------------------------------------
     def merge_remote(self, remote_spools: list[dict[str, Any]], remote_usage: list[dict[str, Any]]) -> bool:

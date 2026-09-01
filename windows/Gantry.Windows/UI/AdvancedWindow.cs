@@ -32,7 +32,8 @@ public sealed class AdvancedWindow : Window
 
         Title = (_pl ? "Zaawansowane — " : "Advanced — ") + (printer?.Name ?? serial);
         Width = 480; Height = _klipper ? 540 : 320; MinWidth = 400;
-        Background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x18));
+        Background = GTheme.Brush(GTheme.Canvas);
+        Foreground = GTheme.Brush(GTheme.Text);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var stack = new StackPanel { Margin = new Thickness(18) };
@@ -66,6 +67,7 @@ public sealed class AdvancedWindow : Window
         stack.Children.Add(buttons);
 
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stack };
+        GTheme.ApplyWindowTheme(this);
         Load();
     }
 
@@ -115,7 +117,7 @@ public sealed class AdvancedWindow : Window
     private static TextBlock Label(string text, bool bold, double topMargin = 0) => new()
     {
         Text = text, FontSize = 12, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
-        Foreground = new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7)), Margin = new Thickness(0, topMargin, 0, 2)
+        Foreground = GTheme.Brush(GTheme.Text), Margin = new Thickness(0, topMargin, 0, 2)
     };
 
     private static TextBlock Hint(string text) => new()
@@ -123,5 +125,5 @@ public sealed class AdvancedWindow : Window
         Text = text, FontSize = 10, Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4)
     };
 
-    private static Brush Muted() => new SolidColorBrush(Color.FromRgb(0x8E, 0x8E, 0x93));
+    private static Brush Muted() => GTheme.Brush(GTheme.Muted);
 }

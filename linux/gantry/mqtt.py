@@ -31,9 +31,9 @@ def _remaining_length(value: int) -> bytes:
             return bytes(result)
 
 
-def connect_packet(username: str, password: str) -> bytes:
+def connect_packet(username: str, password: str, client_id: str | None = None) -> bytes:
     variable = _mqtt_string("MQTT") + bytes((4, 0xC2)) + struct.pack("!H", 60)
-    payload = _mqtt_string(f"Gantry-{uuid.uuid4().hex[:8]}") + _mqtt_string(username) + _mqtt_string(password)
+    payload = _mqtt_string(client_id or f"Gantry-{uuid.uuid4().hex[:8]}") + _mqtt_string(username) + _mqtt_string(password)
     body = variable + payload
     return bytes((0x10,)) + _remaining_length(len(body)) + body
 
@@ -78,6 +78,18 @@ def publish_payload(header: int, body: bytes) -> bytes | None:
     if header & 0x06:
         offset += 2
     return body[offset:] if offset <= len(body) else None
+
+
+def publish_topic(header: int, body: bytes) -> str | None:
+    if header >> 4 != 3 or len(body) < 2:
+        return None
+    length = struct.unpack("!H", body[:2])[0]
+    if len(body) < 2 + length:
+        return None
+    try:
+        return body[2:2 + length].decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 class MqttConnection:

@@ -58,6 +58,7 @@ final class PrinterDetailViewController: NSViewController {
     private var cameraCard: NSView?
     private var stream: RTSPCameraStream?
     private var klipperStream: KlipperCameraStream?
+    private var elegooStream: ElegooCameraStream?
     private var cameraTimeout: DispatchWorkItem?
     private var receivedFrame = false
 
@@ -123,7 +124,7 @@ final class PrinterDetailViewController: NSViewController {
 
         // Bambu (MQTT) and Klipper (Moonraker) both support control + camera; Prusa/Snapmaker later.
         let kind = store.printers.first(where: { $0.serial == serial })?.kind
-        let supportsControlCamera = kind == .bambu || kind == .klipper
+        let supportsControlCamera = kind == .bambu || kind == .klipper || kind == .elegooCC1 || kind == .elegooCC2
         cardViews = [
             "status": makeStatusCard(),
             "temps": makeTemperatureCard(),
@@ -560,6 +561,7 @@ final class PrinterDetailViewController: NSViewController {
         switch printer.kind {
         case .bambu: startBambuCamera(printer)
         case .klipper: startKlipperCamera(printer)
+        case .elegooCC1, .elegooCC2: startElegooCamera(printer)
         default: return
         }
         // If no frame arrives in time, show a helpful fallback.
@@ -609,6 +611,23 @@ final class PrinterDetailViewController: NSViewController {
         stream.start()
     }
 
+    private func startElegooCamera(_ printer: SavedPrinter) {
+        guard elegooStream == nil else { return }
+        let isCC2 = printer.kind == .elegooCC2
+        store.sendElegooMethod(serial: serial, method: isCC2 ? 1042 : 386,
+                               params: isCC2 ? [:] : ["Enable": 1])
+        let port = isCC2 ? 8080 : 3031
+        let path = isCC2 ? "/?action=stream" : "/video"
+        guard let url = URL(string: "http://\(cameraHost(for: printer)):\(port)\(path)") else { return }
+        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
+        let stream = ElegooCameraStream(url: url,
+            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
+            onState: { state in Task { @MainActor [weak self] in
+                if case .failed = state, self?.receivedFrame == false { self?.cameraView.showStatus(Self.cameraUnavailableText) }
+            } })
+        elegooStream = stream; stream.start()
+    }
+
     private func stopCamera() {
         cameraTimeout?.cancel()
         cameraTimeout = nil
@@ -616,6 +635,8 @@ final class PrinterDetailViewController: NSViewController {
         stream = nil
         klipperStream?.stop()
         klipperStream = nil
+        elegooStream?.stop()
+        elegooStream = nil
     }
 
     private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {

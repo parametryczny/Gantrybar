@@ -1,31 +1,66 @@
 # Gantry for GNU/Linux — beta
 
 The GNU/Linux edition uses GTK 3 and a system tray indicator. It connects locally to Bambu Lab
-over MQTT/TLS, Klipper through Moonraker and Prusa through PrusaLink. Access codes and API keys
+over MQTT/TLS, Elegoo Centauri Carbon through SDCP/MQTT LAN, Klipper through Moonraker and Prusa through PrusaLink. Access codes and API keys
 are stored in the desktop Secret Service (GNOME Keyring, KWallet with Secret Service support, or
 another compatible provider).
+
+The 0.9 dashboard is a direct port of the current macOS code rather than an extension of the old
+Linux prototype. It uses the same 380/563 px one/two-column panel, telemetry-driven wide cards,
+a single-column ordinary final card, compact list with accordion cards, segmented progress, flat temperature
+and filament sections, and an in-panel Details screen with the live camera.
 
 Per-printer menus can open installed native or Flatpak editions of Bambu Studio, OrcaSlicer,
 Creality Print and PrusaSlicer. For Bambu printers the Bambu Studio action also provides access
 to the camera view.
 
-## Install on Ubuntu, Debian, Linux Mint or Pop!_OS
+## Installation packages
 
-Download `Gantry-0.6.0-Linux-all-hotfix.deb` from GitHub Releases, then run:
+Gantry is published in three Linux formats:
+
+- `Gantry-0.9.0-Linux-all.deb` — Ubuntu, Debian, Linux Mint and Pop!_OS
+- `Gantry-0.9.0-Linux-noarch.rpm` — Fedora and compatible RPM distributions
+- `Gantry-0.9.0-Linux-x86_64.AppImage` — portable x86_64 build with its own Python runtime,
+  GTK resources and most application libraries
+
+### Ubuntu, Debian, Linux Mint or Pop!_OS
+
+Download `Gantry-0.9.0-Linux-all.deb` from GitHub Releases, then run:
 
 ```sh
-sudo apt install ./Gantry-0.6.0-Linux-all-hotfix.deb
+sudo apt install ./Gantry-0.9.0-Linux-all.deb
 ```
 
 Open **Gantry** from the application menu. The app can be configured to start automatically
 after login in **Settings**.
 
+### Fedora or another RPM distribution
+
+```sh
+sudo dnf install ./Gantry-0.9.0-Linux-noarch.rpm
+```
+
+### Portable AppImage
+
+The AppImage does not require system installation:
+
+```sh
+chmod +x Gantry-0.9.0-Linux-x86_64.AppImage
+./Gantry-0.9.0-Linux-x86_64.AppImage
+```
+
+It bundles the application, Python runtime, GTK resources and most shared libraries. Desktop
+services such as the system tray, Secret Service/keyring, notifications and media integration
+still use the host desktop where available.
+
 ![Gantry hotfix verified on Ubuntu 26.04](../docs/renders/gantry-ubuntu-26.04-hotfix.png)
 
 ## Add printers
 
-Choose **Add printer** from the tray menu or click `+`, then select **Bambu Lab**, **Klipper** or
-**Prusa**. Gantry scans every local network interface using Bambu SSDP announcements and the
+Choose **Add printer** from the tray menu or click `+`, then select **Bambu Lab**, **Elegoo**, **Klipper** or
+**Prusa**. For Elegoo, choose **Centauri Carbon** (SDCP 3030, no code) or **Centauri Carbon 2**
+(MQTT 1883, access code and LAN-only mode). Both provide an MJPEG camera; CC2 also exposes Canvas
+A1–A4. Gantry scans every local network interface using Bambu SSDP announcements and the
 MQTT/TLS certificate exposed on port 8883. The add window accepts a VPN/Tailscale IP, range or
 CIDR and a custom MQTT port for a TCP/socat tunnel.
 
@@ -45,18 +80,39 @@ kind,name,host,serial,access_code,port
 bambu,P1S Workshop,192.168.1.21,01P00A123456789,ACCESS_CODE,8883
 klipper,Voron,192.168.1.30,,,7125
 prusa,MK4,192.168.1.31,,PRUSALINK_API_KEY,80
+elegoo_cc1,Centauri Carbon,192.168.1.40,MAINBOARD_ID,,3030
+elegoo_cc2,Centauri Carbon 2,192.168.1.41,SERIAL,ACCESS_CODE,1883
 ```
 
-## Build a Debian package
+## Build packages
+
+Debian package (can also be produced on macOS through the portable ar fallback):
 
 ```sh
-GANTRY_PACKAGE_SUFFIX=hotfix sh linux/scripts/build-deb.sh
+sh linux/scripts/build-deb.sh
 ```
 
-The hotfix package is written to
-`linux/dist/Gantry-0.6.0-Linux-all-hotfix.deb`. Omit
-`GANTRY_PACKAGE_SUFFIX=hotfix` to produce the regular release filename. Core tests do not require
-a graphical session:
+The package is written to `linux/dist/Gantry-0.9.0-Linux-all.deb`. Set
+`GANTRY_PACKAGE_SUFFIX=hotfix` only when producing a separately named hotfix. Core tests do not
+require a graphical session.
+
+RPM package (run on Fedora with `rpm-build` and `python3-devel`):
+
+```sh
+sh linux/scripts/build-rpm.sh
+```
+
+Portable AppImage (run on x86_64 or aarch64 Linux with PyInstaller, linuxdeploy prerequisites,
+GTK development files and GObject Introspection development files):
+
+```sh
+python3 -m pip install --user pyinstaller
+sh linux/scripts/build-appimage.sh
+```
+
+The resulting packages are written to `linux/dist/`, which is intentionally ignored by Git.
+The GNU/Linux GitHub Actions workflow builds, installs/smoke-tests and uploads all three formats
+after a relevant push or pull request. Run the core tests locally with:
 
 ```sh
 PYTHONPATH=linux python3 -m unittest discover -s linux/tests -v

@@ -52,7 +52,8 @@ def _copy(previous: Telemetry | None) -> Telemetry:
     return Telemetry(**{name: getattr(old, name) for name in Telemetry.__dataclass_fields__})
 
 
-def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry | None = None) -> Telemetry | None:
+def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry | None = None,
+                    objects: dict[str, str | None] | None = None) -> Telemetry | None:
     try:
         root = json.loads(payload) if isinstance(payload, (bytes, str)) else payload
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -98,19 +99,26 @@ def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry |
     duration = _number(stats.get("print_duration"))
     if duration and progress and progress > .01:
         telemetry.remaining_minutes = round(duration * (1 - progress) / progress / 60)
-    extruder = status.get("extruder") if isinstance(status.get("extruder"), dict) else {}
-    bed = status.get("heater_bed") if isinstance(status.get("heater_bed"), dict) else {}
+    names = objects or {"nozzle": "extruder", "bed": "heater_bed", "chamber": None, "fan": "fan"}
+    nozzle_name, bed_name = names.get("nozzle") or "extruder", names.get("bed") or "heater_bed"
+    extruder = status.get(nozzle_name) if isinstance(status.get(nozzle_name), dict) else {}
+    bed = status.get(bed_name) if isinstance(status.get(bed_name), dict) else {}
     telemetry.nozzle = _number(extruder.get("temperature"))
     telemetry.nozzle_target = _number(extruder.get("target"))
     telemetry.bed = _number(bed.get("temperature"))
     telemetry.bed_target = _number(bed.get("target"))
-    for key, value in status.items():
-        lowered = key.lower()
-        if "chamber" in lowered and lowered.startswith(("temperature_sensor", "heater_generic")) and isinstance(value, dict):
-            telemetry.chamber = _number(value.get("temperature"))
-            break
+    chamber_name = names.get("chamber")
+    if chamber_name and isinstance(status.get(chamber_name), dict):
+        telemetry.chamber = _number(status[chamber_name].get("temperature"))
+    else:
+        for key, value in status.items():
+            lowered = key.lower()
+            if "chamber" in lowered and lowered.startswith(("temperature_sensor", "heater_generic")) and isinstance(value, dict):
+                telemetry.chamber = _number(value.get("temperature"))
+                break
     # Part fan (0..1 -> %) and speed factor (gcode_move.speed_factor, 1.0 == 100%) for the Details view.
-    fan = status.get("fan") if isinstance(status.get("fan"), dict) else {}
+    fan_name = names.get("fan") or "fan"
+    fan = status.get(fan_name) if isinstance(status.get(fan_name), dict) else {}
     fan_speed = _number(fan.get("speed"))
     if fan_speed is not None:
         telemetry.part_fan = int(round(min(max(fan_speed, 0.0), 1.0) * 100))
@@ -278,12 +286,15 @@ def parse_snapmaker(status_payload: bytes | str | dict[str, Any],
 
 
 class HttpConnection:
-    def __init__(self, printer: Printer, api_key: str | None, on_event: EventHandler) -> None:
+    def __init__(self, printer: Printer, api_key: str | None, on_event: EventHandler,
+                 moonraker_objects: dict[str, str | None] | None = None) -> None:
         self.printer, self.api_key, self.on_event = printer, api_key, on_event
         self.telemetry = Telemetry()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._cfs_groups: list[FilamentGroup] = []
+        self._moonraker_objects = moonraker_objects or {
+            "nozzle": "extruder", "bed": "heater_bed", "chamber": None, "fan": "fan"}
 
     def start(self) -> None:
         self._stop.clear()
@@ -321,16 +332,18 @@ class HttpConnection:
             return False
 
     def _moonraker_path(self) -> str:
-        wanted = ["print_stats", "virtual_sdcard", "display_status", "extruder", "heater_bed", "mmu",
-                  "fan", "gcode_move"]
+        wanted = ["print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move"]
+        wanted.extend(str(value) for value in self._moonraker_objects.values() if value)
         try:
             root = json.loads(self._get("/printer/objects/list"))
             objects = root.get("result", {}).get("objects", [])
             if isinstance(objects, list):
                 available = set(str(value) for value in objects)
                 wanted = [value for value in wanted if value in available]
-                wanted.extend(value for value in available if "chamber" in value.lower()
-                              and value.startswith(("temperature_sensor", "heater_generic")))
+                if not self._moonraker_objects.get("chamber"):
+                    wanted.extend(value for value in available if "chamber" in value.lower()
+                                  and value.startswith(("temperature_sensor", "heater_generic")))
+                wanted = list(dict.fromkeys(value for value in wanted if value in available))
         except (OSError, ValueError, urllib.error.URLError):
             pass
         if not wanted:
@@ -344,7 +357,7 @@ class HttpConnection:
             try:
                 if self.printer.kind == PrinterKind.KLIPPER:
                     path = path or self._moonraker_path()
-                    updated = parse_moonraker(self._get(path), self.telemetry)
+                    updated = parse_moonraker(self._get(path), self.telemetry, self._moonraker_objects)
                     if updated and self._cfs_groups:
                         # A Creality CFS overrides the (absent) Happy Hare gates with its own modules.
                         groups = list(self._cfs_groups)

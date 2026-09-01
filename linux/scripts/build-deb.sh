@@ -28,8 +28,7 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: $ARCH
-Depends: python3 (>= 3.10), python3-gi, python3-websocket, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, gir1.2-ayatanaappindicator3-0.1, libsecret-tools, gnome-keyring, libnotify-bin, openssl, avahi-daemon, x11-xserver-utils
-Recommends: ffmpeg
+Depends: python3 (>= 3.10), python3-gi, python3-websocket, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, gir1.2-gstreamer-1.0, gir1.2-ayatanaappindicator3-0.1, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav, libsecret-tools, gnome-keyring, libnotify-bin, openssl, avahi-daemon, x11-xserver-utils
 Conflicts: bambubar
 Replaces: bambubar
 Maintainer: Kamil Grzegorczyk <parametryczny@users.noreply.github.com>

@@ -24,6 +24,8 @@ public sealed class SyncPrinter
         PrinterKind.Klipper => "klipper",
         PrinterKind.Prusa => "prusa",
         PrinterKind.Snapmaker => "snapmaker",
+        PrinterKind.ElegooCc1 => "elegoo_cc1",
+        PrinterKind.ElegooCc2 => "elegoo_cc2",
         _ => "bambu",
     };
     public static PrinterKind KindFromString(string s) => s switch
@@ -31,6 +33,8 @@ public sealed class SyncPrinter
         "klipper" => PrinterKind.Klipper,
         "prusa" => PrinterKind.Prusa,
         "snapmaker" => PrinterKind.Snapmaker,
+        "elegoo_cc1" => PrinterKind.ElegooCc1,
+        "elegoo_cc2" => PrinterKind.ElegooCc2,
         _ => PrinterKind.Bambu,
     };
 }

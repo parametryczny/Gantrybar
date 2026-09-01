@@ -20,7 +20,7 @@ internal static class SpoolbaseChrome
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == IntPtr.Zero) return;
-        int dark = 1, round = 2;
+        int dark = GTheme.IsLight ? 0 : 1, round = 2;
         try
         {
             DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));   // DWMWA_USE_IMMERSIVE_DARK_MODE
@@ -115,7 +115,7 @@ public sealed class SpoolbaseCatalogWindow : Window
     private readonly TextBox _qty = new() { Text = "1", Width = 48, TextAlignment = TextAlignment.Center };
     private readonly TextBox _weight = new() { Text = "1000", Width = 60, TextAlignment = TextAlignment.Center };
 
-    private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF7));
+    private static Brush Ink => GTheme.Brush(GTheme.Text);
     private static bool Pl => AppSettings.Polish;
 
     public SpoolbaseCatalogWindow(FilamentStore store)
@@ -125,7 +125,7 @@ public sealed class SpoolbaseCatalogWindow : Window
         Title = Pl ? "Dodaj filament" : "Add filament";
         Width = 460; Height = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x26));
+        Background = GTheme.Brush(GTheme.Canvas);
         Foreground = Ink;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
         SourceInitialized += (_, _) => SpoolbaseChrome.ApplyDark(this);
@@ -133,12 +133,20 @@ public sealed class SpoolbaseCatalogWindow : Window
         var root = new DockPanel { Margin = new Thickness(14) };
 
         _search.FontSize = 13; _search.Padding = new Thickness(8, 6, 8, 6);
-        _search.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+        _search.Background = GTheme.Brush(GTheme.Surface);
         _search.Foreground = Ink; _search.CaretBrush = Ink; _search.BorderThickness = new Thickness(0);
-        _search.Margin = new Thickness(0, 0, 0, 10);
+        _search.Margin = new Thickness(0);
         _search.TextChanged += (_, _) => ApplyFilter();
-        DockPanel.SetDock(_search, Dock.Top);
-        root.Children.Add(_search);
+        var codeButton = new Button
+        {
+            Content = Pl ? "▣  Skanuj kod…" : "▣  Scan code…", MinWidth = 105, Margin = new Thickness(8, 0, 0, 0)
+        };
+        codeButton.Click += (_, _) => ScanManufacturerCode();
+        var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchRow.Children.Add(_search); Grid.SetColumn(codeButton, 1); searchRow.Children.Add(codeButton);
+        DockPanel.SetDock(searchRow, Dock.Top); root.Children.Add(searchRow);
 
         var addManual = new Button { Content = Pl ? "Dodaj ręcznie…" : "Add manually…", Height = 32, Margin = new Thickness(0, 10, 0, 0) };
         addManual.Click += (_, _) => { var e = new SpoolbaseEditWindow(_store, null, false) { Owner = this }; if (e.ShowDialog() == true) Close(); };
@@ -150,15 +158,15 @@ public sealed class SpoolbaseCatalogWindow : Window
         foreach (var box in new[] { _qty, _weight })
         {
             box.FontSize = 13; box.Padding = new Thickness(6, 4, 6, 4);
-            box.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+            box.Background = GTheme.Brush(GTheme.Surface);
             box.Foreground = Ink; box.CaretBrush = Ink; box.BorderThickness = new Thickness(0);
         }
         var addBtn = new Button { Content = Pl ? "Dodaj do moich" : "Add to mine", Height = 32, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(10, 0, 10, 0) };
         addBtn.Click += (_, _) => AddSelected();
         var footer = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        footer.Children.Add(new TextBlock { Text = Pl ? "Liczba szpul" : "Spools", Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        footer.Children.Add(new TextBlock { Text = Pl ? "Liczba szpul" : "Spools", Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
         footer.Children.Add(_qty);
-        footer.Children.Add(new TextBlock { Text = Pl ? "Waga (g)" : "Weight (g)", Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
+        footer.Children.Add(new TextBlock { Text = Pl ? "Waga (g)" : "Weight (g)", Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
         footer.Children.Add(_weight);
         footer.Children.Add(addBtn);
         DockPanel.SetDock(footer, Dock.Bottom);
@@ -201,16 +209,54 @@ public sealed class SpoolbaseCatalogWindow : Window
         Close();
     }
 
+    private void ScanManufacturerCode()
+    {
+        var scanner = new BarcodeScannerWindow(HandleManufacturerCode) { Owner = this };
+        scanner.ShowDialog();
+    }
+
+    private static string NormalizeBarcode(string value) =>
+        new(value.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    private void HandleManufacturerCode(string scanned)
+    {
+        var code = scanned.Trim();
+        if (code.Length == 0) return;
+        var normalized = NormalizeBarcode(code);
+        var exact = _catalog.FirstOrDefault(item =>
+            NormalizeBarcode(item.ManufacturerCode) == normalized);
+        _search.Text = exact?.ManufacturerCode ?? code;
+        if (exact is not null)
+        {
+            _listBox.SelectedItem = exact;
+            _listBox.ScrollIntoView(exact);
+            return;
+        }
+
+        var add = MessageBox.Show(this,
+            AppSettings.Text($"Odczytany kod: {code}\n\nNie znaleziono go w bazie. Dodać własny filament z tym kodem?",
+                             $"Scanned code: {code}\n\nIt was not found in the catalog. Add a custom filament with this code?"),
+            AppSettings.Text("Nie znaleziono kodu", "Code not found"),
+            MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (add == MessageBoxResult.Yes)
+        {
+            var editor = new SpoolbaseEditWindow(_store, null, false, code) { Owner = this };
+            if (editor.ShowDialog() == true) Close();
+        }
+    }
+
     private static DataTemplate BuildRowTemplate()
     {
-        const string xaml =
+        var ink = GTheme.IsLight ? "#1C1C1E" : "#F5F5F7";
+        var muted = GTheme.IsLight ? "#6D716E" : "#9A9A9E";
+        var xaml =
             "<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>" +
             "<Grid Margin='2,5,2,5'>" +
             "<Grid.ColumnDefinitions><ColumnDefinition Width='Auto'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" +
             "<Border Width='26' Height='26' CornerRadius='13' Background='{Binding SwatchBrush}' BorderThickness='0.5' BorderBrush='#55FFFFFF' VerticalAlignment='Center'/>" +
             "<StackPanel Grid.Column='1' Margin='10,0,0,0' VerticalAlignment='Center'>" +
-            "<TextBlock Text='{Binding Display}' FontSize='12.5' FontWeight='SemiBold' Foreground='#F5F5F7'/>" +
-            "<TextBlock Text='{Binding Sub}' FontSize='10.5' Foreground='#9A9A9E'/>" +
+            $"<TextBlock Text='{{Binding Display}}' FontSize='12.5' FontWeight='SemiBold' Foreground='{ink}'/>" +
+            $"<TextBlock Text='{{Binding Sub}}' FontSize='10.5' Foreground='{muted}'/>" +
             "</StackPanel></Grid></DataTemplate>";
         return (DataTemplate)XamlReader.Parse(xaml);
     }
@@ -232,14 +278,16 @@ public sealed class SpoolbaseEditWindow : Window
     private readonly TextBox _count = new();
     private readonly TextBox _weight = new();
 
-    private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF7));
+    private static Brush Ink => GTheme.Brush(GTheme.Text);
     private static bool Pl => AppSettings.Polish;
 
-    public SpoolbaseEditWindow(FilamentStore store, Filament? filament, bool countOnly)
+    public SpoolbaseEditWindow(FilamentStore store, Filament? filament, bool countOnly,
+                               string? prefilledManufacturerCode = null)
     {
         _store = store;
         _isNew = filament == null;
-        _original = filament ?? new Filament { Type = "PLA", ColorName = Pl ? "Nowy" : "New", ColorHex = "8E8E93" };
+        _original = filament ?? new Filament { Type = "PLA", ColorName = Pl ? "Nowy" : "New", ColorHex = "8E8E93",
+                                               ManufacturerCode = prefilledManufacturerCode ?? "" };
 
         Title = _isNew ? (Pl ? "Nowy filament" : "New filament")
                        : (countOnly ? (Pl ? "Liczba szpul" : "Spool count") : (Pl ? "Edytuj filament" : "Edit filament"));
@@ -250,7 +298,7 @@ public sealed class SpoolbaseEditWindow : Window
         MaxHeight = 720;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.CanResize;
-        Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x26));
+        Background = GTheme.Brush(GTheme.Canvas);
         Foreground = Ink;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
         SourceInitialized += (_, _) => SpoolbaseChrome.ApplyDark(this);
@@ -268,7 +316,7 @@ public sealed class SpoolbaseEditWindow : Window
         {
             foreach (var v in FilamentCatalogMeta.Types) _type.Items.Add(v);
             _type.SelectedItem = FilamentCatalogMeta.Types.Contains(_original.Type) ? _original.Type : "PLA";
-            if (SpoolbaseChrome.DarkCombo is { } comboStyle) _type.Style = comboStyle;
+            if (!GTheme.IsLight && SpoolbaseChrome.DarkCombo is { } comboStyle) _type.Style = comboStyle;
             else _type.Foreground = Brushes.Black;   // fallback: readable on the default light combo
             _type.Margin = new Thickness(0, 0, 0, 8);
 
@@ -360,7 +408,7 @@ public sealed class SpoolbaseEditWindow : Window
         panel.Children.Add(new Border
         {
             CornerRadius = new CornerRadius(8),
-            Background = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF)),
+            Background = GTheme.Brush(GTheme.Surface),
             Child = box
         });
         return panel;
@@ -379,6 +427,6 @@ public sealed class SpoolbaseEditWindow : Window
 
     private static TextBlock Label(string text) => new()
     {
-        Text = text, FontSize = 10.5, Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)), Margin = new Thickness(2, 0, 0, 3)
+        Text = text, FontSize = 10.5, Foreground = GTheme.Brush(GTheme.Muted), Margin = new Thickness(2, 0, 0, 3)
     };
 }

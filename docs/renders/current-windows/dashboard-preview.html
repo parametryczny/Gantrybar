@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pl">
+<meta charset="utf-8">
+<title>Gantry Windows — current code preview</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1200px; min-height: 1580px; overflow: hidden; }
+  body {
+    padding: 22px;
+    color: #f2f3f1;
+    font-family: "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+    background:
+      radial-gradient(circle at 18% 8%, #667b70 0, #39453f 24%, transparent 46%),
+      linear-gradient(145deg, #202522, #0d100f 70%);
+  }
+  .window {
+    width: 1156px;
+    min-height: 1536px;
+    border: 2px solid rgba(255,255,255,.14);
+    border-radius: 28px;
+    padding: 20px 20px 12px;
+    background: rgba(36,36,38,.76);
+    box-shadow: 0 28px 80px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.05);
+    backdrop-filter: blur(38px) saturate(125%);
+  }
+  .top { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px 18px; }
+  .brand { font-size: 36px; line-height: 1; font-weight: 900; letter-spacing: -1.5px; }
+  .summary { margin-top: 8px; color: #a7aaa6; font-size: 22px; font-weight: 600; }
+  .tools { display: flex; align-items: center; gap: 15px; color: #a7aaa6; font-size: 29px; }
+  .tool { width: 45px; height: 45px; display: grid; place-items: center; border-radius: 14px; }
+  .tool:hover { background: rgba(255,255,255,.08); }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card {
+    position: relative; min-width: 0; padding: 16px 20px 18px;
+    border: 2px solid rgba(255,255,255,.09); border-radius: 32px;
+    background: rgba(21,23,25,.86);
+  }
+  .card.wide { grid-column: 1 / -1; }
+  .card-head { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .printer { font-size: 28px; filter: grayscale(1); }
+  .name { font-size: 29px; font-weight: 700; }
+  .conn { color: #6d716e; font-size: 20px; padding: 3px 9px; border: 2px solid rgba(255,255,255,.09); border-radius: 10px; }
+  .chart { color: #a7aaa6; font-size: 24px; }
+  .grow { flex: 1; }
+  .chip { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 15px; background: rgba(255,255,255,.045); color: #a7aaa6; font-size: 24px; }
+  .jobline { margin: 9px 2px 0; display: flex; align-items: center; min-width: 0; font-size: 21px; font-weight: 650; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #d4d7d3; margin-right: 10px; }
+  .jobline .sep { color: #6d716e; margin: 0 12px; }
+  .job { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .progressline { display: flex; align-items: center; gap: 15px; margin-top: 8px; }
+  .pct { font-size: 52px; line-height: 1; font-weight: 650; letter-spacing: -2px; }
+  .meta { color: #a7aaa6; font-size: 20px; font-weight: 650; white-space: nowrap; }
+  .segments { display: grid; grid-template-columns: repeat(32,1fr); gap: 4px; height: 10px; margin: 13px 2px 17px; }
+  .segments i { border-radius: 2px; background: rgba(255,255,255,.14); }
+  .segments i.on { background: #d4d7d3; }
+  .rule { height: 2px; background: rgba(255,255,255,.09); }
+  .temps { display: grid; grid-template-columns: repeat(var(--cols,3),1fr); padding: 13px 0; }
+  .temp { min-height: 76px; padding: 3px 19px; border-left: 2px solid rgba(255,255,255,.09); }
+  .temp:first-child { border-left: 0; }
+  .label { color: #6d716e; font-size: 14px; font-weight: 700; text-transform: uppercase; }
+  .value { margin-top: 9px; text-align: center; font-size: 31px; font-weight: 700; }
+  .value small { color: #6d716e; font-size: 16px; font-weight: 500; }
+  .cool { color: #8ba9c7; }
+  .filaments { display: flex; align-items: stretch; padding-top: 13px; min-height: 126px; }
+  .group { flex: 1; min-width: 0; padding: 0 16px; }
+  .group:first-child { padding-left: 2px; }
+  .group + .group { border-left: 2px solid rgba(255,255,255,.09); }
+  .group-title { display: flex; gap: 11px; align-items: center; font-size: 22px; font-weight: 700; }
+  .env { color: #a7aaa6; font-size: 20px; font-weight: 600; }
+  .slots { display: grid; grid-template-columns: repeat(var(--slots,1),1fr); gap: 10px; margin-top: 10px; }
+  .slot { text-align: center; min-width: 0; }
+  .spool { position: relative; width: min(100%,112px); height: 35px; margin-inline: auto; border: 2px solid rgba(255,255,255,.1); border-radius: 10px; overflow: hidden; background: repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 5px,transparent 5px 12px); }
+  .group.external .spool { width: min(100%,184px); }
+  .group.single .spool { width: min(100%,max(120px,35%)); }
+  .spool.active { border-color: #d4d7d3; border-width: 4px; }
+  .fill { position: absolute; inset: 0 auto 0 0; width: var(--fill,0%); background: var(--color,#444); }
+  .spool b { position: relative; z-index: 1; font-size: 18px; line-height: 31px; text-shadow: 0 1px 3px #000; }
+  .slot-id { color: #6d716e; font-size: 14px; margin-top: 7px; }
+  .mat { font-size: 20px; font-weight: 700; min-height: 24px; }
+  .grams { color: #d4d7d3; font-size: 19px; font-weight: 650; }
+  .offline { color: rgba(242,243,241,.27); }
+  .offline::after { content: "⌁\A Łączenie…"; white-space: pre; position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 23px; font-weight: 650; color: #a7aaa6; background: rgba(12,13,14,.78); border-radius: 31px; }
+  .footer { color: #6d716e; text-align: center; font-size: 20px; padding: 15px 0 3px; }
+</style>
+<body>
+<main class="window">
+  <header class="top">
+    <div><div class="brand">GANTRY</div><div class="summary">5 drukarek · 4 pracuje</div></div>
+    <div class="tools"><span class="tool">▥</span><span class="tool">Zwiń</span><span class="tool">✕</span><span class="tool">⟳</span><span class="tool">＋</span></div>
+  </header>
+  <section class="cards" id="cards"></section>
+  <footer class="footer">Drukuj spokojnie — wszystko pod kontrolą</footer>
+</main>
+<script>
+const data = [
+ {name:'X1',pct:70,time:'44m · 18:40',layers:'120/276',job:'ADAPTER-PVC110-SPIRO100',temps:[['DYSZA','255°','255°'],['STÓŁ','65°','65°'],['KOMORA','51°','—','cool']],groups:[{name:'AMS',env:'🌡 49°  ·  💧 20%',slots:[['A1','—',0,'#333'],['A2','—',0,'#333'],['A3','—',0,'#333'],['A4','PETG',8,'#202124','80 g']]},{name:'EXT',slots:[['','TPU',100,'#40572e','1000 g']]}]},
+ {name:'P2S',pct:67,time:'44m · 18:40',layers:'95/226',job:'zero clearance dewalt 7492',temps:[['DYSZA','250°','250°'],['STÓŁ','70°','70°'],['KOMORA','52°','—','cool']],groups:[{name:'HT',env:'🌡 30°  ·  💧 36%',slots:[['A1','PETG',0,'#222326']]},{name:'EXT',slots:[['','PETG',100,'#a6a8ad','1000 g']]}]},
+ {name:'P1S',pct:38,time:'1h 37m · 19:33',layers:'28/110',job:'set print',temps:[['DYSZA','256°','255°'],['STÓŁ','65°','65°']],groups:[{name:'HT',env:'🌡 33°  ·  💧 42%',slots:[['A1','PETG',36,'#202124','360 g']]}]},
+ {name:'MINI',pct:0,time:'—',layers:'—',job:'BRAK AKTYWNEGO ZADANIA',offline:true,conn:'PRUSALINK',temps:[['DYSZA','—','—'],['STÓŁ','—','—']],groups:[]},
+ {name:'X2D',pct:46,time:'2h 34m · 20:30',layers:'25/115',job:'magnetic_x2d',wide:true,temps:[['DYSZA L','220°','220°'],['P','47°','40°','cool'],['STÓŁ','46°','46°'],['KOMORA','41°','—','cool']],groups:[{name:'AMS',env:'🌡 39°  ·  💧 22%',slots:[['A1','PLA',2,'#6e5d68','20 g'],['A2','—',0,'#333'],['A3','—',0,'#333'],['A4','PLA',56,'#168ed1','560 g']]},{name:'EXT 2',slots:[['','PLA',100,'#f2f2f2','1000 g']]}]}
+];
+function segments(p){return Array.from({length:32},(_,i)=>`<i class="${i<Math.round(p*32/100)?'on':''}"></i>`).join('')}
+function card(d){return `<article class="card ${d.wide?'wide':''} ${d.offline?'offline':''}">
+ <div class="card-head"><span class="printer">▰</span><span class="name">${d.name}</span><span class="conn">${d.conn||'MQTT'}</span><span class="chart">⌁</span><span class="grow"></span><span class="chip">⠿</span><span class="chip">•••</span></div>
+ <div class="jobline"><span class="dot"></span><span>${d.offline?'Łączenie…':'Drukowanie'}</span><span class="sep">·</span><span class="job">${d.job}</span></div>
+ <div class="progressline"><span class="pct">${d.pct}%</span><span class="meta">◷ ${d.time}</span><span class="meta">⧉ ${d.layers}</span></div><div class="segments">${segments(d.pct)}</div><div class="rule"></div>
+ <div class="temps" style="--cols:${d.temps.length}">${d.temps.map(t=>`<div class="temp"><div class="label">${t[0]}</div><div class="value ${t[3]||''}">${t[1]} <small>/ ${t[2]}</small></div></div>`).join('')}</div>
+ ${d.groups.length?`<div class="rule"></div><div class="filaments">${d.groups.map(g=>`<div class="group ${g.name.startsWith('EXT')?'external':''} ${g.slots.length===1?'single':''}"><div class="group-title">${g.name}<span class="env">${g.env||''}</span></div><div class="slots" style="--slots:${g.slots.length}">${g.slots.map(s=>`<div class="slot"><div class="spool ${s[2]||s[1]!=='—'?'active':''}"><span class="fill" style="--fill:${s[2]}%;--color:${s[3]}"></span><b>${s[1]==='—'?'':s[2]+'%'}</b></div><div class="slot-id">${s[0]}</div><div class="mat">${s[1]}</div><div class="grams">${s[4]||''}</div></div>`).join('')}</div></div>`).join('')}</div>`:''}
+ </article>`}
+document.getElementById('cards').innerHTML=data.map(card).join('');
+</script>
+</body>
+</html>

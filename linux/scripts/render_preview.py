@@ -1,105 +1,192 @@
 #!/usr/bin/env python3
-"""Render the dashboard cards to a PNG offscreen (no visible window) so the Linux look can be
-reviewed without a Linux desktop. Run under xvfb-run on CI: xvfb-run python3 scripts/render_preview.py out.png
+"""Render the real GTK dashboard to PNG.
+
+The preview is built from ``Dashboard`` and ``PrinterCard`` rather than from a separate mock UI.
+On Linux CI run it through Xvfb; Homebrew GTK can render it through the Quartz backend on macOS.
 """
+from __future__ import annotations
+
 import sys
 
 import gi
 
 gi.require_version("Gdk", "3.0")
-gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
-gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
 from gantry import app as gapp  # noqa: E402
 from gantry.core import (  # noqa: E402
-    FilamentGroup, FilamentSlot, NozzleTelemetry, Printer, PrinterKind, PrinterState, Telemetry,
+    FilamentGroup,
+    FilamentSlot,
+    NozzleTelemetry,
+    Printer,
+    PrinterKind,
+    PrinterState,
+    Telemetry,
 )
+from gantry.layout import place_cards  # noqa: E402
 
 
 class _StubConfig:
-    data = {"spoolbase_enabled": True, "card_show_spool_grams": False}
+    data = {
+        "theme": "dark",
+        "dashboard_columns": 2,
+        "collapsed": False,
+        "collapsed_chosen": True,
+        "spoolbase_enabled": True,
+        "card_show_spool_grams": True,
+        "card_show_filename": True,
+        "card_show_progress": True,
+        "card_show_temperatures": True,
+        "card_show_filaments": True,
+        "monochrome": False,
+    }
+
+    def save(self) -> None:
+        pass
 
 
 class StubApp:
     language = "pl"
     text = gapp.TEXT["pl"]
-    window = None
     config = _StubConfig()
     physical_spools = None
     filament_store = None
+    indicator_available = True
+    expanded_compact_serial = None
+    stages = gapp.STAGES
 
-    def open_printer_dialog(self, *a): ...
-    def remove_printer(self, *a): ...
-    def move_printer(self, *a): ...
-    def toggle_compact_printer(self, *a): ...
-    def open_details(self, *a): ...
+    def __init__(self, printers: list[Printer], telemetry: dict[str, Telemetry]) -> None:
+        self.printers = printers
+        self.telemetry = telemetry
+        self.cards: dict[str, gapp.PrinterCard] = {}
+        self.window = None
+
+    def is_compact(self) -> bool:
+        return False
+
+    def open_printer_dialog(self, *args): pass
+    def remove_printer(self, *args): pass
+    def move_printer(self, *args): pass
+    def toggle_compact_printer(self, *args): pass
+    def open_details(self, *args): pass
+    def open_automations(self, *args): pass
+    def open_camera(self, *args): pass
+    def reconnect_all(self, *args): pass
+    def reset_completed(self, *args): pass
+    def rebuild_cards(self, *args): pass
 
 
-def slot(label, material, color, remaining, active):
-    return FilamentSlot(slot_id=label, label=label, material=material, color=color,
-                        remaining=remaining, active=active)
+def slot(label: str, material: str | None = None, color: str | None = None,
+         remaining: int | None = None, active: bool = False,
+         grams: float | None = None) -> FilamentSlot:
+    return FilamentSlot(
+        slot_id=label, label=label, material=material, color=color, remaining=remaining,
+        active=active, remaining_weight_g=grams,
+    )
+
+
+def group(group_id: str, name: str, slots: list[FilamentSlot], *, external: bool = False,
+          humidity: int | None = None, temperature: float | None = None) -> FilamentGroup:
+    return FilamentGroup(
+        group_id=group_id, source_type="external" if external else "ams", display_name=name,
+        declared_capacity=len(slots), external=external, humidity=humidity,
+        temperature=temperature, slots=slots,
+    )
+
+
+def telemetry(*, progress: int, remaining: int, nozzle: float, nozzle_target: float,
+              bed: float, bed_target: float, chamber: float | None, layer: int,
+              layers: int, job: str, groups: list[FilamentGroup],
+              nozzles: list[NozzleTelemetry] | None = None) -> Telemetry:
+    return Telemetry(
+        state=PrinterState.PRINTING, progress=progress, remaining_minutes=remaining,
+        nozzle=nozzle, nozzle_target=nozzle_target, bed=bed, bed_target=bed_target,
+        chamber=chamber, current_layer=layer, total_layers=layers, job_name=job,
+        filament_groups=groups,
+        nozzles=nozzles or [NozzleTelemetry(position="single", current=nozzle, target=nozzle_target)],
+    )
+
+
+def preview_data() -> tuple[list[Printer], dict[str, Telemetry]]:
+    printers = [
+        Printer(serial="X1", name="X1", host="192.168.1.31", kind=PrinterKind.BAMBU),
+        Printer(serial="P2S", name="P2S", host="192.168.1.32", kind=PrinterKind.BAMBU),
+        Printer(serial="P1S", name="P1S", host="192.168.1.33", kind=PrinterKind.BAMBU),
+        Printer(serial="MINI", name="MINI", host="192.168.1.34", kind=PrinterKind.PRUSA),
+        Printer(serial="X2D", name="X2D", host="192.168.1.35", kind=PrinterKind.BAMBU),
+    ]
+    x1_ams = group("x1-ams", "AMS A", [
+        slot("A1"), slot("A2"), slot("A3"),
+        slot("A4", "PETG", "1D1F22FF", 8, True, 80),
+    ], humidity=20, temperature=49)
+    p2s_ht = group("p2s-ht", "AMS HT", [slot("A1", "PETG", "222326FF", 0, True)],
+                   humidity=36, temperature=30)
+    p1s_ht = group("p1s-ht", "AMS HT", [slot("A1", "PETG", "202124FF", 36, True, 360)],
+                   humidity=42, temperature=33)
+    x2d_ams = group("x2d-ams", "AMS A", [
+        slot("A1", "PLA", "6E5D68FF", 2, True, 20), slot("A2"), slot("A3"),
+        slot("A4", "PLA", "168ED1FF", 56, True, 560),
+    ], humidity=22, temperature=39)
+    ext_tpu = group("x1-ext", "EXT", [slot("EXT", "TPU", "40572EFF", 100, True, 1000)], external=True)
+    ext_petg = group("p2s-ext", "EXT", [slot("EXT", "PETG", "A6A8ADFF", 100, True, 1000)], external=True)
+    ext_pla = group("x2d-ext", "EXT 2", [slot("EXT 2", "PLA", "F2F2F2FF", 100, True, 1000)], external=True)
+
+    values = {
+        "X1": telemetry(progress=70, remaining=44, nozzle=255, nozzle_target=255, bed=65,
+                        bed_target=65, chamber=51, layer=120, layers=276,
+                        job="ADAPTER-PVC110-SPIRO100", groups=[x1_ams, ext_tpu]),
+        "P2S": telemetry(progress=67, remaining=44, nozzle=250, nozzle_target=250, bed=70,
+                         bed_target=70, chamber=52, layer=95, layers=226,
+                         job="zero clearance dewalt 7492", groups=[p2s_ht, ext_petg]),
+        "P1S": telemetry(progress=38, remaining=97, nozzle=256, nozzle_target=255, bed=65,
+                         bed_target=65, chamber=None, layer=28, layers=110,
+                         job="set print", groups=[p1s_ht]),
+        "MINI": Telemetry(state=PrinterState.OFFLINE),
+        "X2D": telemetry(
+            progress=46, remaining=154, nozzle=220, nozzle_target=220, bed=46, bed_target=46,
+            chamber=41, layer=25, layers=115, job="magnetic_x2d", groups=[x2d_ams, ext_pla],
+            nozzles=[NozzleTelemetry(position="left", current=220, target=220),
+                     NozzleTelemetry(position="right", current=47, target=40)],
+        ),
+    }
+    return printers, values
 
 
 def main(out_path: str) -> None:
     provider = Gtk.CssProvider()
-    provider.load_from_data(gapp.css_for("dark"))
+    provider.load_from_data(gapp.css_for("dark", 0.82))
     Gtk.StyleContext.add_provider_for_screen(
         Gdk.Screen.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
 
-    app = StubApp()
-    ams_a = FilamentGroup(group_id="a", source_type="ams", display_name="AMS A", declared_capacity=4,
-                          external=False, humidity=19, temperature=47, slots=[
-                              slot("A1", None, None, None, False),
-                              slot("A2", "PLA", "E8C848FF", 60, False),
-                              slot("A3", "PETG", "111111FF", 8, True),
-                              slot("A4", None, None, None, False)])
-    ext_x1 = FilamentGroup(group_id="e", source_type="external", display_name="EXT", declared_capacity=1,
-                           external=True, slots=[slot("EXT", "TPU", "487705FF", 100, True)])
-    ams_ht = FilamentGroup(group_id="ht", source_type="amsHT", display_name="AMS HT", declared_capacity=1,
-                           external=False, humidity=33, temperature=36, slots=[slot("A1", None, None, None, False)])
-    ext_p2s = FilamentGroup(group_id="eb", source_type="external", display_name="EXT", declared_capacity=1,
-                            external=True, slots=[slot("EXT", "PETG", "161616FF", 100, True)])
-
-    def tel(dual, groups, job, prog, layer):
-        t = Telemetry()
-        t.state = PrinterState.PRINTING
-        t.progress = prog
-        t.remaining_minutes = 43
-        t.nozzle, t.nozzle_target = 245, 245
-        t.bed, t.bed_target = 70, 70
-        t.chamber = 51
-        t.current_layer, t.total_layers = layer, 326
-        t.job_name = job
-        t.filament_groups = groups
-        t.nozzles = ([NozzleTelemetry(position="left", current=49, target=40),
-                      NozzleTelemetry(position="right", current=220, target=220)]
-                     if dual else [NozzleTelemetry(position="single", current=245, target=245)])
-        return t
-
-    defs = [
-        (Printer(serial="X1", name="Bambu 3058", host="1.2.3.4", kind=PrinterKind.BAMBU),
-         tel(False, [ams_a, ext_x1], "demo_1", 76, 185)),
-        (Printer(serial="P2S", name="P1S", host="1.2.3.4", kind=PrinterKind.BAMBU),
-         tel(False, [ams_ht, ext_p2s], "demo_2", 71, 113)),
-    ]
-
-    grid = Gtk.Grid(column_spacing=10, row_spacing=10, margin=12)
-    for i, (printer, t) in enumerate(defs):
+    printers, values = preview_data()
+    app = StubApp(printers, values)
+    window = gapp.Dashboard(app)
+    app.window = window
+    placements = place_cards([printer.serial for printer in printers], values, 2)
+    for printer, placement in zip(printers, placements):
         card = gapp.PrinterCard(app, printer)
-        card.update(t)
-        grid.attach(card, i % 2, i // 2, 1, 1)
-
-    win = Gtk.OffscreenWindow()
-    win.get_style_context().add_class("popover-window")
-    win.add(grid)
-    win.show_all()
+        app.cards[printer.serial] = card
+        window.grid.attach(card, placement.column, placement.row, placement.span, 1)
+        card.update(values[printer.serial])
+    window.update_header()
+    window.grid.show_all()
+    window.show_all()
     while Gtk.events_pending():
         Gtk.main_iteration()
-    pixbuf = win.get_pixbuf()
+    # GTK only knows the fleet's natural height after the first allocation. Re-apply the same
+    # production sizing rule now, otherwise a headless backend may keep its 150 px bootstrap size.
+    window.resize_for_content()
+    while Gtk.events_pending():
+        Gtk.main_iteration()
+
+    width, height = window.get_size()
+    pixbuf = Gdk.pixbuf_get_from_window(window.get_window(), 0, 0, width, height)
+    if pixbuf is None:
+        raise RuntimeError("GTK did not expose a drawable window")
     pixbuf.savev(out_path, "png", [], [])
     print("rendered", out_path, pixbuf.get_width(), "x", pixbuf.get_height())
+    window.destroy()
 
 
 if __name__ == "__main__":
