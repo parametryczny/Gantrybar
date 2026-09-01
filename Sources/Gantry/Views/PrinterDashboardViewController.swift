@@ -657,10 +657,9 @@ final class PrinterDashboardViewController: NSViewController {
         guard let host = view.window?.contentView else { return }
         MaintenancePanelViewController.dismiss()
         PrinterCardView.dismissSpoolOverlay()
-        beginSpoolOverlaySizing()
-        MaintenancePanelViewController.show(printer: printer, telemetry: telemetry, in: host) {
-            PrinterDashboardViewController.endSpoolOverlaySizing()
-        }
+        // Maintenance scrolls inside its own card. Resizing the status popover here made the whole
+        // Gantry panel visibly jump even when there was already enough room.
+        MaintenancePanelViewController.show(printer: printer, telemetry: telemetry, in: host)
     }
 
     /// Toggles whether one printer's full card is shown beneath its compact row (accordion).

@@ -24,7 +24,7 @@ final class MaintenancePanelViewController: NSViewController {
         let backdrop = MaintenanceBackdropView(frame: host.bounds)
         backdrop.autoresizingMask = [.width, .height]
         backdrop.wantsLayer = true
-        backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.34).cgColor
+        backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.30).cgColor
         backdrop.onClickOutside = { MaintenancePanelViewController.dismiss() }
 
         let panel = controller.view
@@ -68,10 +68,10 @@ final class MaintenancePanelViewController: NSViewController {
     override func loadView() {
         let panel = NSView(frame: NSRect(x: 0, y: 0, width: 430, height: 560))
         panel.wantsLayer = true
-        panel.layer?.cornerRadius = 16
+        panel.layer?.cornerRadius = GantryTheme.cardRadius
         panel.layer?.borderWidth = 1
         panel.layer?.borderColor = GantryTheme.line.cgColor
-        panel.layer?.backgroundColor = GantryTheme.canvas.withAlphaComponent(0.98).cgColor
+        panel.layer?.backgroundColor = GantryTheme.card.withAlphaComponent(0.98).cgColor
         panel.layer?.masksToBounds = true
         view = panel
         rebuild()
@@ -170,10 +170,14 @@ final class MaintenancePanelViewController: NSViewController {
     private func taskCard(_ task: PrinterInsightsStore.TaskStatus, settings s: AppSettings) -> NSView {
         let box = NSView()
         box.wantsLayer = true
-        box.layer?.cornerRadius = 10
+        box.layer?.cornerRadius = GantryTheme.tileRadius
         box.layer?.borderWidth = 1
-        box.layer?.borderColor = (task.isUrgent ? NSColor.systemRed : task.isDue ? NSColor.systemYellow : GantryTheme.line).withAlphaComponent(0.6).cgColor
-        box.layer?.backgroundColor = GantryTheme.card.withAlphaComponent(0.72).cgColor
+        let borderColor: NSColor
+        if task.isUrgent { borderColor = GantryTheme.statusError.withAlphaComponent(0.55) }
+        else if task.isDue { borderColor = GantryTheme.statusPaused.withAlphaComponent(0.45) }
+        else { borderColor = GantryTheme.line }
+        box.layer?.borderColor = borderColor.cgColor
+        box.layer?.backgroundColor = GantryTheme.surface.cgColor
 
         let icon = task.isUrgent ? "!" : task.isDue ? "⚠" : "○"
         let title = label("\(icon)  \(task.title)", 13, .semibold)
@@ -190,8 +194,17 @@ final class MaintenancePanelViewController: NSViewController {
         let interval = NSTextField(string: String(Int(task.intervalHours.rounded())))
         interval.alignment = .right
         interval.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        interval.isBezeled = false
+        interval.drawsBackground = true
+        interval.backgroundColor = GantryTheme.surface
+        interval.textColor = GantryTheme.text
+        interval.wantsLayer = true
+        interval.layer?.cornerRadius = 7
+        interval.layer?.borderWidth = 1
+        interval.layer?.borderColor = GantryTheme.line.cgColor
         interval.toolTip = s.text("Interwał w godzinach druku", "Interval in print hours")
         interval.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        interval.heightAnchor.constraint(equalToConstant: 28).isActive = true
         let hours = label("h", 11, .regular, GantryTheme.muted)
         let save = button(s.text("Ustaw", "Set")) { [weak self, weak interval] in
             guard let self, let value = Double(interval?.stringValue ?? ""), value >= 1 else { return }
@@ -237,9 +250,17 @@ final class MaintenancePanelViewController: NSViewController {
 
     private func button(_ title: String, action: @escaping () -> Void) -> NSButton {
         let button = ClosureButton(title: title, action: action)
-        button.bezelStyle = .rounded
+        button.bezelStyle = .regularSquare
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 7
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = GantryTheme.line.cgColor
+        button.layer?.backgroundColor = GantryTheme.surface.cgColor
+        button.contentTintColor = GantryTheme.text
         button.controlSize = .small
-        button.font = .systemFont(ofSize: 10.5, weight: .medium)
+        button.font = .systemFont(ofSize: 10.5, weight: .semibold)
+        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
         return button
     }
 
