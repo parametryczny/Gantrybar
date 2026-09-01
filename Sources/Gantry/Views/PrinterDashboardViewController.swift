@@ -926,6 +926,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     private let bedMetric = LabeledMetricView()
     private let chamberMetric = LabeledMetricView()
     private let maintenanceChip = NSButton()
+    private let printerAlertChip = NSButton()
     private let nozzleRow = NSStackView()
     private let envRow = NSStackView()
     private let tempBento = TemperatureBentoView()
@@ -1115,7 +1116,15 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         maintenanceChip.toolTip = AppSettings.shared.text("Konserwacja", "Maintenance")
         maintenanceChip.isHidden = true
         maintenanceChip.setContentHuggingPriority(.required, for: .horizontal)
-        let header = NSStackView(views: [stateDot, titleCluster, detailsChip, NSView(), maintenanceChip, handle, actions])
+        printerAlertChip.bezelStyle = .recessed
+        printerAlertChip.isBordered = false
+        printerAlertChip.font = .systemFont(ofSize: 10, weight: .bold)
+        printerAlertChip.contentTintColor = GantryTheme.statusError
+        printerAlertChip.target = self
+        printerAlertChip.action = #selector(maintenancePressed)
+        printerAlertChip.isHidden = true
+        printerAlertChip.setContentHuggingPriority(.required, for: .horizontal)
+        let header = NSStackView(views: [stateDot, titleCluster, detailsChip, NSView(), printerAlertChip, maintenanceChip, handle, actions])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 7
@@ -1409,7 +1418,17 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         stateDot.contentTintColor = stateColor(telemetry.state)
         jobStateDot.layer?.backgroundColor = stateColor(telemetry.state).cgColor
         updateCardEmphasis(for: telemetry.state)
-        switch PrinterInsightsStore.shared.signal(serial: printer.serial, hmsCodes: telemetry.hmsCodes) {
+        let hasPrinterAlert = !telemetry.hmsCodes.isEmpty || telemetry.errorCode != 0 || telemetry.state == .error
+        printerAlertChip.isHidden = !hasPrinterAlert
+        if hasPrinterAlert {
+            let count = max(1, telemetry.hmsCodes.count)
+            printerAlertChip.title = count > 1 ? "! \(count)" : "!"
+            printerAlertChip.toolTip = HMSResolver.shared.description(
+                for: telemetry.hmsCodes, serial: printer.serial, language: settings.language
+            ) ?? settings.text("Drukarka zgłosiła uwagę lub błąd", "Printer reported an alert or error")
+        }
+
+        switch PrinterInsightsStore.shared.signal(serial: printer.serial) {
         case .none:
             maintenanceChip.isHidden = true
         case .planned:
@@ -1423,9 +1442,9 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             maintenanceChip.toolTip = settings.text("Wymagana konserwacja", "Maintenance due")
             maintenanceChip.isHidden = false
         case .urgent(let count):
-            maintenanceChip.title = "! \(count)"
+            maintenanceChip.title = "🔧 \(count)"
             maintenanceChip.contentTintColor = .systemRed
-            maintenanceChip.toolTip = settings.text("Pilna czynność lub błąd drukarki", "Urgent task or printer error")
+            maintenanceChip.toolTip = settings.text("Pilna czynność konserwacyjna", "Urgent maintenance task")
             maintenanceChip.isHidden = false
         }
 

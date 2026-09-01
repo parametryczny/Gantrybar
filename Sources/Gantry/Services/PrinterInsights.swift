@@ -157,9 +157,9 @@ final class PrinterInsightsStore {
                         tasks: tasks, consumedGrams: grams)
     }
 
-    func signal(serial: String, hmsCodes: [String]) -> Signal {
+    func signal(serial: String) -> Signal {
         let tasks = snapshot(serial: serial, polish: true).tasks
-        let urgent = tasks.filter(\.isUrgent).count + (hmsCodes.isEmpty ? 0 : 1)
+        let urgent = tasks.filter(\.isUrgent).count
         if urgent > 0 { return .urgent(urgent) }
         let due = tasks.filter(\.isDue).count
         if due > 0 { return .due(due) }

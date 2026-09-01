@@ -30,9 +30,9 @@ final class MaintenancePanelViewController: NSViewController {
         let panel = controller.view
         panel.translatesAutoresizingMaskIntoConstraints = false
         backdrop.addSubview(panel)
-        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 430)
+        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 520)
         preferredWidth.priority = .defaultHigh
-        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 560)
+        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 680)
         preferredHeight.priority = .defaultHigh
         NSLayoutConstraint.activate([
             panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
@@ -66,7 +66,7 @@ final class MaintenancePanelViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let panel = NSView(frame: NSRect(x: 0, y: 0, width: 430, height: 560))
+        let panel = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 680))
         panel.wantsLayer = true
         panel.layer?.cornerRadius = GantryTheme.cardRadius
         panel.layer?.borderWidth = 1
@@ -86,6 +86,8 @@ final class MaintenancePanelViewController: NSViewController {
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
         scroll.translatesAutoresizingMaskIntoConstraints = false
         body = NSStackView()
         body.orientation = .vertical
@@ -111,6 +113,16 @@ final class MaintenancePanelViewController: NSViewController {
                                    telemetry.nozzleDiameter.map { String(format: "%.1f mm", $0) } ?? "—"),
                             12, .regular, GantryTheme.secondary)
         body.addArrangedSubview(summary)
+
+        let printerAlerts = alertMessages(settings: s)
+        if !printerAlerts.isEmpty {
+            body.addArrangedSubview(label(s.text("UWAGI DRUKARKI", "PRINTER ALERTS"), 10, .bold, GantryTheme.muted))
+            for alert in printerAlerts {
+                let card = printerAlertCard(title: alert.title, code: alert.code)
+                body.addArrangedSubview(card)
+                card.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
+            }
+        }
 
         for task in snapshot.tasks {
             let card = taskCard(task, settings: s)
@@ -166,6 +178,52 @@ final class MaintenancePanelViewController: NSViewController {
     }
 
     @objc private func closePressed() { Self.dismiss() }
+
+    private func alertMessages(settings s: AppSettings) -> [(title: String, code: String?)] {
+        if !telemetry.hmsCodes.isEmpty {
+            return telemetry.hmsCodes.map { code in
+                let description = HMSResolver.shared.description(
+                    for: [code], serial: printer.serial, language: s.language
+                ) ?? "HMS \(code)"
+                return (description, code)
+            }
+        }
+        if telemetry.errorCode != 0 {
+            return [(
+                String(format: s.text("Kod błędu: 0x%llX", "Error code: 0x%llX"), telemetry.errorCode),
+                nil
+            )]
+        }
+        if telemetry.state == .error {
+            return [(s.text("Drukarka zgłosiła błąd", "Printer reported an error"), nil)]
+        }
+        return []
+    }
+
+    private func printerAlertCard(title: String, code: String?) -> NSView {
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.cornerRadius = GantryTheme.tileRadius
+        box.layer?.backgroundColor = GantryTheme.statusError.withAlphaComponent(0.08).cgColor
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = GantryTheme.statusError.withAlphaComponent(0.38).cgColor
+        let titleLabel = label("!  \(title)", 12, .semibold, GantryTheme.text)
+        var rows: [NSView] = [titleLabel]
+        if let code { rows.append(label(code, 10, .regular, GantryTheme.secondary)) }
+        let stack = NSStackView(views: rows)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 3
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
+            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 9),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -9)
+        ])
+        return box
+    }
 
     private func taskCard(_ task: PrinterInsightsStore.TaskStatus, settings s: AppSettings) -> NSView {
         let box = NSView()
