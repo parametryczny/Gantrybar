@@ -78,7 +78,11 @@ final class TelegramBot {
         case "a" where parts.count >= 3:
             await runAction(parts[1], serial: parts[2], cbID: cbID, messageID: messageID)
         case "photo" where parts.count > 1:
-            await answer(cbID, "Zdjęcie z kamery — wkrótce")
+            await answer(cbID, "📷")
+            await send(text: AppSettings.shared.text(
+                "📷 Zdjęcie z kamery jest w przygotowaniu. Kamery Bambu nadają H.264 (RTSP), więc snapshot wymaga dekodowania klatki — dodam to wkrótce.",
+                "📷 Camera snapshot is in preparation. Bambu cameras stream H.264 (RTSP), so a snapshot needs a frame decode — coming soon."),
+                replyMarkup: nil)
         default:
             await answer(cbID, "")
         }
@@ -155,6 +159,18 @@ final class TelegramBot {
         lines.append("\(s.text("Dysza", "Nozzle")) \(temp(t.nozzleTemperature, t.nozzleTargetTemperature))"
             + " · \(s.text("stół", "bed")) \(temp(t.bedTemperature, t.bedTargetTemperature))"
             + (t.chamberTemperature != nil ? " · \(s.text("komora", "chamber")) \(temp(t.chamberTemperature, nil))" : ""))
+        // Filament modules (AMS / AMS HT / CFS / EXT): one line each, only the loaded slots, with an
+        // active marker so you see which spool is printing.
+        for group in t.filamentGroups {
+            let loaded = group.slots.filter(\.isPresent).map { slot -> String in
+                let marker = slot.isActive ? "● " : ""
+                let pct = slot.remainingPercent.map { " \($0)%" } ?? ""
+                return "\(marker)\(slot.label) \(slot.material ?? "")\(pct)".trimmingCharacters(in: .whitespaces)
+            }
+            guard !loaded.isEmpty else { continue }
+            let humidity = group.humidityPercent.map { " · 💧\($0)%" } ?? ""
+            lines.append("\(group.displayName)\(humidity): " + loaded.joined(separator: " · "))
+        }
         return lines.joined(separator: "\n")
     }
 
