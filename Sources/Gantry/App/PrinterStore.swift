@@ -729,6 +729,9 @@ final class PrinterStore: ObservableObject {
             NotificationService.post(title: title, body: body, subtitle: printer.name)
             TelegramService.notify(printer: printer.name, title: title, body: body)
         }
+        if current.state == .finished, previous?.state != .finished {
+            PrintHistory.record(serial: printer.serial, printer: printer.name, job: current.jobName ?? "")
+        }
         if settings.notifyFinished, current.state == .finished, previous?.state != .finished {
             push(title: settings.text("Druk zakończony", "Print finished"),
                  body: current.jobName ?? settings.text("Zadanie zostało ukończone.", "The job has completed."))

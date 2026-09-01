@@ -13,6 +13,7 @@ final class TelegramBot {
 
     private weak var store: PrinterStore?
     private var task: Task<Void, Never>?
+    private var watchTask: Task<Void, Never>?
     private var offset = 0
 
     init(store: PrinterStore) { self.store = store; TelegramBot.shared = self }
@@ -22,7 +23,7 @@ final class TelegramBot {
     func syncWithSettings() {
         let configured = AppSettings.shared.telegramEnabled && !token.isEmpty && !chatID.isEmpty
         if configured, task == nil { task = Task { [weak self] in await self?.loop() } }
-        else if !configured, task != nil { task?.cancel(); task = nil }
+        else if !configured, task != nil { task?.cancel(); task = nil; watchTask?.cancel(); watchTask = nil }
     }
 
     private var token: String { AppSettings.shared.telegramBotToken.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -54,7 +55,7 @@ final class TelegramBot {
     private func handle(_ update: [String: Any]) async {
         if let message = update["message"] as? [String: Any] {
             guard authorized(message["chat"] as? [String: Any]) else { return }
-            await sendPrinterMenu(messageID: nil)
+            await handleText((message["text"] as? String ?? "").trimmingCharacters(in: .whitespaces))
         } else if let callback = update["callback_query"] as? [String: Any] {
             let id = callback["id"] as? String ?? ""
             let message = callback["message"] as? [String: Any]
@@ -66,6 +67,166 @@ final class TelegramBot {
     private func authorized(_ chat: [String: Any]?) -> Bool {
         guard let id = chat?["id"] else { return false }
         return "\(id)" == chatID
+    }
+
+    private func handleText(_ text: String) async {
+        let parts = text.split(separator: " ").map(String.init)
+        // Strip a trailing @botname from the command (Telegram adds it in groups).
+        let command = (parts.first ?? "").split(separator: "@").first.map(String.init)?.lowercased() ?? ""
+        let argument = parts.count > 1 ? parts[1] : nil
+        switch command {
+        case "/help", "/start": await sendHelp()
+        case "/all":            await sendAll()
+        case "/spools":         await sendSpools()
+        case "/history":        await sendHistory()
+        case "/mute":           await handleMute(argument)
+        case "/watch":          await handleWatch(argument)
+        default:                await sendPrinterMenu(messageID: nil)   // /status, /menu, plain text
+        }
+    }
+
+    // MARK: Commands
+
+    private func sendHelp() async {
+        let s = AppSettings.shared
+        let text = s.text(
+            """
+            🖨 Gantry — komendy:
+            /status — wybór drukarki + sterowanie
+            /all — cała flota w skrócie
+            /spools — rolki na wyczerpaniu
+            /history — ostatnie wydruki
+            /watch 10m — zdjęcia co 10 min (/watch off)
+            /mute 2h — wycisz alerty (/mute off)
+            /help — to menu
+            """,
+            """
+            🖨 Gantry — commands:
+            /status — pick a printer + controls
+            /all — whole fleet at a glance
+            /spools — spools running low
+            /history — recent prints
+            /watch 10m — a photo every 10 min (/watch off)
+            /mute 2h — silence alerts (/mute off)
+            /help — this menu
+            """)
+        await api("sendMessage", ["chat_id": chatID, "text": text, "reply_markup": commandKeyboard()])
+    }
+
+    private func sendAll() async {
+        let printers = store?.printers ?? []
+        guard !printers.isEmpty else { await send(text: AppSettings.shared.text("Brak drukarek.", "No printers."), replyMarkup: nil); return }
+        let s = AppSettings.shared
+        let lines = printers.map { printer -> String in
+            let t = store?.telemetry[printer.serial] ?? PrinterTelemetry()
+            var line = "\(iconFor(printer.serial)) \(printer.name): \(stateLabel(t.state))"
+            if t.state == .printing || t.state == .paused {
+                line += " · \(t.progress)%"
+                if let m = t.remainingMinutes, m > 0 { line += " · ETA \(m / 60)h \(m % 60)m" }
+            }
+            return line
+        }
+        await send(text: s.text("🖨 Flota:", "🖨 Fleet:") + "\n" + lines.joined(separator: "\n"), replyMarkup: nil)
+    }
+
+    private func sendSpools() async {
+        let s = AppSettings.shared
+        let spools = SpoolbaseShared.spools.spools
+            .filter { $0.status != .archived && $0.status != .empty && $0.percent <= 20 }
+            .sorted { $0.percent < $1.percent }
+        if spools.isEmpty {
+            await send(text: s.text("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), replyMarkup: nil)
+            return
+        }
+        let lines = spools.prefix(15).map { spool -> String in
+            let def = SpoolbaseShared.filaments.filaments.first { $0.id == spool.filamentDefinitionID }
+            let material = def?.type ?? def?.name ?? "—"
+            return "\(colorDot(def?.colorHex)) \(material) · \(spool.id) · \(spool.percent)% · \(Int(spool.remainingWeightGrams)) g"
+        }
+        await send(text: s.text("🧵 Rolki na wyczerpaniu:", "🧵 Spools running low:") + "\n" + lines.joined(separator: "\n"), replyMarkup: nil)
+    }
+
+    private func sendHistory() async {
+        let s = AppSettings.shared
+        let entries = PrintHistory.recent(10)
+        guard !entries.isEmpty else { await send(text: s.text("Brak historii wydruków.", "No print history yet."), replyMarkup: nil); return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd.MM HH:mm"
+        let lines = entries.map { entry in
+            "\(formatter.string(from: entry.date)) · \(entry.printer)" + (entry.job.isEmpty ? "" : " · \(entry.job)")
+        }
+        await send(text: s.text("📜 Ostatnie wydruki:", "📜 Recent prints:") + "\n" + lines.joined(separator: "\n"), replyMarkup: nil)
+    }
+
+    private func handleMute(_ argument: String?) async {
+        let s = AppSettings.shared
+        if argument?.lowercased() == "off" {
+            AppSettings.shared.telegramMuteUntil = nil
+            await send(text: s.text("🔔 Wyciszenie wyłączone.", "🔔 Mute off."), replyMarkup: nil)
+            return
+        }
+        guard let argument, let seconds = parseDuration(argument) else {
+            if let until = s.telegramMuteUntil {
+                let f = DateFormatter(); f.dateFormat = "HH:mm"
+                await send(text: s.text("🔕 Wyciszone do \(f.string(from: until)). Wyłącz: /mute off",
+                                        "🔕 Muted until \(f.string(from: until)). Turn off: /mute off"), replyMarkup: nil)
+            } else {
+                await send(text: s.text("Podaj czas, np. /mute 2h lub /mute 30m. Wyłącz: /mute off",
+                                        "Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), replyMarkup: nil)
+            }
+            return
+        }
+        let until = Date().addingTimeInterval(seconds)
+        AppSettings.shared.telegramMuteUntil = until
+        let f = DateFormatter(); f.dateFormat = "HH:mm"
+        await send(text: s.text("🔕 Alerty wyciszone do \(f.string(from: until)).", "🔕 Alerts muted until \(f.string(from: until))."), replyMarkup: nil)
+    }
+
+    private func handleWatch(_ argument: String?) async {
+        let s = AppSettings.shared
+        if argument?.lowercased() == "off" {
+            watchTask?.cancel(); watchTask = nil
+            await send(text: s.text("📷 Watch wyłączony.", "📷 Watch off."), replyMarkup: nil)
+            return
+        }
+        guard let argument, let seconds = parseDuration(argument), seconds >= 60 else {
+            await send(text: s.text("Podaj odstęp ≥ 1 min, np. /watch 10m. Wyłącz: /watch off",
+                                    "Give an interval ≥ 1 min, e.g. /watch 10m. Turn off: /watch off"), replyMarkup: nil)
+            return
+        }
+        watchTask?.cancel()
+        watchTask = Task { [weak self] in await self?.watchLoop(interval: seconds) }
+        await send(text: s.text("📷 Watch: zdjęcia drukujących drukarek co \(argument). Wyłącz: /watch off",
+                                "📷 Watch: photos of printing machines every \(argument). Turn off: /watch off"), replyMarkup: nil)
+    }
+
+    private func watchLoop(interval: TimeInterval) async {
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            guard !Task.isCancelled else { break }
+            for printer in store?.printers ?? [] where store?.telemetry[printer.serial]?.state == .printing {
+                guard let store, let jpeg = await CameraSnapshot.capture(printer: printer, store: store) else { continue }
+                let pct = store.telemetry[printer.serial]?.progress ?? 0
+                await sendPhoto(jpeg: jpeg, caption: "🖨 \(printer.name) · \(pct)%")
+            }
+        }
+    }
+
+    /// Parses "30m" / "2h" / "90" (minutes) into seconds.
+    private func parseDuration(_ text: String) -> TimeInterval? {
+        let lower = text.lowercased()
+        if lower.hasSuffix("h"), let n = Double(lower.dropLast()) { return n * 3600 }
+        if lower.hasSuffix("m"), let n = Double(lower.dropLast()) { return n * 60 }
+        if let n = Double(lower) { return n * 60 }
+        return nil
+    }
+
+    private func commandKeyboard() -> String {
+        let rows = [["/status", "/all"], ["/spools", "/history"], ["/watch 10m", "/mute 2h"], ["/help"]]
+        let markup: [String: Any] = ["keyboard": rows.map { $0.map { ["text": $0] } },
+                                     "resize_keyboard": true]
+        let data = (try? JSONSerialization.data(withJSONObject: markup)) ?? Data()
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private func handleCallback(_ data: String, cbID: String, messageID: Int?) async {

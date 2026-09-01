@@ -103,6 +103,12 @@ final class AppSettings: ObservableObject {
     @Published var telegramEnabled: Bool { didSet { defaults.set(telegramEnabled, forKey: "telegram-enabled") } }
     @Published var telegramBotToken: String { didSet { defaults.set(telegramBotToken, forKey: "telegram-bot-token") } }
     @Published var telegramChatID: String { didSet { defaults.set(telegramChatID, forKey: "telegram-chat-id") } }
+    /// Alerts (Telegram push) are silenced until this moment — set by the bot's `/mute`. Not @Published:
+    /// only the notify path reads it. Zero/absent means not muted.
+    var telegramMuteUntil: Date? {
+        get { let t = defaults.double(forKey: "telegram-mute-until"); return t > Date().timeIntervalSince1970 ? Date(timeIntervalSince1970: t) : nil }
+        set { defaults.set(newValue?.timeIntervalSince1970 ?? 0, forKey: "telegram-mute-until") }
+    }
 
     @Published var notifyFinished: Bool { didSet { defaults.set(notifyFinished, forKey: "notify-finished") } }
     @Published var notifyError: Bool { didSet { defaults.set(notifyError, forKey: "notify-error") } }

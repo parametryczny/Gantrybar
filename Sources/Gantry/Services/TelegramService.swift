@@ -16,6 +16,7 @@ enum TelegramService {
     static func notify(printer: String, title: String, body: String) {
         let settings = AppSettings.shared
         guard settings.telegramEnabled else { return }
+        if settings.telegramMuteUntil != nil { return }   // alerts silenced by /mute
         let token = settings.telegramBotToken.trimmingCharacters(in: .whitespacesAndNewlines)
         let chat = settings.telegramChatID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty, !chat.isEmpty else { return }
