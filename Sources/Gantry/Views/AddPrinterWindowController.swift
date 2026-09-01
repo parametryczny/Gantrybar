@@ -27,7 +27,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     private let hostLabel = NSTextField(labelWithString: "")
     private let serialLabel = NSTextField(labelWithString: "")
     private let codeLabel = NSTextField(labelWithString: "")
-    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Elegoo", "Klipper", "Prusa", "Snapmaker"], trackingMode: .selectOne, target: nil, action: nil)
+    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Elegoo", "Anycubic", "Klipper", "Prusa", "Snapmaker"], trackingMode: .selectOne, target: nil, action: nil)
     private let elegooModelLabel = NSTextField(labelWithString: "Model Elegoo:")
     private let elegooModelPopup = NSPopUpButton()
     private let portField = NSTextField()
@@ -178,9 +178,10 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     private var selectedKind: PrinterKind {
         switch typeControl.selectedSegment {
         case 1: return elegooModelPopup.indexOfSelectedItem == 1 ? .elegooCC2 : .elegooCC1
-        case 2: return .klipper
-        case 3: return .prusa
-        case 4: return .snapmaker
+        case 2: return .anycubicKobraS1
+        case 3: return .klipper
+        case 4: return .prusa
+        case 5: return .snapmaker
         default: return .bambu
         }
     }
@@ -197,7 +198,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         form.row(at: 2).isHidden = selectedKind != .bambu
         form.row(at: 5).isHidden = hostBased
         form.row(at: 6).isHidden = hostBased || selectedKind == .elegooCC1
-        form.row(at: 7).isHidden = !hostBased || selectedKind == .snapmaker
+        form.row(at: 7).isHidden = !hostBased || selectedKind == .snapmaker || selectedKind == .anycubicKobraS1
         subnetSection.isHidden = selectedKind != .bambu
         let settings = AppSettings.shared
         switch selectedKind {
@@ -207,6 +208,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         case .snapmaker: portField.placeholderString = "8080"
         case .elegooCC1: portField.placeholderString = "3030"
         case .elegooCC2: portField.placeholderString = "1883"
+        case .anycubicKobraS1: portField.placeholderString = "18910"
         }
         switch selectedKind {
         case .klipper:
@@ -221,6 +223,10 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             infoLabel.stringValue = settings.text(
                 "Podaj adres IP drukarki Snapmaker (HTTP, port 8080). Obsługa: Snapmaker 2.0 i Artisan. Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę na połączenie — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
                 "Enter the Snapmaker printer IP (HTTP, port 8080). Supports Snapmaker 2.0 and Artisan. After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. You'll need to re-authorize after each power cycle.")
+        case .anycubicKobraS1:
+            infoLabel.stringValue = settings.text(
+                "Anycubic Kobra S1: podaj adres IP i włącz tryb LAN w drukarce. Gantry automatycznie pobierze dane MQTT przez port 18910. Kamera FLV: port 18088.",
+                "Anycubic Kobra S1: enter the IP address and enable LAN mode on the printer. Gantry obtains MQTT settings automatically via port 18910. FLV camera: port 18088.")
         case .bambu:
             infoLabel.stringValue = settings.text(
                 "Wykrywanie przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. Port zwykle 8883 — zmień tylko przy tunelu (np. socat na kilka drukarek). ",
@@ -465,6 +471,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             case .snapmaker:
                 try store.addSnapmaker(name: nameField.stringValue, host: host, port: port)
                 dropOldEntryIfIdentifierChanged("snapmaker-\(host)")
+            case .anycubicKobraS1:
+                try store.addAnycubicKobraS1(name: nameField.stringValue, host: host, port: port)
+                dropOldEntryIfIdentifierChanged("anycubic-kobra-s1-\(host)")
             case .elegooCC1, .elegooCC2:
                 let serial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if let editingSerial, editingSerial != serial,
@@ -493,6 +502,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
                 case .klipper: finalSerial = "klipper-\(host)"
                 case .prusa: finalSerial = "prusa-\(host)"
                 case .snapmaker: finalSerial = "snapmaker-\(host)"
+                case .anycubicKobraS1: finalSerial = "anycubic-kobra-s1-\(host)"
                 case .elegooCC1, .elegooCC2: finalSerial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 case .bambu: finalSerial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
@@ -539,9 +549,10 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         case .bambu: typeControl.selectedSegment = 0
         case .elegooCC1: typeControl.selectedSegment = 1; elegooModelPopup.selectItem(at: 0)
         case .elegooCC2: typeControl.selectedSegment = 1; elegooModelPopup.selectItem(at: 1)
-        case .klipper: typeControl.selectedSegment = 2
-        case .prusa: typeControl.selectedSegment = 3
-        case .snapmaker: typeControl.selectedSegment = 4
+        case .anycubicKobraS1: typeControl.selectedSegment = 2
+        case .klipper: typeControl.selectedSegment = 3
+        case .prusa: typeControl.selectedSegment = 4
+        case .snapmaker: typeControl.selectedSegment = 5
         }
         typeControl.isHidden = true          // kind is fixed when editing
         progressCheck.isHidden = false

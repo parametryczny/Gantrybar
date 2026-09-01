@@ -119,6 +119,7 @@ class PrinterDialog(Gtk.Dialog):
         box.pack_start(self.kind_label, False, False, 0)
         self.kind = Gtk.ComboBoxText()
         for value, label in (("bambu", "Bambu Lab"), ("elegoo", "Elegoo"),
+                             (PrinterKind.ANYCUBIC_KOBRA_S1.value, "Anycubic"),
                              ("klipper", "Klipper / Moonraker"),
                              ("prusa", "Prusa / PrusaLink"), ("snapmaker", "Snapmaker")):
             self.kind.append(value, label)
@@ -223,10 +224,12 @@ class PrinterDialog(Gtk.Dialog):
         self.bambu_section.set_visible(kind == PrinterKind.BAMBU or is_elegoo)
         self.rows["serial"].set_visible(kind == PrinterKind.BAMBU or is_elegoo)
         # Snapmaker authorizes via the printer's touchscreen — no access code / API key field.
-        self.rows["code"].set_visible(kind not in {PrinterKind.SNAPMAKER, PrinterKind.ELEGOO_CC1})
+        self.rows["code"].set_visible(kind not in {PrinterKind.SNAPMAKER, PrinterKind.ELEGOO_CC1,
+                                                    PrinterKind.ANYCUBIC_KOBRA_S1})
         defaults = {PrinterKind.BAMBU: 8883, PrinterKind.KLIPPER: 7125,
                     PrinterKind.PRUSA: 80, PrinterKind.SNAPMAKER: 8080,
-                    PrinterKind.ELEGOO_CC1: 3030, PrinterKind.ELEGOO_CC2: 1883}
+                    PrinterKind.ELEGOO_CC1: 3030, PrinterKind.ELEGOO_CC2: 1883,
+                    PrinterKind.ANYCUBIC_KOBRA_S1: 18910}
         if not self.printer or self.printer.kind != kind:
             self.fields["port"].set_text(str(defaults[kind]))
         if kind == PrinterKind.BAMBU:
@@ -260,12 +263,19 @@ class PrinterDialog(Gtk.Dialog):
                 "Elegoo Centauri Carbon • SDCP WebSocket, port 3030 • bez kodu dostępu. Kamera: port 3031."
                 if self.app.language == "pl" else
                 "Elegoo Centauri Carbon • SDCP WebSocket, port 3030 • no access code. Camera: port 3031.")
-        else:
+        elif kind == PrinterKind.ELEGOO_CC2:
             self.code_label.set_text("Kod dostępu Elegoo" if self.app.language == "pl" else "Elegoo access code")
             self.info.set_text(
                 "Elegoo Centauri Carbon 2 • MQTT LAN, port 1883. Włącz tryb LAN-only w drukarce. Kamera: MJPEG 8080."
                 if self.app.language == "pl" else
                 "Elegoo Centauri Carbon 2 • MQTT LAN, port 1883. Enable LAN-only mode on the printer. Camera: MJPEG 8080.")
+        else:
+            self.info.set_text(
+                "Anycubic Kobra S1 • wpisz adres IP i włącz tryb LAN w drukarce. Gantry automatycznie pobierze "
+                "identyfikatory i dane MQTT (bootstrap 18910). Kamera: FLV 18088."
+                if self.app.language == "pl" else
+                "Anycubic Kobra S1 • enter its IP address and enable LAN mode on the printer. Gantry obtains "
+                "the MQTT identifiers and credentials automatically (bootstrap 18910). Camera: FLV 18088.")
 
     def start_scan(self) -> None:
         if self.selected_kind not in {PrinterKind.BAMBU, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}: return
@@ -322,14 +332,16 @@ class PrinterDialog(Gtk.Dialog):
         try: port = int(values["port"])
         except ValueError: port = 0
         serial = values["serial"] if kind in {PrinterKind.BAMBU, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2} \
-            else f"{kind.value}-{values['host']}-{port}"
+            else (f"anycubic-kobra-s1-{values['host']}" if kind == PrinterKind.ANYCUBIC_KOBRA_S1
+                  else f"{kind.value}-{values['host']}-{port}")
         secret_required = kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2}
         if not values["name"] or not values["host"] or not serial or not 1 <= port <= 65535 or (secret_required and not values["code"] and not self.printer):
             self.error.set_text(self.app.text["invalid"]); return None
         model = {PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper",
                  PrinterKind.PRUSA: "Prusa", PrinterKind.SNAPMAKER: "Snapmaker",
                  PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
-                 PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2"}[kind]
+                 PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2",
+                 PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1"}[kind]
         return Printer(serial, values["name"], values["host"], model=model, port=port, kind=kind), values["code"]
 
 
@@ -637,6 +649,14 @@ class Gantry:
                 elif '"command":"stop"' in lowered: action = 130 if printer.kind == PrinterKind.ELEGOO_CC1 else 1022
                 else: return False
                 return bool(method(action, {}))
+        if printer is not None and printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
+            action = getattr(connection, "send_action", None)
+            if not callable(action): return False
+            lowered = json_str.lower()
+            if '"command":"pause"' in lowered: return bool(action("pause"))
+            if '"command":"resume"' in lowered: return bool(action("resume"))
+            if '"command":"stop"' in lowered: return bool(action("stop"))
+            return False
         sender = getattr(connection, "send_command", None)
         return bool(sender(json_str)) if callable(sender) else False
 
@@ -666,6 +686,9 @@ class Gantry:
                     sender(403, {"LightStatus": {"SecondLight": 1 if on else 0}})
                 else:
                     sender(1029, {"power": 1 if on else 0})
+        elif printer is not None and printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
+            sender = getattr(self.connections.get(serial), "set_light", None)
+            if callable(sender): sender(on)
         else:
             from .automation import light_payload
             self.send_command(serial, light_payload(on))
@@ -975,6 +998,9 @@ class Gantry:
             if not code: return
             from .elegoo import ElegooCC2Connection
             connection = ElegooCC2Connection(printer, code, callback)
+        elif printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
+            from .anycubic import AnycubicS1Connection
+            connection = AnycubicS1Connection(printer, callback)
         elif printer.kind == PrinterKind.PRUSA:
             if not code: return
             connection = HttpConnection(printer, code, callback)
@@ -1088,7 +1114,8 @@ class Gantry:
                 serial=str(record["serial"]), name=str(record["name"]), host=str(record["host"]),
                 model={PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa",
                        PrinterKind.SNAPMAKER: "Snapmaker", PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
-                       PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2"}[kind],
+                       PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2",
+                       PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1"}[kind],
                 port=int(record["port"]), kind=kind,
             )
             by_serial[printer.serial] = printer

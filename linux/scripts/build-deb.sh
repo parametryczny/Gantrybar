@@ -34,7 +34,7 @@ Replaces: bambubar
 Maintainer: Kamil Grzegorczyk <parametryczny@users.noreply.github.com>
 Homepage: https://github.com/parametryczny/gantrybar
 Description: Gantry 3D printer status monitor
- Gantry monitors Bambu Lab, Klipper/Moonraker and PrusaLink printers over the
+ Gantry monitors Bambu Lab, Anycubic, Elegoo, Klipper/Moonraker and PrusaLink printers over the
  local network, shows print progress, temperatures, layers and filament slots,
  and lives in the system tray.
  The Raspberry Pi workshop mode provides a full-screen kiosk and an HTTPS

@@ -61,6 +61,8 @@ final class PrinterStore: ObservableObject {
         (clients[serial] as? MQTTClient)?.sendCommand(json)
     }
 
+    func sendAnycubicPrint(serial: String, action: String) { (clients[serial] as? AnycubicS1Client)?.sendPrint(action) }
+
     func sendElegooMethod(serial: String, method: Int, params: [String: Any] = [:]) {
         if let client = clients[serial] as? ElegooCC1Client { client.sendMethod(method, data: params) }
         else if let client = clients[serial] as? ElegooCC2Client { client.sendMethod(method, params: params) }
@@ -104,6 +106,8 @@ final class PrinterStore: ObservableObject {
             sendElegooMethod(serial: serial, method: 403, params: ["LightStatus": ["SecondLight": on ? 1 : 0]])
         case .elegooCC2:
             sendElegooMethod(serial: serial, method: 1029, params: ["power": on ? 1 : 0])
+        case .anycubicKobraS1:
+            (clients[serial] as? AnycubicS1Client)?.setLight(on)
         default:
             let mode = on ? "on" : "off"
             sendCommand(serial: serial, json: "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}")
@@ -124,6 +128,8 @@ final class PrinterStore: ObservableObject {
             } else if printer?.kind == .elegooCC2 {
                 let command = bambu.contains("\"pause\"") ? 1021 : bambu.contains("\"resume\"") ? 1023 : 1022
                 sendElegooMethod(serial: serial, method: command)
+            } else if printer?.kind == .anycubicKobraS1 {
+                sendAnycubicPrint(serial: serial, action: bambu.contains("\"pause\"") ? "pause" : bambu.contains("\"resume\"") ? "resume" : "stop")
             }
             else { sendCommand(serial: serial, json: bambu) }
         }
@@ -362,6 +368,17 @@ final class PrinterStore: ObservableObject {
         reconnect(printer)
     }
 
+    func addAnycubicKobraS1(name: String, host: String, port: Int?) throws {
+        let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanHost.isEmpty else { throw ValidationError("Podaj adres IP drukarki Anycubic Kobra S1.") }
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let identifier = "anycubic-kobra-s1-\(cleanHost)"
+        let printer = SavedPrinter(serial: identifier, name: cleanName.isEmpty ? "Kobra S1 \(cleanHost)" : cleanName,
+                                   model: "Anycubic Kobra S1", host: cleanHost, kind: .anycubicKobraS1, port: port ?? 18910)
+        if let index = printers.firstIndex(where: { $0.serial == identifier }) { printers[index] = printer } else { printers.append(printer) }
+        telemetry[identifier] = PrinterTelemetry(); persistence.save(printers); reconnect(printer)
+    }
+
     @discardableResult
     func importFromBambuStudio() throws -> Int {
         let devices = try BambuStudioConfig.devices()
@@ -470,6 +487,8 @@ final class PrinterStore: ObservableObject {
                 catch { connectionMessages[printer.serial] = error.localizedDescription; return }
             }
             client = ElegooCC2Client(printer: printer, accessCode: code, onEvent: handler)
+        case .anycubicKobraS1:
+            client = AnycubicS1Client(printer: printer, onEvent: handler)
         case .bambu:
             let code: String
             if let sessionCode = sessionCodes[printer.serial] {

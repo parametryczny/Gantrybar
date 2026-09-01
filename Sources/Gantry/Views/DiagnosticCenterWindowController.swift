@@ -70,7 +70,7 @@ final class DiagnosticCenterWindowController: NSWindowController {
                 let telemetry = store.telemetry[printer.serial] ?? PrinterTelemetry()
                 let mqtt = telemetry.state != .offline
                 let jpeg = await CameraSnapshot.capture(printer: printer, store: store, timeout: 5)
-                let secret = store.accessCode(for: printer.serial)?.isEmpty == false || printer.kind == .elegooCC1 || printer.kind == .snapmaker
+                let secret = store.accessCode(for: printer.serial)?.isEmpty == false || printer.kind == .elegooCC1 || printer.kind == .snapmaker || printer.kind == .anycubicKobraS1
                 let reason = store.connectionMessages[printer.serial] ?? "—"
                 results.addArrangedSubview(card(printer: printer, network: network, mqtt: mqtt,
                                                 camera: jpeg != nil, secret: secret, reason: reason))

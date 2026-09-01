@@ -263,7 +263,8 @@ class KioskGantry(Gantry):
                               host=str(values["host"]), port=int(values["port"]), kind=kind,
                               model={PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa",
                                      PrinterKind.SNAPMAKER: "Snapmaker", PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
-                                     PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2"}[kind])
+                                     PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2",
+                                     PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1"}[kind])
             if values.get("code"):
                 self.secrets.set(printer.serial, str(values["code"]))
             self.upsert_printer(printer); self.reconnect_all()
@@ -302,7 +303,8 @@ class KioskGantry(Gantry):
                               host=str(record["host"]), port=int(record["port"]), kind=kind,
                               model={PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa",
                                      PrinterKind.SNAPMAKER: "Snapmaker", PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
-                                     PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2"}[kind])
+                                     PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2",
+                                     PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1"}[kind])
             by_serial[printer.serial] = printer
             self.telemetry.setdefault(printer.serial, Telemetry())
         self.printers = list(by_serial.values())

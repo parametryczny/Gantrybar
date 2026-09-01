@@ -6,9 +6,9 @@
 [![Total downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total)](https://github.com/parametryczny/gantrybar/releases)
 [![License: MIT](https://img.shields.io/github/license/parametryczny/gantrybar)](LICENSE)
 
-A lightweight 3D‑printer fleet monitor for the **macOS menu bar**, **Windows system tray** and **GNU/Linux**. One click on the tray icon shows every printer at once — progress, ETA, layers, temperatures and filament — for **Bambu Lab, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) and Snapmaker**.
+A lightweight 3D‑printer fleet monitor for the **macOS menu bar**, **Windows system tray** and **GNU/Linux**. One click on the tray icon shows every printer at once — progress, ETA, layers, temperatures and filament — for **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) and Snapmaker**.
 
-*Lekki monitor farmy drukarek 3D w **pasku menu macOS**, **zasobniku Windows** i **GNU/Linux**. Jedno kliknięcie ikony pokazuje wszystkie drukarki naraz — postęp, czas, warstwy, temperatury i filament — dla **Bambu Lab, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) i Snapmaker**.*
+*Lekki monitor farmy drukarek 3D w **pasku menu macOS**, **zasobniku Windows** i **GNU/Linux**. Jedno kliknięcie ikony pokazuje wszystkie drukarki naraz — postęp, czas, warstwy, temperatury i filament — dla **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) i Snapmaker**.*
 
 <img width="1448" height="1086" alt="gantry" src="https://github.com/user-attachments/assets/397337e3-21d0-4849-a357-061d8f533d98" />
 
@@ -29,13 +29,14 @@ Neither Windows download needs a separate .NET install. On macOS the app is self
 
 ## English
 
-A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers on the local network, connects to Klipper/Prusa/Snapmaker by address, and lays out larger fleets in an adaptive “bento” dashboard.
+A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers on the local network, connects to Anycubic/Klipper/Prusa/Snapmaker by address, and lays out larger fleets in an adaptive “bento” dashboard.
 
 ### Supported printers
 
 | Type | Protocol | Notes |
 |------|----------|-------|
 | **Bambu Lab** | MQTT/TLS (local) | full AMS / AMS HT / external, dual‑nozzle (H2D/X2D), HMS errors — no Bambu Cloud account |
+| **Anycubic Kobra S1** | MQTT/TLS (LAN mode) | status, temperatures, print controls, chamber light, ACE Pro and FLV camera on port 18088; no Anycubic Cloud account |
 | **Elegoo Centauri Carbon** | SDCP/WebSocket (local) | CC1 on port 3030, MJPEG camera on 3031; no access code |
 | **Elegoo Centauri Carbon 2** | MQTT (LAN-only) | CC2 on port 1883, Canvas A1–A4 and MJPEG camera on 8080; printer access code required |
 | **Klipper / Moonraker** | Moonraker HTTP | Happy Hare MMU and Creality CFS auto‑detected; also covers Qidi, Creality K1/K2, Snapmaker **U1** |
@@ -48,7 +49,7 @@ A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers 
 - **Filament at a glance** — AMS, AMS HT, Creality CFS, Happy Hare MMU and external spools with slot colours, humidity, and active / low‑filament highlighting
 - **Spoolbase** — a built‑in filament inventory (catalog of 1150+ spools): grouped by type, colour‑coded stock badges, add/edit/delete, quick spool‑count changes and search, plus **physical spools** (grams) assigned to AMS/EXT with auto‑decrement after a print. Guide: **[docs/spoolbase.md](docs/spoolbase.md)**
 - **Printer details view** — an in‑panel detail screen (open with the **Details** button, with a Back button — no extra window) showing a live temperature graph, fans, speed and nozzle diameter, the full AMS/filament layout and a **live camera**; reorder its cards by drag‑and‑drop
-- **Live camera** — Bambu chamber camera over **RTSPS/RTSP** and Elegoo/Klipper/Creality webcams via MJPEG, with a mode/resolution badge
+- **Live camera** — Bambu chamber camera over **RTSPS/RTSP**, Anycubic Kobra S1 over FLV and Elegoo/Klipper/Creality webcams via MJPEG, with a mode/resolution badge
 - **Automations & control** (developer mode) — Gantry can send commands (chamber light, pause/resume/stop) and run per‑printer rules: a trigger (manual / layer ≥ N / progress ≥ % / state change) → an action (LED, pause/resume/stop, notification, a custom MQTT/G‑code command, or a **script** — paste Python via `#!` shebang). See **[docs/automations.md](docs/automations.md)**
 - **Per‑printer advanced overrides** — an optional separate camera IP, custom light‑on/off commands, and Moonraker object‑name overrides for non‑standard Klipper setups
 - **Automatic updates** (macOS + Windows) — a dedicated Updates card in Settings with an auto‑download/install toggle; the download is verified (code signature on macOS, SHA‑256 on Windows) and installs silently
@@ -66,7 +67,7 @@ A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers 
 
 - macOS 26 or newer, 64‑bit Windows 10/11, or a Debian/Ubuntu‑family desktop for the Linux beta
 - the computer and the printers on the same local network, LAN access enabled on each printer
-- for Bambu: the serial number and Access Code/PIN; for Elegoo CC1: IP + MainboardID; for Elegoo CC2: IP + serial + access code and LAN-only mode; for Prusa: the PrusaLink API key
+- for Bambu: the serial number and Access Code/PIN; for Anycubic Kobra S1: IP + LAN mode; for Elegoo CC1: IP + MainboardID; for Elegoo CC2: IP + serial + access code and LAN-only mode; for Prusa: the PrusaLink API key
 - to build from source: Swift 6 + Xcode Command Line Tools (macOS), .NET 8 SDK (Windows), or Python 3.10 + GTK 3 + Ayatana AppIndicator (Linux)
 
 ### Adding printers
@@ -74,6 +75,7 @@ A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers 
 Click the Gantry icon, then `+`, and pick the printer type:
 
 - **Bambu** — choose a device from **Detected** (or import from Bambu Studio), enter the Access Code/PIN and click **Add**. Import matches discovered printers with codes already stored in the local Bambu Studio configuration.
+- **Anycubic** — select **Kobra S1**, enable LAN mode on the printer and enter its IP. Gantry obtains the local MQTT session automatically; no account or access code is needed. Details: **[docs/anycubic-kobra-s1.md](docs/anycubic-kobra-s1.md)**.
 - **Elegoo** — select **Centauri Carbon** or **Centauri Carbon 2**. CC1 needs no code. For CC2, first enable **LAN-only** on the printer and enter the access code shown by the printer. Details: **[docs/elegoo-centauri.md](docs/elegoo-centauri.md)**.
 - **Klipper (Moonraker)** — enter the host IP and port (default 7125). No code needed.
 - **Prusa (PrusaLink)** — enter the IP, port (default 80) and the API key from PrusaLink settings.
@@ -106,19 +108,20 @@ Gantry reads printer status only from the local network and stores credentials i
 
 ### Project status
 
-An early, community‑built project. Bambu Lab's printer MQTT protocol is not a stable public API, so firmware changes may require updates to Gantry. Gantry is independent and is not affiliated with, endorsed by or sponsored by Bambu Lab, Prusa Research, Snapmaker or Creality; product names are trademarks of their respective owners.
+An early, community‑built project. The local printer protocols used here are not guaranteed to remain stable, so firmware changes may require updates to Gantry. Gantry is independent and is not affiliated with, endorsed by or sponsored by Bambu Lab, Anycubic, Elegoo, Prusa Research, Snapmaker or Creality; product names are trademarks of their respective owners.
 
 ---
 
 ## Polski
 
-Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa drukarki Bambu w sieci lokalnej, łączy się z Klipper/Prusa/Snapmaker po adresie i prezentuje większe floty na adaptacyjnym pulpicie „bento".
+Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa drukarki Bambu w sieci lokalnej, łączy się z Anycubic/Klipper/Prusa/Snapmaker po adresie i prezentuje większe floty na adaptacyjnym pulpicie „bento".
 
 ### Obsługiwane drukarki
 
 | Typ | Protokół | Uwagi |
 |-----|----------|-------|
 | **Bambu Lab** | MQTT/TLS (lokalnie) | pełne AMS / AMS HT / zewnętrzny, dwie dysze (H2D/X2D), błędy HMS — bez konta Bambu Cloud |
+| **Anycubic Kobra S1** | MQTT/TLS (tryb LAN) | stan, temperatury, sterowanie drukiem, światło komory, ACE Pro i kamera FLV na porcie 18088; bez konta Anycubic Cloud |
 | **Elegoo Centauri Carbon** | SDCP/WebSocket (lokalnie) | CC1 na porcie 3030, kamera MJPEG na 3031; bez kodu dostępu |
 | **Elegoo Centauri Carbon 2** | MQTT (LAN-only) | CC2 na porcie 1883, Canvas A1–A4 i kamera MJPEG na 8080; wymagany kod drukarki |
 | **Klipper / Moonraker** | Moonraker HTTP | Happy Hare MMU i Creality CFS wykrywane automatycznie; obejmuje też Qidi, Creality K1/K2, Snapmaker **U1** |
@@ -131,7 +134,7 @@ Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa druk
 - **Filament na pierwszy rzut oka** — AMS, AMS HT, Creality CFS, Happy Hare MMU i szpule zewnętrzne z kolorami slotów, wilgotnością oraz wyróżnianiem aktywnego / kończącego się filamentu
 - **Spoolbase** — wbudowany magazyn filamentów (katalog 1150+ szpul): grupowanie po typie, kolorowe plakietki stanu, dodawanie/edycja/usuwanie, szybka zmiana liczby szpul i wyszukiwarka, plus **fizyczne rolki** (gramy) przypisane do AMS/EXT z automatycznym odejmowaniem po wydruku. Poradnik: **[docs/spoolbase.md](docs/spoolbase.md)**
 - **Widok „Szczegóły" drukarki** — ekran szczegółów **w obrębie panelu** (przycisk **Szczegóły**, z przyciskiem „Wróć" — bez osobnego okna): wykres temperatur w czasie, wentylatory, prędkość i średnica dyszy, pełny układ AMS/filamentów oraz **kamera na żywo**; kafle można przestawiać przeciągnij‑i‑upuść
-- **Kamera na żywo** — kamera komory Bambu przez **RTSPS/RTSP** oraz kamery **Elegoo/Klipper/Creality** przez MJPEG, z plakietką trybu i rozdzielczości
+- **Kamera na żywo** — kamera komory Bambu przez **RTSPS/RTSP**, Anycubic Kobra S1 przez FLV oraz kamery **Elegoo/Klipper/Creality** przez MJPEG, z plakietką trybu i rozdzielczości
 - **Automatyzacje i sterowanie** (tryb deweloperski) — Gantry wysyła komendy (światło komory, pauza/wznów/stop) i uruchamia reguły per drukarka: wyzwalacz (ręcznie / warstwa ≥ N / postęp ≥ % / zmiana stanu) → akcja (LED, pauza/wznów/stop, powiadomienie, własna komenda MQTT/G‑code lub **skrypt** — czysty Python przez `#!` shebang). Zobacz **[docs/automations.md](docs/automations.md)**
 - **Nadpisania per drukarka** — opcjonalne osobne IP kamery, własne komendy światła wł./wył. oraz nazwy obiektów Moonraker dla niestandardowych konfiguracji Klippera
 - **Automatyczne aktualizacje** (macOS + Windows) — dedykowana karta w Ustawieniach z przełącznikiem auto; pobranie jest weryfikowane (podpis kodu na macOS, SHA‑256 na Windows) i instalowane po cichu
@@ -145,7 +148,7 @@ Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa druk
 
 - macOS 26 lub nowszy, 64‑bitowy Windows 10/11 albo desktop z rodziny Debian/Ubuntu dla wersji beta
 - komputer i drukarki w tej samej sieci lokalnej, włączony dostęp LAN na każdej drukarce
-- Bambu: numer seryjny i kod dostępu; Elegoo CC1: IP + MainboardID; Elegoo CC2: IP + numer seryjny + kod i tryb LAN-only; Prusa: klucz API PrusaLink
+- Bambu: numer seryjny i kod dostępu; Anycubic Kobra S1: IP + tryb LAN; Elegoo CC1: IP + MainboardID; Elegoo CC2: IP + numer seryjny + kod i tryb LAN-only; Prusa: klucz API PrusaLink
 - budowa ze źródeł: Swift 6 + Xcode CLT (macOS), .NET 8 SDK (Windows) albo Python 3.10 + GTK 3 + Ayatana AppIndicator (Linux)
 
 ### Dodawanie drukarek
@@ -153,6 +156,7 @@ Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa druk
 Kliknij ikonę Gantry, potem `+`, i wybierz typ drukarki:
 
 - **Bambu** — wybierz urządzenie z listy **Wykryte** (lub zaimportuj z Bambu Studio), wpisz kod dostępu i kliknij **Dodaj**. Import dopasowuje wykryte drukarki do kodów z lokalnej konfiguracji Bambu Studio.
+- **Anycubic** — wybierz **Kobra S1**, włącz tryb LAN w drukarce i podaj jej IP. Gantry sam pobierze lokalną sesję MQTT; konto i kod dostępu nie są potrzebne. Szczegóły: **[docs/anycubic-kobra-s1.md](docs/anycubic-kobra-s1.md)**.
 - **Elegoo** — wybierz **Centauri Carbon** albo **Centauri Carbon 2**. CC1 nie wymaga kodu. W CC2 najpierw włącz na drukarce **LAN-only**, a następnie wpisz pokazywany przez nią kod dostępu. Szczegóły: **[docs/elegoo-centauri.md](docs/elegoo-centauri.md)**.
 - **Klipper (Moonraker)** — podaj IP hosta i port (domyślnie 7125). Kod niepotrzebny.
 - **Prusa (PrusaLink)** — podaj IP, port (domyślnie 80) i klucz API z ustawień PrusaLink.

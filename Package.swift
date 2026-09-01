@@ -9,8 +9,10 @@ let package = Package(
         .executable(name: "Gantry", targets: ["Gantry"])
     ],
     targets: [
+        .systemLibrary(name: "CCommonCrypto", path: "Sources/CCommonCrypto"),
         .executableTarget(
             name: "Gantry",
+            dependencies: ["CCommonCrypto"],
             path: "Sources/Gantry"
         ),
         .testTarget(

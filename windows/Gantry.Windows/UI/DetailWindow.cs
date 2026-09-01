@@ -40,6 +40,7 @@ public sealed class DetailView : UserControl
     private Border? _cameraBadge;           // shows the resolved mode + resolution (e.g. "RTSPS · 1920×1080")
     private BambuCameraStream? _bambuCam;   // Bambu: native RTSPS/RTSP/JPEG client, ffmpeg used only to decode H.264
     private ElegooMjpegStream? _elegooCam;
+    private AnycubicFlvStream? _anycubicCam;
     private string? _cameraMode;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
 
@@ -137,7 +138,7 @@ public sealed class DetailView : UserControl
         stack.Children.Add(Draggable("ams", Card(new StackPanel { Children = { SectionTitle(_pl ? "FILAMENTY / AMS" : "FILAMENTS / AMS"), _ams } })));
 
         // --- Control + automations card (developer mode only; Bambu/Klipper) ---
-        if (AppSettings.DeveloperMode && printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
+        if (AppSettings.DeveloperMode && printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2 or PrinterKind.AnycubicKobraS1)
         {
             var lightOn = new Button { Content = _pl ? "Światło wł." : "Light on", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
             lightOn.Click += (_, _) => _store.SetChamberLight(true, _serial);
@@ -150,7 +151,7 @@ public sealed class DetailView : UserControl
         }
 
         // --- Camera card (Bambu native RTSPS/RTSP/JPEG → ffmpeg decode, Klipper MJPEG snapshots) ---
-        if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
+        if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2 or PrinterKind.AnycubicKobraS1)
         {
             var container = new Grid { Height = 230, Background = new SolidColorBrush(Colors.Black) };
             _cameraStatus = new TextBlock { Foreground = White(), FontSize = 11, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12) };
@@ -525,6 +526,12 @@ public sealed class DetailView : UserControl
             _elegooCam = cam; _cameraMode = cc2 ? "MJPEG · 8080" : "MJPEG · 3031"; UpdateBadge();
             cam.Start($"http://{host}:{(cc2 ? 8080 : 3031)}/{(cc2 ? "?action=stream" : "video")}");
         }
+        else if (_kind == PrinterKind.AnycubicKobraS1)
+        {
+            var cam = new AnycubicFlvStream(); cam.FrameReady += ShowJpegFrame;
+            cam.Failed += message => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Text = message; });
+            _anycubicCam = cam; _cameraMode = "FLV · 18088"; UpdateBadge(); cam.Start($"http://{host}:18088/flv");
+        }
         else
         {
             _ = StartKlipperCameraAsync(host);
@@ -638,6 +645,8 @@ public sealed class DetailView : UserControl
         _bambuCam = null;
         try { _elegooCam?.Stop(); } catch { }
         _elegooCam = null;
+        try { _anycubicCam?.Stop(); } catch { }
+        _anycubicCam = null;
     }
 
     // --- small builders ---

@@ -62,11 +62,13 @@ class DiagnosticsDialog(Gtk.Dialog):
             mqtt_ok = bool(tel and tel.state != PrinterState.OFFLINE)
             camera_port = (6000 if printer.kind == PrinterKind.BAMBU else
                            3031 if printer.kind == PrinterKind.ELEGOO_CC1 else
+                           18088 if printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1 else
                            8080 if printer.kind == PrinterKind.ELEGOO_CC2 else printer.port)
             cam_ok, cam_latency, cam_error = self._probe(printer.host, camera_port)
             try:
                 secret = self.app.secrets.get(printer.serial)
-                secret_ok = bool(secret) or printer.kind in (PrinterKind.ELEGOO_CC1, PrinterKind.SNAPMAKER)
+                secret_ok = bool(secret) or printer.kind in (PrinterKind.ELEGOO_CC1, PrinterKind.SNAPMAKER,
+                                                              PrinterKind.ANYCUBIC_KOBRA_S1)
                 secret_error = None
             except Exception as value:
                 secret_ok, secret_error = False, str(value)

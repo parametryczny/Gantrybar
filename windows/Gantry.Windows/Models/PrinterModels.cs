@@ -212,7 +212,8 @@ public enum PrinterKind
     Prusa,
     Snapmaker,
     ElegooCc1,
-    ElegooCc2
+    ElegooCc2,
+    AnycubicKobraS1
 }
 
 public sealed class SavedPrinter

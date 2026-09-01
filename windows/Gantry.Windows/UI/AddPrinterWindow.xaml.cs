@@ -41,6 +41,7 @@ public partial class AddPrinterWindow : Window
                     if (editing.Kind == PrinterKind.ElegooCc2) CodeBox.Text = AccessCodeStore.AccessCode(editing.Serial) ?? "";
                 }
                 else if (editing.Kind == PrinterKind.Klipper) KlipperRadio.IsChecked = true;
+                else if (editing.Kind == PrinterKind.AnycubicKobraS1) AnycubicRadio.IsChecked = true;
                 else if (editing.Kind == PrinterKind.Snapmaker) SnapmakerRadio.IsChecked = true;
                 else PrusaRadio.IsChecked = true;
                 // The key now lives in DPAPI, not the config — prefill from there so editing keeps
@@ -55,6 +56,7 @@ public partial class AddPrinterWindow : Window
 
         BambuRadio.Checked += (_, _) => ApplyKind();
         ElegooRadio.Checked += (_, _) => ApplyKind();
+        AnycubicRadio.Checked += (_, _) => ApplyKind();
         KlipperRadio.Checked += (_, _) => ApplyKind();
         PrusaRadio.Checked += (_, _) => ApplyKind();
         SnapmakerRadio.Checked += (_, _) => ApplyKind();
@@ -101,6 +103,7 @@ public partial class AddPrinterWindow : Window
         CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN");
         BambuRadio.Content = "Bambu";
         ElegooRadio.Content = "Elegoo";
+        AnycubicRadio.Content = "Anycubic";
         KlipperRadio.Content = "Klipper";
         PrusaRadio.Content = "Prusa";
         SnapmakerRadio.Content = "Snapmaker";
@@ -108,6 +111,9 @@ public partial class AddPrinterWindow : Window
         SnapmakerHint.Text = AppSettings.Text(
             "Snapmaker 2.0 / Artisan (HTTP, port 8080). Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
             "Snapmaker 2.0 / Artisan (HTTP, port 8080). After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle.");
+        AnycubicHint.Text = AppSettings.Text(
+            "Anycubic Kobra S1: wpisz adres IP i włącz tryb LAN w drukarce. Gantry automatycznie pobierze dane MQTT przez port 18910. Kamera FLV: port 18088.",
+            "Anycubic Kobra S1: enter its IP address and enable LAN mode on the printer. Gantry obtains MQTT settings automatically through port 18910. FLV camera: port 18088.");
         ApiKeyLabel.Text = AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
         CancelButton.Content = AppSettings.Text("Anuluj", "Cancel");
         SaveButton.Content = _editing is null ? AppSettings.Text("Dodaj", "Add") : AppSettings.Text("Zapisz", "Save");
@@ -119,9 +125,10 @@ public partial class AddPrinterWindow : Window
     private bool IsPrusa => PrusaRadio.IsChecked == true;
     private bool IsSnapmaker => SnapmakerRadio.IsChecked == true;
     private bool IsElegoo => ElegooRadio.IsChecked == true;
+    private bool IsAnycubic => AnycubicRadio.IsChecked == true;
     private bool IsElegooCc2 => IsElegoo && ElegooModelBox.SelectedIndex == 1;
     // Klipper, Prusa and Snapmaker all connect over HTTP with a host + port.
-    private bool UsesHostFields => IsKlipper || IsPrusa || IsSnapmaker;
+    private bool UsesHostFields => IsKlipper || IsPrusa || IsSnapmaker || IsAnycubic;
 
     /// <summary>Shows only the fields relevant to the selected printer kind. Klipper/Prusa need a
     /// host, optional port and API key; Bambu needs discovery, serial and access code.</summary>
@@ -134,10 +141,12 @@ public partial class AddPrinterWindow : Window
         CodeLabel.Visibility = CodeBox.Visibility = (hostBased || (IsElegoo && !IsElegooCc2)) ? Visibility.Collapsed : Visibility.Visible;
         PortLabel.Visibility = PortBox.Visibility = Visibility.Visible;   // Bambu too (optional — tunnels)
         // Snapmaker authorizes via the touchscreen — no API key field.
-        ApiKeyLabel.Visibility = ApiKeyBox.Visibility = (hostBased && !IsSnapmaker) ? Visibility.Visible : Visibility.Collapsed;
+        ApiKeyLabel.Visibility = ApiKeyBox.Visibility = (hostBased && !IsSnapmaker && !IsAnycubic) ? Visibility.Visible : Visibility.Collapsed;
         SnapmakerHintBox.Visibility = IsSnapmaker ? Visibility.Visible : Visibility.Collapsed;
-        ImportConsent.Visibility = ImportHint.Visibility = ImportButton.Visibility = IsElegoo ? Visibility.Collapsed : Visibility.Visible;
-        SubnetTargetsLabel.Visibility = SubnetTargetsBox.Visibility = SubnetTargetsError.Visibility = SubnetTargetsHint.Visibility = IsElegoo ? Visibility.Collapsed : Visibility.Visible;
+        AnycubicHintBox.Visibility = IsAnycubic ? Visibility.Visible : Visibility.Collapsed;
+        bool isBambu = BambuRadio.IsChecked == true;
+        ImportConsent.Visibility = ImportHint.Visibility = ImportButton.Visibility = isBambu ? Visibility.Visible : Visibility.Collapsed;
+        SubnetTargetsLabel.Visibility = SubnetTargetsBox.Visibility = SubnetTargetsError.Visibility = SubnetTargetsHint.Visibility = isBambu ? Visibility.Visible : Visibility.Collapsed;
         HostLabel.Text = hostBased
             ? AppSettings.Text("Adres IP / nazwa hosta", "IP address / host name")
             : AppSettings.Text("Adres IP", "IP address");
@@ -147,6 +156,8 @@ public partial class AddPrinterWindow : Window
                 ? AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)")
                 : IsSnapmaker
                     ? AppSettings.Text("Port Snapmaker (domyślnie 8080)", "Snapmaker port (default 8080)")
+                    : IsAnycubic
+                        ? AppSettings.Text("Port bootstrap Anycubic (18910)", "Anycubic bootstrap port (18910)")
                     : IsElegooCc2
                         ? AppSettings.Text("Port MQTT Elegoo (domyślnie 1883)", "Elegoo MQTT port (default 1883)")
                         : IsElegoo
@@ -236,6 +247,7 @@ public partial class AddPrinterWindow : Window
                     _store.Remove(_editing);
                 if (IsPrusa) _store.AddPrusa(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
                 else if (IsSnapmaker) _store.AddSnapmaker(NameBox.Text, HostBox.Text, port);
+                else if (IsAnycubic) _store.AddAnycubicKobraS1(NameBox.Text, HostBox.Text, port);
                 else _store.AddKlipper(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
             }
             else if (_editing is not null)
@@ -247,7 +259,7 @@ public partial class AddPrinterWindow : Window
             if (_editing is not null)
             {
                 var host = HostBox.Text.Trim();
-                var finalSerial = IsPrusa ? $"prusa-{host}" : IsKlipper ? $"klipper-{host}" : IsSnapmaker ? $"snapmaker-{host}" : SerialBox.Text.Trim();
+                var finalSerial = IsPrusa ? $"prusa-{host}" : IsKlipper ? $"klipper-{host}" : IsSnapmaker ? $"snapmaker-{host}" : IsAnycubic ? $"anycubic-kobra-s1-{host}" : SerialBox.Text.Trim();
                 TrayProgressPreference.SetEnabled(ProgressCheck.IsChecked == true, finalSerial);
             }
             Close();

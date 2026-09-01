@@ -85,7 +85,10 @@ class CameraView(Gtk.Box):
     # --- workers --------------------------------------------------------------
     def _run(self) -> None:
         try:
-            if self.printer is not None and self.printer.kind == PrinterKind.BAMBU:
+            if self.printer is not None and self.printer.kind in {PrinterKind.BAMBU, PrinterKind.ANYCUBIC_KOBRA_S1}:
+                if self.printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
+                    self._run_anycubic()
+                    return
                 self._run_bambu()
             else:
                 self._run_mjpeg()
@@ -183,6 +186,58 @@ class CameraView(Gtk.Box):
         pipeline.set_state(Gst.State.NULL)
         if self._pipeline is pipeline:
             self._pipeline = None
+
+    def _run_anycubic(self) -> None:
+        pl = self.app.language == "pl"
+        if Gst is None:
+            self._set_status("Brak GStreamera do dekodowania FLV." if pl else "GStreamer is unavailable for FLV decoding.")
+            return
+        pipeline = Gst.Pipeline.new(f"anycubic-camera-{self.serial}")
+        source = Gst.ElementFactory.make("souphttpsrc", "source")
+        demux = Gst.ElementFactory.make("flvdemux", "demux")
+        queue = Gst.ElementFactory.make("queue", "queue")
+        decoder = Gst.ElementFactory.make("decodebin", "decoder")
+        convert = Gst.ElementFactory.make("videoconvert", "convert")
+        encoder = Gst.ElementFactory.make("jpegenc", "encoder")
+        sink = Gst.ElementFactory.make("appsink", "sink")
+        elements = (source, demux, queue, decoder, convert, encoder, sink)
+        if pipeline is None or any(element is None for element in elements):
+            self._set_status("Nie można utworzyć potoku kamery FLV." if pl else "Could not create the FLV camera pipeline.")
+            return
+        source.set_property("location", f"http://{self.camera_host}:18088/flv")
+        encoder.set_property("quality", 82)
+        sink.set_property("emit-signals", True); sink.set_property("sync", False)
+        sink.set_property("max-buffers", 1); sink.set_property("drop", True)
+        for element in elements: pipeline.add(element)
+        if not source.link(demux) or not queue.link(decoder) or not convert.link(encoder) or not encoder.link(sink):
+            self._set_status("Nie można połączyć potoku kamery FLV." if pl else "Could not link the FLV camera pipeline.")
+            return
+        def link_video_pad(_element: Any, pad: Any, target: Any) -> None:
+            caps = pad.get_current_caps() or pad.query_caps(None)
+            if caps is not None and "video/" in caps.to_string():
+                target_pad = target.get_static_pad("sink")
+                if target_pad is not None and not target_pad.is_linked(): pad.link(target_pad)
+        demux.connect("pad-added", lambda element, pad: link_video_pad(element, pad, queue))
+        decoder.connect("pad-added", lambda element, pad: link_video_pad(element, pad, convert))
+        def new_sample(appsink: Any) -> Any:
+            sample = appsink.emit("pull-sample")
+            if sample is None: return Gst.FlowReturn.ERROR
+            buffer = sample.get_buffer()
+            if buffer is not None: self._push_jpeg(buffer.extract_dup(0, buffer.get_size()))
+            return Gst.FlowReturn.OK
+        sink.connect("new-sample", new_sample); self._pipeline = pipeline; self._set_badge("FLV · 18088")
+        if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+            self._set_status("Nie można uruchomić kamery FLV." if pl else "Could not start the FLV camera.")
+            pipeline.set_state(Gst.State.NULL); self._pipeline = None; return
+        bus = pipeline.get_bus()
+        while not self._stop.is_set():
+            message = bus.timed_pop_filtered(250 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
+            if message is None: continue
+            if message.type == Gst.MessageType.ERROR:
+                error, _debug = message.parse_error(); self._set_status(("Błąd kamery: " if pl else "Camera error: ") + error.message)
+            break
+        pipeline.set_state(Gst.State.NULL)
+        if self._pipeline is pipeline: self._pipeline = None
 
     def _run_mjpeg(self) -> None:
         pl = self.app.language == "pl"

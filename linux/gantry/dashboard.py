@@ -329,7 +329,8 @@ class PrinterCard(Gtk.Frame):
         self.name.get_style_context().add_class("printer-name")
         connection = {PrinterKind.BAMBU: "MQTT", PrinterKind.KLIPPER: "KLIPPER",
                       PrinterKind.PRUSA: "PRUSALINK", PrinterKind.SNAPMAKER: "HTTP",
-                      PrinterKind.ELEGOO_CC1: "SDCP", PrinterKind.ELEGOO_CC2: "MQTT LAN"}[printer.kind]
+                      PrinterKind.ELEGOO_CC1: "SDCP", PrinterKind.ELEGOO_CC2: "MQTT LAN",
+                      PrinterKind.ANYCUBIC_KOBRA_S1: "MQTT LAN"}[printer.kind]
         self.connection = Gtk.Label(label=connection)
         self.connection.get_style_context().add_class("connection")
         details = self._button("⌁", "Szczegóły" if app.language == "pl" else "Details")

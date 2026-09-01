@@ -65,6 +65,7 @@ final class PrinterDetailViewController: NSViewController {
     private var stream: RTSPCameraStream?
     private var klipperStream: KlipperCameraStream?
     private var elegooStream: ElegooCameraStream?
+    private var anycubicStream: AnycubicCameraStream?
     private var cameraTimeout: DispatchWorkItem?
     private var receivedFrame = false
 
@@ -130,7 +131,7 @@ final class PrinterDetailViewController: NSViewController {
 
         // Bambu (MQTT) and Klipper (Moonraker) both support control + camera; Prusa/Snapmaker later.
         let kind = store.printers.first(where: { $0.serial == serial })?.kind
-        let supportsControlCamera = kind == .bambu || kind == .klipper || kind == .elegooCC1 || kind == .elegooCC2
+        let supportsControlCamera = kind == .bambu || kind == .klipper || kind == .elegooCC1 || kind == .elegooCC2 || kind == .anycubicKobraS1
         cardViews = [
             "status": makeStatusCard(),
             "recent": makeRecentPrintsCard(),
@@ -701,6 +702,7 @@ final class PrinterDetailViewController: NSViewController {
         case .bambu: startBambuCamera(printer)
         case .klipper: startKlipperCamera(printer)
         case .elegooCC1, .elegooCC2: startElegooCamera(printer)
+        case .anycubicKobraS1: startAnycubicCamera(printer)
         default: return
         }
         // If no frame arrives in time, show a helpful fallback.
@@ -767,6 +769,17 @@ final class PrinterDetailViewController: NSViewController {
         elegooStream = stream; stream.start()
     }
 
+    private func startAnycubicCamera(_ printer: SavedPrinter) {
+        guard anycubicStream == nil, let url = URL(string: "http://\(cameraHost(for: printer)):18088/flv") else { return }
+        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą FLV…", "Connecting to FLV camera…"))
+        let stream = AnycubicCameraStream(url: url,
+            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
+            onState: { state in Task { @MainActor [weak self] in
+                if case .failed(let message) = state, self?.receivedFrame == false { self?.cameraView.showStatus(message) }
+            } })
+        anycubicStream = stream; stream.start()
+    }
+
     private func stopCamera() {
         cameraTimeout?.cancel()
         cameraTimeout = nil
@@ -776,6 +789,8 @@ final class PrinterDetailViewController: NSViewController {
         klipperStream = nil
         elegooStream?.stop()
         elegooStream = nil
+        anycubicStream?.stop()
+        anycubicStream = nil
     }
 
     private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {

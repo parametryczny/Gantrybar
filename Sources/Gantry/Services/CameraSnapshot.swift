@@ -25,9 +25,30 @@ enum CameraSnapshot {
                                    params: isCC2 ? [:] : ["Enable": 1])
             let url = isCC2 ? "http://\(host):8080/?action=stream" : "http://\(host):3031/video"
             return await captureMJPEG(url: url, apiKey: nil, timeout: timeout)
+        case .anycubicKobraS1:
+            return await captureAnycubic(host: host, timeout: timeout)
         default:
             return nil
         }
+    }
+
+    private static func captureAnycubic(host: String, timeout: TimeInterval) async -> Data? {
+        guard let url = URL(string: "http://\(host):18088/flv") else { return nil }
+        let collector = AnycubicCollector()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Data?, Never>) in
+            collector.onResult = { continuation.resume(returning: $0) }
+            let stream = AnycubicCameraStream(url: url, onFrame: { collector.finish($0) }, onState: { state in
+                if case .failed = state { collector.finish(nil) }
+            })
+            collector.stream = stream; stream.start()
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { collector.finish(nil) }
+        }
+    }
+
+    private final class AnycubicCollector: @unchecked Sendable {
+        var stream: AnycubicCameraStream?; var onResult: ((Data?) -> Void)?
+        private let lock = NSLock(); private var done = false
+        func finish(_ data: Data?) { lock.lock(); if done { lock.unlock(); return }; done = true; let callback = onResult; onResult = nil; lock.unlock(); stream?.stop(); stream = nil; callback?(data) }
     }
 
     @MainActor

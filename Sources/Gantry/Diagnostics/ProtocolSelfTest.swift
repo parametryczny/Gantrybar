@@ -5,10 +5,43 @@ enum ProtocolSelfTest {
         var failures: [String] = []
         checkSSDP(&failures)
         checkTelemetry(&failures)
+        checkAnycubic(&failures)
         checkMoonraker(&failures)
         checkMQTTFraming(&failures)
         checkSubnetTargets(&failures)
         return failures
+    }
+
+    private static func checkAnycubic(_ failures: inout [String]) {
+        let info = Data(#"{"type":"info","data":{"state":"printing","temp":{"curr_nozzle_temp":221.5,"target_nozzle_temp":220,"curr_hotbed_temp":61,"target_hotbed_temp":60},"project":{"filename":"gear.gcode","progress":42,"curr_layer":21,"total_layers":50,"remain_time":30}}}"#.utf8)
+        guard let initial = AnycubicStatusParser.parse(info) else {
+            failures.append("Anycubic info report was not parsed")
+            return
+        }
+        if initial.state != .printing || initial.progress != 42 { failures.append("Anycubic print state is wrong") }
+        if initial.remainingMinutes != 30 { failures.append("Anycubic remaining time is not in minutes") }
+        if initial.nozzleTemperature != 221.5 || initial.currentLayer != 21 { failures.append("Anycubic telemetry is incomplete") }
+
+        let partial = Data(#"{"type":"print","state":"paused","data":{"progress":45}}"#.utf8)
+        guard let merged = AnycubicStatusParser.parse(partial, previous: initial) else {
+            failures.append("Anycubic partial print report was not parsed")
+            return
+        }
+        if merged.state != .paused || merged.currentLayer != 21 || merged.totalLayers != 50 {
+            failures.append("Anycubic partial report erased previous telemetry")
+        }
+
+        let ace = Data(#"{"type":"multiColorBox","data":{"multi_color_box":[{"temp":31,"loaded_slot":1,"slots":[{"index":0,"status":1,"type":"PLA","color":[255,0,64]},{"index":1,"status":1,"type":"PETG","color":[0,120,255]}]}]}}"#.utf8)
+        guard let filament = AnycubicStatusParser.parse(ace) else {
+            failures.append("Anycubic ACE Pro report was not parsed")
+            return
+        }
+        if filament.filamentGroups.first?.displayName != "ACE Pro" || filament.filamentGroups.first?.declaredCapacity != 4 {
+            failures.append("Anycubic ACE Pro group is wrong")
+        }
+        if filament.filamentGroups.first?.slots.first(where: \.isActive)?.label != "A2" {
+            failures.append("Anycubic ACE Pro active slot is wrong")
+        }
     }
 
     private static func checkMoonraker(_ failures: inout [String]) {

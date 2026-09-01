@@ -126,6 +126,7 @@
                     <StackPanel Orientation="Horizontal">
                         <RadioButton x:Name="BambuRadio" GroupName="Kind" IsChecked="True"/>
                         <RadioButton x:Name="ElegooRadio" GroupName="Kind"/>
+                        <RadioButton x:Name="AnycubicRadio" GroupName="Kind"/>
                         <RadioButton x:Name="KlipperRadio" GroupName="Kind"/>
                         <RadioButton x:Name="PrusaRadio" GroupName="Kind"/>
                         <RadioButton x:Name="SnapmakerRadio" GroupName="Kind"/>
@@ -139,6 +140,10 @@
                         <ComboBoxItem Content="Centauri Carbon 2"/>
                     </ComboBox>
                 </StackPanel>
+
+                <Border x:Name="AnycubicHintBox" Background="#332B79C2" CornerRadius="8" Padding="10,8" Margin="0,0,0,12" Visibility="Collapsed">
+                    <TextBlock x:Name="AnycubicHint" Foreground="#FFDCE6F2" FontSize="12" TextWrapping="Wrap"/>
+                </Border>
 
                 <Border x:Name="SnapmakerHintBox" Background="#332B79C2" CornerRadius="8" Padding="10,8" Margin="0,0,0,12" Visibility="Collapsed">
                     <TextBlock x:Name="SnapmakerHint" Foreground="#FFDCE6F2" FontSize="12" TextWrapping="Wrap"/>

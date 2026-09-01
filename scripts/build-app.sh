@@ -41,6 +41,12 @@ OUTPUT_PATH="dist/$APP_NAME.app"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 cp "$BIN_DIR/Gantry" "$APP_PATH/Contents/MacOS/Gantry"
 chmod +x "$APP_PATH/Contents/MacOS/Gantry"
+# Kobra S1 exposes its camera as FLV. Bundle ffmpeg when the build host has it; otherwise Gantry
+# keeps the camera card disabled with an actionable message instead of failing the whole app.
+if command -v ffmpeg >/dev/null 2>&1; then
+    cp "$(command -v ffmpeg)" "$APP_PATH/Contents/MacOS/ffmpeg"
+    chmod +x "$APP_PATH/Contents/MacOS/ffmpeg"
+fi
 cp "Resources/Info.plist" "$APP_PATH/Contents/Info.plist"
 cp "Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
 # Embedded Spoolbase filament catalog (loaded via Bundle.main at runtime).

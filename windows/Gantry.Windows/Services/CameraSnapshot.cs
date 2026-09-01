@@ -45,6 +45,13 @@ public static class CameraSnapshot
                 cam.Stop();
                 return result;
             }
+            case PrinterKind.AnycubicKobraS1:
+            {
+                var tcs = new TaskCompletionSource<byte[]?>(); var cam = new AnycubicFlvStream();
+                void OnFrame(byte[] jpeg) => tcs.TrySetResult(jpeg);
+                cam.FrameReady += OnFrame; cam.Failed += _ => tcs.TrySetResult(null); cam.Start($"http://{host}:18088/flv");
+                var result = await WithTimeout(tcs.Task, timeoutMs); cam.FrameReady -= OnFrame; cam.Stop(); return result;
+            }
             default:
                 return null;
         }

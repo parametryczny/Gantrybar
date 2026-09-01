@@ -299,6 +299,15 @@ public sealed class PrinterStore
         RaiseUpdated();
     }
 
+    public void AddAnycubicKobraS1(string name, string host, int? port)
+    {
+        var cleanHost = host.Trim(); if (cleanHost.Length == 0) throw new ArgumentException(AppSettings.Text("Adres IP jest wymagany.", "IP address is required."));
+        var printer = new SavedPrinter { Serial = $"anycubic-kobra-s1-{cleanHost}", Name = string.IsNullOrWhiteSpace(name) ? $"Kobra S1 {cleanHost}" : name.Trim(),
+            Model = "Anycubic Kobra S1", Host = cleanHost, Kind = PrinterKind.AnycubicKobraS1, Port = port ?? 18910 };
+        var index = Printers.FindIndex(p => p.Serial == printer.Serial); if (index >= 0) Printers[index] = printer; else Printers.Add(printer);
+        Telemetry[printer.Serial] = new PrinterTelemetry(); SavedPrinterStore.Save(Printers); Reconnect(printer); RaiseUpdated();
+    }
+
     public void AddPrusa(string name, string host, int? port, string? apiKey)
     {
         var cleanHost = host.Trim();
@@ -477,6 +486,11 @@ public sealed class PrinterStore
             var elegoo = new ElegooCc1Client(printer, evt => _post(() => Handle(evt, printer.Serial)));
             _clients[printer.Serial] = elegoo; elegoo.Start(); RaiseUpdated(); return;
         }
+        if (printer.Kind == PrinterKind.AnycubicKobraS1)
+        {
+            var anycubic = new AnycubicS1Client(printer, evt => _post(() => Handle(evt, printer.Serial)));
+            _clients[printer.Serial] = anycubic; anycubic.Start(); RaiseUpdated(); return;
+        }
 
         string code;
         if (_sessionCodes.TryGetValue(printer.Serial, out var sessionCode))
@@ -648,6 +662,8 @@ public sealed class PrinterStore
         else if (client is ElegooCc2Client cc2) cc2.SendMethod(method, parameters);
     }
 
+    public void SendAnycubicPrint(string serial, string action) { if (_clients.GetValueOrDefault(serial) is AnycubicS1Client client) client.SendPrint(action); }
+
     private bool SendElegooRaw(string serial, string json)
     {
         JsonObject? value; try { value = JsonNode.Parse(json) as JsonObject; } catch { return false; }
@@ -682,6 +698,8 @@ public sealed class PrinterStore
             SendElegooMethod(serial, 403, new { LightStatus = new { SecondLight = on ? 1 : 0 } });
         else if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.ElegooCc2)
             SendElegooMethod(serial, 1029, new { power = on ? 1 : 0 });
+        else if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.AnycubicKobraS1 && _clients.GetValueOrDefault(serial) is AnycubicS1Client anycubic)
+            anycubic.SetLight(on);
         else
         {
             var mode = on ? "on" : "off";
@@ -700,6 +718,7 @@ public sealed class PrinterStore
             if (isKlipper) SendGcode(serial, macro);
             else if (printer?.Kind == PrinterKind.ElegooCc1) SendElegooMethod(serial, bambu.Contains("\"pause\"") ? 129 : bambu.Contains("\"resume\"") ? 131 : 130);
             else if (printer?.Kind == PrinterKind.ElegooCc2) SendElegooMethod(serial, bambu.Contains("\"pause\"") ? 1021 : bambu.Contains("\"resume\"") ? 1023 : 1022);
+            else if (printer?.Kind == PrinterKind.AnycubicKobraS1) SendAnycubicPrint(serial, bambu.Contains("\"pause\"") ? "pause" : bambu.Contains("\"resume\"") ? "resume" : "stop");
             else SendCommand(serial, bambu);
         }
 

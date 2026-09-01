@@ -6,13 +6,13 @@ pkgname=gantry-git
 _pkg=gantry
 pkgver=0.10.0
 pkgrel=1
-pkgdesc="Local 3D printer fleet monitor (Bambu Lab, Klipper/Moonraker, Prusa, Snapmaker) in the tray"
+pkgdesc="Local 3D printer fleet monitor (Bambu Lab, Anycubic, Elegoo, Klipper, Prusa, Snapmaker)"
 arch=('any')
 url="https://github.com/parametryczny/Gantrybar"
 license=('MIT')
 depends=('python' 'python-gobject' 'gtk3' 'libayatana-appindicator' 'librsvg'
          'python-websocket-client' 'libnotify' 'libsecret' 'gstreamer'
-         'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav')
+         'gst-plugins-base' 'gst-plugins-good' 'gst-plugins-bad' 'gst-libav' 'openssl')
 optdepends=('gnome-keyring: secret storage on non-KDE desktops (KDE uses KWallet)')
 provides=('gantry')
 conflicts=('gantry')

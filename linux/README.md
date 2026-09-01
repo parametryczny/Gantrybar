@@ -1,7 +1,7 @@
 # Gantry for GNU/Linux — beta
 
 The GNU/Linux edition uses GTK 3 and a system tray indicator. It connects locally to Bambu Lab
-over MQTT/TLS, Elegoo Centauri Carbon through SDCP/MQTT LAN, Klipper through Moonraker and Prusa through PrusaLink. Access codes and API keys
+and Anycubic Kobra S1 over MQTT/TLS, Elegoo Centauri Carbon through SDCP/MQTT LAN, Klipper through Moonraker and Prusa through PrusaLink. Access codes and API keys
 are stored in the desktop Secret Service (GNOME Keyring, KWallet with Secret Service support, or
 another compatible provider).
 

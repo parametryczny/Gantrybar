@@ -39,15 +39,16 @@ public sealed class DiagnosticsWindow : Window
             {
                 PrinterKind.Bambu => 8883, PrinterKind.Klipper => 7125, PrinterKind.Prusa => 80,
                 PrinterKind.Snapmaker => 8080, PrinterKind.ElegooCc1 => 3030, PrinterKind.ElegooCc2 => 3000,
+                PrinterKind.AnycubicKobraS1 => 18910,
                 _ => 80
             });
             var network = await ProbeAsync(printer.Host, servicePort);
             var telemetry = _store.Telemetry.TryGetValue(printer.Serial, out var value) ? value : null;
             bool mqtt = telemetry is not null && telemetry.State != PrinterState.Offline;
             int cameraPort = printer.Kind == PrinterKind.Bambu ? 6000 : printer.Kind == PrinterKind.ElegooCc1 ? 3031
-                           : printer.Kind == PrinterKind.ElegooCc2 ? 8080 : servicePort;
+                           : printer.Kind == PrinterKind.ElegooCc2 ? 8080 : printer.Kind == PrinterKind.AnycubicKobraS1 ? 18088 : servicePort;
             var camera = await ProbeAsync(printer.Host, cameraPort);
-            bool secret = !string.IsNullOrEmpty(AccessCodeStore.AccessCode(printer.Serial)) || printer.Kind is PrinterKind.ElegooCc1 or PrinterKind.Snapmaker;
+            bool secret = !string.IsNullOrEmpty(AccessCodeStore.AccessCode(printer.Serial)) || printer.Kind is PrinterKind.ElegooCc1 or PrinterKind.Snapmaker or PrinterKind.AnycubicKobraS1;
             string reason = _store.ConnectionMessages.TryGetValue(printer.Serial, out var message) && !string.IsNullOrWhiteSpace(message) ? message! : "—";
             var rows = new[]
             {

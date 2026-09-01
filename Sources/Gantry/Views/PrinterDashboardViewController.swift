@@ -1403,6 +1403,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         case .snapmaker: " HTTP "
         case .elegooCC1: " SDCP "
         case .elegooCC2: " MQTT LAN "
+        case .anycubicKobraS1: " MQTT LAN "
         }
         manufacturerLabel.isHidden = false
         let dataAge = telemetry.lastUpdated.map { max(0, Date().timeIntervalSince($0)) }

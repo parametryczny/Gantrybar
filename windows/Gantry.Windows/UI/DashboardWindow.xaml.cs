@@ -1022,6 +1022,7 @@ public partial class DashboardWindow : Window
                 PrinterKind.Snapmaker => "HTTP",
                 PrinterKind.ElegooCc1 => "SDCP",
                 PrinterKind.ElegooCc2 => "MQTT LAN",
+                PrinterKind.AnycubicKobraS1 => "MQTT LAN",
                 _ => "LAN"
             };
             // Neutral card contract: state is carried by the label + icon, never by colour. Only the

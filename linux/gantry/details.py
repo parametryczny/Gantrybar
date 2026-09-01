@@ -488,7 +488,8 @@ class DetailPanel(Gtk.Box):
         control_body.pack_start(controls, False, False, 0)
 
         supports_camera = self.printer is not None and self.printer.kind in {
-            PrinterKind.BAMBU, PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}
+            PrinterKind.BAMBU, PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2,
+            PrinterKind.ANYCUBIC_KOBRA_S1}
         self.cards: dict[str, Gtk.Widget] = {"status": status, "recent": recent,
                                              "maintenance": maintenance, "stats": stats,
                                              "ams": ams, "temps": temps, "fans": fans}

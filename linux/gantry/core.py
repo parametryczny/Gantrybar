@@ -48,6 +48,7 @@ class PrinterKind(str, Enum):
     SNAPMAKER = "snapmaker"
     ELEGOO_CC1 = "elegoo_cc1"
     ELEGOO_CC2 = "elegoo_cc2"
+    ANYCUBIC_KOBRA_S1 = "anycubic_kobra_s1"
 
     @property
     def default_port(self) -> int:
@@ -58,6 +59,7 @@ class PrinterKind(str, Enum):
             self.SNAPMAKER: 8080,
             self.ELEGOO_CC1: 3030,
             self.ELEGOO_CC2: 1883,
+            self.ANYCUBIC_KOBRA_S1: 18910,
         }[self]
 
 

@@ -27,7 +27,7 @@ Conflicts:      bambubar
 Obsoletes:      bambubar
 
 %description
-Gantry monitors Bambu Lab, Klipper/Moonraker and PrusaLink printers over the
+Gantry monitors Bambu Lab, Anycubic, Elegoo, Klipper/Moonraker and PrusaLink printers over the
 local network. It shows print progress, temperatures, layers and filament
 slots in a compact GTK desktop dashboard and system tray application.
 

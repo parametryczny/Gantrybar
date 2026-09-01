@@ -22,6 +22,10 @@ if ! python3 -c 'import PyInstaller' >/dev/null 2>&1; then
   echo "build-appimage.sh requires PyInstaller (python3 -m pip install pyinstaller)." >&2
   exit 1
 fi
+if ! python3 -c 'from Crypto.Cipher import AES' >/dev/null 2>&1; then
+  echo "build-appimage.sh requires PyCryptodome (python3 -m pip install pycryptodome)." >&2
+  exit 1
+fi
 for command_name in curl file gst-inspect-1.0 pkg-config patchelf; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "build-appimage.sh requires $command_name." >&2
@@ -50,6 +54,8 @@ PYTHONPATH="$ROOT/linux${PYTHONPATH:+:$PYTHONPATH}" python3 -m PyInstaller --noc
   --hidden-import gi.repository.AyatanaAppIndicator3 \
   --hidden-import gi.repository.GdkPixbuf \
   --hidden-import gi.repository.Gst \
+  --hidden-import Crypto.Cipher.AES \
+  --hidden-import Crypto.Util.Padding \
   --hidden-import websocket \
   --distpath "$PYI_DIST" \
   --workpath "$PYI_WORK" \
