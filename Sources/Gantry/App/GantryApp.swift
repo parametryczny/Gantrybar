@@ -10,6 +10,8 @@ final class GantryApp: NSObject, NSApplicationDelegate {
     private var webServerSub: AnyCancellable?
     private var syncService: SyncService?
     private var syncTimer: Timer?
+    private var telegramBot: TelegramBot?
+    private var telegramSub: AnyCancellable?
 
     static func main() {
         if CommandLine.arguments.contains("--self-test") {
@@ -126,6 +128,12 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         syncTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { _ in
             Task { @MainActor in sync.syncNow() }
         }
+        // Two-way Telegram bot (/status, control, /photo). Starts only when enabled + configured; the
+        // Settings section re-syncs it directly, and toggling the switch is covered here too.
+        let bot = TelegramBot(store: store)
+        telegramBot = bot
+        bot.syncWithSettings()
+        telegramSub = AppSettings.shared.$telegramEnabled.removeDuplicates().sink { _ in bot.syncWithSettings() }
         let prompter = LocalNetworkPermissionPrompter {
             Task { @MainActor in store.retryAfterLocalNetworkPermission() }
         }

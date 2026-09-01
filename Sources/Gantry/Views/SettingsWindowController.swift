@@ -123,11 +123,13 @@ final class SettingsWindowController: NSWindowController {
         telegramTokenField.isEnabled = telegramEnableCheck.state == .on
         telegramChatField.isEnabled = telegramEnableCheck.state == .on
         telegramTestButton.isEnabled = telegramEnableCheck.state == .on
+        TelegramBot.shared?.syncWithSettings()
     }
 
     @objc private func telegramFieldChanged() {
         AppSettings.shared.telegramBotToken = telegramTokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         AppSettings.shared.telegramChatID = telegramChatField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        TelegramBot.shared?.syncWithSettings()
     }
 
     @objc private func telegramTest() {
