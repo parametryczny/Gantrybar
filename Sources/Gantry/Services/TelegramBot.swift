@@ -166,33 +166,56 @@ final class TelegramBot {
         lines.append("\(s.text("Dysza", "Nozzle")) \(temp(t.nozzleTemperature, t.nozzleTargetTemperature))"
             + " · \(s.text("stół", "bed")) \(temp(t.bedTemperature, t.bedTargetTemperature))"
             + (t.chamberTemperature != nil ? " · \(s.text("komora", "chamber")) \(temp(t.chamberTemperature, nil))" : ""))
-        // Filament modules (AMS / AMS HT / CFS / EXT): one line each, only the loaded slots, with an
-        // active marker so you see which spool is printing.
-        for group in t.filamentGroups {
-            let loaded = group.slots.filter(\.isPresent).map { slot -> String in
-                let marker = slot.isActive ? "● " : ""
-                let pct = slot.remainingPercent.map { " \($0)%" } ?? ""
-                return "\(marker)\(slot.label) \(slot.material ?? "")\(pct)".trimmingCharacters(in: .whitespaces)
-            }
-            guard !loaded.isEmpty else { continue }
-            let humidity = group.humidityPercent.map { " · 💧\($0)%" } ?? ""
-            lines.append("\(group.displayName)\(humidity): " + loaded.joined(separator: " · "))
-        }
+        // The filament modules themselves are shown as a row of tiles in the keyboard (see actionKeyboard);
+        // here only the module humidity, if reported.
+        let humidity = t.filamentGroups.compactMap { g in g.humidityPercent.map { "\(g.displayName) 💧\($0)%" } }
+        if !humidity.isEmpty { lines.append(humidity.joined(separator: " · ")) }
         return lines.joined(separator: "\n")
     }
 
     private func actionKeyboard(serial: String) -> String {
         let s = AppSettings.shared
-        return keyboard([
-            [("⏸ " + s.text("Pauza", "Pause"), "a:pause:\(serial)"),
-             ("▶️ " + s.text("Wznów", "Resume"), "a:resume:\(serial)"),
-             ("⏹ " + s.text("Stop", "Stop"), "a:stopask:\(serial)")],
-            [("💡 " + s.text("Wł", "On"), "a:lighton:\(serial)"),
-             ("🌑 " + s.text("Wył", "Off"), "a:lightoff:\(serial)"),
-             ("📷 " + s.text("Zdjęcie", "Photo"), "photo:\(serial)")],
-            [("↻ " + s.text("Odśwież", "Refresh"), "p:\(serial)"),
-             ("‹ " + s.text("Drukarki", "Printers"), "menu")]
-        ])
+        var rows: [[(String, String)]] = []
+        // AMS as a row of tiles: colour dot + slot + material + %. Display-only (tap does nothing), up to
+        // four per row so a 4-slot AMS reads as one row like the on-screen card.
+        for group in store?.telemetry[serial]?.filamentGroups ?? [] {
+            let loaded = group.slots.filter(\.isPresent)
+            guard !loaded.isEmpty else { continue }
+            let tiles = loaded.map { slot -> (String, String) in
+                let active = slot.isActive ? "● " : ""
+                let pct = slot.remainingPercent.map { " \($0)%" } ?? ""
+                let label = "\(colorDot(slot.colorHex))\(active)\(slot.label) \(slot.material ?? "")\(pct)"
+                    .trimmingCharacters(in: .whitespaces)
+                return (label, "noop")
+            }
+            for chunk in stride(from: 0, to: tiles.count, by: 4) {
+                rows.append(Array(tiles[chunk ..< min(chunk + 4, tiles.count)]))
+            }
+        }
+        rows.append([("⏸ " + s.text("Pauza", "Pause"), "a:pause:\(serial)"),
+                     ("▶️ " + s.text("Wznów", "Resume"), "a:resume:\(serial)"),
+                     ("⏹ " + s.text("Stop", "Stop"), "a:stopask:\(serial)")])
+        rows.append([("💡 " + s.text("Wł", "On"), "a:lighton:\(serial)"),
+                     ("🌑 " + s.text("Wył", "Off"), "a:lightoff:\(serial)"),
+                     ("📷 " + s.text("Zdjęcie", "Photo"), "photo:\(serial)")])
+        rows.append([("↻ " + s.text("Odśwież", "Refresh"), "p:\(serial)"),
+                     ("‹ " + s.text("Drukarki", "Printers"), "menu")])
+        return keyboard(rows)
+    }
+
+    /// A coloured circle emoji roughly matching a filament colour hex, so an AMS tile hints the colour.
+    private func colorDot(_ hex: String?) -> String {
+        guard let clean = hex?.replacingOccurrences(of: "#", with: ""), clean.count >= 6,
+              let value = Int(clean.prefix(6), radix: 16) else { return "⚪️" }
+        let r = Double((value >> 16) & 0xFF), g = Double((value >> 8) & 0xFF), b = Double(value & 0xFF)
+        let maxc = max(r, g, b), minc = min(r, g, b)
+        if maxc < 55 { return "⚫️" }
+        if minc > 205 { return "⚪️" }
+        if maxc - minc < 34 { return "⚪️" }                       // greyish
+        if r >= g, r >= b { return (maxc < 150 ? "🟤" : (g > 110 ? "🟠" : "🔴")) }
+        if g >= r, g >= b { return "🟢" }
+        if b >= r, b >= g { return (r > 110 ? "🟣" : "🔵") }
+        return "🟡"
     }
 
     private func stateLabel(_ state: PrinterState) -> String {
