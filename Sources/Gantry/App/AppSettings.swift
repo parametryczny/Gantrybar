@@ -97,6 +97,13 @@ final class AppSettings: ObservableObject {
         if set.insert(id.uuidString).inserted { defaults.set(set.joined(separator: "\n"), forKey: "approved-script-rules") }
     }
 
+    // Telegram push (outbound). Fires on the same events enabled above (finished/error/paused/low/humidity)
+    // when enabled. Keys are shared verbatim with the Windows/Linux ports (telegram-enabled / -bot-token /
+    // -chat-id) so the same account works across a user's machines.
+    @Published var telegramEnabled: Bool { didSet { defaults.set(telegramEnabled, forKey: "telegram-enabled") } }
+    @Published var telegramBotToken: String { didSet { defaults.set(telegramBotToken, forKey: "telegram-bot-token") } }
+    @Published var telegramChatID: String { didSet { defaults.set(telegramChatID, forKey: "telegram-chat-id") } }
+
     @Published var notifyFinished: Bool { didSet { defaults.set(notifyFinished, forKey: "notify-finished") } }
     @Published var notifyError: Bool { didSet { defaults.set(notifyError, forKey: "notify-error") } }
     @Published var notifyPaused: Bool { didSet { defaults.set(notifyPaused, forKey: "notify-paused") } }
@@ -138,6 +145,9 @@ final class AppSettings: ObservableObject {
         cardShowSpoolGrams = defaults.object(forKey: "card-show-spool-grams") as? Bool ?? false
         monochrome = defaults.object(forKey: "monochrome") as? Bool ?? false
         allowScriptActions = defaults.object(forKey: "allow-script-actions") as? Bool ?? false
+        telegramEnabled = defaults.object(forKey: "telegram-enabled") as? Bool ?? false
+        telegramBotToken = defaults.string(forKey: "telegram-bot-token") ?? ""
+        telegramChatID = defaults.string(forKey: "telegram-chat-id") ?? ""
         notifyFinished = defaults.object(forKey: "notify-finished") as? Bool ?? true
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true
         notifyPaused = defaults.object(forKey: "notify-paused") as? Bool ?? true

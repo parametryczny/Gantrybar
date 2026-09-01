@@ -48,6 +48,15 @@ final class SettingsWindowController: NSWindowController {
     private let quietHoursCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let quietStartPicker = NSDatePicker()
     private let quietEndPicker = NSDatePicker()
+    private let telegramSectionLabel = NSTextField(labelWithString: "")
+    private let telegramEnableCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let telegramTokenField = NSTextField()
+    private let telegramChatField = NSTextField()
+    private let telegramTestButton = NSButton()
+    private let telegramStatusLabel = NSTextField(labelWithString: "")
+    private let telegramHint = NSTextField(wrappingLabelWithString: "")
+    private let telegramTokenCaption = NSTextField(labelWithString: "")
+    private let telegramChatCaption = NSTextField(labelWithString: "")
     private let webSectionLabel = NSTextField(labelWithString: "")
     private let webEnableLabel = NSTextField(labelWithString: "")
     private let webEnableSwitch = NSSwitch()
@@ -97,6 +106,49 @@ final class SettingsWindowController: NSWindowController {
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// A caption + field on one line, used by the Telegram section.
+    private func labeledFieldRow(_ caption: NSTextField, _ field: NSView) -> NSView {
+        caption.setContentHuggingPriority(.required, for: .horizontal)
+        let row = NSStackView(views: [caption, field])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        return row
+    }
+
+    @objc private func telegramToggled() {
+        AppSettings.shared.telegramEnabled = telegramEnableCheck.state == .on
+        telegramTokenField.isEnabled = telegramEnableCheck.state == .on
+        telegramChatField.isEnabled = telegramEnableCheck.state == .on
+        telegramTestButton.isEnabled = telegramEnableCheck.state == .on
+    }
+
+    @objc private func telegramFieldChanged() {
+        AppSettings.shared.telegramBotToken = telegramTokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppSettings.shared.telegramChatID = telegramChatField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @objc private func telegramTest() {
+        telegramFieldChanged()   // persist whatever is typed before sending
+        let settings = AppSettings.shared
+        let token = settings.telegramBotToken, chat = settings.telegramChatID
+        guard !token.isEmpty, !chat.isEmpty else {
+            telegramStatusLabel.stringValue = settings.text("Wpisz token i chat_id.", "Enter a token and chat_id.")
+            telegramStatusLabel.textColor = GantryTheme.statusError
+            return
+        }
+        telegramStatusLabel.stringValue = settings.text("Wysyłanie…", "Sending…")
+        telegramStatusLabel.textColor = GantryTheme.secondary
+        let text = TelegramService.format(printer: "Gantry", title: settings.text("Test powiadomienia", "Test notification"),
+                                          body: settings.text("Połączenie działa.", "The connection works."))
+        Task { @MainActor in
+            let ok = await TelegramService.sendMessage(token: token, chatID: chat, text: text)
+            telegramStatusLabel.stringValue = ok ? settings.text("Wysłano ✓", "Sent ✓")
+                                                  : settings.text("Nie udało się. Sprawdź token i chat_id.", "Failed. Check the token and chat_id.")
+            telegramStatusLabel.textColor = ok ? GantryTheme.statusFinished : GantryTheme.statusError
+        }
     }
 
     /// Wraps a section in a translucent card with a quiet uppercase title — the same visual language as
@@ -348,6 +400,41 @@ final class SettingsWindowController: NSWindowController {
         let generalCard = sectionCard(title: generalSectionLabel, body: generalBody)
         let cardsCard = sectionCard(title: cardsLabel, body: cardsBody)
         let notificationsCard = sectionCard(title: notificationsLabel, body: notificationsBody)
+
+        // Telegram: enable + bot token + chat id + a Test button. Fires on the same events as the native
+        // notifications above. Fields are wide and monospaced so a long token is readable.
+        telegramEnableCheck.target = self
+        telegramEnableCheck.action = #selector(telegramToggled)
+        for field in [telegramTokenField, telegramChatField] {
+            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            field.bezelStyle = .roundedBezel
+            field.target = self
+            field.action = #selector(telegramFieldChanged)
+            field.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
+        }
+        telegramTokenField.placeholderString = "123456:ABC-DEF..."
+        telegramChatField.placeholderString = "123456789"
+        configureTextButton(telegramTestButton, action: #selector(telegramTest))
+        telegramStatusLabel.font = .systemFont(ofSize: 11)
+        telegramStatusLabel.textColor = GantryTheme.secondary
+        telegramHint.font = .systemFont(ofSize: 11)
+        telegramHint.textColor = GantryTheme.muted
+        for caption in [telegramTokenCaption, telegramChatCaption] {
+            caption.font = .systemFont(ofSize: 11)
+            caption.textColor = GantryTheme.secondary
+        }
+        let telegramTokenRow = labeledFieldRow(telegramTokenCaption, telegramTokenField)
+        let telegramChatRow = labeledFieldRow(telegramChatCaption, telegramChatField)
+        let telegramTestRow = NSStackView(views: [telegramTestButton, telegramStatusLabel, NSView()])
+        telegramTestRow.orientation = .horizontal
+        telegramTestRow.alignment = .centerY
+        telegramTestRow.spacing = 8
+        let telegramBody = NSStackView(views: [telegramEnableCheck, telegramTokenRow, telegramChatRow, telegramTestRow, telegramHint])
+        telegramBody.orientation = .vertical
+        telegramBody.alignment = .leading
+        telegramBody.spacing = 8
+        let telegramCard = sectionCard(title: telegramSectionLabel, body: telegramBody)
+
         let webCard = sectionCard(title: webSectionLabel, body: webBody)
 
         // Synchronizacja: token + address to pair, a field to paste the shared token, the peer list.
@@ -395,7 +482,7 @@ final class SettingsWindowController: NSWindowController {
         header.alignment = .leading
         header.spacing = 8
 
-        let sectionCards = [appearanceCard, generalCard, cardsCard, notificationsCard, webCard, syncCard, updatesCard]
+        let sectionCards = [appearanceCard, generalCard, cardsCard, notificationsCard, telegramCard, webCard, syncCard, updatesCard]
         let stack = NSStackView(views: [header] + sectionCards + [actionRow, supportStack])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -509,6 +596,20 @@ final class SettingsWindowController: NSWindowController {
         quietEndPicker.dateValue = date(fromMinutes: QuietHours.endMinutes)
         quietStartPicker.isEnabled = QuietHours.isEnabled
         quietEndPicker.isEnabled = QuietHours.isEnabled
+        telegramSectionLabel.stringValue = settings.text("TELEGRAM", "TELEGRAM")
+        telegramEnableCheck.title = settings.text("Wysyłaj powiadomienia na Telegram", "Send notifications to Telegram")
+        telegramTokenCaption.stringValue = settings.text("Token bota:", "Bot token:")
+        telegramChatCaption.stringValue = settings.text("Chat ID:", "Chat ID:")
+        telegramTestButton.title = settings.text("Wyślij test", "Send test")
+        telegramHint.stringValue = settings.text(
+            "Utwórz bota przez @BotFather (token), napisz do niego, a swój chat_id weź od @userinfobot. Wysyła te same zdarzenia co powyżej.",
+            "Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as above.")
+        telegramEnableCheck.state = settings.telegramEnabled ? .on : .off
+        telegramTokenField.stringValue = settings.telegramBotToken
+        telegramChatField.stringValue = settings.telegramChatID
+        telegramTokenField.isEnabled = settings.telegramEnabled
+        telegramChatField.isEnabled = settings.telegramEnabled
+        telegramTestButton.isEnabled = settings.telegramEnabled
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "0.1.19"
         versionLabel.stringValue = settings.text("Wersja \(version)", "Version \(version)") + " • \(AccessCodeStore.modeName)"
