@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 
+using System.Linq;
+
 namespace Gantry.Services;
 
 /// <summary>Outbound Telegram notifications through the official Bot API. The C# mirror of the macOS
@@ -26,14 +28,30 @@ public static class TelegramService
     public static string Format(string printer, string title, string body)
         => string.IsNullOrEmpty(body) ? $"🖨 {printer} — {title}" : $"🖨 {printer} — {title}\n{body}";
 
-    public static async Task<bool> SendMessageAsync(string token, string chatId, string text)
+    /// The persistent bottom bar of commands, shared with the bot. Every outgoing message carries it, so
+    /// it installs itself on the user's very first alert: the printer picker is an inline keyboard glued
+    /// to one message, and once the chat scrolls past it there is no way back without scrolling up.
+    public static string CommandKeyboard { get; } = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        keyboard = new[]
+        {
+            new[] { "/status", "/all" }, new[] { "/spools", "/history" },
+            new[] { "/watch 10m", "/mute 2h" }, new[] { "/help" }
+        }.Select(r => r.Select(t => new { text = t }).ToArray()).ToArray(),
+        resize_keyboard = true
+    });
+
+    public static async Task<bool> SendMessageAsync(string token, string chatId, string text,
+                                                    string? replyMarkup = null)
     {
         try
         {
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            var fields = new Dictionary<string, string>
             {
                 ["chat_id"] = chatId, ["text"] = text, ["disable_web_page_preview"] = "true"
-            });
+            };
+            fields["reply_markup"] = replyMarkup ?? CommandKeyboard;
+            var content = new FormUrlEncodedContent(fields);
             var response = await Http.PostAsync($"https://api.telegram.org/bot{token}/sendMessage", content);
             return response.IsSuccessStatusCode;
         }

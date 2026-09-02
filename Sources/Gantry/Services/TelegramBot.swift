@@ -221,16 +221,8 @@ final class TelegramBot {
         return nil
     }
 
-    /// Persistent bottom bar. Attached to every text reply, not just /help: the printer picker is an
-    /// inline keyboard glued to its own message, so once the chat scrolls past it there is no way back
-    /// without scrolling. A tap on /status here posts a fresh picker at the bottom instead.
-    private func commandKeyboard() -> String {
-        let rows = [["/status", "/all"], ["/spools", "/history"], ["/watch 10m", "/mute 2h"], ["/help"]]
-        let markup: [String: Any] = ["keyboard": rows.map { $0.map { ["text": $0] } },
-                                     "resize_keyboard": true]
-        let data = (try? JSONSerialization.data(withJSONObject: markup)) ?? Data()
-        return String(data: data, encoding: .utf8) ?? ""
-    }
+    /// Persistent bottom bar, defined once in TelegramService so notifications and bot replies agree.
+    private func commandKeyboard() -> String { TelegramService.commandKeyboard }
 
     private func handleCallback(_ data: String, cbID: String, messageID: Int?) async {
         let parts = data.split(separator: ":").map(String.init)

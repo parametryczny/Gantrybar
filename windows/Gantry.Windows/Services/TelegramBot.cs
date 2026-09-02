@@ -395,14 +395,8 @@ public sealed class TelegramBot
 
     private static string Keyboard(object[][] rows) => JsonSerializer.Serialize(new { inline_keyboard = rows });
 
-    /// Persistent bottom bar. Attached to every text reply, not just /help: the printer picker is an
-    /// inline keyboard glued to its own message, so once the chat scrolls past it there is no way back
-    /// without scrolling. A tap on /status here posts a fresh picker at the bottom instead.
-    private static string CommandKeyboard()
-    {
-        var rows = new[] { new[] { "/status", "/all" }, new[] { "/spools", "/history" }, new[] { "/watch 10m", "/mute 2h" }, new[] { "/help" } };
-        return JsonSerializer.Serialize(new { keyboard = rows.Select(r => r.Select(t => new { text = t }).ToArray()).ToArray(), resize_keyboard = true });
-    }
+    /// Persistent bottom bar, defined once in TelegramService so notifications and bot replies agree.
+    private static string CommandKeyboard() => TelegramService.CommandKeyboard;
 
     private async Task SendAsync(string text, string? replyMarkup)
     {

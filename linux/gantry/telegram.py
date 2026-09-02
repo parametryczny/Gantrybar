@@ -35,6 +35,16 @@ def _post(token: str, method: str, params: dict[str, str], timeout: int = 20) ->
         return None
 
 
+def command_keyboard() -> str:
+    """Persistent bottom bar of commands, shared with the bot. Every outgoing message carries it, so it
+    installs itself on the user's very first alert: the printer picker is an inline keyboard glued to one
+    message, and once the chat scrolls past it there is no way back without scrolling up."""
+    return json.dumps({"keyboard": [[{"text": t} for t in row] for row in
+                       [["/status", "/all"], ["/spools", "/history"],
+                        ["/watch 10m", "/mute 2h"], ["/help"]]],
+                       "resize_keyboard": True})
+
+
 def format_message(printer: str, title: str, body: str) -> str:
     return f"🖨 {printer} — {title}" + (f"\n{body}" if body else "")
 
@@ -61,12 +71,14 @@ def notify(app, printer: str, title: str, body: str) -> None:
     text = format_message(printer, title, body)
     threading.Thread(
         target=_post, daemon=True,
-        args=(token, "sendMessage", {"chat_id": chat, "text": text, "disable_web_page_preview": "true"}),
+        args=(token, "sendMessage", {"chat_id": chat, "text": text, "disable_web_page_preview": "true",
+                                    "reply_markup": command_keyboard()}),
     ).start()
 
 
 def send_test(token: str, chat: str, title: str, body: str) -> bool:
-    result = _post(token, "sendMessage", {"chat_id": chat, "text": format_message("Gantry", title, body)})
+    result = _post(token, "sendMessage", {"chat_id": chat, "text": format_message("Gantry", title, body),
+                                          "reply_markup": command_keyboard()})
     return bool(result and result.get("ok"))
 
 
@@ -299,13 +311,8 @@ class TelegramBot:
 
     @staticmethod
     def _command_keyboard() -> str:
-        """Persistent bottom bar. Attached to every text reply, not just /help: the printer picker is an
-        inline keyboard glued to its own message, so once the chat scrolls past it there is no way back
-        without scrolling. A tap on /status here posts a fresh picker at the bottom instead."""
-        return json.dumps({"keyboard": [[{"text": t} for t in row] for row in
-                           [["/status", "/all"], ["/spools", "/history"],
-                            ["/watch 10m", "/mute 2h"], ["/help"]]],
-                           "resize_keyboard": True})
+        """Defined once at module level so notifications and bot replies agree."""
+        return command_keyboard()
 
     def _send_all(self) -> None:
         printers = list(self.app.printers)

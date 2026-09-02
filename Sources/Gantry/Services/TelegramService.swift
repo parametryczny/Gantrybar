@@ -24,6 +24,17 @@ enum TelegramService {
         Task { await sendMessage(token: token, chatID: chat, text: text) }
     }
 
+    /// The persistent bottom bar of commands, shared with the bot. Every outgoing message carries it, so
+    /// it installs itself on the user's very first alert: the printer picker is an inline keyboard glued
+    /// to one message, and once the chat scrolls past it there is no way back without scrolling up.
+    static let commandKeyboard: String = {
+        let rows = [["/status", "/all"], ["/spools", "/history"], ["/watch 10m", "/mute 2h"], ["/help"]]
+        let markup: [String: Any] = ["keyboard": rows.map { $0.map { ["text": $0] } },
+                                     "resize_keyboard": true]
+        let data = (try? JSONSerialization.data(withJSONObject: markup)) ?? Data()
+        return String(data: data, encoding: .utf8) ?? ""
+    }()
+
     /// The one message format every platform uses: `🖨 <printer> — <title>` then the body on a new line.
     static func format(printer: String, title: String, body: String) -> String {
         var text = "🖨 \(printer) — \(title)"
@@ -33,7 +44,8 @@ enum TelegramService {
 
     /// Low-level send. Returns true on HTTP 200, so the Settings "Test" button can report success.
     @discardableResult
-    static func sendMessage(token: String, chatID: String, text: String) async -> Bool {
+    static func sendMessage(token: String, chatID: String, text: String,
+                            replyMarkup: String? = commandKeyboard) async -> Bool {
         guard let url = URL(string: "https://api.telegram.org/bot\(token)/sendMessage") else { return false }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -44,6 +56,9 @@ enum TelegramService {
             URLQueryItem(name: "text", value: text),
             URLQueryItem(name: "disable_web_page_preview", value: "true")
         ]
+        if let replyMarkup, !replyMarkup.isEmpty {
+            form.queryItems?.append(URLQueryItem(name: "reply_markup", value: replyMarkup))
+        }
         request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
         request.timeoutInterval = 15
         do {
