@@ -13,12 +13,22 @@ case "$STORAGE_MODE" in
         # stores printer access codes in the Keychain instead of plaintext UserDefaults.
         APP_NAME="Gantry"
         BUNDLE_ID="pl.gantry.app"
-        SWIFT_FLAGS=(-Xswiftc -DKEYCHAIN_STORAGE)
+        SWIFT_FLAGS=(-Xswiftc -DKEYCHAIN_STORAGE
+             # macOS 27 beta crashes inside swift_task_isCurrentExecutor, so every dynamic
+             # isolation check AppKit triggers (isFlipped on hit-test, MainActor closures from
+             # RunLoop timers) is a landmine. The checks are redundant here: the code is already
+             # main-thread only. Drop them until the OS runtime is fixed.
+             -Xswiftc -Xfrontend -Xswiftc -disable-dynamic-actor-isolation)
         ;;
     keychain)
         APP_NAME="Gantry Keychain"
         BUNDLE_ID="pl.gantry.app.keychain"
-        SWIFT_FLAGS=(-Xswiftc -DKEYCHAIN_STORAGE)
+        SWIFT_FLAGS=(-Xswiftc -DKEYCHAIN_STORAGE
+             # macOS 27 beta crashes inside swift_task_isCurrentExecutor, so every dynamic
+             # isolation check AppKit triggers (isFlipped on hit-test, MainActor closures from
+             # RunLoop timers) is a landmine. The checks are redundant here: the code is already
+             # main-thread only. Drop them until the OS runtime is fixed.
+             -Xswiftc -Xfrontend -Xswiftc -disable-dynamic-actor-isolation)
         ;;
     *)
         echo "Użycie: $0 [local|keychain]" >&2
@@ -31,7 +41,7 @@ esac
 GANTRY_ARCHS="${GANTRY_ARCHS:-arm64 x86_64}"
 ARCH_FLAGS=()
 for a in $GANTRY_ARCHS; do ARCH_FLAGS+=(--arch "$a"); done
-BUILD_ARGS=(--disable-sandbox "${ARCH_FLAGS[@]}" "${SWIFT_FLAGS[@]}")
+BUILD_ARGS=(-c release --disable-sandbox "${ARCH_FLAGS[@]}" "${SWIFT_FLAGS[@]}")
 swift build "${BUILD_ARGS[@]}"
 BIN_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
 TEMP_ROOT="$(mktemp -d /private/tmp/bambubar-build.XXXXXX)"

@@ -269,6 +269,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          enabled: !store.printers.isEmpty) { [weak self] in
             self?.store.reconnectAll()
         })
+        menu.addItem(row(icon: "stethoscope",
+                         title: settings.text("Centrum diagnostyczne…", "Diagnostic Center…")) { [weak self] in
+            self?.showDiagnostics()
+        })
 
         menu.addItem(.separator())
 
@@ -377,6 +381,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func showSettings() {
         if settingsWindow == nil { settingsWindow = SettingsWindowController(store: store) }
         settingsWindow?.presentCentered()
+    }
+
+    /// Diagnostics rides inside the popover, so open it first when the menu was used with the panel
+    /// closed. The overlay is added on the next runloop pass, once the popover content has a size.
+    @objc private func showDiagnostics() {
+        if !popover.isShown { showPopoverFromMenu() }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let host = self.popover.contentViewController?.view else { return }
+            DiagnosticCenterViewController.show(store: self.store, in: host)
+        }
     }
 
     @objc private func quitApplication() {
