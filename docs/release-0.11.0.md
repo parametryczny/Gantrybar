@@ -49,6 +49,8 @@ Każda drukarka ma panel konserwacji z czterema zadaniami rozliczanymi w **godzi
 
 Zadanie po terminie podświetla się na karcie. Możesz oznaczyć je jako wykonane, odłożyć o siedem dni albo ustawić własny interwał. Obok panelu znajdziesz listę ostatnich wydruków ze statusem i czasem trwania oraz statystyki: liczbę ukończonych zadań, skuteczność i zużycie filamentu w gramach.
 
+Panel otwiera się jako nakładka wewnątrz aplikacji, a nie w osobnym oknie, więc nie odbiera fokusu i zamyka się kliknięciem obok. Akcje zostały skrócone do zwartego rzędu przycisków, a otwarcie panelu nie powoduje już podskoku całego okna.
+
 Uwagi drukarki (kody HMS) są teraz oddzielone od zadań konserwacji, więc awaria sprzętu nie miesza się z planem serwisowym.
 
 Centrum diagnostyczne otwierasz z menu prawego przycisku na ikonie Gantry. Dla każdej drukarki sprawdza dwie rzeczy: czy odpowiada jej port (z opóźnieniem w milisekundach i oceną jakości) oraz czy Gantry ma z nią żywe połączenie, a przy jego braku podaje powód. W trakcie widzisz nazwę aktualnie badanej drukarki i pasek postępu, a każda drukarka ma twardy limit trzech sekund, więc jeden host, który nie odpowiada, nie zatrzyma przebiegu. Na macOS panel jest nakładką w stylu pozostałych paneli aplikacji.
@@ -64,7 +66,8 @@ Obsługa obejmuje stan zadania, temperatury, sterowanie drukiem, światło komor
 - **Powiadomienia systemowe na Windows 11**: rejestracja powiadomień odbywa się teraz na wątku STA aplikacji. Telemetria drukarek przychodzi na wątkach roboczych, gdzie inicjalizacja WinRT potrafiła po cichu zawieść, przez co nie pojawiało się nic. Gantry sprawdza dodatkowo, czy powiadomienia nie zostały wyłączone przez użytkownika lub politykę firmową, i w takim wypadku wraca do dymka w zasobniku zamiast milczeć. Błędy trafiają do logu.
 - **Sekcja AMS przestała skakać w oknie szczegółów**: widok filamentów przebudowywał się przy każdym pakiecie telemetrii, nawet gdy nic się nie zmieniło. Dodatkowo pakiet częściowy zawierający wyłącznie tacę zewnętrzną chwilowo usuwał znane moduły AMS, przez co karta zmieniała wysokość i wracała. Bambu wysyła dane AMS i tacy zewnętrznej w niezależnych pakietach, więc każdy z nich aktualizuje teraz tylko tę część, którą faktycznie niesie.
 - **Centrum diagnostyczne nie wywraca już aplikacji ani nie zawiesza się w połowie**: okno trzymał kontroler ustawień, więc zamknięcie ustawień zostawiało je osierocone i pierwszy ruch myszy sięgał po zwolnione widoki. Panel żyje teraz wewnątrz aplikacji, tak jak konserwacja. Osobno naprawiony został przebieg testu, który potrafił zamilknąć po pierwszej drukarce.
-- **Panel konserwacji**: wyrównane wiersze akcji, szersze pole interwału mieszczące wartości czterocyfrowe i nazwy zadań, które nie urywają się wielokropkiem.
+- **Panel konserwacji na macOS otwiera się poprawnie**: wcześniej potrafił nie zareagować na kliknięcie. Przy okazji zniknął podskok okna przy otwieraniu.
+- **Panel konserwacji, układ**: wyrównane wiersze akcji, szersze pole interwału mieszczące wartości czterocyfrowe i nazwy zadań, które nie urywają się wielokropkiem.
 - **Kody HMS**: poprawione rozpoznawanie katalogów i wycentrowane pola formularzy.
 
 ## Uwaga dla macOS 26 i nowszych
