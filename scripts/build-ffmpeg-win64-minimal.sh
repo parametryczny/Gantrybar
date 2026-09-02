@@ -19,6 +19,10 @@ set -euo pipefail
 
 FFMPEG_VERSION="${FFMPEG_VERSION:-7.1}"   # pinned so the artifact is reproducible and cacheable
 OUT_DIR="${1:?usage: $0 <output-dir>}"
+# Resolve to an absolute path before the cd below: a relative one would land inside the scratch dir
+# and be swept away by the trap.
+mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -59,7 +63,6 @@ echo "==> Building"
 make -j"$(nproc)"
 test -f ffmpeg.exe || { echo "ffmpeg.exe was not produced"; exit 1; }
 
-mkdir -p "$OUT_DIR"
 cp ffmpeg.exe "$OUT_DIR/ffmpeg.exe"
 x86_64-w64-mingw32-strip "$OUT_DIR/ffmpeg.exe" || true
 
