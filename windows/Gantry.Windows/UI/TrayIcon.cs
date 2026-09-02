@@ -125,6 +125,8 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Szukaj drukarek…", "Scan for printers…"), null, (_, _) => { ShowDashboard(); _store.Scan(); }));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Dodaj drukarkę…", "Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Połącz ponownie (wszystkie)", "Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Centrum diagnostyczne…", "Diagnostic Center…"), null,
+            (_, _) => new DiagnosticsWindow(_store).Show()));
         menu.Items.Add(new ToolStripSeparator());
 
         var language = new ToolStripMenuItem(AppSettings.Text("Język: PL", "Language: EN"));

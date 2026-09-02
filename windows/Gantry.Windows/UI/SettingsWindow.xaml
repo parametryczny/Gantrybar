@@ -190,14 +190,6 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="DiagnosticsHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
-            <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
-                <StackPanel>
-                    <TextBlock x:Name="DiagnosticsHint" FontSize="11" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,9"/>
-                    <Button x:Name="DiagnosticsButton" HorizontalAlignment="Left"/>
-                </StackPanel>
-            </Border>
-
             <TextBlock x:Name="UpdatesHeading" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,18,0,8"/>
             <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,12" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>

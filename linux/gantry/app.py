@@ -529,6 +529,8 @@ class Gantry:
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
         reconnect = Gtk.MenuItem(label="Połącz ponownie (wszystkie)" if self.language == "pl" else "Reconnect (all)")
         reconnect.connect("activate", lambda *_: self.reconnect_all()); menu.append(reconnect)
+        diagnostics = Gtk.MenuItem(label="Centrum diagnostyczne…" if self.language == "pl" else "Diagnostic Center…")
+        diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
         menu.append(Gtk.SeparatorMenuItem())
 
         language = Gtk.MenuItem(label="Język: PL" if self.language == "pl" else "Language: EN")
@@ -1149,6 +1151,10 @@ class Gantry:
         dialog = Gtk.MessageDialog(transient_for=parent or self.window, modal=True, message_type=kind,
                                    buttons=Gtk.ButtonsType.OK, text=message)
         dialog.run(); dialog.destroy()
+
+    def open_diagnostics(self) -> None:
+        from .diagnostics import DiagnosticsDialog
+        DiagnosticsDialog(self).present()
 
     def open_settings(self) -> None:
         existing = getattr(self, "settings_dialog", None)

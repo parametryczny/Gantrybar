@@ -70,10 +70,6 @@ public partial class SettingsWindow : Window
         TelegramTokenBox.LostFocus += (_, _) => { AppSettings.TelegramBotToken = TelegramTokenBox.Text.Trim(); TelegramBot.Shared?.SyncWithSettings(); };
         TelegramChatBox.LostFocus += (_, _) => { AppSettings.TelegramChatId = TelegramChatBox.Text.Trim(); TelegramBot.Shared?.SyncWithSettings(); };
         TelegramTestButton.Click += async (_, _) => await TelegramTestAsync();
-        DiagnosticsButton.Click += (_, _) =>
-        {
-            if (_store is not null) new DiagnosticsWindow(_store) { Owner = this }.Show();
-        };
         QuietHoursCheckBox.Click += (_, _) => { QuietHours.Enabled = QuietHoursCheckBox.IsChecked == true; QuietTimesRow.IsEnabled = QuietHoursCheckBox.IsChecked == true; };
         QuietStartBox.LostFocus += (_, _) => SaveQuietTimes();
         QuietEndBox.LostFocus += (_, _) => SaveQuietTimes();
@@ -214,13 +210,6 @@ public partial class SettingsWindow : Window
         TelegramTokenBox.IsEnabled = AppSettings.TelegramEnabled;
         TelegramChatBox.IsEnabled = AppSettings.TelegramEnabled;
         TelegramTestButton.IsEnabled = AppSettings.TelegramEnabled;
-
-        DiagnosticsHeading.Text = AppSettings.Text("CENTRUM DIAGNOSTYCZNE", "DIAGNOSTIC CENTER");
-        DiagnosticsHint.Text = AppSettings.Text(
-            "Test sieci, MQTT, kamery i magazynu sekretów. Pokazuje powód offline, opóźnienie i jakość połączenia.",
-            "Tests network, MQTT, camera and secret storage. Shows offline reason, latency and connection quality.");
-        DiagnosticsButton.Content = AppSettings.Text("Otwórz centrum diagnostyczne…", "Open Diagnostic Center…");
-        DiagnosticsButton.IsEnabled = _store is not null;
 
         UpdatesHeading.Text = AppSettings.Text("AKTUALIZACJE", "UPDATES");
         UpdateStatus.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion}", $"Version {UpdateChecker.CurrentVersion}");

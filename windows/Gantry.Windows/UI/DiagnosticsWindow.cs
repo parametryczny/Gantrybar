@@ -13,6 +13,7 @@ public sealed class DiagnosticsWindow : Window
     private readonly bool _pl = AppSettings.Polish;
     private readonly StackPanel _results = new();
     private readonly TextBlock _status = new();
+    private readonly ProgressBar _progress = new();
     private readonly Button _run;
 
     public DiagnosticsWindow(PrinterStore store)
@@ -26,15 +27,34 @@ public sealed class DiagnosticsWindow : Window
         _status.Foreground = GTheme.Brush(GTheme.Secondary); _status.TextWrapping = TextWrapping.Wrap;
         _run = new Button { Content = AppSettings.Text("Uruchom wszystkie testy", "Run all tests"), Padding = new Thickness(12, 5, 12, 5), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 9, 0, 12) };
         _run.Click += async (_, _) => await RunAsync();
-        var body = new StackPanel { Margin = new Thickness(18), Children = { _status, _run, _results } };
+        _progress.Height = 4; _progress.Minimum = 0; _progress.Visibility = Visibility.Collapsed;
+        _progress.Margin = new Thickness(0, 8, 0, 0);
+        var body = new StackPanel { Margin = new Thickness(18), Children = { _status, _progress, _run, _results } };
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = body };
     }
 
     private async Task RunAsync()
     {
-        _run.IsEnabled = false; _status.Text = AppSettings.Text("Testuję…", "Testing…"); _results.Children.Clear();
-        foreach (var printer in _store.Printers)
+        _run.IsEnabled = false;
+        _results.Children.Clear();
+        var printers = _store.Printers.ToList();
+        if (printers.Count == 0)
         {
+            _results.Children.Add(new TextBlock { Text = AppSettings.Text("Brak drukarek.", "No printers."), Foreground = GTheme.Brush(GTheme.Secondary) });
+            _status.Text = AppSettings.Text("Testy zakończone.", "Tests complete.");
+            _run.IsEnabled = true;
+            return;
+        }
+        _progress.Maximum = printers.Count;
+        _progress.Value = 0;
+        _progress.Visibility = Visibility.Visible;
+        var started = Stopwatch.StartNew();
+        for (int index = 0; index < printers.Count; index++)
+        {
+            var printer = printers[index];
+            // Name the printer under test: a silent "Testing..." for the whole run reads as a hang.
+            _status.Text = string.Format(AppSettings.Text("Testuję {0} z {1}: {2}", "Testing {0} of {1}: {2}"),
+                                         index + 1, printers.Count, printer.Name);
             int servicePort = printer.Port ?? (printer.Kind switch
             {
                 PrinterKind.Bambu => 8883, PrinterKind.Klipper => 7125, PrinterKind.Prusa => 80,
@@ -44,23 +64,21 @@ public sealed class DiagnosticsWindow : Window
             });
             var network = await ProbeAsync(printer.Host, servicePort);
             var telemetry = _store.Telemetry.TryGetValue(printer.Serial, out var value) ? value : null;
-            bool mqtt = telemetry is not null && telemetry.State != PrinterState.Offline;
-            int cameraPort = printer.Kind == PrinterKind.Bambu ? 6000 : printer.Kind == PrinterKind.ElegooCc1 ? 3031
-                           : printer.Kind == PrinterKind.ElegooCc2 ? 8080 : printer.Kind == PrinterKind.AnycubicKobraS1 ? 18088 : servicePort;
-            var camera = await ProbeAsync(printer.Host, cameraPort);
-            bool secret = !string.IsNullOrEmpty(AccessCodeStore.AccessCode(printer.Serial)) || printer.Kind is PrinterKind.ElegooCc1 or PrinterKind.Snapmaker or PrinterKind.AnycubicKobraS1;
+            bool connected = telemetry is not null && telemetry.State != PrinterState.Offline;
             string reason = _store.ConnectionMessages.TryGetValue(printer.Serial, out var message) && !string.IsNullOrWhiteSpace(message) ? message! : "—";
             var rows = new[]
             {
                 $"{Mark(network.Ok)}  {AppSettings.Text("Sieć", "Network")}" + (network.Latency is { } latency ? $" · {latency:0} ms · {Quality(latency)}" : $" · {network.Error ?? "—"}"),
-                $"{Mark(mqtt)}  MQTT · " + (mqtt ? AppSettings.Text("telemetria aktywna", "telemetry active") : reason),
-                $"{Mark(camera.Ok)}  {AppSettings.Text("Kamera", "Camera")}" + (camera.Latency is { } camLatency ? $" · {camLatency:0} ms" : $" · {camera.Error ?? "—"}"),
-                $"{Mark(secret)}  {AppSettings.Text("Magazyn sekretów", "Secret storage")} · " + (secret ? "OK" : AppSettings.Text("brak kodu lub błąd DPAPI", "missing code or DPAPI error")),
+                $"{Mark(connected)}  {AppSettings.Text("Połączenie z drukarką", "Printer connection")} · " + (connected ? AppSettings.Text("telemetria aktywna", "telemetry active") : reason),
             };
             _results.Children.Add(Card(printer.Name, rows));
+            _progress.Value = index + 1;
         }
-        if (_store.Printers.Count == 0) _results.Children.Add(new TextBlock { Text = AppSettings.Text("Brak drukarek.", "No printers."), Foreground = GTheme.Brush(GTheme.Secondary) });
-        _status.Text = AppSettings.Text("Testy zakończone.", "Tests complete."); _run.IsEnabled = true;
+        started.Stop();
+        _status.Text = string.Format(AppSettings.Text("Testy zakończone: {0} drukarek w {1:0.0} s", "Tests complete: {0} printers in {1:0.0} s"),
+                                     printers.Count, started.Elapsed.TotalSeconds);
+        _progress.Visibility = Visibility.Collapsed;
+        _run.IsEnabled = true;
     }
 
     private static async Task<(bool Ok, double? Latency, string? Error)> ProbeAsync(string host, int port)
