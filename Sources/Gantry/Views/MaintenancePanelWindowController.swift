@@ -30,9 +30,9 @@ final class MaintenancePanelViewController: NSViewController {
         let panel = controller.view
         panel.translatesAutoresizingMaskIntoConstraints = false
         backdrop.addSubview(panel)
-        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 520)
+        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 470)
         preferredWidth.priority = .defaultHigh
-        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 680)
+        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 560)
         preferredHeight.priority = .defaultHigh
         NSLayoutConstraint.activate([
             panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
@@ -66,7 +66,7 @@ final class MaintenancePanelViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let panel = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 680))
+        let panel = NSView(frame: NSRect(x: 0, y: 0, width: 470, height: 560))
         panel.wantsLayer = true
         panel.layer?.cornerRadius = GantryTheme.cardRadius
         panel.layer?.borderWidth = 1
@@ -83,20 +83,14 @@ final class MaintenancePanelViewController: NSViewController {
         view.appearance = s.appearance
         view.subviews.forEach { $0.removeFromSuperview() }
 
-        let scroll = NSScrollView()
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
-        scroll.translatesAutoresizingMaskIntoConstraints = false
         body = NSStackView()
         body.orientation = .vertical
         body.alignment = .leading
-        body.spacing = 10
+        body.spacing = 8
         body.translatesAutoresizingMaskIntoConstraints = false
 
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.language == .pl)
-        let title = label(s.text("Konserwacja · \(printer.name)", "Maintenance · \(printer.name)"), 20, .bold)
+        let title = label(s.text("Konserwacja · \(printer.name)", "Maintenance · \(printer.name)"), 18, .bold)
         let instructions = button(s.text("Instrukcje", "Instructions")) { [weak self] in self?.showInstructions() }
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.text("Zamknij", "Close"))!,
                              target: self, action: #selector(closePressed))
@@ -118,56 +112,39 @@ final class MaintenancePanelViewController: NSViewController {
         let printerAlerts = alertMessages(settings: s)
         if !printerAlerts.isEmpty {
             body.addArrangedSubview(label(s.text("UWAGI DRUKARKI", "PRINTER ALERTS"), 10, .bold, GantryTheme.muted))
-            for alert in printerAlerts {
-                let card = printerAlertCard(title: alert.title, code: alert.code)
-                body.addArrangedSubview(card)
-                card.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
-            }
+            let alertList = compactAlertList(printerAlerts)
+            body.addArrangedSubview(alertList)
+            alertList.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         }
 
-        for task in snapshot.tasks {
-            let card = taskCard(task, settings: s)
-            body.addArrangedSubview(card)
-            // The views must share a hierarchy before a cross-view constraint is activated.
-            // Activating this inside taskCard() caused an AppKit exception on every open.
-            card.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
-        }
+        let taskGrid = twoColumnGrid(snapshot.tasks.map { taskCard($0, settings: s) })
+        body.addArrangedSubview(taskGrid)
+        taskGrid.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
 
-        let historyTitle = label(s.text("OSTATNIE WYDRUKI", "RECENT PRINTS"), 10, .bold, GantryTheme.muted)
-        body.addArrangedSubview(historyTitle)
         let recent = Array(snapshot.history.prefix(3))
+        var historyRows: [NSView] = [label(s.text("OSTATNIE WYDRUKI", "RECENT PRINTS"), 10, .bold, GantryTheme.muted)]
         if recent.isEmpty {
-            body.addArrangedSubview(label(s.text("Brak zapisanej historii.", "No recorded history."), 12, .regular, GantryTheme.secondary))
+            historyRows.append(label(s.text("Brak zapisanej historii.", "No recorded history."), 12, .regular, GantryTheme.secondary))
         } else {
             for entry in recent {
                 let icon = entry.result == .completed ? "✓" : entry.result == .failed ? "!" : "×"
                 let duration = formatDuration(entry.durationSeconds)
                 let text = "\(icon)  \(entry.job.isEmpty ? s.text("Bez nazwy", "Untitled") : entry.job)  ·  \(duration)"
-                body.addArrangedSubview(label(text, 12, .medium, entry.result == .completed ? GantryTheme.text : .systemOrange))
+                historyRows.append(label(text, 11.5, .medium, entry.result == .completed ? GantryTheme.text : .systemOrange))
             }
         }
+        let history = compactSection(historyRows)
+        let stats = statisticsSection(snapshot: snapshot, settings: s)
+        let footerGrid = twoColumnGrid([history, stats])
+        body.addArrangedSubview(footerGrid)
+        footerGrid.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
 
-        let stats = label(String(format: s.text("STATYSTYKI  ·  %d zakończonych  ·  %@ skuteczności  ·  %.0f g", "STATISTICS  ·  %d completed  ·  %@ success  ·  %.0f g"),
-                                       snapshot.completedCount,
-                                       snapshot.successPercent.map { "\($0)%" } ?? "—",
-                                       snapshot.consumedGrams), 11, .semibold, GantryTheme.secondary)
-        body.addArrangedSubview(stats)
-
-        let document = MaintenanceFlippedView()
-        document.translatesAutoresizingMaskIntoConstraints = false
-        document.addSubview(body)
-        scroll.documentView = document
-        view.addSubview(scroll)
+        view.addSubview(body)
         NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: view.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            body.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 18),
-            body.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -18),
-            body.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
-            body.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18)
+            body.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            body.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            body.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
+            body.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -18)
         ])
     }
 
@@ -199,12 +176,9 @@ final class MaintenancePanelViewController: NSViewController {
 
     private func printerAlertCard(title: String, code: String?) -> NSView {
         let box = NSView()
-        box.wantsLayer = true
-        box.layer?.cornerRadius = GantryTheme.tileRadius
-        box.layer?.backgroundColor = GantryTheme.statusError.withAlphaComponent(0.08).cgColor
-        box.layer?.borderWidth = 1
-        box.layer?.borderColor = GantryTheme.statusError.withAlphaComponent(0.38).cgColor
-        let titleLabel = label("!  \(title)", 12, .semibold, GantryTheme.text)
+        let titleLabel = label("!  \(title)", 11, .semibold, GantryTheme.text)
+        titleLabel.maximumNumberOfLines = 2
+        titleLabel.lineBreakMode = .byWordWrapping
         var rows: [NSView] = [titleLabel]
         if let code { rows.append(label(code, 10, .regular, GantryTheme.secondary)) }
         let stack = NSStackView(views: rows)
@@ -214,10 +188,42 @@ final class MaintenancePanelViewController: NSViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
-            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 9),
-            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -9)
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 9),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -9),
+            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 7),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -7)
+        ])
+        return box
+    }
+
+    private func compactAlertList(_ alerts: [(title: String, code: String?)]) -> NSView {
+        var rows: [NSView] = []
+        for (index, alert) in alerts.enumerated() {
+            if index > 0 {
+                let separator = NSView()
+                separator.wantsLayer = true
+                separator.layer?.backgroundColor = GantryTheme.statusError.withAlphaComponent(0.22).cgColor
+                separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                rows.append(separator)
+            }
+            rows.append(printerAlertCard(title: alert.title, code: alert.code))
+        }
+        let stack = NSStackView(views: rows)
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 0
+        for row in rows { row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 10
+        box.layer?.backgroundColor = GantryTheme.statusError.withAlphaComponent(0.08).cgColor
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = GantryTheme.statusError.withAlphaComponent(0.38).cgColor
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: box.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor)
         ])
         return box
     }
@@ -235,17 +241,23 @@ final class MaintenancePanelViewController: NSViewController {
         box.layer?.backgroundColor = GantryTheme.surface.cgColor
 
         let icon = task.isUrgent ? "!" : task.isDue ? "⚠" : "○"
-        let title = label("\(icon)  \(task.title)", 13, .semibold)
+        let title = label("\(icon)  \(task.title)", 11, .semibold)
         let timing: String
         if task.isDue {
             timing = String(format: s.text("Przekroczono o %.0f h", "Overdue by %.0f h"), task.overdueHours)
         } else if let until = task.snoozedUntil, until > Date() {
-            timing = s.text("Odłożono do \(until.formatted(date: .abbreviated, time: .omitted))",
-                            "Snoozed until \(until.formatted(date: .abbreviated, time: .omitted))")
+            // Day + month only: the full date pushed the task title into an ellipsis in a two-column card.
+            let day = until.formatted(.dateTime.day().month(.abbreviated))
+            timing = s.text("Odłożono do \(day)", "Snoozed until \(day)")
         } else {
             timing = String(format: s.text("Za %.0f h druku", "In %.0f print h"), task.remainingHours)
         }
-        let subtitle = label(timing, 11, .regular, GantryTheme.secondary)
+        let timingLabel = label(timing.replacingOccurrences(of: " druku", with: ""), 10, .regular, GantryTheme.secondary)
+        timingLabel.setContentHuggingPriority(.required, for: .horizontal)
+        // The task name matters more than the exact timing, so let the timing shrink first.
+        timingLabel.lineBreakMode = .byTruncatingTail
+        timingLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(760), for: .horizontal)
         let interval = NSTextField(string: String(Int(task.intervalHours.rounded())))
         interval.cell = MaintenanceCenteredTextFieldCell(textCell: interval.stringValue)
         interval.alignment = .center
@@ -259,40 +271,123 @@ final class MaintenancePanelViewController: NSViewController {
         interval.layer?.borderWidth = 1
         interval.layer?.borderColor = GantryTheme.line.cgColor
         interval.toolTip = s.text("Interwał w godzinach druku", "Interval in print hours")
-        interval.widthAnchor.constraint(equalToConstant: 48).isActive = true
-        interval.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        // Wide enough for a four-digit interval (some axis tasks run into the thousands of hours).
+        interval.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        interval.heightAnchor.constraint(equalToConstant: 26).isActive = true
         let hours = label("h", 11, .regular, GantryTheme.muted)
-        let save = button(s.text("Ustaw", "Set")) { [weak self, weak interval] in
+        let save = button("✎") { [weak self, weak interval] in
             guard let self, let value = Double(interval?.stringValue ?? ""), value >= 1 else { return }
             PrinterInsightsStore.shared.setInterval(serial: self.printer.serial, taskID: task.id, hours: value)
             self.rebuild()
         }
-        let intervalRow = NSStackView(views: [label(s.text("Co", "Every"), 11, .regular, GantryTheme.muted), interval, hours, save])
-        intervalRow.orientation = .horizontal; intervalRow.alignment = .centerY; intervalRow.spacing = 5
-        let done = button(s.text("Wykonano", "Done")) { [weak self] in
+        save.toolTip = s.text("Ustaw interwał", "Set interval")
+        let intervalRow = NSStackView(views: [interval, hours, save])
+        intervalRow.orientation = .horizontal; intervalRow.alignment = .centerY; intervalRow.spacing = 2
+        let done = button(s.text("Gotowe", "Done")) { [weak self] in
             guard let self else { return }
             PrinterInsightsStore.shared.complete(serial: self.printer.serial, taskID: task.id)
             self.rebuild()
         }
-        let snooze = button(s.text("Przypomnij za 7 dni", "Remind in 7 days")) { [weak self] in
+        let snooze = button("7d") { [weak self] in
             guard let self else { return }
             PrinterInsightsStore.shared.snooze(serial: self.printer.serial, taskID: task.id)
             self.rebuild()
         }
-        let actions = NSStackView(views: [done, snooze, NSView(), intervalRow])
-        actions.orientation = .horizontal; actions.alignment = .centerY; actions.spacing = 6
-        let stack = NSStackView(views: [title, subtitle, actions])
-        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 5
+        snooze.toolTip = s.text("Przypomnij za 7 dni", "Remind in 7 days")
+        let heading = NSStackView(views: [title, NSView(), timingLabel])
+        heading.orientation = .horizontal; heading.alignment = .centerY; heading.spacing = 6
+        // A plain spacer absorbs the slack so every control keeps its natural width. With
+        // .fillProportionally the row stretched each item (including the nested interval row), which
+        // pushed "h" and the pencil to a different spot in every card depending on the digit count.
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let actions = NSStackView(views: [done, snooze, spacer, intervalRow])
+        actions.orientation = .horizontal; actions.alignment = .centerY; actions.spacing = 4
+        actions.distribution = .fill
+        for control in [done, snooze, intervalRow] {
+            control.setContentHuggingPriority(.required, for: .horizontal)
+            control.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(760), for: .horizontal)
+        }
+        let stack = NSStackView(views: [heading, actions])
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 7
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 9),
+            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -9),
+            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 9),
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -9),
+            heading.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            actions.widthAnchor.constraint(equalTo: stack.widthAnchor)
+        ])
+        return box
+    }
+
+    private func twoColumnGrid(_ views: [NSView]) -> NSStackView {
+        let grid = NSStackView()
+        grid.orientation = .vertical
+        grid.alignment = .leading
+        grid.spacing = 7
+        for index in stride(from: 0, to: views.count, by: 2) {
+            let first = views[index]
+            let second = index + 1 < views.count ? views[index + 1] : NSView()
+            let row = NSStackView(views: [first, second])
+            row.orientation = .horizontal
+            row.alignment = .top
+            row.distribution = .fillEqually
+            row.spacing = 7
+            grid.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true
+        }
+        return grid
+    }
+
+    private func compactSection(_ rows: [NSView]) -> NSView {
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.cornerRadius = GantryTheme.tileRadius
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = GantryTheme.line.cgColor
+        box.layer?.backgroundColor = GantryTheme.surface.cgColor
+        let stack = NSStackView(views: rows)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 5
         stack.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 10),
-            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -10),
-            actions.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -10)
         ])
         return box
+    }
+
+    private func statisticsSection(snapshot: PrinterInsightsStore.Snapshot, settings s: AppSettings) -> NSView {
+        func metric(_ value: String, _ caption: String) -> NSView {
+            let valueLabel = label(value, 14, .bold)
+            valueLabel.alignment = .center
+            let captionLabel = label(caption, 10, .regular, GantryTheme.muted)
+            captionLabel.alignment = .center
+            let stack = NSStackView(views: [valueLabel, captionLabel])
+            stack.orientation = .vertical; stack.alignment = .centerX; stack.spacing = 2
+            return stack
+        }
+        let metrics = NSStackView(views: [
+            metric("\(snapshot.completedCount)", s.text("zakończone", "completed")),
+            metric(snapshot.successPercent.map { "\($0)%" } ?? "—", s.text("skuteczność", "success")),
+            metric(String(format: "%.0f g", snapshot.consumedGrams), s.text("filament", "filament"))
+        ])
+        metrics.orientation = .horizontal
+        metrics.alignment = .centerY
+        metrics.distribution = .fillEqually
+        metrics.spacing = 8
+        let title = label(s.text("STATYSTYKI", "STATISTICS"), 10, .bold, GantryTheme.muted)
+        let stack = NSStackView(views: [title, metrics])
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
+        metrics.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return compactSection([stack])
     }
 
     private func label(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight,
@@ -315,8 +410,8 @@ final class MaintenancePanelViewController: NSViewController {
         button.layer?.backgroundColor = GantryTheme.surface.cgColor
         button.contentTintColor = GantryTheme.text
         button.controlSize = .small
-        button.font = .systemFont(ofSize: 10.5, weight: .semibold)
-        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        button.font = .systemFont(ofSize: 10, weight: .semibold)
+        button.heightAnchor.constraint(equalToConstant: 26).isActive = true
         return button
     }
 

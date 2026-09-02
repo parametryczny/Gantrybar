@@ -117,7 +117,20 @@ button.printer-alert { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .settings-card { background: alpha(%(card)s, 0.72); border: 1px solid alpha(#ffffff, 0.09); border-radius: 16px; padding: 12px 14px; }
 .maintenance-backdrop { background: alpha(#000000, 0.30); }
 .maintenance-panel { background: alpha(%(card)s, 0.98); border: 1px solid %(line)s; border-radius: 16px; }
-.printer-alert-card { background: alpha(#ff5a4e, 0.08); border: 1px solid alpha(#ff5a4e, 0.38); border-radius: 10px; padding: 9px 12px; }
+.maintenance-title { color: %(text)s; font-size: 18px; font-weight: 700; }
+.printer-alert-card { background: alpha(#ff5a4e, 0.08); border: 1px solid alpha(#ff5a4e, 0.38); border-radius: 10px; }
+.maintenance-alert-row { padding: 6px 9px; }
+.maintenance-alert-title { color: %(text)s; font-size: 11px; font-weight: 600; }
+.maintenance-alert-separator { background: alpha(#ff5a4e, 0.22); min-height: 1px; }
+.maintenance-task { background: alpha(%(card)s, 0.72); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; padding: 9px; }
+.maintenance-task-title { color: %(text)s; font-size: 11px; font-weight: 600; }
+.maintenance-task-time { color: %(muted)s; font-size: 10px; }
+.maintenance-actions button { min-height: 26px; padding: 2px 7px; font-size: 10px; }
+.maintenance-actions entry { min-height: 26px; padding: 0 3px; font-size: 10px; }
+.maintenance-footer-card { background: alpha(%(card)s, 0.72); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; padding: 8px 10px; }
+.maintenance-history { color: %(text)s; font-size: 10px; font-weight: 500; }
+.maintenance-stat-value { color: %(text)s; font-size: 14px; font-weight: 700; }
+.maintenance-stat-label { color: %(muted)s; font-size: 9px; }
 .settings-section { color: %(muted)s; font-size: 10px; font-weight: 700; }
 .settings-label { color: %(secondary)s; font-size: 12px; }
 .settings-hint { color: %(muted)s; font-size: 10px; }
@@ -844,21 +857,13 @@ class Dashboard(Gtk.Window):
         self.window_overlay.add_overlay(layer)
         self._maintenance_overlay = layer
         self._suppress_hide = True
-        display = Gdk.Display.get_default()
-        monitor = display.get_primary_monitor() if display else None
-        max_height = monitor.get_workarea().height - 24 if monitor else 820
-        width = max(self.get_size()[0], 544)
-        height = min(max_height, max(self.get_size()[1], 704))
-        self.resize(width, height)
         layer.show_all()
 
     def close_maintenance(self) -> None:
-        removed = self._maintenance_overlay is not None
         if self._maintenance_overlay is not None:
             self.window_overlay.remove(self._maintenance_overlay)
             self._maintenance_overlay = None
         self._suppress_hide = False
-        if removed: self.resize_for_content()
 
     def _build_fleet(self) -> Gtk.Widget:
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)

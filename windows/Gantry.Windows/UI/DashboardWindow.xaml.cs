@@ -146,17 +146,8 @@ public partial class DashboardWindow : Window
         _maintenanceLayer = layer;
         host.Children.Add(layer);
         _spoolOverlayActive = true;
-        double maxH = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
-        double target = Math.Min(maxH, Math.Max(Height, 720));
-        if (target > Height + 1)
-        {
-            Height = target;
-            var area = SystemParameters.WorkArea;
-            Left = area.Right - Width - 8;
-            Top = area.Bottom - Height - 8;
-        }
-        panel.MaxHeight = Math.Max(420, Height - 24);
-        panel.MaxWidth = Math.Max(420, Width - 24);
+        panel.MaxHeight = Math.Max(420, ActualHeight - 24);
+        panel.MaxWidth = Math.Max(420, ActualWidth - 24);
     }
 
     internal void CloseMaintenance()
