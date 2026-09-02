@@ -115,7 +115,7 @@ final class TelegramBot {
 
     private func sendAll() async {
         let printers = store?.printers ?? []
-        guard !printers.isEmpty else { await send(text: AppSettings.shared.text("Brak drukarek.", "No printers."), replyMarkup: nil); return }
+        guard !printers.isEmpty else { await send(text: AppSettings.shared.text("Brak drukarek.", "No printers."), replyMarkup: commandKeyboard()); return }
         let s = AppSettings.shared
         let lines = printers.map { printer -> String in
             let t = store?.telemetry[printer.serial] ?? PrinterTelemetry()
@@ -126,7 +126,7 @@ final class TelegramBot {
             }
             return line
         }
-        await send(text: s.text("🖨 Flota:", "🖨 Fleet:") + "\n" + lines.joined(separator: "\n"), replyMarkup: nil)
+        await send(text: s.text("🖨 Flota:", "🖨 Fleet:") + "\n" + lines.joined(separator: "\n"), replyMarkup: commandKeyboard())
     }
 
     private func sendSpools() async {
@@ -135,7 +135,7 @@ final class TelegramBot {
             .filter { $0.status != .archived && $0.status != .empty && $0.percent <= 20 }
             .sorted { $0.percent < $1.percent }
         if spools.isEmpty {
-            await send(text: s.text("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), replyMarkup: nil)
+            await send(text: s.text("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), replyMarkup: commandKeyboard())
             return
         }
         let lines = spools.prefix(15).map { spool -> String in
@@ -143,61 +143,61 @@ final class TelegramBot {
             let material = def?.type ?? def?.name ?? "—"
             return "\(colorDot(def?.colorHex)) \(material) · \(spool.id) · \(spool.percent)% · \(Int(spool.remainingWeightGrams)) g"
         }
-        await send(text: s.text("🧵 Rolki na wyczerpaniu:", "🧵 Spools running low:") + "\n" + lines.joined(separator: "\n"), replyMarkup: nil)
+        await send(text: s.text("🧵 Rolki na wyczerpaniu:", "🧵 Spools running low:") + "\n" + lines.joined(separator: "\n"), replyMarkup: commandKeyboard())
     }
 
     private func sendHistory() async {
         let s = AppSettings.shared
         let entries = PrintHistory.recent(10)
-        guard !entries.isEmpty else { await send(text: s.text("Brak historii wydruków.", "No print history yet."), replyMarkup: nil); return }
+        guard !entries.isEmpty else { await send(text: s.text("Brak historii wydruków.", "No print history yet."), replyMarkup: commandKeyboard()); return }
         let formatter = DateFormatter()
         formatter.dateFormat = "dd.MM HH:mm"
         let lines = entries.map { entry in
             "\(formatter.string(from: entry.date)) · \(entry.printer)" + (entry.job.isEmpty ? "" : " · \(entry.job)")
         }
-        await send(text: s.text("📜 Ostatnie wydruki:", "📜 Recent prints:") + "\n" + lines.joined(separator: "\n"), replyMarkup: nil)
+        await send(text: s.text("📜 Ostatnie wydruki:", "📜 Recent prints:") + "\n" + lines.joined(separator: "\n"), replyMarkup: commandKeyboard())
     }
 
     private func handleMute(_ argument: String?) async {
         let s = AppSettings.shared
         if argument?.lowercased() == "off" {
             AppSettings.shared.telegramMuteUntil = nil
-            await send(text: s.text("🔔 Wyciszenie wyłączone.", "🔔 Mute off."), replyMarkup: nil)
+            await send(text: s.text("🔔 Wyciszenie wyłączone.", "🔔 Mute off."), replyMarkup: commandKeyboard())
             return
         }
         guard let argument, let seconds = parseDuration(argument) else {
             if let until = s.telegramMuteUntil {
                 let f = DateFormatter(); f.dateFormat = "HH:mm"
                 await send(text: s.text("🔕 Wyciszone do \(f.string(from: until)). Wyłącz: /mute off",
-                                        "🔕 Muted until \(f.string(from: until)). Turn off: /mute off"), replyMarkup: nil)
+                                        "🔕 Muted until \(f.string(from: until)). Turn off: /mute off"), replyMarkup: commandKeyboard())
             } else {
                 await send(text: s.text("Podaj czas, np. /mute 2h lub /mute 30m. Wyłącz: /mute off",
-                                        "Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), replyMarkup: nil)
+                                        "Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), replyMarkup: commandKeyboard())
             }
             return
         }
         let until = Date().addingTimeInterval(seconds)
         AppSettings.shared.telegramMuteUntil = until
         let f = DateFormatter(); f.dateFormat = "HH:mm"
-        await send(text: s.text("🔕 Alerty wyciszone do \(f.string(from: until)).", "🔕 Alerts muted until \(f.string(from: until))."), replyMarkup: nil)
+        await send(text: s.text("🔕 Alerty wyciszone do \(f.string(from: until)).", "🔕 Alerts muted until \(f.string(from: until))."), replyMarkup: commandKeyboard())
     }
 
     private func handleWatch(_ argument: String?) async {
         let s = AppSettings.shared
         if argument?.lowercased() == "off" {
             watchTask?.cancel(); watchTask = nil
-            await send(text: s.text("📷 Watch wyłączony.", "📷 Watch off."), replyMarkup: nil)
+            await send(text: s.text("📷 Watch wyłączony.", "📷 Watch off."), replyMarkup: commandKeyboard())
             return
         }
         guard let argument, let seconds = parseDuration(argument), seconds >= 60 else {
             await send(text: s.text("Podaj odstęp ≥ 1 min, np. /watch 10m. Wyłącz: /watch off",
-                                    "Give an interval ≥ 1 min, e.g. /watch 10m. Turn off: /watch off"), replyMarkup: nil)
+                                    "Give an interval ≥ 1 min, e.g. /watch 10m. Turn off: /watch off"), replyMarkup: commandKeyboard())
             return
         }
         watchTask?.cancel()
         watchTask = Task { [weak self] in await self?.watchLoop(interval: seconds) }
         await send(text: s.text("📷 Watch: zdjęcia drukujących drukarek co \(argument). Wyłącz: /watch off",
-                                "📷 Watch: photos of printing machines every \(argument). Turn off: /watch off"), replyMarkup: nil)
+                                "📷 Watch: photos of printing machines every \(argument). Turn off: /watch off"), replyMarkup: commandKeyboard())
     }
 
     private func watchLoop(interval: TimeInterval) async {
@@ -221,6 +221,9 @@ final class TelegramBot {
         return nil
     }
 
+    /// Persistent bottom bar. Attached to every text reply, not just /help: the printer picker is an
+    /// inline keyboard glued to its own message, so once the chat scrolls past it there is no way back
+    /// without scrolling. A tap on /status here posts a fresh picker at the bottom instead.
     private func commandKeyboard() -> String {
         let rows = [["/status", "/all"], ["/spools", "/history"], ["/watch 10m", "/mute 2h"], ["/help"]]
         let markup: [String: Any] = ["keyboard": rows.map { $0.map { ["text": $0] } },
@@ -243,13 +246,13 @@ final class TelegramBot {
             let name = store?.printers.first { $0.serial == serial }?.name ?? serial
             await answer(cbID, "📷…")
             await send(text: AppSettings.shared.text("📷 Robię zdjęcie z kamery \(name)…",
-                                                     "📷 Grabbing a camera snapshot from \(name)…"), replyMarkup: nil)
+                                                     "📷 Grabbing a camera snapshot from \(name)…"), replyMarkup: commandKeyboard())
             if let printer = store?.printers.first(where: { $0.serial == serial }), let store,
                let jpeg = await CameraSnapshot.capture(printer: printer, store: store) {
                 await sendPhoto(jpeg: jpeg, caption: "🖨 \(name)")
             } else {
                 await send(text: AppSettings.shared.text("Nie udało się pobrać zdjęcia (kamera niedostępna).",
-                                                         "Couldn't grab a snapshot (camera unavailable)."), replyMarkup: nil)
+                                                         "Couldn't grab a snapshot (camera unavailable)."), replyMarkup: commandKeyboard())
             }
         default:
             await answer(cbID, "")
@@ -260,7 +263,7 @@ final class TelegramBot {
 
     private func sendPrinterMenu(messageID: Int?) async {
         let printers = store?.printers ?? []
-        guard !printers.isEmpty else { await send(text: "Brak drukarek.", replyMarkup: nil); return }
+        guard !printers.isEmpty else { await send(text: "Brak drukarek.", replyMarkup: commandKeyboard()); return }
         let rows = printers.map { [(iconFor($0.serial) + " " + $0.name, "p:\($0.serial)")] }
         let text = AppSettings.shared.text("Wybierz drukarkę:", "Pick a printer:")
         if let messageID { await edit(messageID: messageID, text: text, replyMarkup: keyboard(rows)) }

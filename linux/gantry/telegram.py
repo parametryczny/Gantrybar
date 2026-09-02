@@ -217,7 +217,7 @@ class TelegramBot:
         elif head == "photo" and len(parts) > 1:
             self._answer(cb_id, "📷")
             self._send(self._t("📷 Zdjęcie z kamery na Linuksie jest w przygotowaniu.",
-                               "📷 Camera snapshot on Linux is in preparation."), None)
+                               "📷 Camera snapshot on Linux is in preparation."), self._command_keyboard())
         else:
             self._answer(cb_id, "")
 
@@ -226,7 +226,7 @@ class TelegramBot:
     def _send_printer_menu(self, message_id: int | None) -> None:
         printers = list(self.app.printers)
         if not printers:
-            self._send(self._t("Brak drukarek.", "No printers."), None)
+            self._send(self._t("Brak drukarek.", "No printers."), self._command_keyboard())
             return
         rows = [[self._btn(f"{self._icon(p.serial)} {p.name}", f"p:{p.serial}")] for p in printers]
         text = self._t("Wybierz drukarkę:", "Pick a printer:")
@@ -268,7 +268,7 @@ class TelegramBot:
     def _control(self, serial: str, action: str) -> None:
         def do() -> bool:
             app = self.app
-            printer = next((p for p in app.printers if p.serial == serial), None)
+            printer = next((p for p in app.printers if p.serial == serial), self._command_keyboard())
             is_klipper = printer is not None and printer.kind == PrinterKind.KLIPPER
             from .automation import _PAUSE, _RESUME, _STOP
             if action == "pause":
@@ -294,15 +294,23 @@ class TelegramBot:
             "🖨 Gantry — commands:\n/status — pick a printer + controls\n/all — whole fleet at a glance\n"
             "/spools — spools running low\n/history — recent prints\n/watch 10m — a photo every 10 min (/watch off)\n"
             "/mute 2h — silence alerts (/mute off)\n/help — this menu")
-        keyboard = json.dumps({"keyboard": [[{"text": t} for t in row] for row in
-                               [["/status", "/all"], ["/spools", "/history"], ["/watch 10m", "/mute 2h"], ["/help"]]],
-                              "resize_keyboard": True})
-        _post(self._token, "sendMessage", {"chat_id": self._chat, "text": text, "reply_markup": keyboard})
+        _post(self._token, "sendMessage",
+              {"chat_id": self._chat, "text": text, "reply_markup": self._command_keyboard()})
+
+    @staticmethod
+    def _command_keyboard() -> str:
+        """Persistent bottom bar. Attached to every text reply, not just /help: the printer picker is an
+        inline keyboard glued to its own message, so once the chat scrolls past it there is no way back
+        without scrolling. A tap on /status here posts a fresh picker at the bottom instead."""
+        return json.dumps({"keyboard": [[{"text": t} for t in row] for row in
+                           [["/status", "/all"], ["/spools", "/history"],
+                            ["/watch 10m", "/mute 2h"], ["/help"]]],
+                           "resize_keyboard": True})
 
     def _send_all(self) -> None:
         printers = list(self.app.printers)
         if not printers:
-            self._send(self._t("Brak drukarek.", "No printers."), None)
+            self._send(self._t("Brak drukarek.", "No printers."), self._command_keyboard())
             return
         lines = []
         for printer in printers:
@@ -313,7 +321,7 @@ class TelegramBot:
                 if tel.remaining_minutes:
                     line += f" · ETA {tel.remaining_minutes // 60}h {tel.remaining_minutes % 60}m"
             lines.append(line)
-        self._send(self._t("🖨 Flota:", "🖨 Fleet:") + "\n" + "\n".join(lines), None)
+        self._send(self._t("🖨 Flota:", "🖨 Fleet:") + "\n" + "\n".join(lines), self._command_keyboard())
 
     def _send_spools(self) -> None:
         low: list[tuple[int, str]] = []
@@ -327,16 +335,16 @@ class TelegramBot:
                     if present and slot.remaining_weight_g is not None and slot.remaining is not None and slot.remaining <= 20:
                         low.append((slot.remaining, f"{_color_dot(slot.color)} {slot.material} · {printer.name}/{slot.label} · {slot.remaining}%"))
         if not low:
-            self._send(self._t("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), None)
+            self._send(self._t("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), self._command_keyboard())
             return
         low.sort(key=lambda item: item[0])
         self._send(self._t("🧵 Rolki na wyczerpaniu:", "🧵 Spools running low:") + "\n"
-                   + "\n".join(text for _, text in low[:15]), None)
+                   + "\n".join(text for _, text in low[:15]), self._command_keyboard())
 
     def _send_history(self) -> None:
         entries = list(reversed(self.app.config.data.get("print-history-v1") or []))[:10]
         if not entries:
-            self._send(self._t("Brak historii wydruków.", "No print history yet."), None)
+            self._send(self._t("Brak historii wydruków.", "No print history yet."), self._command_keyboard())
             return
         lines = []
         for entry in entries:
@@ -346,39 +354,39 @@ class TelegramBot:
                 stamp = "—"
             job = entry.get("job") or ""
             lines.append(f"{stamp} · {entry.get('printer', '')}" + (f" · {job}" if job else ""))
-        self._send(self._t("📜 Ostatnie wydruki:", "📜 Recent prints:") + "\n" + "\n".join(lines), None)
+        self._send(self._t("📜 Ostatnie wydruki:", "📜 Recent prints:") + "\n" + "\n".join(lines), self._command_keyboard())
 
     def _handle_mute(self, argument: str | None) -> None:
         cfg = self.app.config.data
         if argument and argument.lower() == "off":
             cfg["telegram-mute-until"] = ""
             self.app.config.save()
-            self._send(self._t("🔔 Wyciszenie wyłączone.", "🔔 Mute off."), None)
+            self._send(self._t("🔔 Wyciszenie wyłączone.", "🔔 Mute off."), self._command_keyboard())
             return
         seconds = _parse_duration(argument)
         if seconds is None:
             self._send(self._t("Podaj czas, np. /mute 2h lub /mute 30m. Wyłącz: /mute off",
-                               "Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), None)
+                               "Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), self._command_keyboard())
             return
         from datetime import timedelta
         until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
         cfg["telegram-mute-until"] = until.isoformat()
         self.app.config.save()
         self._send(self._t(f"🔕 Alerty wyciszone do {until.astimezone().strftime('%H:%M')}.",
-                           f"🔕 Alerts muted until {until.astimezone().strftime('%H:%M')}."), None)
+                           f"🔕 Alerts muted until {until.astimezone().strftime('%H:%M')}."), self._command_keyboard())
 
     def _handle_watch(self, argument: str | None) -> None:
         if argument and argument.lower() == "off":
             self._stop_watch()
-            self._send(self._t("📷 Watch wyłączony.", "📷 Watch off."), None)
+            self._send(self._t("📷 Watch wyłączony.", "📷 Watch off."), self._command_keyboard())
             return
         seconds = _parse_duration(argument)
         if seconds is None or seconds < 60:
             self._send(self._t("Podaj odstęp ≥ 1 min, np. /watch 10m. (Zdjęcia na Linuksie wkrótce.)",
-                               "Give an interval ≥ 1 min, e.g. /watch 10m. (Linux photos coming soon.)"), None)
+                               "Give an interval ≥ 1 min, e.g. /watch 10m. (Linux photos coming soon.)"), self._command_keyboard())
             return
         self._send(self._t("📷 Zdjęcia z kamery na Linuksie są w przygotowaniu (/watch będzie działać wtedy).",
-                           "📷 Camera photos on Linux are in preparation (/watch will work then)."), None)
+                           "📷 Camera photos on Linux are in preparation (/watch will work then)."), self._command_keyboard())
 
     def _stop_watch(self) -> None:
         if self._watch_stop is not None:

@@ -138,7 +138,7 @@ public sealed class TelegramBot
     private async Task SendPrinterMenuAsync(int? messageId)
     {
         var printers = OnUi(() => _store.Printers.ToList());
-        if (printers.Count == 0) { await SendAsync(AppSettings.Text("Brak drukarek.", "No printers."), null); return; }
+        if (printers.Count == 0) { await SendAsync(AppSettings.Text("Brak drukarek.", "No printers."), CommandKeyboard()); return; }
         var rows = printers.Select(p => new[] { Btn($"{Icon(p.Serial)} {p.Name}", $"p:{p.Serial}") }).ToArray();
         var text = AppSettings.Text("Wybierz drukarkę:", "Pick a printer:");
         if (messageId is { } id) await EditAsync(id, text, Keyboard(rows));
@@ -184,10 +184,10 @@ public sealed class TelegramBot
         var printer = OnUi(() => _store.Printers.FirstOrDefault(p => p.Serial == serial));
         var name = printer?.Name ?? serial;
         await AnswerAsync(cbId, "📷…");
-        await SendAsync(AppSettings.Text($"📷 Robię zdjęcie z kamery {name}…", $"📷 Grabbing a camera snapshot from {name}…"), null);
+        await SendAsync(AppSettings.Text($"📷 Robię zdjęcie z kamery {name}…", $"📷 Grabbing a camera snapshot from {name}…"), CommandKeyboard());
         byte[]? jpeg = printer == null ? null : await CameraSnapshot.CaptureAsync(printer, _store);
         if (jpeg != null) await SendPhotoAsync(jpeg, $"🖨 {name}");
-        else await SendAsync(AppSettings.Text("Nie udało się pobrać zdjęcia (kamera niedostępna).", "Couldn't grab a snapshot (camera unavailable)."), null);
+        else await SendAsync(AppSettings.Text("Nie udało się pobrać zdjęcia (kamera niedostępna).", "Couldn't grab a snapshot (camera unavailable)."), CommandKeyboard());
     }
 
     // Commands
@@ -218,8 +218,8 @@ public sealed class TelegramBot
                 return line;
             }).ToList();
         });
-        if (lines == null) { await SendAsync(AppSettings.Text("Brak drukarek.", "No printers."), null); return; }
-        await SendAsync(AppSettings.Text("🖨 Flota:", "🖨 Fleet:") + "\n" + string.Join("\n", lines), null);
+        if (lines == null) { await SendAsync(AppSettings.Text("Brak drukarek.", "No printers."), CommandKeyboard()); return; }
+        await SendAsync(AppSettings.Text("🖨 Flota:", "🖨 Fleet:") + "\n" + string.Join("\n", lines), CommandKeyboard());
     }
 
     private async Task SendSpoolsAsync()
@@ -236,16 +236,16 @@ public sealed class TelegramBot
                 return $"{ColorDot(def?.ColorHex)} {material} · {s.Id} · {s.Percent}% · {(int)s.RemainingWeightGrams} g";
             }).ToList();
         });
-        if (lines.Count == 0) { await SendAsync(AppSettings.Text("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), null); return; }
-        await SendAsync(AppSettings.Text("🧵 Rolki na wyczerpaniu:", "🧵 Spools running low:") + "\n" + string.Join("\n", lines), null);
+        if (lines.Count == 0) { await SendAsync(AppSettings.Text("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), CommandKeyboard()); return; }
+        await SendAsync(AppSettings.Text("🧵 Rolki na wyczerpaniu:", "🧵 Spools running low:") + "\n" + string.Join("\n", lines), CommandKeyboard());
     }
 
     private async Task SendHistoryAsync()
     {
         var entries = PrintHistory.Recent(10);
-        if (entries.Count == 0) { await SendAsync(AppSettings.Text("Brak historii wydruków.", "No print history yet."), null); return; }
+        if (entries.Count == 0) { await SendAsync(AppSettings.Text("Brak historii wydruków.", "No print history yet."), CommandKeyboard()); return; }
         var lines = entries.Select(e => $"{e.Date:dd.MM HH:mm} · {e.Printer}" + (string.IsNullOrEmpty(e.Job) ? "" : $" · {e.Job}"));
-        await SendAsync(AppSettings.Text("📜 Ostatnie wydruki:", "📜 Recent prints:") + "\n" + string.Join("\n", lines), null);
+        await SendAsync(AppSettings.Text("📜 Ostatnie wydruki:", "📜 Recent prints:") + "\n" + string.Join("\n", lines), CommandKeyboard());
     }
 
     private async Task HandleMuteAsync(string? argument)
@@ -253,21 +253,21 @@ public sealed class TelegramBot
         if (string.Equals(argument, "off", StringComparison.OrdinalIgnoreCase))
         {
             AppSettings.TelegramMuteUntil = null;
-            await SendAsync(AppSettings.Text("🔔 Wyciszenie wyłączone.", "🔔 Mute off."), null);
+            await SendAsync(AppSettings.Text("🔔 Wyciszenie wyłączone.", "🔔 Mute off."), CommandKeyboard());
             return;
         }
         var seconds = ParseDuration(argument);
         if (seconds == null)
         {
             if (AppSettings.TelegramMuteUntil is { } until)
-                await SendAsync(AppSettings.Text($"🔕 Wyciszone do {until.ToLocalTime():HH:mm}. Wyłącz: /mute off", $"🔕 Muted until {until.ToLocalTime():HH:mm}. Turn off: /mute off"), null);
+                await SendAsync(AppSettings.Text($"🔕 Wyciszone do {until.ToLocalTime():HH:mm}. Wyłącz: /mute off", $"🔕 Muted until {until.ToLocalTime():HH:mm}. Turn off: /mute off"), CommandKeyboard());
             else
-                await SendAsync(AppSettings.Text("Podaj czas, np. /mute 2h lub /mute 30m. Wyłącz: /mute off", "Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), null);
+                await SendAsync(AppSettings.Text("Podaj czas, np. /mute 2h lub /mute 30m. Wyłącz: /mute off", "Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), CommandKeyboard());
             return;
         }
         var muteUntil = DateTime.UtcNow.AddSeconds(seconds.Value);
         AppSettings.TelegramMuteUntil = muteUntil;
-        await SendAsync(AppSettings.Text($"🔕 Alerty wyciszone do {muteUntil.ToLocalTime():HH:mm}.", $"🔕 Alerts muted until {muteUntil.ToLocalTime():HH:mm}."), null);
+        await SendAsync(AppSettings.Text($"🔕 Alerty wyciszone do {muteUntil.ToLocalTime():HH:mm}.", $"🔕 Alerts muted until {muteUntil.ToLocalTime():HH:mm}."), CommandKeyboard());
     }
 
     private async Task HandleWatchAsync(string? argument)
@@ -275,19 +275,19 @@ public sealed class TelegramBot
         if (string.Equals(argument, "off", StringComparison.OrdinalIgnoreCase))
         {
             _watchCts?.Cancel(); _watchCts = null;
-            await SendAsync(AppSettings.Text("📷 Watch wyłączony.", "📷 Watch off."), null);
+            await SendAsync(AppSettings.Text("📷 Watch wyłączony.", "📷 Watch off."), CommandKeyboard());
             return;
         }
         var seconds = ParseDuration(argument);
         if (seconds == null || seconds < 60)
         {
-            await SendAsync(AppSettings.Text("Podaj odstęp ≥ 1 min, np. /watch 10m. Wyłącz: /watch off", "Give an interval ≥ 1 min, e.g. /watch 10m. Turn off: /watch off"), null);
+            await SendAsync(AppSettings.Text("Podaj odstęp ≥ 1 min, np. /watch 10m. Wyłącz: /watch off", "Give an interval ≥ 1 min, e.g. /watch 10m. Turn off: /watch off"), CommandKeyboard());
             return;
         }
         _watchCts?.Cancel();
         _watchCts = new CancellationTokenSource();
         _ = WatchLoopAsync(seconds.Value, _watchCts.Token);
-        await SendAsync(AppSettings.Text($"📷 Watch: zdjęcia drukujących drukarek co {argument}. Wyłącz: /watch off", $"📷 Watch: photos of printing machines every {argument}. Turn off: /watch off"), null);
+        await SendAsync(AppSettings.Text($"📷 Watch: zdjęcia drukujących drukarek co {argument}. Wyłącz: /watch off", $"📷 Watch: photos of printing machines every {argument}. Turn off: /watch off"), CommandKeyboard());
     }
 
     private async Task WatchLoopAsync(double interval, CancellationToken ct)
@@ -395,6 +395,9 @@ public sealed class TelegramBot
 
     private static string Keyboard(object[][] rows) => JsonSerializer.Serialize(new { inline_keyboard = rows });
 
+    /// Persistent bottom bar. Attached to every text reply, not just /help: the printer picker is an
+    /// inline keyboard glued to its own message, so once the chat scrolls past it there is no way back
+    /// without scrolling. A tap on /status here posts a fresh picker at the bottom instead.
     private static string CommandKeyboard()
     {
         var rows = new[] { new[] { "/status", "/all" }, new[] { "/spools", "/history" }, new[] { "/watch 10m", "/mute 2h" }, new[] { "/help" } };
