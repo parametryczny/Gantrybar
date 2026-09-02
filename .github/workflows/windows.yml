@@ -108,7 +108,8 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: ffmpeg-win64-minimal
-          path: ffmpeg-min
+          # Relative to the workspace root: defaults.run.working-directory does not apply to `uses`.
+          path: windows/ffmpeg-min
       - name: Bundle ffmpeg (printer cameras)
         shell: pwsh
         run: |
