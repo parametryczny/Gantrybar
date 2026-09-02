@@ -121,6 +121,8 @@ public static class StatusParser
             if (extId.Length > 0 && !seenExternalIds.Add(extId)) return;
             externalTrays.Add(candidate);
         }
+        bool hasExternalPayload = report.TryGetProperty("vir_slot", out _) || report.TryGetProperty("vt_tray", out _)
+            || (amsObject is { } extObj && extObj.TryGetProperty("vt_tray", out _));
         if (report.TryGetProperty("vir_slot", out var vir) && vir.ValueKind == JsonValueKind.Array)
             foreach (var slot in vir.EnumerateArray()) AddExternal(slot);
         if (amsObject is { } aObj && aObj.TryGetProperty("vt_tray", out var vtInner)) AddExternal(vtInner);
@@ -130,7 +132,7 @@ public static class StatusParser
         {
             // A partial report often carries only tray_now without the tray list. ParseAmsGroups
             // keeps the last known groups and preserves the active slot instead of blanking them.
-            var groups = ParseAmsGroups(amsObject, externalTrays, result.FilamentGroups);
+            var groups = ParseAmsGroups(amsObject, externalTrays, hasExternalPayload, result.FilamentGroups);
             if (groups is { }) result.FilamentGroups = groups;
             // Flat compatibility view + legacy humidity/temp for notifications / the tray.
             var flat = result.FilamentGroups.SelectMany(g => g.LegacyAmsSlots()).ToList();
@@ -192,10 +194,12 @@ public static class StatusParser
     /// <summary>Build one FilamentGroup per physical unit (ams.ams[]) plus EXT groups for the external
     /// spools (vt_tray / vir_slot, gathered by the caller). Returns null for a pure-partial report so
     /// the caller keeps its previous groups untouched.</summary>
-    private static List<FilamentGroup>? ParseAmsGroups(JsonElement? amsNullable, List<JsonElement> externalTrays, List<FilamentGroup> previous)
+    private static List<FilamentGroup>? ParseAmsGroups(JsonElement? amsNullable, List<JsonElement> externalTrays,
+                                                       bool externalAuthoritative, List<FilamentGroup> previous)
     {
         JsonElement ams = amsNullable ?? default;
         bool hasAms = amsNullable is { } && ams.ValueKind == JsonValueKind.Object;
+        bool hasAmsPayload = hasAms && ams.TryGetProperty("ams", out _);
         bool hasTrayNow = hasAms && ams.TryGetProperty("tray_now", out _);
         string activeRaw = hasAms ? (Str(ams, "tray_now") ?? Int(ams, "tray_now")?.ToString() ?? "") : "";
         // Only trust tray_now when it names a real slot; otherwise fall back to the previously active
@@ -294,6 +298,13 @@ public static class StatusParser
                 }
             });
         }
+
+        // Bambu sends AMS and external-tray data in independent partial reports. A report carrying only
+        // vt_tray / vir_slot must update EXT without temporarily deleting every AMS unit; conversely an
+        // AMS-only report must not make EXT blink out. Preserve the side missing from this packet and
+        // replace only the authoritative side, otherwise the card changes height and springs back.
+        if (!hasAmsPayload) groups.InsertRange(0, previous.Where(g => !g.IsExternal));
+        if (!externalAuthoritative) groups.AddRange(previous.Where(g => g.IsExternal));
 
         // Pure-partial report (no unit list, no external): keep the previously known modules.
         if (groups.Count == 0) return previous.Count == 0 ? null : previous;

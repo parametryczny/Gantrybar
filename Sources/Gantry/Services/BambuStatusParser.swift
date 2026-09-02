@@ -81,6 +81,9 @@ enum BambuStatusParser {
         let amsObject = report["ams"] as? [String: Any]
         var externalTrays: [[String: Any]] = []
         var seenExternalIDs = Set<String>()
+        let hasExternalPayload = report["vir_slot"] != nil
+            || report["vt_tray"] != nil
+            || amsObject?["vt_tray"] != nil
         func addExternal(_ dict: [String: Any]?) {
             guard let dict else { return }
             let id = string(dict["id"]) ?? integer(dict["id"]).map(String.init) ?? ""
@@ -105,7 +108,9 @@ enum BambuStatusParser {
             // Partial status updates during a print often carry only `tray_now` without the tray
             // list. Rebuilding from that alone would blank the modules and drop the active ring, so
             // parseAMSGroups keeps the last known groups and preserves the active slot.
-            if let groups = parseAMSGroups(ams, externalTrays: externalTrays, previous: result.filamentGroups) {
+            if let groups = parseAMSGroups(ams, externalTrays: externalTrays,
+                                           externalAuthoritative: hasExternalPayload,
+                                           previous: result.filamentGroups) {
                 result.filamentGroups = groups
             }
             // Flat compatibility view for notifications / menu bar, plus the legacy humidity/temp
@@ -211,7 +216,9 @@ enum BambuStatusParser {
 
     /// Build one `FilamentGroup` per physical unit (`ams.ams[]`) plus an `EXT` group for `vt_tray`.
     /// Returns `nil` for a pure-partial report so the caller keeps its previous groups untouched.
-    private static func parseAMSGroups(_ ams: [String: Any], externalTrays: [[String: Any]], previous: [FilamentGroup]) -> [FilamentGroup]? {
+    private static func parseAMSGroups(_ ams: [String: Any], externalTrays: [[String: Any]],
+                                       externalAuthoritative: Bool,
+                                       previous: [FilamentGroup]) -> [FilamentGroup]? {
         let hasTrayNow = ams["tray_now"] != nil
         let activeRaw = string(ams["tray_now"]) ?? integer(ams["tray_now"]).map(String.init) ?? ""
         // Only trust `tray_now` as authoritative when it names a real slot. Some reports carry the
@@ -224,6 +231,7 @@ enum BambuStatusParser {
         }
 
         var groups: [FilamentGroup] = []
+        let hasAMSPayload = ams["ams"] != nil
 
         if let units = ams["ams"] as? [[String: Any]], !units.isEmpty {
             for (unitIndex, unit) in units.enumerated() {
@@ -302,6 +310,17 @@ enum BambuStatusParser {
                     remainingWeightGrams: material != nil ? nfcWeightGrams(external) : nil
                 )]
             ))
+        }
+
+        // Bambu sends AMS and external-tray data in independent partial reports. A report carrying
+        // only `vt_tray` / `vir_slot` must update EXT without temporarily deleting every AMS unit;
+        // conversely an AMS-only report must not make EXT blink out. Preserve the side that was not
+        // present in this packet and replace only the authoritative side.
+        if !hasAMSPayload {
+            groups.insert(contentsOf: previous.filter { !$0.isExternal }, at: 0)
+        }
+        if !externalAuthoritative {
+            groups.append(contentsOf: previous.filter { $0.isExternal })
         }
 
         // Pure-partial report (no unit list, no external): keep the previously known modules so the

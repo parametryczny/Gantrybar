@@ -53,6 +53,9 @@ final class PrinterDetailViewController: NSViewController {
 
     // AMS / filaments — reuse the fleet card's dock so the layout logic stays identical.
     private let filamentDock = FilamentDockView()
+    private var renderedFilamentGroups: [FilamentGroup]?
+    private var renderedFilamentShowsGrams: Bool?
+    private var renderedFilamentMonochrome: Bool?
 
     // Local history / maintenance / statistics
     private let recentPrintsStack = NSStackView()
@@ -689,6 +692,16 @@ final class PrinterDetailViewController: NSViewController {
 
     private func renderAMS(_ groups: [FilamentGroup]) {
         filamentDock.isHidden = groups.isEmpty
+        // Telemetry lands several times a second. Rebuilding the dock every time made the card change
+        // height and spring back, so rebuild only when the data or the settings it bakes in changed.
+        let showsGrams = AppSettings.shared.cardShowSpoolGrams
+        let monochrome = AppSettings.shared.monochrome
+        guard renderedFilamentGroups != groups
+            || renderedFilamentShowsGrams != showsGrams
+            || renderedFilamentMonochrome != monochrome else { return }
+        renderedFilamentGroups = groups
+        renderedFilamentShowsGrams = showsGrams
+        renderedFilamentMonochrome = monochrome
         filamentDock.setGroups(groups, settings: AppSettings.shared, showRemaining: true)
     }
 

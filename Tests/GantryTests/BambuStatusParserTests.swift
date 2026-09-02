@@ -79,4 +79,21 @@ import Foundation
         #expect(first?.isActive == true) // tray_now 0 marks the first global slot active
         #expect(result?.amsHumidity == 2)
     }
+
+    @Test func externalOnlyPartialKeepsKnownAMS() {
+        let full = telemetry("""
+        {"print":{"ams":{"tray_now":"0","ams":[{"id":"0","humidity":"2","temp":"28",
+        "tray":[{"id":"0","tray_type":"PLA","tray_color":"FF0000FF","remain":80}]}]}}}
+        """)
+        #expect(full?.filamentGroups.count == 1)
+
+        let partial = telemetry("""
+        {"print":{"vir_slot":[{"id":"254","tray_type":"PETG","tray_color":"FFFFFF00","remain":65}]}}
+        """, previous: full ?? .init())
+
+        #expect(partial?.filamentGroups.count == 2)
+        #expect(partial?.filamentGroups.first?.displayName == "AMS A")
+        #expect(partial?.filamentGroups.last?.displayName == "EXT")
+        #expect(partial?.filamentGroups.last?.slots.first?.material == "PETG")
+    }
 }

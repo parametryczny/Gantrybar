@@ -14,6 +14,18 @@ from gi.repository import Gdk, GLib, Gtk  # type: ignore  # noqa: E402
 
 from .core import PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
 
+def _filament_signature(groups: Any, *extra: Any) -> tuple:
+    """Everything the AMS section draws, flattened into a comparable tuple. Telemetry arrives several
+    times a second; rebuilding the widgets when nothing changed made the card resize and jump, so both
+    views compare this first and skip the rebuild when it matches."""
+    return (tuple(extra), tuple(
+        (group.display_name, group.humidity, group.temperature, tuple(
+            (slot.label, slot.material, slot.color, slot.remaining, slot.active,
+             slot.remaining_weight_g)
+            for slot in group.slots))
+        for group in groups))
+
+
 _SPEED_NAMES = {1: ("Cichy", "Silent"), 2: ("Standard", "Standard"),
                 3: ("Sport", "Sport"), 4: ("Wariat", "Ludicrous")}
 _STATES = {PrinterState.PRINTING: ("Drukuje", "Printing"), PrinterState.PAUSED: ("Pauza", "Paused"),
@@ -162,6 +174,7 @@ class DetailWindow(Gtk.Window):
         self.hw.get_style_context().add_class("temp-bento")
         self.body.pack_start(self.hw, False, False, 0)
         self.ams = Gtk.Box(spacing=6)
+        self._ams_signature: tuple | None = None
         self.body.pack_start(self.ams, False, False, 0)
 
         actions = Gtk.Box(spacing=8, homogeneous=True)
@@ -273,6 +286,11 @@ class DetailWindow(Gtk.Window):
             self.hw.pack_start(self._tile("Dysza mm" if pl else "Nozzle mm", f"{tel.nozzle_diameter:.1f}", strong=True), True, True, 0)
 
     def _fill_filaments(self, tel: Telemetry, pl: bool) -> None:
+        monochrome = bool(self.app.config.data.get("monochrome", False))
+        signature = _filament_signature(tel.filament_groups, monochrome)
+        if signature == self._ams_signature:
+            return
+        self._ams_signature = signature
         for child in self.ams.get_children():
             self.ams.remove(child)
         for group in tel.filament_groups:
@@ -292,7 +310,7 @@ class DetailWindow(Gtk.Window):
                     ctx.add_class("active")
                 present = slot.present
                 color = (slot.color or "8E8E93FF").lstrip("#")[:6] if present else "5A5A5E"
-                if bool(self.app.config.data.get("monochrome", False)):
+                if monochrome:
                     from .app import _muted_hex
                     color = _muted_hex(color)
                 try:
@@ -447,6 +465,7 @@ class DetailPanel(Gtk.Box):
 
         ams, ams_body = self._card("ams", self._title("ams"))
         self.ams = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._ams_signature: tuple | None = None
         ams_body.pack_start(self.ams, False, False, 0)
 
         recent, recent_body = self._card("recent", self._title("recent"))
@@ -713,6 +732,10 @@ class DetailPanel(Gtk.Box):
             self.hardware.pack_start(self._metric("Średnica dyszy" if pl else "Nozzle diameter", f"⌀ {tel.nozzle_diameter:.1f} mm"), False, False, 0)
 
     def _fill_filaments(self, tel: Telemetry) -> None:
+        signature = _filament_signature(tel.filament_groups)
+        if signature == self._ams_signature:
+            return
+        self._ams_signature = signature
         self._clear(self.ams)
         for group in tel.filament_groups:
             title = Gtk.Label(label=group.display_name, xalign=0); title.get_style_context().add_class("detail-value")

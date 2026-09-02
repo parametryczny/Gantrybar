@@ -249,6 +249,7 @@ def _state(value: Any) -> PrinterState:
 
 
 def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]],
+                      external_authoritative: bool,
                       previous: list[FilamentGroup]) -> list[FilamentGroup] | None:
     """One FilamentGroup per physical unit (ams.ams[]) plus EXT groups for the external spools
     (vt_tray / vir_slot, gathered by the caller). Returns None for a pure-partial report so the
@@ -264,6 +265,7 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
         return matches if active_authoritative else slot_id == previous_active
 
     groups: list[FilamentGroup] = []
+    has_ams_payload = "ams" in value
     units = value.get("ams") if isinstance(value.get("ams"), list) else []
     for unit_index, unit in enumerate(units):
         if not isinstance(unit, dict):
@@ -335,6 +337,15 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
                 remaining_weight_g=_nfc_grams(external) if material else None,
             )],
         ))
+
+    # Bambu sends AMS and external-tray data in independent partial reports. A report carrying only
+    # vt_tray / vir_slot must update EXT without temporarily deleting every AMS unit; conversely an
+    # AMS-only report must not make EXT blink out. Preserve the side missing from this packet and
+    # replace only the authoritative side, otherwise the card changes height and springs back.
+    if not has_ams_payload:
+        groups[:0] = [g for g in previous if not g.external]
+    if not external_authoritative:
+        groups.extend(g for g in previous if g.external)
 
     # Pure-partial report (no unit list, no external): keep the previously known modules.
     if not groups:
@@ -445,6 +456,8 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
     ams_obj = report.get("ams") if isinstance(report.get("ams"), dict) else None
     external_trays: list[dict[str, Any]] = []
     seen_ext_ids: set[str] = set()
+    has_external_payload = ("vir_slot" in report or "vt_tray" in report
+                            or (ams_obj is not None and "vt_tray" in ams_obj))
 
     def _add_external(candidate: Any) -> None:
         if not isinstance(candidate, dict):
@@ -462,7 +475,8 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
     _add_external((ams_obj or {}).get("vt_tray") or report.get("vt_tray"))
 
     if ams_obj is not None or external_trays:
-        groups = _parse_ams_groups(ams_obj or {}, external_trays, result.filament_groups)
+        groups = _parse_ams_groups(ams_obj or {}, external_trays, has_external_payload,
+                                   result.filament_groups)
         if groups is not None:
             result.filament_groups = groups
         # Flat compatibility view + legacy humidity/temp for compact rows / notifications.

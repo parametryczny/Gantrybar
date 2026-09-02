@@ -68,6 +68,28 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(ht.humidity, 2)
         self.assertAlmostEqual(ht.temperature or 0, 34.4, places=1)
 
+    def test_partial_packet_keeps_the_module_it_does_not_carry(self):
+        # Bambu reports AMS and the external tray in independent partial packets. Neither may delete
+        # the other, or the details card changes height and springs back on every telemetry tick.
+        full = {"print": {"ams": {"tray_now": "0", "ams": [{"id": "0", "humidity": "2", "temp": "28",
+                "tray": [{"id": "0", "tray_type": "PLA", "tray_color": "FF0000FF", "remain": 80}]}]}}}
+        value = parse_telemetry(json.dumps(full))
+        self.assertEqual([g.display_name for g in value.filament_groups], ["AMS A"])
+
+        ext_only = {"print": {"vir_slot": [{"id": "254", "tray_type": "PETG",
+                                            "tray_color": "FFFFFF00", "remain": 65}]}}
+        value = parse_telemetry(json.dumps(ext_only), previous=value)
+        self.assertEqual([g.display_name for g in value.filament_groups], ["AMS A", "EXT"])
+        self.assertEqual(value.filament_groups[1].slots[0].material, "PETG")
+
+        ams_only = {"print": {"ams": {"tray_now": "0", "ams": [{"id": "0", "humidity": "3",
+                    "temp": "29", "tray": [{"id": "0", "tray_type": "PLA",
+                                            "tray_color": "FF0000FF", "remain": 75}]}]}}}
+        value = parse_telemetry(json.dumps(ams_only), previous=value)
+        self.assertEqual([g.display_name for g in value.filament_groups], ["AMS A", "EXT"])
+        self.assertEqual(value.filament_groups[0].slots[0].remaining, 75)
+        self.assertEqual(value.filament_groups[1].slots[0].material, "PETG")
+
     def test_legacy_chamber_and_hms_are_kept_with_device_payload(self):
         payload = {"print": {"device": {}, "chamber_temper": 37.5,
                               "hms": [{"attr": 1, "code": 2}], "print_error": "FF"}}

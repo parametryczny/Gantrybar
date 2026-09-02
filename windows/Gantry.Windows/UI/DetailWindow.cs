@@ -35,6 +35,7 @@ public sealed class DetailView : UserControl
     private Image? _cameraImage;            // Bambu (native → ffmpeg decode) and Klipper (MJPEG snapshots)
     private DispatcherTimer? _cameraTimer;  // Klipper snapshot polling
     private string? _snapshotUrl;
+    private string? _lastAmsSig;
     private bool _cameraStarted;
     private TextBlock? _cameraStatus;
     private Border? _cameraBadge;           // shows the resolved mode + resolution (e.g. "RTSPS · 1920×1080")
@@ -396,14 +397,31 @@ public sealed class DetailView : UserControl
         _speed.Visibility = speedText is null ? Visibility.Collapsed : Visibility.Visible;
         _diameter.Text = t.NozzleDiameter is { } d ? $"⌀ {d.ToString("0.0", CultureInfo.InvariantCulture)} mm" : "";
 
-        // AMS
-        _ams.Children.Clear();
+        // AMS. Telemetry lands several times a second; rebuilding these rows every time made the card
+        // change height and spring back, so rebuild only when what they draw actually changed (the
+        // fleet card guards its dock the same way).
         var groups = t.FilamentGroups;
-        if (groups.Count > 0)
-            for (int i = 0; i < groups.Count; i += 2)
-                _ams.Children.Add(DashboardWindow.FilamentRow(groups.Skip(i).Take(2).ToList()));
-        else
-            _ams.Children.Add(new TextBlock { Text = _pl ? "Brak modułów filamentu" : "No filament modules", FontSize = 11, Foreground = Muted() });
+        var sig = new System.Text.StringBuilder();
+        sig.Append(AppSettings.CardShowSpoolGrams ? "g1" : "g0")
+           .Append(AppSettings.Monochrome ? "m1" : "m0").Append('|');
+        foreach (var g in groups)
+        {
+            sig.Append(g.DisplayName).Append(g.HumidityPercent).Append('/').Append(g.TemperatureCelsius).Append('|');
+            foreach (var s in g.Slots)
+                sig.Append(s.Material).Append(s.ColorHex).Append(s.RemainingPercent).Append(s.IsActive)
+                   .Append((int?)s.RemainingWeightGrams).Append(';');
+        }
+        var amsSig = sig.ToString();
+        if (amsSig != _lastAmsSig)
+        {
+            _lastAmsSig = amsSig;
+            _ams.Children.Clear();
+            if (groups.Count > 0)
+                for (int i = 0; i < groups.Count; i += 2)
+                    _ams.Children.Add(DashboardWindow.FilamentRow(groups.Skip(i).Take(2).ToList()));
+            else
+                _ams.Children.Add(new TextBlock { Text = _pl ? "Brak modułów filamentu" : "No filament modules", FontSize = 11, Foreground = Muted() });
+        }
     }
 
     private void RefreshInsights()
