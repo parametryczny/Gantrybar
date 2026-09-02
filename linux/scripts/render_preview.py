@@ -46,12 +46,24 @@ class _StubConfig:
         pass
 
 
+class _StubInsights:
+    """Maintenance signals the card asks for; the preview has no history, so nothing is ever due."""
+
+    def signal(self, _serial: str, _hms_codes: list[str] | None = None) -> tuple[str, int]:
+        return "ok", 0
+
+    def snapshot(self, _serial: str, _polish: bool = True) -> dict:
+        return {"tasks": [], "history": [], "completedCount": 0, "successPercent": None,
+                "consumedGrams": 0.0, "totalPrintHours": 0.0}
+
+
 class StubApp:
     language = "pl"
     text = gapp.TEXT["pl"]
     config = _StubConfig()
     physical_spools = None
     filament_store = None
+    insights = _StubInsights()
     indicator_available = True
     expanded_compact_serial = None
     stages = gapp.STAGES
