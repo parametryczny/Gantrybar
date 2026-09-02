@@ -10,11 +10,8 @@ A lightweight 3D‑printer fleet monitor for the **macOS menu bar**, **Windows s
 
 *Lekki monitor farmy drukarek 3D w **pasku menu macOS**, **zasobniku Windows** i **GNU/Linux**. Jedno kliknięcie ikony pokazuje wszystkie drukarki naraz — postęp, czas, warstwy, temperatury i filament — dla **Bambu Lab, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) i Snapmaker**.*
 
-![Gantry na macOS](docs/renders/gantry-macos-anonymized.png)
+<img width="1448" height="1086" alt="gantry" src="https://github.com/user-attachments/assets/397337e3-21d0-4849-a357-061d8f533d98" />
 
-<p align="center">
-  <img src="docs/renders/gantry-windows-anonymized.png" width="88%" alt="Gantry on Windows 11">
-</p>
 
 ---
 
