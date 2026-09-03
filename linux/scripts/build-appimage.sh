@@ -28,7 +28,7 @@ if ! python3 -c 'from Crypto.Cipher import AES' >/dev/null 2>&1; then
   echo "build-appimage.sh requires PyCryptodome (python3 -m pip install pycryptodome)." >&2
   exit 1
 fi
-for command_name in curl file gst-inspect-1.0 pkg-config patchelf; do
+for command_name in curl file gst-inspect-1.0 pkg-config patchelf readelf; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     echo "build-appimage.sh requires $command_name." >&2
     exit 1
@@ -93,7 +93,7 @@ PATH="$TOOLS:$PATH" DEPLOY_GTK_VERSION=3 VERSION="$VERSION" ARCH="$APPIMAGE_ARCH
 echo "==> De-duplicating the AppDir"
 INTERNAL="$APPDIR/usr/lib/gantry/_internal"
 LIBDIR="$APPDIR/usr/lib"
-linked=0; differing=0
+linked=0; differing=0; patched=0
 if [ -d "$INTERNAL" ]; then
   for candidate in "$INTERNAL"/*.so*; do
     [ -f "$candidate" ] || continue                 # already a symlink, or nothing matched
@@ -105,12 +105,24 @@ if [ -d "$INTERNAL" ]; then
       ln -sf "../../$name" "$candidate"             # _internal -> usr/lib
       linked=$((linked + 1))
     else
-      echo "    UWAGA: $name rozni sie miedzy _internal a usr/lib" >&2
-      differing=$((differing + 1))
+      # Bytes differ, but linuxdeploy runs patchelf on what it deploys, so the usual cause is a
+      # rewritten rpath rather than a different library. GNU build-id survives patchelf and does not
+      # survive a version change, so it tells the two apart. Same id: still safe to link ($ORIGIN
+      # resolves through the symlink to usr/lib, where that copy's dependencies already live).
+      id_a=$(readelf -n "$candidate" 2>/dev/null | awk '/Build ID/ { print $3; exit }')
+      id_b=$(readelf -n "$twin" 2>/dev/null | awk '/Build ID/ { print $3; exit }')
+      if [ -n "$id_a" ] && [ "$id_a" = "$id_b" ]; then
+        ln -sf "../../$name" "$candidate"
+        linked=$((linked + 1))
+        patched=$((patched + 1))
+      else
+        echo "    UWAGA: $name to ROZNE wersje w _internal i usr/lib (build-id sie nie zgadza)" >&2
+        differing=$((differing + 1))
+      fi
     fi
   done
 fi
-echo "    zlinkowano: $linked, roznych wersji: $differing"
+echo "    zlinkowano: $linked (w tym $patched po patchelf), ROZNYCH wersji: $differing"
 
 echo "==> Packing the AppImage"
 ARCH="$APPIMAGE_ARCH" "$TOOLS/appimagetool.AppImage" --appimage-extract-and-run \
