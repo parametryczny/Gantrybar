@@ -228,10 +228,40 @@ class TelegramBot:
             self._run_action(parts[1], parts[2], cb_id, message_id)
         elif head == "photo" and len(parts) > 1:
             self._answer(cb_id, "📷")
-            self._send(self._t("📷 Zdjęcie z kamery na Linuksie jest w przygotowaniu.",
-                               "📷 Camera snapshot on Linux is in preparation."), self._command_keyboard())
+            self._handle_photo(parts[1])
         else:
             self._answer(cb_id, "")
+
+    def _handle_photo(self, serial: str) -> None:
+        name = next((p.name for p in self.app.printers if p.serial == serial), serial)
+        self._send(self._t(f"📷 Robię zdjęcie z kamery {name}…",
+                           f"📷 Grabbing a camera snapshot from {name}…"), None)
+        from .snapshot import capture
+        jpeg = capture(self.app, serial)
+        if jpeg:
+            self._send_photo(jpeg, name)
+        else:
+            self._send(self._t("Nie udało się pobrać zdjęcia (kamera niedostępna).",
+                               "Couldn't grab a snapshot (camera unavailable)."), self._command_keyboard())
+
+    def _send_photo(self, jpeg: bytes, caption: str) -> None:
+        """sendPhoto is multipart/form-data, so it cannot go through the urlencoded _post helper."""
+        boundary = "----gantry" + str(int(time.time() * 1000))
+        parts: list[bytes] = []
+        for field, value in (("chat_id", self._chat), ("caption", caption)):
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"\r\n\r\n{value}\r\n'.encode())
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; '
+                     f'filename="snapshot.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode())
+        parts.append(jpeg)
+        parts.append(f"\r\n--{boundary}--\r\n".encode())
+        body = b"".join(parts)
+        try:
+            request = urllib.request.Request(
+                _API.format(token=self._token, method="sendPhoto"), data=body,
+                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+            urllib.request.urlopen(request, timeout=30).read()
+        except Exception:      # noqa: BLE001 - a failed photo must not kill the poll loop
+            self._send(self._t("Nie udało się wysłać zdjęcia.", "Could not send the photo."), None)
 
     # Screens
 
@@ -389,11 +419,30 @@ class TelegramBot:
             return
         seconds = _parse_duration(argument)
         if seconds is None or seconds < 60:
-            self._send(self._t("Podaj odstęp ≥ 1 min, np. /watch 10m. (Zdjęcia na Linuksie wkrótce.)",
-                               "Give an interval ≥ 1 min, e.g. /watch 10m. (Linux photos coming soon.)"), self._command_keyboard())
+            self._send(self._t("Podaj odstęp ≥ 1 min, np. /watch 10m. Wyłącz: /watch off",
+                               "Give an interval ≥ 1 min, e.g. /watch 10m. Turn off: /watch off"), self._command_keyboard())
             return
-        self._send(self._t("📷 Zdjęcia z kamery na Linuksie są w przygotowaniu (/watch będzie działać wtedy).",
-                           "📷 Camera photos on Linux are in preparation (/watch will work then)."), self._command_keyboard())
+        self._stop_watch()
+        stop = threading.Event()
+        self._watch_stop = stop
+        threading.Thread(target=self._watch_loop, args=(seconds, stop), daemon=True).start()
+        self._send(self._t(f"📷 Watch: zdjęcia drukujących drukarek co {argument}. Wyłącz: /watch off",
+                           f"📷 Watch: photos of printing machines every {argument}. Turn off: /watch off"),
+                   self._command_keyboard())
+
+    def _watch_loop(self, seconds: float, stop: threading.Event) -> None:
+        from .snapshot import capture
+        while not stop.wait(seconds):
+            for printer in list(self.app.printers):
+                if stop.is_set():
+                    return
+                tel = self.app.telemetry.get(printer.serial)
+                if tel is None or tel.state != PrinterState.PRINTING:
+                    continue
+                jpeg = capture(self.app, printer.serial)
+                if jpeg:
+                    progress = f" · {tel.progress}%" if tel.progress else ""
+                    self._send_photo(jpeg, f"{printer.name}{progress}")
 
     def _stop_watch(self) -> None:
         if self._watch_stop is not None:

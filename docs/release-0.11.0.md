@@ -32,7 +32,7 @@ Bot obsługuje komendy:
 
 Po wybraniu drukarki dostajesz stan zadania, postęp, warstwy, czas do końca, temperatury i wilgotność AMS, kafle załadowanych slotów (kolor, materiał, procent, aktywny slot) oraz przyciski: pauza, wznów, stop z potwierdzeniem, światło komory i zdjęcie z kamery.
 
-Zdjęcia (`/photo`) działają na macOS i Windows: dla Bambu przez dekodowanie klatki kluczowej H.264, dla Klipper i Elegoo przez pierwszą klatkę MJPEG. Na GNU/Linux kamera jest jeszcze w przygotowaniu i bot zwraca czytelny komunikat zamiast zdjęcia.
+Zdjęcia (`/photo`) i `/watch` działają na **wszystkich trzech systemach**. Bambu dekoduje klatkę kluczową H.264 (VideoToolbox na macOS, ffmpeg na Windows, GStreamer na Linuksie), Anycubic idzie przez FLV, a Klipper i Elegoo oddają pierwszą klatkę MJPEG bez żadnego dekodera.
 
 Instrukcja krok po kroku: [`docs/telegram-setup.md`](https://github.com/parametryczny/gantrybar/blob/main/docs/telegram-setup.md).
 
