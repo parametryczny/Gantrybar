@@ -102,6 +102,14 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
                 && (object.hasPrefix("temperature_sensor") || object.hasPrefix("heater_generic")) {
                 wanted.append(object)
             }
+            // Every fan the machine publishes, not just `fan`: auxiliary and chamber fans live under
+            // `fan_generic`/`heater_fan`/`controller_fan`, and some vendor forks have no bare `fan`.
+            for object in objects where object == "fan"
+                || object.hasPrefix("fan_generic ") || object.hasPrefix("heater_fan ")
+                || object.hasPrefix("controller_fan ") || object.hasPrefix("temperature_fan ") {
+                wanted.append(object)
+            }
+            wanted = Array(Set(wanted))
         }
         guard !wanted.isEmpty else { return nil }
         var components = URLComponents(string: "\(baseURL)/printer/objects/query")

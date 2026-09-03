@@ -158,6 +158,38 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([s.label for s in moonraker.filament_groups[0].slots], ["T0", "T1"])
         self.assertTrue(moonraker.filament_groups[0].slots[1].active)
 
+    def test_moonraker_named_fans_map_to_aux_and_chamber(self):
+        # Aux and chamber fans live under fan_generic, never under the bare "fan" object, so the
+        # Details card used to show a dash for both no matter what the machine reported.
+        value = parse_moonraker({"result": {"status": {
+            "fan": {"speed": 0.5},
+            "fan_generic auxiliary_fan": {"speed": 0.25},
+            "fan_generic chamber_fan": {"speed": 1.0}}}})
+        self.assertEqual(value.part_fan, 50)
+        self.assertEqual(value.aux_fan, 25)
+        self.assertEqual(value.chamber_fan, 100)
+
+    def test_moonraker_vendor_fork_without_bare_fan(self):
+        # Creality-style forks may publish no plain "fan"; a single named cooling fan must still
+        # land on Part instead of leaving every fan blank.
+        value = parse_moonraker({"result": {"status": {
+            "fan_generic part_cooling_fan": {"speed": 0.8}}}})
+        self.assertEqual(value.part_fan, 80)
+
+    def test_moonraker_heater_fan_is_not_mistaken_for_part(self):
+        # Dict order is not meaningful: a heater fan must never claim the part slot ahead of "fan".
+        value = parse_moonraker({"result": {"status": {
+            "heater_fan hotend_fan": {"speed": 1.0},
+            "fan": {"speed": 0.3}}}})
+        self.assertEqual(value.part_fan, 30)
+        self.assertIsNone(value.aux_fan)
+        self.assertIsNone(value.chamber_fan)
+
+    def test_moonraker_output_pin_value_and_exhaust(self):
+        value = parse_moonraker({"result": {"status": {
+            "fan_generic exhaust": {"value": 0.4}}}})
+        self.assertEqual(value.chamber_fan, 40)
+
     def test_moonraker_creality_layer_fallback(self):
         # Creality K1/K1Max report null layers in print_stats.info; layers live on virtual_sdcard.
         k1 = parse_moonraker({"result": {"status": {

@@ -63,10 +63,11 @@ enum MoonrakerStatusParser {
             telemetry.chamberTemperature = chamber
         }
 
-        // Part-cooling fan (0–1) and the live speed factor (1.0 = 100%).
-        if let fan = status[objects.fan] as? [String: Any], let speed = number(fan["speed"]) {
-            telemetry.partFanPercent = Int((speed * 100).rounded())
-        }
+        // Fans. Klipper exposes the part cooler as plain `fan`, but everything else (auxiliary, chamber,
+        // exhaust) arrives as `fan_generic <name>` / `heater_fan <name>` / `controller_fan <name>`, and
+        // some vendor forks (Creality among them) do not publish a bare `fan` at all. So classify by
+        // name over whatever the query returned instead of reading one hard-coded object.
+        applyFans(status: status, preferredPartName: objects.fan, into: &telemetry)
         if let gm = status["gcode_move"] as? [String: Any], let factor = number(gm["speed_factor"]) {
             telemetry.speedPercent = Int((factor * 100).rounded())
         }
@@ -95,6 +96,49 @@ enum MoonrakerStatusParser {
         case "error": .error
         case "cancelled", "canceled", "standby": .idle
         default: .idle
+        }
+    }
+
+    /// Klipper fan object prefixes. `fan` is the part cooler; the rest carry a name after a space.
+    private static let fanPrefixes = ["fan_generic ", "heater_fan ", "controller_fan ", "temperature_fan "]
+
+    private static func applyFans(status: [String: Any], preferredPartName: String,
+                                  into telemetry: inout PrinterTelemetry) {
+        func percent(_ object: Any?) -> Int? {
+            guard let dict = object as? [String: Any] else { return nil }
+            // `speed` for fans, `value` for an output_pin driving one; both are 0..1.
+            guard let raw = number(dict["speed"]) ?? number(dict["value"]) else { return nil }
+            return Int((min(max(raw, 0), 1) * 100).rounded())
+        }
+
+        // Collect first, decide after: dictionary order is not defined, so classifying inside the loop
+        // let a `heater_fan` claim the part slot before the real `fan` was ever seen.
+        var readings: [(name: String, percent: Int)] = []
+        for key in status.keys.sorted() {
+            let isFan = key == preferredPartName || key == "fan"
+                || fanPrefixes.contains(where: { key.hasPrefix($0) })
+            guard isFan, let reading = percent(status[key]) else { continue }
+            readings.append((key, reading))
+        }
+        func first(where matches: (String) -> Bool) -> Int? {
+            readings.first { matches($0.name.lowercased()) }?.percent
+        }
+
+        if let explicit = readings.first(where: { $0.name == preferredPartName || $0.name == "fan" })?.percent {
+            telemetry.partFanPercent = explicit
+        } else if let named = first(where: { $0.contains("part") || $0.contains("cooling") }) {
+            telemetry.partFanPercent = named
+        } else if let lone = readings.first(where: { !$0.name.hasPrefix("heater_fan")
+                                                 && !$0.name.hasPrefix("controller_fan") })?.percent {
+            // A vendor fork with no bare `fan`: the one generic fan it does publish is the part cooler.
+            // Heater and controller fans are excluded, they cool the hotend and the electronics.
+            telemetry.partFanPercent = lone
+        }
+        if let aux = first(where: { $0.contains("aux") || $0.contains("side") }) {
+            telemetry.auxFanPercent = aux
+        }
+        if let chamber = first(where: { $0.contains("chamber") || $0.contains("exhaust") || $0.contains("filter") }) {
+            telemetry.chamberFanPercent = chamber
         }
     }
 

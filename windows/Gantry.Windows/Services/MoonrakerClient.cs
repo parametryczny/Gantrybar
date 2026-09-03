@@ -101,6 +101,13 @@ public sealed class MoonrakerClient : IPrinterConnection
                     if (name.ToLowerInvariant().Contains("chamber")
                         && (name.StartsWith("temperature_sensor") || name.StartsWith("heater_generic")))
                         wanted.Add(name);
+                // Every fan the machine publishes, not just `fan`: auxiliary and chamber fans live under
+                // `fan_generic`/`heater_fan`/`controller_fan`, and some vendor forks have no bare `fan`.
+                foreach (var name in available)
+                    if (name == "fan" || name.StartsWith("fan_generic ") || name.StartsWith("heater_fan ")
+                        || name.StartsWith("controller_fan ") || name.StartsWith("temperature_fan "))
+                        wanted.Add(name);
+                wanted = wanted.Distinct().ToList();
             }
         }
         catch { /* fall back to the default object set */ }

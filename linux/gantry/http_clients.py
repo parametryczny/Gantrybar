@@ -52,6 +52,59 @@ def _copy(previous: Telemetry | None) -> Telemetry:
     return Telemetry(**{name: getattr(old, name) for name in Telemetry.__dataclass_fields__})
 
 
+_FAN_PREFIXES = ("fan_generic ", "heater_fan ", "controller_fan ", "temperature_fan ")
+
+
+def _apply_fans(status: dict[str, Any], preferred_part: str, telemetry: Telemetry) -> None:
+    """Map Klipper's fan objects onto part/aux/chamber.
+
+    Klipper exposes the part cooler as plain ``fan``, but auxiliary, chamber and exhaust fans arrive as
+    ``fan_generic <name>`` (also ``heater_fan``, ``controller_fan``), and some vendor forks (Creality
+    among them) publish no bare ``fan`` at all. Reading one hard-coded object left Aux and Chamber
+    permanently blank and Part blank on those forks.
+    """
+    readings: list[tuple[str, int]] = []
+    for key in sorted(status):
+        if not (key == preferred_part or key == "fan" or key.startswith(_FAN_PREFIXES)):
+            continue
+        value = status.get(key)
+        if not isinstance(value, dict):
+            continue
+        # "speed" for fans, "value" for an output_pin driving one; both are 0..1.
+        raw = _number(value.get("speed"))
+        if raw is None:
+            raw = _number(value.get("value"))
+        if raw is None:
+            continue
+        readings.append((key, int(round(min(max(raw, 0.0), 1.0) * 100))))
+    if not readings:
+        return
+
+    def first(predicate) -> int | None:
+        return next((percent for name, percent in readings if predicate(name.lower())), None)
+
+    explicit = next((p for name, p in readings if name in (preferred_part, "fan")), None)
+    if explicit is not None:
+        telemetry.part_fan = explicit
+    else:
+        named = first(lambda n: "part" in n or "cooling" in n)
+        if named is not None:
+            telemetry.part_fan = named
+        else:
+            # A vendor fork with no bare "fan": the one generic fan it publishes is the part cooler.
+            # Heater and controller fans are excluded, they cool the hotend and the electronics.
+            lone = next((p for name, p in readings
+                         if not name.startswith(("heater_fan", "controller_fan"))), None)
+            if lone is not None:
+                telemetry.part_fan = lone
+    aux = first(lambda n: "aux" in n or "side" in n)
+    if aux is not None:
+        telemetry.aux_fan = aux
+    chamber = first(lambda n: "chamber" in n or "exhaust" in n or "filter" in n)
+    if chamber is not None:
+        telemetry.chamber_fan = chamber
+
+
 def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry | None = None,
                     objects: dict[str, str | None] | None = None) -> Telemetry | None:
     try:
@@ -116,12 +169,8 @@ def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry |
             if "chamber" in lowered and lowered.startswith(("temperature_sensor", "heater_generic")) and isinstance(value, dict):
                 telemetry.chamber = _number(value.get("temperature"))
                 break
-    # Part fan (0..1 -> %) and speed factor (gcode_move.speed_factor, 1.0 == 100%) for the Details view.
-    fan_name = names.get("fan") or "fan"
-    fan = status.get(fan_name) if isinstance(status.get(fan_name), dict) else {}
-    fan_speed = _number(fan.get("speed"))
-    if fan_speed is not None:
-        telemetry.part_fan = int(round(min(max(fan_speed, 0.0), 1.0) * 100))
+    # Fans, then the speed factor (gcode_move.speed_factor, 1.0 == 100%) for the Details view.
+    _apply_fans(status, names.get("fan") or "fan", telemetry)
     move = status.get("gcode_move") if isinstance(status.get("gcode_move"), dict) else {}
     factor = _number(move.get("speed_factor"))
     if factor is not None:
@@ -343,6 +392,11 @@ class HttpConnection:
                 if not self._moonraker_objects.get("chamber"):
                     wanted.extend(value for value in available if "chamber" in value.lower()
                                   and value.startswith(("temperature_sensor", "heater_generic")))
+                # Every fan the machine publishes, not just "fan": auxiliary and chamber fans live under
+                # fan_generic/heater_fan/controller_fan, and some vendor forks have no bare "fan".
+                wanted.extend(value for value in available
+                              if value == "fan" or value.startswith(
+                                  ("fan_generic ", "heater_fan ", "controller_fan ", "temperature_fan ")))
                 wanted = list(dict.fromkeys(value for value in wanted if value in available))
         except (OSError, ValueError, urllib.error.URLError):
             pass

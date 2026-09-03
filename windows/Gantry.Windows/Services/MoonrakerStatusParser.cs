@@ -68,8 +68,7 @@ public static class MoonrakerStatusParser
         else if (ChamberTemperature(status) is { } chamber) t.ChamberTemperature = chamber;
 
         // Part-cooling fan (0-1) and the live speed factor (1.0 = 100%).
-        if (Obj(status, objects.Fan, out var fan) && Num(fan, "speed") is { } fanSpeed)
-            t.PartFanPercent = (int)Math.Round(fanSpeed * 100);
+        ApplyFans(status, objects.Fan, t);
         if (Obj(status, "gcode_move", out var gm) && Num(gm, "speed_factor") is { } speedFactor)
             t.SpeedPercent = (int)Math.Round(speedFactor * 100);
 
@@ -284,5 +283,50 @@ public static class MoonrakerStatusParser
     {
         var n = NumberValue(v);
         return n.HasValue ? (int)n.Value : null;
+    }
+
+    /// Klipper exposes the part cooler as plain `fan`, but auxiliary/chamber/exhaust fans arrive as
+    /// `fan_generic <name>` (also `heater_fan`, `controller_fan`), and some vendor forks (Creality among
+    /// them) publish no bare `fan` at all. Classify by name over whatever the query returned rather than
+    /// reading one hard-coded object, which left Aux and Chamber permanently blank.
+    private static readonly string[] FanPrefixes =
+        { "fan_generic ", "heater_fan ", "controller_fan ", "temperature_fan " };
+
+    private static void ApplyFans(JsonElement status, string preferredPartName, PrinterTelemetry t)
+    {
+        // Collect first, decide after: enumeration order is not guaranteed, so classifying inside the
+        // loop lets a heater fan claim the part slot before the real `fan` is seen.
+        var readings = new List<(string Name, int Percent)>();
+        foreach (var property in status.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal))
+        {
+            string key = property.Name;
+            bool isFan = key == preferredPartName || key == "fan" || FanPrefixes.Any(key.StartsWith);
+            if (!isFan || property.Value.ValueKind != JsonValueKind.Object) continue;
+            double? raw = Num(property.Value, "speed") ?? Num(property.Value, "value");
+            if (raw is not { } value) continue;
+            readings.Add((key, (int)Math.Round(Math.Clamp(value, 0, 1) * 100)));
+        }
+        if (readings.Count == 0) return;
+
+        int? First(Func<string, bool> matches)
+        {
+            foreach (var r in readings) if (matches(r.Name.ToLowerInvariant())) return r.Percent;
+            return null;
+        }
+
+        var explicitPart = readings.FirstOrDefault(r => r.Name == preferredPartName || r.Name == "fan");
+        if (explicitPart.Name is not null) t.PartFanPercent = explicitPart.Percent;
+        else if (First(n => n.Contains("part") || n.Contains("cooling")) is { } named) t.PartFanPercent = named;
+        else
+        {
+            // A vendor fork with no bare `fan`: the one generic fan it does publish is the part cooler.
+            // Heater and controller fans are excluded, they cool the hotend and the electronics.
+            var lone = readings.FirstOrDefault(r => !r.Name.StartsWith("heater_fan")
+                                                 && !r.Name.StartsWith("controller_fan"));
+            if (lone.Name is not null) t.PartFanPercent = lone.Percent;
+        }
+        if (First(n => n.Contains("aux") || n.Contains("side")) is { } aux) t.AuxFanPercent = aux;
+        if (First(n => n.Contains("chamber") || n.Contains("exhaust") || n.Contains("filter")) is { } ch)
+            t.ChamberFanPercent = ch;
     }
 }
