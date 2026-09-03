@@ -17,6 +17,8 @@ TOOLS="$ROOT/linux/build/appimage-tools"
 OUTPUT="$ROOT/linux/dist/Gantry-$VERSION-Linux-$APPIMAGE_ARCH.AppImage"
 LINUXDEPLOY_URL=${LINUXDEPLOY_URL:-"https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$APPIMAGE_ARCH.AppImage"}
 GTK_PLUGIN_URL=${GTK_PLUGIN_URL:-"https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh"}
+# Packaging is a separate step so the AppDir can be de-duplicated between deploy and squash.
+APPIMAGETOOL_URL=${APPIMAGETOOL_URL:-"https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$APPIMAGE_ARCH.AppImage"}
 
 if ! python3 -c 'import PyInstaller' >/dev/null 2>&1; then
   echo "build-appimage.sh requires PyInstaller (python3 -m pip install pyinstaller)." >&2
@@ -70,7 +72,8 @@ install -m 0644 "$ROOT/linux/packaging/gantry.metainfo.xml" "$APPDIR/usr/share/m
 
 curl -fsSL "$LINUXDEPLOY_URL" -o "$TOOLS/linuxdeploy.AppImage"
 curl -fsSL "$GTK_PLUGIN_URL" -o "$TOOLS/linuxdeploy-plugin-gtk.sh"
-chmod +x "$TOOLS/linuxdeploy.AppImage" "$TOOLS/linuxdeploy-plugin-gtk.sh"
+curl -fsSL "$APPIMAGETOOL_URL" -o "$TOOLS/appimagetool.AppImage"
+chmod +x "$TOOLS/linuxdeploy.AppImage" "$TOOLS/linuxdeploy-plugin-gtk.sh" "$TOOLS/appimagetool.AppImage"
 
 # linuxdeploy's GTK plugin adds themes, schemas, typelibs, pixbuf loaders and the GTK libraries
 # which PyInstaller cannot discover from Python imports alone.
@@ -80,11 +83,41 @@ PATH="$TOOLS:$PATH" DEPLOY_GTK_VERSION=3 VERSION="$VERSION" ARCH="$APPIMAGE_ARCH
   --desktop-file "$APPDIR/usr/share/applications/gantry.desktop" \
   --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/gantry.svg" \
   --library "$ZBAR_PLUGIN" \
-  --plugin gtk \
-  --output appimage
+  --plugin gtk
+
+# PyInstaller collects the shared libraries it finds into usr/lib/gantry/_internal, and linuxdeploy
+# then deploys the very same ones into usr/lib, so every big library was present twice (librsvg four
+# times). mksquashfs already folds identical files together, so this is mostly about not shipping a
+# confusing bundle and about the real hazard below: if the two copies ever DIFFER, which one wins
+# depends on load order. Identical copies become symlinks; differing ones are reported loudly.
+echo "==> De-duplicating the AppDir"
+INTERNAL="$APPDIR/usr/lib/gantry/_internal"
+LIBDIR="$APPDIR/usr/lib"
+linked=0; differing=0
+if [ -d "$INTERNAL" ]; then
+  for candidate in "$INTERNAL"/*.so*; do
+    [ -f "$candidate" ] || continue                 # already a symlink, or nothing matched
+    [ -L "$candidate" ] && continue
+    name=$(basename "$candidate")
+    twin="$LIBDIR/$name"
+    [ -f "$twin" ] && [ ! -L "$twin" ] || continue
+    if cmp -s "$candidate" "$twin"; then
+      ln -sf "../../$name" "$candidate"             # _internal -> usr/lib
+      linked=$((linked + 1))
+    else
+      echo "    UWAGA: $name rozni sie miedzy _internal a usr/lib" >&2
+      differing=$((differing + 1))
+    fi
+  done
+fi
+echo "    zlinkowano: $linked, roznych wersji: $differing"
+
+echo "==> Packing the AppImage"
+ARCH="$APPIMAGE_ARCH" "$TOOLS/appimagetool.AppImage" --appimage-extract-and-run \
+  "$APPDIR" "$OUTPUT"
 
 if [ ! -x "$OUTPUT" ]; then
-  echo "linuxdeploy did not create $OUTPUT" >&2
+  echo "appimagetool did not create $OUTPUT" >&2
   exit 1
 fi
 echo "$OUTPUT"
