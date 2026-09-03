@@ -55,7 +55,7 @@ class SettingsDialog(Gtk.Dialog):
         profiles = Gtk.Box(spacing=12)
         profiles.get_style_context().add_class("settings-links")
         for label, uri in (("@parametryczny on GitHub", "https://github.com/parametryczny"),
-                           ("@parametryczny on X", "https://x.com/parametryczny")):
+                           ("@_parametryczny on X", "https://x.com/_parametryczny")):
             link = Gtk.LinkButton.new_with_label(uri, label)
             link.set_relief(Gtk.ReliefStyle.NONE)
             profiles.pack_start(link, False, False, 0)

@@ -295,7 +295,7 @@ public partial class SettingsWindow : Window
             catch { }
         };
         GitHubButton.Click += (_, _) => OpenUrl("https://github.com/parametryczny");
-        XButton.Click += (_, _) => OpenUrl("https://x.com/parametryczny");
+        XButton.Click += (_, _) => OpenUrl("https://x.com/_parametryczny");
     }
 
     private static void OpenUrl(string url)

@@ -127,7 +127,7 @@ The Linux version is currently beta. KDE users need a Secret Service provider en
 package uses `secret-tool` and will show an error instead of saving an access code in plain text.
 
 Author: **Kamil Grzegorczyk** — [GitHub](https://github.com/parametryczny),
-[X](https://x.com/parametryczny), [support](https://suppi.pl/parametryczny).
+[X](https://x.com/_parametryczny), [support](https://suppi.pl/parametryczny).
 
 ## Raspberry Pi workshop kiosk
 

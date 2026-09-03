@@ -189,7 +189,7 @@ To wczesny projekt tworzony przez społeczność. Protokół MQTT Bambu Lab nie 
 **Kamil Grzegorczyk**
 
 - GitHub: [@parametryczny](https://github.com/parametryczny)
-- X: [@parametryczny](https://x.com/parametryczny)
+- X: [@_parametryczny](https://x.com/_parametryczny)
 - Support / Wsparcie: [suppi.pl/parametryczny](https://suppi.pl/parametryczny)
 
 ## License / Licencja
