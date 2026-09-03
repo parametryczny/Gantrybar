@@ -17,6 +17,8 @@ Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera poś
 
 ## Telegram
 
+**Mostkiem jest Twój komputer.** Gantry nie ma serwera w chmurze, więc powiadomienia i komendy działają tylko wtedy, gdy maszyna z uruchomionym Gantry jest włączona, nie śpi i ma dostęp do sieci. Zamknięty laptop oznacza milczącego bota; po ponownym uruchomieniu wszystko wraca samo. Kto chce mieć to dostępne bez przerwy, powinien trzymać Gantry na czymś, co i tak chodzi cały czas.
+
 Każdy użytkownik zakłada **własnego bota** u BotFather i wkleja token w Ustawieniach. Token zostaje na Twoim komputerze, nie ma wspólnego bota ani serwera Gantry pośrodku. Bot odpowiada wyłącznie na skonfigurowany czat, pozostałe wiadomości ignoruje.
 
 Powiadomienia wychodzące podlegają tym samym przełącznikom co bannery systemowe: zakończenie, błąd (z opisem kodu HMS), pauza, drukarka offline, niski poziom filamentu i wysoka wilgotność AMS.

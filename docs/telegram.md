@@ -31,6 +31,13 @@ Ustawienia Telegrama **nie są** objęte synchronizacją między komputerami uż
 nie niesie żadnego z tych pól) i jest to zamierzone: token bota zostaje na maszynie, na której go
 wpisano. Każdy komputer konfiguruje się osobno.
 
+## Model działania
+
+Nie ma serwera pośredniczącego: proces Gantry sam odpytuje Bot API (long polling na `getUpdates`) i sam
+wysyła `sendMessage`. Maszyna z Gantry jest więc mostkiem między drukarkami w sieci lokalnej a
+Telegramem i musi być włączona oraz mieć dostęp do sieci, żeby cokolwiek działało. Po uśpieniu albo
+wyłączeniu bot milczy, a po starcie pętla wznawia się sama od zapisanego offsetu.
+
 ## Wysyłka
 `POST https://api.telegram.org/bot<TOKEN>/sendMessage`
 form-urlencoded: `chat_id`, `text`, `disable_web_page_preview=true`. Sukces = HTTP 200.

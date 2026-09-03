@@ -4,6 +4,15 @@ Gantry wysyła powiadomienia na Telegram i pozwala sterować drukarkami z czatu 
 stop, światło, zdjęcie z kamery). Wszystko działa **lokalnie** — każdy tworzy **własnego bota** (nie
 korzystasz z cudzego). Konfiguracja to dwa kody: **token bota** i **chat_id**. Zajmuje ~2 minuty.
 
+> **Ważne: mostkiem jest Twój komputer.**
+> Gantry nie ma serwera w chmurze. To komputer albo laptop z uruchomionym Gantry rozmawia z drukarkami
+> i z Telegramem, więc powiadomienia i komendy działają **tylko wtedy, gdy ta maszyna jest włączona,
+> nie śpi i ma dostęp do sieci**. Jeśli zamkniesz laptopa albo go uśpisz, bot przestanie odpowiadać, a
+> alerty nie dojdą. Po ponownym uruchomieniu Gantry wszystko wraca samo.
+>
+> Jeśli chcesz mieć to dostępne bez przerwy, trzymaj Gantry na maszynie, która i tak chodzi cały czas:
+> serwerze domowym, mini PC albo Raspberry Pi z wersją dla GNU/Linux.
+
 ---
 
 ## Krok 1. Token bota (z @BotFather)
@@ -94,6 +103,9 @@ Napisz do bota cokolwiek (albo `/start`). Bot odpowie **listą drukarek** (przyc
 - **Zdjęcie nie przychodzi (Bambu):** kamera wymaga **kodu dostępu** drukarki (zapisany przy drukarce) i
   chwili na dekodowanie klatki. Sprawdź też uprawnienie **Sieć lokalna** (macOS).
 - **Zmieniłeś token/chat_id:** Gantry przełącza się automatycznie po zapisaniu w Ustawieniach.
+- **Bot nagle zamilkł, a wcześniej działał:** najczęściej komputer z Gantry jest wyłączony, uśpiony albo
+  stracił sieć. To on jest mostkiem, więc bez niego nie ma kto odebrać komendy ani wysłać alertu.
+  Sprawdź też, czy alerty nie są wyciszone komendą `/mute` (`/mute off` je przywraca).
 
 ---
 
