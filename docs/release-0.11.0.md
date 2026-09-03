@@ -12,6 +12,8 @@ Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera poś
 - **Anycubic Kobra S1**: lokalne MQTT/TLS w trybie LAN, bez konta Anycubic Cloud.
 - **Statystyki floty**: zbiorcze podsumowanie wydruków, czasu i filamentu z eksportem do pliku tekstowego.
 - **Alert przed końcem druku**, domyślnie wyłączony, do włączenia w ustawieniach.
+- **Pasek krawędziowy** (macOS): wąski panel przyklejony do krawędzi ekranu, zawsze na wierzchu, z pierścieniem postępu na drukarkę. Domyślnie wyłączony.
+- **Nowe okno ustawień** (macOS): trzy zakładki zamiast jednej długiej listy.
 - **Instalator Windows schudł z 91 do 52 MB**, a paczka ZIP ze 130 do 76 MB.
 - **Naprawione powiadomienia systemowe na Windows 11**, wentylatory na drukarkach Klipper oraz koniec skakania sekcji AMS w oknie szczegółów.
 
@@ -75,6 +77,24 @@ Uwaga o liczbach: godziny druku i gramy filamentu są licznikami dożywotnimi, w
 Powiadomienie przychodziło dotąd dopiero po fakcie. Przy kilku drukarkach uprzedzenie bywa praktyczniejsze niż informacja, że coś skończyło się kwadrans temu.
 
 Alert uzbraja się raz na wydruk i sam przezbraja, gdy pozostały czas wróci powyżej progu (nowe zadanie) albo drukarka przestanie drukować, więc jedno zadanie nie może przypominać o sobie w kółko. Próg to 10 minut. **Domyślnie wyłączony**, bo na zajętej flocie to jeden dodatkowy alert na każde zadanie obok tego o zakończeniu; włącznik jest w sekcji powiadomień.
+
+## Pasek krawędziowy
+
+**Na razie tylko macOS.** Port na Windows i GNU/Linux jest zaplanowany, ale nie wchodzi do tego wydania.
+
+Popover w pasku menu wymaga kliknięcia, a przy dłuższym wydruku zerka się na postęp co kilka minut. Pasek krawędziowy jest odpowiedzią na to zerkanie: wąski na 22 punkty panel przyklejony do lewej albo prawej krawędzi ekranu, zawsze nad innymi oknami, z jednym pierścieniem postępu na drukarkę. W spoczynku niesie tylko kolor statusu i wypełnienie pierścienia. Najechanie kursorem rozsuwa go do listy z nazwami, procentem i pozostałym czasem, a kliknięcie wiersza otwiera szczegóły tej drukarki.
+
+Panel wyrasta z krawędzi zamiast obok niej stać: w miejscu styku ma wklęsłe przejścia, więc wtapia się w brzeg ekranu. Widać go na każdym pulpicie i nad aplikacją w trybie pełnoekranowym, a kliknięcie nie zabiera fokusu temu, w czym akurat piszesz.
+
+W ustawieniach wybiera się krawędź, tryb **Tylko drukujące** oraz drukarki, które mają się pojawić. Lista jest zapisywana jako wykluczenia, więc nowo dodana drukarka pokazuje się sama, zamiast po cichu brakować. **Domyślnie wyłączony**, bo to druga powierzchnia obok popovera, a nie jego zamiennik.
+
+## Nowe okno ustawień
+
+**Na razie tylko macOS.**
+
+Ustawienia urosły do dziewięciu sekcji w jednej przewijanej kolumnie i każda układała się po swojemu: raz siatka z etykietami do prawej, raz stos osiemnastu pól wyboru, raz przełącznik dosunięty do krawędzi. Okno zostało przepisane na **trzy zakładki**: Ogólne, Wygląd i Zaawansowane.
+
+Pod spodem jest jeden system wierszy, więc etykiety mają teraz wspólną kolumnę po lewej, a kontrolki po prawej, w całym oknie. Pola wyboru zastąpiły przełączniki, doszła linia opisu tam, gdzie sama nazwa nie wystarcza, a nieaktywne sekcje przygasają w całości, nie tylko sama kontrolka.
 
 ## Anycubic Kobra S1
 

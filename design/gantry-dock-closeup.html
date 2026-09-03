@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Zbliżenie styku</title>
+<style>
+  :root{--dock:#08090B;--r:60px}
+  *{box-sizing:border-box;margin:0}
+  body{background:#111;padding:40px;font-family:system-ui,sans-serif;color:#9AA0A8}
+  h3{font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px}
+  .stage{width:820px;height:520px;position:relative;overflow:hidden;border-radius:10px;
+         background:linear-gradient(140deg,#8a5cf6,#2dd4bf 60%,#fbbf24)}
+  .dock{position:absolute;right:0;top:50%;transform:translateY(-50%);
+        width:180px;height:300px;background:var(--dock);border-radius:56px 0 0 56px}
+  .dock::before,.dock::after{content:"";position:absolute;right:0;width:var(--r);height:var(--r)}
+  .dock::before{top:calc(var(--r) * -1);
+        background:radial-gradient(circle at 0 0,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .dock::after{bottom:calc(var(--r) * -1);
+        background:radial-gradient(circle at 0 100%,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+</style>
+<h3>Zbliżenie: styk paska z krawędzią ekranu</h3>
+<div class="stage"><div class="dock"></div></div>

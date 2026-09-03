@@ -1,0 +1,223 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gantry pasek krawędziowy</title>
+<style>
+  :root{
+    --dock:#08090B;
+    --panel:#17181B; --border:#2E3138;
+    --tx:#F2F3F5; --mut:#9AA0A8;
+    --ok:#30D158; --err:#FF453A; --idle:#8E8E93; --printing:#FF6857;
+    font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:#0b0b0d;color:var(--tx);padding:26px;display:flex;flex-direction:column;gap:22px}
+  h3.t{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);font-weight:600}
+
+  .desk{width:1240px;height:500px;border-radius:12px;overflow:hidden;position:relative;
+        background:
+          radial-gradient(120% 90% at 12% 18%,#3b2a5e 0%,transparent 55%),
+          radial-gradient(90% 80% at 78% 72%,#0d4a5c 0%,transparent 60%),
+          linear-gradient(150deg,#1a1c26,#0d0e12 70%);
+        border:1px solid #2a2c33}
+  .menubar{height:24px;background:#ffffff10;display:flex;align-items:center;justify-content:flex-end;
+           gap:14px;padding:0 12px;font-size:10px;color:#ffffffcc}
+
+  /* ---------- WĄSKI PASEK ---------- */
+  .dock{position:absolute;right:0;top:50%;transform:translateY(-50%);--r:11px;
+        width:22px;background:var(--dock);border-radius:11px 0 0 11px;
+        padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:8px}
+  .dock::before,.dock::after{content:"";position:absolute;right:0;width:var(--r);height:var(--r)}
+  .dock::before{top:calc(var(--r) * -1);
+        background:radial-gradient(circle at 0 0,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .dock::after{bottom:calc(var(--r) * -1);
+        background:radial-gradient(circle at 0 100%,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .grip{width:9px;height:2px;border-radius:99px;background:#ffffff2e}
+  .ring{width:14px;height:14px;position:relative;display:block}
+  .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  .ring.on::after{content:"";position:absolute;inset:4px;border-radius:99px;background:#ffffff2e}
+
+  /* ---------- KARTA ---------- */
+  .pop{position:absolute;right:22px;top:150px;width:230px;background:var(--dock);--r:12px;
+       border-radius:12px 0 0 12px;padding:11px 12px}
+  .pop::before,.pop::after{content:"";position:absolute;right:0;width:var(--r);height:var(--r)}
+  .pop::before{top:calc(var(--r) * -1);
+       background:radial-gradient(circle at 0 0,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .pop::after{bottom:calc(var(--r) * -1);
+       background:radial-gradient(circle at 0 100%,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .ph{display:flex;align-items:center;gap:6px}
+  .ph .st{width:6px;height:6px;border-radius:99px;background:var(--printing)}
+  .ph b{font-size:12px;font-weight:600}
+  .ph .tag{margin-left:auto;font-size:8px;font-weight:700;letter-spacing:.4px;color:var(--printing)}
+  .fl{font-size:10px;color:var(--mut);margin:3px 0 8px}
+  .pbar{height:4px;border-radius:99px;background:#ffffff1a;overflow:hidden;margin-bottom:9px}
+  .pbar>i{display:block;height:100%;background:var(--printing)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px}
+  .k{font-size:8px;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);font-weight:600}
+  .v{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px}
+  .acts{margin-top:10px;padding-top:9px;border-top:1px solid #ffffff14;text-align:center;
+        font-size:10px;color:#ffffffcc}
+
+  /* ---------- DÓŁ ---------- */
+  .row{display:flex;gap:18px;align-items:stretch}
+  .box{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:15px}
+  .box h4{font-size:12px;margin-bottom:3px}
+  .box p{font-size:11px;color:var(--mut);line-height:1.5}
+  .mini{position:relative;height:160px;border-radius:10px;overflow:hidden;margin-top:11px;
+        background:linear-gradient(150deg,#2b2440,#141620)}
+  .cap{font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);
+       font-weight:600;position:absolute;left:11px;bottom:9px}
+
+  /* rozsunięty na najechanie */
+  .wide{position:absolute;right:0;top:50%;transform:translateY(-50%);--r:12px;
+        background:var(--dock);border-radius:12px 0 0 12px;padding:8px 10px 8px 12px;
+        display:flex;flex-direction:column;gap:7px;white-space:nowrap}
+  .wide::before,.wide::after{content:"";position:absolute;right:0;width:var(--r);height:var(--r)}
+  .wide::before{top:calc(var(--r) * -1);
+        background:radial-gradient(circle at 0 0,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .wide::after{bottom:calc(var(--r) * -1);
+        background:radial-gradient(circle at 0 100%,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .wu{display:flex;align-items:center;gap:7px}
+  .wn{font-size:10px;font-weight:600}
+  .wp{font-size:10px;color:var(--mut);font-variant-numeric:tabular-nums;margin-left:auto}
+
+  /* krawędź górna */
+  .tdock{position:absolute;top:0;left:50%;transform:translateX(-50%);--r:10px;
+         background:var(--dock);border-radius:0 0 11px 11px;padding:5px 11px 6px;
+         display:flex;align-items:center;gap:9px;white-space:nowrap}
+  .tdock::before,.tdock::after{content:"";position:absolute;top:0;width:var(--r);height:var(--r)}
+  .tdock::before{left:calc(var(--r) * -1);
+        background:radial-gradient(circle at 0 100%,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .tdock::after{right:calc(var(--r) * -1);
+        background:radial-gradient(circle at 100% 100%,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+
+  .sizes{display:flex;align-items:flex-end;gap:26px;justify-content:center;
+         background:#000;border-radius:10px;padding:20px 0 12px;margin-top:11px}
+  .sz{text-align:center}
+  .sz .bar{background:var(--dock);border-radius:7px 0 0 7px;margin:0 auto 7px;
+           border:1px solid #ffffff14}
+</style>
+
+<h3 class="t">Wąski pasek przy krawędzi · 22 px szerokości, skala 1:1</h3>
+
+<div class="desk">
+  <div class="menubar"><span>Czw 3 wrz</span><span>11:22</span></div>
+
+  <div class="pop">
+    <div class="ph"><span class="st"></span><b>X1 Carbon</b><span class="tag">DRUKUJE</span></div>
+    <div class="fl">benchy_v3.3mf · warstwa 148 / 217</div>
+    <div class="pbar"><i style="width:68%"></i></div>
+    <div class="grid2">
+      <div><div class="k">Pozostało</div><div class="v">1:12</div></div>
+      <div><div class="k">Koniec</div><div class="v">18:42</div></div>
+      <div><div class="k">Dysza</div><div class="v">220°</div></div>
+      <div><div class="k">Stół</div><div class="v">60°</div></div>
+    </div>
+    <div class="acts">Otwórz w oknie</div>
+  </div>
+
+  <div class="dock">
+    <div class="grip"></div>
+    <div class="ring on">
+      <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/>
+        <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                stroke-dasharray="37.7" stroke-dashoffset="12.1"/></svg>
+    </div>
+    <div class="ring">
+      <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/>
+        <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                stroke-dasharray="37.7" stroke-dashoffset="3.4"/></svg>
+    </div>
+    <div class="ring">
+      <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/></svg>
+    </div>
+    <div class="ring">
+      <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#FF453A44" stroke-width="2"/>
+        <circle cx="7" cy="7" r="6" fill="none" stroke="#FF453A" stroke-width="2" stroke-linecap="round"
+                stroke-dasharray="3 5"/></svg>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="box" style="width:390px">
+    <h4>Najechanie rozsuwa pasek</h4>
+    <p>Dopiero wtedy pojawiają się nazwy i procenty. W spoczynku sam kolor i wypełnienie pierścienia.</p>
+    <div class="mini">
+      <div class="wide">
+        <div class="wu">
+          <div class="ring">
+            <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/>
+              <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                      stroke-dasharray="37.7" stroke-dashoffset="12.1"/></svg>
+          </div>
+          <span class="wn">X1 Carbon</span><span class="wp">68%</span>
+        </div>
+        <div class="wu">
+          <div class="ring">
+            <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/>
+              <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                      stroke-dasharray="37.7" stroke-dashoffset="3.4"/></svg>
+          </div>
+          <span class="wn">P1S</span><span class="wp">91%</span>
+        </div>
+        <div class="wu">
+          <div class="ring">
+            <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/></svg>
+          </div>
+          <span class="wn" style="color:var(--mut)">A1 mini</span><span class="wp">bezcz.</span>
+        </div>
+        <div class="wu">
+          <div class="ring">
+            <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#FF453A44" stroke-width="2"/>
+              <circle cx="7" cy="7" r="6" fill="none" stroke="#FF453A" stroke-width="2" stroke-linecap="round"
+                      stroke-dasharray="3 5"/></svg>
+          </div>
+          <span class="wn" style="color:var(--err)">Ender 3</span><span class="wp" style="color:var(--err)">brak</span>
+        </div>
+      </div>
+      <span class="cap">najechanie</span>
+    </div>
+  </div>
+
+  <div class="box" style="width:390px">
+    <h4>Ta sama zasada u góry</h4>
+    <p>Przy krawędzi górnej pasek zwisa spod paska menu i jest równie niski.</p>
+    <div class="mini">
+      <div class="tdock">
+        <div class="ring">
+          <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="12.1"/></svg>
+        </div>
+        <div class="ring">
+          <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="3.4"/></svg>
+        </div>
+        <div class="ring">
+          <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#ffffff26" stroke-width="2"/></svg>
+        </div>
+        <div class="ring">
+          <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="#FF453A44" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF453A" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="3 5"/></svg>
+        </div>
+      </div>
+      <span class="cap">krawędź górna</span>
+    </div>
+  </div>
+
+  <div class="box" style="width:376px">
+    <h4>Do wyboru szerokość</h4>
+    <div class="sizes">
+      <div class="sz"><div class="bar" style="width:16px;height:70px"></div><div class="k">16 px</div></div>
+      <div class="sz"><div class="bar" style="width:22px;height:86px"></div><div class="k">22 px ·<br>domyślne</div></div>
+      <div class="sz"><div class="bar" style="width:30px;height:104px"></div><div class="k">30 px</div></div>
+    </div>
+    <p style="margin-top:12px">Kształt robi maska okna, nie tło: okno sięga poza pasek o promień przejścia,
+    a wklęsłe narożniki to ćwiartki koła wycięte z kwadratu.
+    <span style="color:var(--tx)">macOS</span> maska na NSVisualEffectView,
+    <span style="color:var(--tx)">Windows</span> Clip okna,
+    <span style="color:var(--tx)">Linux</span> maska cairo na RGBA visual.</p>
+  </div>
+</div>

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=2048,height=1536,initial-scale=1">
+<title>Gantry — diagnostics & Telegram campaign</title>
+<style>
+  *{box-sizing:border-box} html,body{margin:0;width:2048px;height:1536px;overflow:hidden;background:#eeeae2}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",Arial,sans-serif;color:#f4f4f1}
+  :root{--ink:#111315;--panel:#181a1d;--card:#212428;--line:#373b40;--muted:#999da2;--soft:#c9cbc8;--orange:#ff693d;--green:#37d269;--blue:#64a9e7;--cream:#ebe7dd;--red:#ff554c}
+  .board{width:100%;height:100%;padding:18px;display:grid;grid-template-columns:720px 760px 514px;grid-template-rows:488px 502px 492px;gap:18px;background:#ece9e2}
+  .tile{position:relative;overflow:hidden;background:#121416}
+  .cream{background:var(--cream);color:#181715}
+  .dark{background:radial-gradient(circle at 70% 25%,#242629 0,#151719 52%,#0f1011 100%)}
+  .grain:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.035;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E")}
+  .brand{width:126px;height:auto;object-fit:contain}.brand.black{filter:none}.brand.white{filter:none}
+  .eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;color:#8c9093}
+  .headline{font-size:38px;line-height:.94;letter-spacing:-1.8px;font-weight:500;text-transform:uppercase}
+  .sub{font-size:11px;line-height:1.35;letter-spacing:.5px;color:#9da0a4;text-transform:uppercase}
+  .app{background:rgba(24,26,29,.97);border:1px solid #3b3e43;border-radius:22px;box-shadow:0 32px 70px #0009,0 0 0 1px #ffffff08 inset}
+  .appbar{height:46px;display:flex;align-items:center;gap:13px;padding:0 16px;border-bottom:1px solid #34373b}.appbar .brand{width:94px}.appbar .meta{font-size:11px;color:#96999d}.traffic{display:flex;gap:5px;margin-left:auto}.traffic i{width:6px;height:6px;border-radius:50%;background:#64676a}
+  .modal{background:rgba(18,20,22,.985);border:1px solid #373a3e;border-radius:18px;box-shadow:0 22px 50px #000b;padding:20px}
+  .modal-title{font-size:21px;font-weight:750;letter-spacing:-.45px}.x{margin-left:auto;font-size:24px;color:#9a9da0;font-weight:200}
+  .row{display:flex;align-items:center}.between{display:flex;align-items:center;justify-content:space-between}.muted{color:#969a9e}.tiny{font-size:10px}.small{font-size:12px}.semibold{font-weight:650}
+  .btn{height:28px;padding:0 12px;border:1px solid #45494f;border-radius:7px;background:#272a2e;color:#f0f1ef;font-size:11px;font-weight:650;display:inline-flex;align-items:center;justify-content:center}
+  .btn.blue{background:#1e73b7;border-color:#378fcf}.btn.ghost{background:transparent}.btn.orange{background:var(--orange);border-color:var(--orange);color:#151311}
+  .pill{padding:4px 8px;border-radius:999px;border:1px solid #3d4247;background:#25282c;font-size:9px;color:#c7c9c7}.pill.ok{border-color:#245d38;color:#68dc8a;background:#173725}.pill.warn{border-color:#6b5a21;color:#ffe25b;background:#3a321a}
+  .check{width:14px;height:14px;border-radius:50%;border:1.5px solid #72767a;display:inline-flex;align-items:center;justify-content:center;font-size:8px;margin-right:8px}.check.ok{border-color:#42c66b;color:#42c66b}
+  .diag-card{background:#202327;border:1px solid #35393f;border-radius:12px;padding:11px 13px}.diag-card + .diag-card{margin-top:8px}.diag-name{font-size:12px;font-weight:700;margin-bottom:7px}.diag-line{font-size:10px;color:#a8aaad;line-height:1.7}.green{color:#49d477}.red{color:#ff6259}.blue{color:#66abe5}.orange{color:#ff7449}
+  .field{height:31px;border:1px solid #41454a;background:#17191c;border-radius:7px;padding:0 10px;display:flex;align-items:center;color:#c9cbca;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px}.switch{width:31px;height:18px;background:#3b3f44;border-radius:20px;padding:2px}.switch:after{content:"";display:block;width:14px;height:14px;border-radius:50%;background:#fff;margin-left:13px}.switch.on{background:#30c766}
+  .seg{display:flex;border:1px solid #3c4044;border-radius:8px;overflow:hidden}.seg span{padding:6px 12px;font-size:9px;color:#8f9397}.seg .active{background:#34383c;color:#f4f4f2}
+  .section{background:#1e2125;border:1px solid #35393e;border-radius:13px;padding:13px}.section-title{font-size:9px;letter-spacing:1.2px;color:#7d8185;font-weight:750;margin-bottom:10px}.settings-row{display:flex;align-items:center;justify-content:space-between;min-height:29px;font-size:10px;color:#d1d3d1;border-bottom:1px solid #ffffff09}.settings-row:last-child{border-bottom:0}
+
+  /* top left: cinematic diagnostic close-up */
+  .t1{grid-column:1;grid-row:1}.t1 .copy{position:absolute;z-index:3;left:48px;top:39px;width:190px}.t1 .headline{font-size:31px}.t1 .sub{margin-top:13px;font-size:9px}.t1 .device{position:absolute;width:594px;height:360px;left:205px;top:102px;transform:perspective(900px) rotateX(4deg) rotateY(-10deg) rotateZ(-3deg);border-radius:27px;box-shadow:-8px -4px 0 -5px #ff864f,0 36px 70px #000}
+  .t1 .device:before{content:"";position:absolute;inset:-2px;border-radius:28px;border-top:2px solid #ff884c;border-left:1px solid #ff884c;filter:drop-shadow(0 0 13px #ff6e3277);pointer-events:none}.t1 .modal{position:absolute;left:55px;top:68px;width:395px;padding:16px}.t1 .modal-title{font-size:17px}.t1 .diag-card{padding:9px 11px}.t1 .diag-line{font-size:9px}.t1 .statusline{margin:10px 0;font-size:10px;color:#aaa}
+
+  /* top right: diagnostic overview */
+  .t2{grid-column:2/4;grid-row:1;padding:28px 34px}.t2 .headline{position:absolute;left:34px;top:26px;width:330px;font-size:34px}.t2 .sub{position:absolute;left:36px;top:108px}.network{position:absolute;left:373px;right:32px;top:34px;height:405px}.network:before{content:"";position:absolute;left:62px;right:52px;top:87px;height:1px;border-top:1px dashed #555a5e}.hub{position:absolute;left:275px;top:26px;width:155px;height:55px;border:1px solid #555a60;background:#17191b;padding:10px;font-size:10px}.hub strong{display:block;font-size:12px}.wire{position:absolute;width:1px;background:#666;top:80px;height:54px}.w1{left:115px}.w2{left:313px}.w3{left:510px}.w4{left:700px}.mini-card{position:absolute;top:132px;width:174px;height:202px;border:1px solid #34383d;background:#191b1e;border-radius:9px;padding:12px}.m1{left:30px}.m2{left:224px}.m3{left:418px}.m4{left:612px}.mini-card h4{margin:0 0 10px;font-size:14px}.meter{height:4px;border-radius:4px;background:#35393d;margin:10px 0;overflow:hidden}.meter i{display:block;height:100%;background:#cfd2cf}.mini-card .diag-line{font-size:9px}.latency{font-size:30px;font-weight:720;letter-spacing:-1px}.latency small{font-size:10px;color:#999}.network-caption{position:absolute;top:357px;left:30px;font-size:9px;color:#7e8286;letter-spacing:.7px}.labels{position:absolute;left:36px;bottom:37px;display:flex;gap:12px}.labels .pill{font-size:8px}
+
+  /* middle left: Telegram capability */
+  .t3{grid-column:1;grid-row:2;padding:33px 35px}.t3 .brand{width:115px}.t3 .headline{position:absolute;top:92px;left:35px;font-size:42px;width:335px}.t3 .sub{position:absolute;left:37px;top:260px;width:245px;font-size:9px}.command-list{position:absolute;right:35px;bottom:35px;width:295px;border-top:1px solid #3a3d40;padding-top:15px}.command{height:34px;border-bottom:1px solid #2d3033;display:flex;align-items:center;gap:12px;font-size:10px;color:#9b9ea1}.command code{width:80px;color:#fff;font-weight:700}.t3 .signal{position:absolute;left:37px;bottom:35px;font-size:9px;color:#7d8185}.bars{display:flex;align-items:end;height:34px;gap:5px;margin-bottom:9px}.bars i{display:block;width:5px;background:#e5e6e2}.bars i:nth-child(1){height:8px}.bars i:nth-child(2){height:15px}.bars i:nth-child(3){height:23px}.bars i:nth-child(4){height:32px}
+
+  /* phone panel */
+  .t4{grid-column:2;grid-row:2}.t4 .brand{position:absolute;z-index:5;left:29px;top:28px;width:102px}.t4 .headline{position:absolute;z-index:5;left:28px;top:82px;width:285px;font-size:40px;color:#211d19}.t4 .sub{position:absolute;z-index:5;left:31px;top:187px;width:230px;color:#665f58}.phone-photo{position:absolute;height:540px;width:auto;right:8px;top:-18px}.phone-screen{position:absolute;z-index:4;right:75px;top:79px;width:216px;height:350px;background:linear-gradient(#171a1e,#111315);border-radius:24px;transform:rotate(-4.4deg) skewY(.9deg);padding:16px 11px;color:#f4f4f2;box-shadow:0 0 0 1px #ffffff0d inset;overflow:hidden}.phone-head{height:33px;display:flex;align-items:center;border-bottom:1px solid #30343a;font-size:11px;font-weight:700}.avatar{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;margin-right:8px;background:#f1f0eb;color:#17191b;font-size:9px;font-weight:800}.bubble{font-size:8px;line-height:1.45;padding:9px;border-radius:10px;background:#292d31;margin-top:9px;color:#dfe1df}.bubble strong{font-size:9px;color:#fff}.bubble.alert{border-left:2px solid #ff6c49}.bubble.ok{border-left:2px solid #39cf68}.keyboard{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px}.key{height:22px;border:1px solid #3e4349;border-radius:5px;font-size:7px;display:grid;place-items:center;color:#c7cac8}.t4 .note{position:absolute;left:31px;bottom:28px;font-size:9px;color:#716b64}.t4 .note b{color:#1c1a18}
+
+  /* settings / Telegram */
+  .t5{grid-column:3;grid-row:2;padding:23px}.settings-window{position:absolute;left:20px;right:20px;top:20px;bottom:20px;padding:18px}.settings-window .modal-title{font-size:18px}.settings-grid{display:grid;grid-template-columns:1fr 1.25fr;gap:9px;margin-top:14px}.telegram-card{grid-column:1/3}.tg-fields{display:grid;grid-template-columns:57px 1fr;gap:6px;align-items:center}.tg-label{font-size:9px;color:#a4a7a9}.testline{margin-top:9px;display:flex;align-items:center;gap:8px}.telegram-hint{font-size:8px;line-height:1.35;color:#7e8286;margin-top:8px}.title-toggle{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}.title-toggle b{font-size:10px}.notif-list{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;font-size:8px;color:#b7bab8}.notif-list span:before{content:"✓";color:#4bd375;margin-right:5px}.t5 .sent{color:#49d477;font-size:9px}
+
+  /* bottom large */
+  .t6{grid-column:1/3;grid-row:3}.t6 .copy{position:absolute;left:30px;top:28px;width:270px}.t6 .headline{font-size:38px;margin-top:25px}.t6 .sub{margin-top:13px}.t6 .platforms{position:absolute;left:31px;bottom:28px;display:flex;gap:10px}.platforms span{border:1px solid #3b3f43;border-radius:7px;padding:8px 11px;font-size:9px}.full-ui{position:absolute;left:335px;right:26px;top:27px;bottom:26px;padding:15px}.full-ui .appbar{margin:-15px -15px 13px}.full-body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}.full-body .diag-card{height:112px}.full-body .wide{grid-column:1/4;height:144px}.probe-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.probe{background:#17191c;border:1px solid #30343a;border-radius:8px;padding:9px;font-size:9px;color:#aeb1b0}.probe b{display:block;color:white;font-size:11px;margin-bottom:4px}.spark{height:32px;margin-top:8px;position:relative;border-bottom:1px solid #31353a}.spark svg{width:100%;height:100%}.footer-status{margin-top:9px;display:flex;align-items:center;gap:12px;font-size:8px;color:#8b8f93}
+
+  /* bottom cream */
+  .t7{grid-column:3;grid-row:3;padding:30px}.t7 .brand{width:108px}.t7 .headline{font-size:35px;margin-top:48px;color:#201d19}.t7 .sub{color:#6a655f;margin-top:14px}.alert-stack{position:absolute;left:30px;right:30px;bottom:30px}.alert-row{display:flex;align-items:center;border-top:1px solid #c8c1b7;padding:12px 0;color:#211f1b}.alert-icon{width:32px;height:32px;border-radius:8px;background:#17191b;color:#fff;display:grid;place-items:center;margin-right:11px}.alert-row b{display:block;font-size:11px}.alert-row span{font-size:9px;color:#777168}.status-dot{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#34c968}.status-dot.warn{background:#ff6b42}
+</style>
+</head>
+<body>
+<main class="board">
+  <section class="tile dark grain t1">
+    <div class="copy"><div class="headline">See the problem.<br>Before the print stops.</div><div class="sub">Network · MQTT · camera<br>and secure storage diagnostics.</div></div>
+    <div class="device app">
+      <div class="appbar"><img class="brand white" src="gantry-campaign-assets/gantry-white.png"><span class="meta">5 drukarek · diagnostyka</span><span class="traffic"><i></i><i></i><i></i></span></div>
+      <div class="modal">
+        <div class="row"><div class="modal-title">Centrum diagnostyczne</div><div class="x">×</div></div>
+        <div class="statusline">Testy zakończone: 5 drukarek w 4.2 s</div>
+        <div class="diag-card"><div class="diag-name">P2S</div><div class="diag-line"><span class="green">✓</span>&nbsp; Sieć · 18 ms · bardzo dobra</div><div class="diag-line"><span class="green">✓</span>&nbsp; Połączenie z drukarką · telemetria aktywna</div></div>
+        <div class="diag-card"><div class="diag-name">CORE ONE</div><div class="diag-line"><span class="green">✓</span>&nbsp; Sieć · 31 ms · bardzo dobra</div><div class="diag-line"><span class="green">✓</span>&nbsp; Połączenie z drukarką · telemetria aktywna</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tile dark grain t2">
+    <div class="headline">EVERY PRINTER.<br>ONE HEALTH CHECK.</div>
+    <div class="sub">LOCAL. FAST. PRIVATE.<br>NO CLOUD REQUIRED.</div>
+    <div class="labels"><span class="pill ok">5 ONLINE</span><span class="pill">AVG 42 MS</span><span class="pill warn">1 ATTENTION</span></div>
+    <div class="network">
+      <div class="hub"><strong>GANTRY</strong><span class="muted tiny">Centrum diagnostyczne</span></div>
+      <i class="wire w1"></i><i class="wire w2"></i><i class="wire w3"></i><i class="wire w4"></i>
+      <div class="mini-card m1"><h4>X1</h4><div class="latency">14<small> ms</small></div><div class="meter"><i style="width:92%"></i></div><div class="diag-line"><span class="green">✓</span> Sieć · bardzo dobra<br><span class="green">✓</span> MQTT · aktywne<br><span class="green">✓</span> Kamera · gotowa<br><span class="green">✓</span> Sekrety · bezpieczne</div></div>
+      <div class="mini-card m2"><h4>P2S</h4><div class="latency">18<small> ms</small></div><div class="meter"><i style="width:88%"></i></div><div class="diag-line"><span class="green">✓</span> Sieć · bardzo dobra<br><span class="green">✓</span> MQTT · aktywne<br><span class="green">✓</span> Kamera · gotowa<br><span class="green">✓</span> Telemetria · aktywna</div></div>
+      <div class="mini-card m3"><h4>CORE ONE</h4><div class="latency">31<small> ms</small></div><div class="meter"><i style="width:76%"></i></div><div class="diag-line"><span class="green">✓</span> Sieć · bardzo dobra<br><span class="green">✓</span> PrusaLink · aktywne<br><span class="green">✓</span> Kamera · gotowa<br><span class="green">✓</span> Telemetria · aktywna</div></div>
+      <div class="mini-card m4"><h4>VORON</h4><div class="latency">105<small> ms</small></div><div class="meter"><i style="width:51%;background:#ffcc45"></i></div><div class="diag-line"><span class="green">✓</span> Sieć · dobra<br><span class="green">✓</span> Klipper · aktywny<br><span class="red">×</span> Kamera · brak odpowiedzi<br><span class="green">✓</span> Telemetria · aktywna</div></div>
+      <div class="network-caption">NETWORK / PROTOCOL / CAMERA / SECRET STORAGE / LATENCY</div>
+    </div>
+  </section>
+
+  <section class="tile dark grain t3">
+    <img class="brand white" src="gantry-campaign-assets/gantry-white.png">
+    <div class="headline">YOUR PRINT FARM.<br>IN YOUR POCKET.</div>
+    <div class="sub">Status, controls, spools, history and camera snapshots — straight from Telegram.</div>
+    <div class="signal"><div class="bars"><i></i><i></i><i></i><i></i></div><b>2-WAY BOT</b><br>LIVE STATUS</div>
+    <div class="command-list">
+      <div class="command"><code>/status</code><span>printer picker + controls</span></div>
+      <div class="command"><code>/all</code><span>whole fleet at a glance</span></div>
+      <div class="command"><code>/spools</code><span>low filament warnings</span></div>
+      <div class="command"><code>/history</code><span>recent prints</span></div>
+      <div class="command"><code>/watch 10m</code><span>camera snapshots</span></div>
+    </div>
+  </section>
+
+  <section class="tile cream grain t4">
+    <img class="brand black" src="gantry-campaign-assets/gantry-black.png">
+    <div class="headline">THE STATUS<br>COMES TO YOU.</div>
+    <div class="sub">Native notifications and an interactive Telegram bot. One compact conversation with every printer.</div>
+    <img class="phone-photo" src="gantry-campaign-assets/phone-hand.png">
+    <div class="phone-screen">
+      <div class="phone-head"><div class="avatar">G</div> GantryApp <span style="margin-left:auto;color:#4cd477;font-size:7px">● ONLINE</span></div>
+      <div class="bubble ok"><strong>🖨 X1 — Druk zakończony</strong><br>adapter-pvc110-spiro100<br>Gotowe po 2 h 14 min.</div>
+      <div class="bubble alert"><strong>🖨 P2S — Niski poziom filamentu</strong><br>PETG · pozostało 8%.</div>
+      <div class="bubble"><strong>🖨 P2S — Drukowanie</strong><br>Postęp: 67% · warstwa 95/226<br>ETA: 0h 44m<br>Dysza 250°/250° · stół 70°/70°</div>
+      <div class="keyboard"><div class="key">⏸ Pauza</div><div class="key">📷 Zdjęcie</div><div class="key">↻ Odśwież</div><div class="key">‹ Drukarki</div></div>
+    </div>
+    <div class="note"><b>PRIVATE BY DESIGN</b> · only the configured Chat ID can control printers</div>
+  </section>
+
+  <section class="tile dark grain t5">
+    <div class="settings-window app">
+      <div class="between"><div><div class="modal-title">Ustawienia</div><div class="tiny muted">Gantry · powiadomienia</div></div><div class="x">×</div></div>
+      <div class="settings-grid">
+        <div class="section"><div class="section-title">WYGLĄD</div><div class="settings-row"><span>Język</span><div class="seg"><span class="active">PL</span><span>EN</span></div></div><div class="settings-row"><span>Motyw</span><div class="seg"><span>JASNY</span><span class="active">CIEMNY</span></div></div></div>
+        <div class="section"><div class="section-title">POWIADOMIENIA</div><div class="notif-list"><span>Druk zakończony</span><span>Błąd drukarki</span><span>Druk wstrzymany</span><span>Niski filament</span><span>Wilgotność AMS</span><span>Godziny ciszy</span></div></div>
+        <div class="section telegram-card">
+          <div class="title-toggle"><b>Wysyłaj powiadomienia na Telegram</b><div class="switch on"></div></div>
+          <div class="tg-fields"><span class="tg-label">Token bota:</span><div class="field">7451620092:AAH••••••••••••••••••</div><span class="tg-label">Chat ID:</span><div class="field">123456789</div></div>
+          <div class="testline"><div class="btn blue">Wyślij test</div><span class="sent">Wysłano ✓</span></div>
+          <div class="telegram-hint">Utwórz bota przez @BotFather, napisz do niego, a swój chat_id pobierz od @userinfobot. Bot wysyła te same zdarzenia co powiadomienia systemowe.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tile dark grain t6">
+    <div class="copy"><img class="brand white" src="gantry-campaign-assets/gantry-white.png"><div class="headline">KNOW WHY<br>IT'S OFFLINE.</div><div class="sub">A diagnostic center built into the app — with actual answers, not just a red dot.</div></div>
+    <div class="platforms"><span>● macOS</span><span>▦ Windows</span><span>△ Linux</span></div>
+    <div class="full-ui app">
+      <div class="appbar"><img class="brand white" src="gantry-campaign-assets/gantry-white.png"><span class="meta">Centrum diagnostyczne · 5 drukarek</span><span class="traffic"><i></i><i></i><i></i></span></div>
+      <div class="full-body">
+        <div class="diag-card"><div class="diag-name">X1 <span class="pill ok" style="float:right">ONLINE</span></div><div class="diag-line"><span class="green">✓</span> Sieć · 14 ms · bardzo dobra<br><span class="green">✓</span> Połączenie · telemetria aktywna<br><span class="green">✓</span> Kamera · 28 ms</div></div>
+        <div class="diag-card"><div class="diag-name">P2S <span class="pill ok" style="float:right">ONLINE</span></div><div class="diag-line"><span class="green">✓</span> Sieć · 18 ms · bardzo dobra<br><span class="green">✓</span> MQTT · telemetria aktywna<br><span class="green">✓</span> Magazyn sekretów · bezpieczny</div></div>
+        <div class="diag-card"><div class="diag-name">SNAPMAKER <span class="pill warn" style="float:right">OFFLINE</span></div><div class="diag-line"><span class="red">×</span> Sieć · brak odpowiedzi<br><span class="red">×</span> Połączenie · host nieosiągalny<br><span class="green">✓</span> Konfiguracja · kompletna</div></div>
+        <div class="diag-card wide"><div class="probe-grid"><div class="probe"><b>Jakość połączenia</b>Średnie opóźnienie · 42 ms<div class="spark"><svg viewBox="0 0 260 32"><polyline fill="none" stroke="#ff7047" stroke-width="2" points="0,22 20,19 40,21 60,12 80,16 100,8 120,13 140,11 160,17 180,9 200,12 220,8 240,10 260,7"/></svg></div></div><div class="probe"><b>Dlaczego offline?</b><span class="red">SNAPMAKER · host 192.168.1.84 nie odpowiada</span><br>Sprawdź zasilanie, adres IP i izolację klientów Wi‑Fi.</div></div><div class="footer-status"><span class="pill ok">4 POŁĄCZONE</span><span class="pill warn">1 WYMAGA UWAGI</span><span style="margin-left:auto">Testy zakończone w 4.2 s</span><span class="btn">Uruchom wszystkie testy</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tile cream grain t7">
+    <img class="brand black" src="gantry-campaign-assets/gantry-black.png">
+    <div class="headline">ONE SIGNAL.<br>THE RIGHT<br>CHANNEL.</div>
+    <div class="sub">PRINTER → GANTRY → SYSTEM NOTIFICATION / TELEGRAM</div>
+    <div class="alert-stack">
+      <div class="alert-row"><div class="alert-icon">✓</div><div><b>Wydruk zakończony</b><span>macOS · Windows · Linux</span></div><i class="status-dot"></i></div>
+      <div class="alert-row"><div class="alert-icon">!</div><div><b>Błąd drukarki</b><span>natychmiastowe powiadomienie</span></div><i class="status-dot warn"></i></div>
+      <div class="alert-row"><div class="alert-icon">◔</div><div><b>Niski poziom filamentu</b><span>Spoolbase + AMS</span></div><i class="status-dot"></i></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

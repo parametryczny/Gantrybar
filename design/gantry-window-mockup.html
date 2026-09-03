@@ -1,0 +1,232 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gantry okno</title>
+<style>
+  :root{
+    --bg:#0E0F12; --panel:#17181B; --card:#202226; --border:#2E3138;
+    --tx:#F2F3F5; --mut:#9AA0A8; --accent:#0A84FF;
+    --nozzle:#FF9F0A; --bed:#0A84FF; --chamber:#64D2FF;
+    --ok:#30D158; --warn:#FFD60A; --err:#FF453A; --idle:#8E8E93;
+    --printing:#FF6857;
+    --r:14px; --gap:12px; --pad:16px;
+    font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:#000;padding:24px;color:var(--tx)}
+  .win{width:1240px;height:790px;background:var(--bg);border-radius:12px;overflow:hidden;
+       display:grid;grid-template-columns:248px 1fr;border:1px solid var(--border);
+       box-shadow:0 30px 80px rgba(0,0,0,.6)}
+
+  /* ---------- SIDEBAR ---------- */
+  .side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column}
+  .titlebar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;-webkit-app-region:drag}
+  .dot{width:11px;height:11px;border-radius:99px}
+  .tb-r{background:#FF5F57}.tb-y{background:#FEBC2E}.tb-g{background:#28C840}
+  .brand{display:flex;align-items:center;gap:8px;padding:6px 14px 12px}
+  .glyph{width:22px;height:22px;border-radius:6px;background:var(--tx);color:#000;
+         display:grid;place-items:center;font-weight:700;font-size:14px}
+  .brand b{font-size:14px;letter-spacing:.2px}
+  .sec{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);
+       padding:10px 16px 6px;font-weight:600}
+  .list{overflow:auto;flex:1}
+  .row{display:grid;grid-template-columns:8px 1fr auto;gap:10px;align-items:center;
+       margin:2px 8px;padding:9px 10px;border-radius:9px;cursor:default;position:relative}
+  .row:hover{background:#ffffff08}
+  .row.on{background:#ffffff12}
+  .row.on::before{content:"";position:absolute;left:-8px;top:8px;bottom:8px;width:3px;
+                  border-radius:0 3px 3px 0;background:var(--printing)}
+  .st{width:8px;height:8px;border-radius:99px}
+  .nm{font-size:13px;font-weight:500;line-height:1.25}
+  .sub{font-size:11px;color:var(--mut);margin-top:2px;font-variant-numeric:tabular-nums}
+  .pct{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+  .bar{grid-column:2/4;height:3px;border-radius:99px;background:#ffffff14;overflow:hidden;margin-top:6px}
+  .bar>i{display:block;height:100%;background:var(--printing)}
+  .nav{border-top:1px solid var(--border);padding:6px 0 4px}
+  .nav .row{grid-template-columns:16px 1fr}
+  .ic{width:16px;text-align:center;font-size:12px;color:var(--mut)}
+  .foot{border-top:1px solid var(--border);padding:10px 12px;display:flex;gap:8px}
+  .btn{flex:1;font-size:12px;padding:7px;border-radius:8px;background:#ffffff10;
+       border:1px solid var(--border);text-align:center;color:var(--tx)}
+  .btn.p{background:var(--accent);border-color:transparent;font-weight:500}
+
+  /* ---------- MAIN ---------- */
+  .main{display:flex;flex-direction:column;min-width:0}
+  .top{height:56px;display:flex;align-items:center;gap:12px;padding:0 var(--pad);
+       border-bottom:1px solid var(--border)}
+  .top h1{font-size:17px;font-weight:600}
+  .pill{font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;
+        background:color-mix(in srgb,var(--printing) 22%,transparent);color:var(--printing)}
+  .spacer{flex:1}
+  .tool{font-size:12px;padding:6px 11px;border-radius:8px;background:#ffffff0d;
+        border:1px solid var(--border);color:var(--tx)}
+  .tool.stop{color:var(--err);border-color:#FF453A44}
+
+  .grid{flex:1;overflow:auto;padding:var(--pad);display:grid;gap:var(--gap);
+        grid-template-columns:repeat(6,1fr);grid-auto-rows:88px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);
+        padding:var(--pad);min-width:0;overflow:hidden}
+  .head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+  .head h2{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);font-weight:600}
+  .head .meta{font-size:11px;color:var(--mut);margin-left:auto}
+
+  .hero{grid-column:span 6;grid-row:span 2;display:flex;gap:24px;align-items:center}
+  .thumb{width:118px;height:118px;border-radius:10px;flex:none;
+         background:linear-gradient(135deg,#2b2f36,#1b1d21);display:grid;place-items:center;
+         color:#4a5058;font-size:11px;border:1px solid var(--border)}
+  .heroinfo{flex:1;min-width:0}
+  .file{font-size:15px;font-weight:600;margin-bottom:3px}
+  .big{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .hbar{height:6px;border-radius:99px;background:#ffffff14;overflow:hidden;margin:10px 0 8px}
+  .hbar>i{display:block;height:100%;background:var(--printing)}
+  .kv{display:flex;gap:26px;margin-top:12px}
+  .k{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);font-weight:600}
+  .v{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px}
+
+  .cam{grid-column:span 3;grid-row:span 3;position:relative;padding:0;
+       background:#0a0b0d;display:grid;place-items:center}
+  .cam .lbl{position:absolute;top:12px;left:14px;font-size:11px;letter-spacing:.6px;
+            text-transform:uppercase;color:#ffffff9c;font-weight:600}
+  .cam .meta{position:absolute;top:12px;right:14px;font-size:11px;color:#ffffff70}
+  .cam .ph{color:#3c4249;font-size:12px}
+  .live{position:absolute;bottom:12px;left:14px;font-size:10px;font-weight:700;letter-spacing:.6px;
+        background:#FF453A;padding:3px 7px;border-radius:5px}
+
+  .temp{grid-column:span 3;grid-row:span 2}
+  .tline{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+  .tdot{width:7px;height:7px;border-radius:99px}
+  .tname{font-size:12px;color:var(--mut);width:64px}
+  .ttrack{flex:1;height:4px;border-radius:99px;background:#ffffff12;overflow:hidden}
+  .ttrack>i{display:block;height:100%}
+  .tval{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;width:76px;text-align:right}
+
+  .fans{grid-column:span 3;grid-row:span 1;display:flex;align-items:center;gap:0;padding-top:12px}
+  .fan{flex:1;text-align:center}
+  .fan .v{font-size:16px}
+
+  .ams{grid-column:span 6;grid-row:span 2}
+  .slots{display:flex;gap:10px}
+  .slot{flex:1;border:1px solid var(--border);border-radius:10px;padding:10px;
+        display:flex;gap:9px;align-items:center;background:#ffffff06}
+  .slot.act{border-color:var(--printing);background:color-mix(in srgb,var(--printing) 10%,transparent)}
+  .spool{width:22px;height:22px;border-radius:99px;border:3px solid;flex:none}
+  .smat{font-size:12px;font-weight:600}
+  .sg{font-size:10px;color:var(--mut);margin-top:1px}
+</style>
+
+<div class="win">
+  <!-- SIDEBAR -->
+  <aside class="side">
+    <div class="titlebar"><span class="dot tb-r"></span><span class="dot tb-y"></span><span class="dot tb-g"></span></div>
+    <div class="brand"><span class="glyph">G</span><b>Gantry</b></div>
+
+    <div class="sec">Flota</div>
+    <div class="list">
+      <div class="row" style="grid-template-columns:16px 1fr auto">
+        <span class="ic">▦</span>
+        <div><div class="nm">Wszystkie drukarki</div></div>
+        <span class="pct">4</span>
+      </div>
+
+      <div class="row on">
+        <span class="st" style="background:var(--printing)"></span>
+        <div><div class="nm">X1 Carbon</div><div class="sub">benchy_v3.3mf · 1:12</div></div>
+        <span class="pct">68%</span>
+        <div class="bar"><i style="width:68%"></i></div>
+      </div>
+
+      <div class="row">
+        <span class="st" style="background:var(--printing)"></span>
+        <div><div class="nm">P1S</div><div class="sub">bracket.gcode · 0:24</div></div>
+        <span class="pct">91%</span>
+        <div class="bar"><i style="width:91%"></i></div>
+      </div>
+
+      <div class="row">
+        <span class="st" style="background:var(--idle)"></span>
+        <div><div class="nm">A1 mini</div><div class="sub">bezczynna · 24°C</div></div>
+      </div>
+
+      <div class="row">
+        <span class="st" style="background:var(--err)"></span>
+        <div><div class="nm">Ender 3 (Klipper)</div><div class="sub">brak połączenia</div></div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="row"><span class="ic">◷</span><div class="nm">Kolejka i historia</div></div>
+      <div class="row"><span class="ic">◫</span><div class="nm">Spoolbase</div></div>
+      <div class="row"><span class="ic">◑</span><div class="nm">Statystyki floty</div></div>
+      <div class="row"><span class="ic">⚙</span><div class="nm">Ustawienia</div></div>
+    </nav>
+
+    <div class="foot">
+      <div class="btn p">+ Drukarka</div>
+      <div class="btn">Diagnostyka</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="top">
+      <h1>X1 Carbon</h1>
+      <span class="pill">DRUKUJE</span>
+      <span class="spacer"></span>
+      <span class="tool">Pauza</span>
+      <span class="tool stop">Zatrzymaj</span>
+      <span class="tool">Lampka</span>
+      <span class="tool">⋯</span>
+    </div>
+
+    <div class="grid">
+      <!-- HERO = dawny kafel bento -->
+      <section class="card hero">
+        <div class="thumb">podgląd 3MF</div>
+        <div class="heroinfo">
+          <div class="file">benchy_v3.3mf</div>
+          <div class="sub" style="margin-bottom:8px">warstwa 148 / 217 · PLA Basic</div>
+          <div class="big">68%</div>
+          <div class="hbar"><i style="width:68%"></i></div>
+          <div class="kv">
+            <div><div class="k">Pozostało</div><div class="v">1:12</div></div>
+            <div><div class="k">Koniec</div><div class="v">18:42</div></div>
+            <div><div class="k">Prędkość</div><div class="v">Standard</div></div>
+            <div><div class="k">Zużycie</div><div class="v">42 g</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card cam">
+        <span class="lbl">Kamera</span><span class="meta">RTSPS · 1920×1080</span>
+        <span class="ph">podgląd na żywo</span>
+        <span class="live">LIVE</span>
+      </section>
+
+      <section class="card temp">
+        <div class="head"><h2>Temperatury</h2><span class="meta">ostatnie 15 min</span></div>
+        <div class="tline"><span class="tdot" style="background:var(--nozzle)"></span><span class="tname">Dysza</span>
+          <span class="ttrack"><i style="width:74%;background:var(--nozzle)"></i></span><span class="tval">220 / 220°</span></div>
+        <div class="tline"><span class="tdot" style="background:var(--bed)"></span><span class="tname">Stół</span>
+          <span class="ttrack"><i style="width:60%;background:var(--bed)"></i></span><span class="tval">60 / 60°</span></div>
+        <div class="tline"><span class="tdot" style="background:var(--chamber)"></span><span class="tname">Komora</span>
+          <span class="ttrack"><i style="width:38%;background:var(--chamber)"></i></span><span class="tval">38°</span></div>
+      </section>
+
+      <section class="card fans">
+        <div class="fan"><div class="k">Część</div><div class="v">100%</div></div>
+        <div class="fan"><div class="k">Pomocniczy</div><div class="v">70%</div></div>
+        <div class="fan"><div class="k">Komora</div><div class="v">0%</div></div>
+      </section>
+
+      <section class="card ams">
+        <div class="head"><h2>Filamenty / AMS</h2><span class="meta">AMS A + EXT</span></div>
+        <div class="slots">
+          <div class="slot act"><span class="spool" style="border-color:#E8E8E8"></span><div><div class="smat">PLA Basic</div><div class="sg">A1 · 780 g</div></div></div>
+          <div class="slot"><span class="spool" style="border-color:#1E1E1E"></span><div><div class="smat">PETG</div><div class="sg">A2 · 210 g</div></div></div>
+          <div class="slot"><span class="spool" style="border-color:#FF6857"></span><div><div class="smat">PLA Matte</div><div class="sg">A3 · 940 g</div></div></div>
+          <div class="slot"><span class="spool" style="border-color:#0A84FF"></span><div><div class="smat">PLA Silk</div><div class="sg">A4 · 55 g</div></div></div>
+          <div class="slot"><span class="spool" style="border-color:#4a5058;border-style:dashed"></span><div><div class="smat">EXT</div><div class="sg">pusty</div></div></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
