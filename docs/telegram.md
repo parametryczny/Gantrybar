@@ -20,9 +20,16 @@ W aplikacji: **Ustawienia → TELEGRAM** → włącz, wklej token + chat_id, **W
 | `telegram-enabled` | bool | włącza wysyłkę |
 | `telegram-bot-token` | string | token z @BotFather |
 | `telegram-chat-id` | string | odbiorca (osoba lub grupa) |
+| `telegram-mute-until` | string | ISO-8601, do kiedy alerty są wyciszone (`/mute`); puste = brak wyciszenia |
+| `print-history-v1` | array | ostatnie wydruki dla `/history`, przycinane do 30 wpisów |
 
 macOS: `AppSettings` (UserDefaults). Windows: `AppSettings` (Storage.cs). Linux: `config.data`.
-Klucze są **identyczne**, więc synchronizacja między maszynami użytkownika działa bez tłumaczenia.
+Nazwy i formaty są **identyczne na wszystkich platformach**, więc konfiguracja jest przenośna bez
+tłumaczenia.
+
+Ustawienia Telegrama **nie są** objęte synchronizacją między komputerami użytkownika (`SyncService`
+nie niesie żadnego z tych pól) i jest to zamierzone: token bota zostaje na maszynie, na której go
+wpisano. Każdy komputer konfiguruje się osobno.
 
 ## Wysyłka
 `POST https://api.telegram.org/bot<TOKEN>/sendMessage`

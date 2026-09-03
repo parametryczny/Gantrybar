@@ -103,12 +103,40 @@ final class AppSettings: ObservableObject {
     @Published var telegramEnabled: Bool { didSet { defaults.set(telegramEnabled, forKey: "telegram-enabled") } }
     @Published var telegramBotToken: String { didSet { defaults.set(telegramBotToken, forKey: "telegram-bot-token") } }
     @Published var telegramChatID: String { didSet { defaults.set(telegramChatID, forKey: "telegram-chat-id") } }
-    /// Alerts (Telegram push) are silenced until this moment — set by the bot's `/mute`. Not @Published:
-    /// only the notify path reads it. Zero/absent means not muted.
+    /// Alerts (Telegram push) are silenced until this moment, set by the bot's `/mute`. Not @Published:
+    /// only the notify path reads it. Empty/absent means not muted.
+    ///
+    /// Stored as an ISO-8601 string, the same shape Windows and Linux write, so the key documented in
+    /// docs/telegram.md really is portable. Older builds wrote a Unix timestamp here, so the getter
+    /// still accepts a number and the next write migrates it.
     var telegramMuteUntil: Date? {
-        get { let t = defaults.double(forKey: "telegram-mute-until"); return t > Date().timeIntervalSince1970 ? Date(timeIntervalSince1970: t) : nil }
-        set { defaults.set(newValue?.timeIntervalSince1970 ?? 0, forKey: "telegram-mute-until") }
+        get {
+            guard let raw = defaults.string(forKey: "telegram-mute-until"), !raw.isEmpty else {
+                let legacy = defaults.double(forKey: "telegram-mute-until")   // pre-0.11 numeric form
+                return legacy > Date().timeIntervalSince1970 ? Date(timeIntervalSince1970: legacy) : nil
+            }
+            // Windows writes 7 fractional digits ("o"), Linux 6 (datetime.isoformat), and either may
+            // have none, so try the fractional parser first and fall back to the plain one.
+            guard let date = Self.iso8601Fractional.date(from: raw) ?? Self.iso8601.date(from: raw),
+                  date > Date() else { return nil }
+            return date
+        }
+        set {
+            defaults.set(newValue.map { Self.iso8601.string(from: $0) } ?? "", forKey: "telegram-mute-until")
+        }
     }
+
+    private static let iso8601: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     @Published var notifyFinished: Bool { didSet { defaults.set(notifyFinished, forKey: "notify-finished") } }
     @Published var notifyError: Bool { didSet { defaults.set(notifyError, forKey: "notify-error") } }

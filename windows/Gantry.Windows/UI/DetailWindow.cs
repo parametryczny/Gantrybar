@@ -36,6 +36,10 @@ public sealed class DetailView : UserControl
     private DispatcherTimer? _cameraTimer;  // Klipper snapshot polling
     private string? _snapshotUrl;
     private string? _lastAmsSig;
+    // The 1 s timer keeps the ETA clock honest, but the panels below only change when telemetry does.
+    // macOS and Linux rebuild these event-driven; without these guards Windows was clearing and
+    // recreating six panels every second for as long as the window stayed open.
+    private string? _lastTempSig, _lastFanSig, _lastInsightSig;
     private bool _cameraStarted;
     private TextBlock? _cameraStatus;
     private Border? _cameraBadge;           // shows the resolved mode + resolution (e.g. "RTSPS · 1920×1080")
@@ -377,19 +381,32 @@ public sealed class DetailView : UserControl
         RefreshInsights();
 
         // Temperatures
-        _temps.Children.Clear();
         bool printingT = t.State == PrinterState.Printing;
         bool errorT = t.State == PrinterState.Error;
-        _temps.Children.Add(TempChip(_pl ? "Dysza" : "Nozzle", t.NozzleTemperature, t.NozzleTargetTemperature, NozzleBrush, printingT, errorT));
-        _temps.Children.Add(TempChip(_pl ? "Stół" : "Bed", t.BedTemperature, t.BedTargetTemperature, BedBrush, printingT, errorT));
-        _temps.Children.Add(TempChip(_pl ? "Komora" : "Chamber", t.ChamberTemperature, null, ChamberBrush, printingT, errorT));
-        DrawGraph();
+        // Sample count is part of the signature: the graph must still extend while the readouts hold
+        // steady (RecordTemperature appends every 2 s regardless of whether the values moved).
+        int sampleCount = _store.TemperatureHistory.TryGetValue(_serial, out var hist) ? hist.Count : 0;
+        var tempSig = $"{t.NozzleTemperature}/{t.NozzleTargetTemperature}|{t.BedTemperature}/{t.BedTargetTemperature}|{t.ChamberTemperature}|{printingT}{errorT}|{sampleCount}";
+        if (tempSig != _lastTempSig)
+        {
+            _lastTempSig = tempSig;
+            _temps.Children.Clear();
+            _temps.Children.Add(TempChip(_pl ? "Dysza" : "Nozzle", t.NozzleTemperature, t.NozzleTargetTemperature, NozzleBrush, printingT, errorT));
+            _temps.Children.Add(TempChip(_pl ? "Stół" : "Bed", t.BedTemperature, t.BedTargetTemperature, BedBrush, printingT, errorT));
+            _temps.Children.Add(TempChip(_pl ? "Komora" : "Chamber", t.ChamberTemperature, null, ChamberBrush, printingT, errorT));
+            DrawGraph();
+        }
 
         // Fans + speed
-        _fans.Children.Clear();
-        _fans.Children.Add(FanChip("Part", t.PartFanPercent));
-        _fans.Children.Add(FanChip("Aux", t.AuxFanPercent));
-        _fans.Children.Add(FanChip("Chamber", t.ChamberFanPercent));
+        var fanSig = $"{t.PartFanPercent}|{t.AuxFanPercent}|{t.ChamberFanPercent}";
+        if (fanSig != _lastFanSig)
+        {
+            _lastFanSig = fanSig;
+            _fans.Children.Clear();
+            _fans.Children.Add(FanChip("Part", t.PartFanPercent));
+            _fans.Children.Add(FanChip("Aux", t.AuxFanPercent));
+            _fans.Children.Add(FanChip("Chamber", t.ChamberFanPercent));
+        }
         string? speedText = t.SpeedLevel is { } lvl
             ? (_pl ? "Prędkość: " : "Speed: ") + SpeedName(lvl) + (t.SpeedPercent is { } mag ? $" · {mag}%" : "")
             : t.SpeedPercent is { } sp ? (_pl ? $"Prędkość: {sp}%" : $"Speed: {sp}%") : null;
@@ -427,6 +444,10 @@ public sealed class DetailView : UserControl
     private void RefreshInsights()
     {
         var snap = PrinterInsights.GetSnapshot(_serial, _pl);
+        var sig = $"{snap.History.Count}|{snap.CompletedCount}|{snap.SuccessPercent}|{(int)snap.ConsumedGrams}|"
+                  + string.Join(",", snap.Tasks.Select(task => $"{task.Id}{task.IsDue}{task.IsUrgent}{(int)task.RemainingHours}{task.SnoozedUntil:s}"));
+        if (sig == _lastInsightSig) return;
+        _lastInsightSig = sig;
         _recentPrints.Children.Clear();
         if (snap.History.Count == 0) _recentPrints.Children.Add(InsightLine(_pl ? "Brak zapisanej historii." : "No recorded history."));
         foreach (var entry in snap.History.Take(3))

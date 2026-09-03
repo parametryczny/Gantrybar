@@ -6,3 +6,6 @@ linux/dist/
 __pycache__/
 *.pyc
 *.xcuserstate
+
+# Locally built minimal ffmpeg for the macOS bundle (scripts/build-ffmpeg-macos-minimal.sh)
+vendor/
