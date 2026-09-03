@@ -121,6 +121,33 @@ jobs:
         run: python3 -m pip install --user pyinstaller pycryptodome
       - name: Build AppImage
         run: sh linux/scripts/build-appimage.sh
+      # Size visibility: the AppImage is ~114 MB and nothing showed WHERE that goes. The AppDir is
+      # still on disk here, uncompressed, so report the biggest pieces on every build.
+      - name: Report AppImage composition
+        run: |
+          APPDIR=$(find linux/build -maxdepth 2 -name 'AppDir' -type d -print -quit)
+          [ -n "$APPDIR" ] || APPDIR=$(find . -maxdepth 4 -name 'AppDir' -type d -print -quit)
+          echo "AppDir: $APPDIR"
+          echo "== total =="; du -sh "$APPDIR"
+          echo "== top directories =="; du -sh "$APPDIR"/usr/* 2>/dev/null | sort -rh | head -10
+          echo "== top 25 files =="
+          find "$APPDIR" -type f -printf '%s\t%p\n' | sort -rn | head -25 \
+            | awk -F'\t' '{ printf "%8.1f MB  %s\n", $1/1048576, $2 }'
+          echo "== grouped by kind =="
+          find "$APPDIR" -type f -printf '%s\t%f\n' \
+            | awk -F'\t' '
+                /libav|libsw(scale|resample)/ { ff += $1; next }
+                /libgst/                      { gst += $1; next }
+                /libpython|\.pyc$|\.py$/      { py  += $1; next }
+                /libgtk|libgdk|libpango|libcairo|libharfbuzz|libglib|libgio|libgobject/ { gtk += $1; next }
+                                              { rest += $1 }
+                END {
+                  printf "ffmpeg (via gst-libav): %7.1f MB\n", ff/1048576
+                  printf "gstreamer:              %7.1f MB\n", gst/1048576
+                  printf "python:                 %7.1f MB\n", py/1048576
+                  printf "gtk stack:              %7.1f MB\n", gtk/1048576
+                  printf "reszta:                 %7.1f MB\n", rest/1048576
+                }'
       - name: Inspect and smoke-test AppImage
         run: |
           APPIMAGE=$(find linux/dist -maxdepth 1 -name '*.AppImage' -print -quit)
