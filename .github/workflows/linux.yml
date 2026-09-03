@@ -125,9 +125,9 @@ jobs:
       # still on disk here, uncompressed, so report the biggest pieces on every build.
       - name: Report AppImage composition
         run: |
-          APPDIR=$(find linux/build -maxdepth 2 -name 'AppDir' -type d -print -quit)
-          [ -n "$APPDIR" ] || APPDIR=$(find . -maxdepth 4 -name 'AppDir' -type d -print -quit)
+          APPDIR=linux/build/Gantry.AppDir   # set in linux/scripts/build-appimage.sh
           echo "AppDir: $APPDIR"
+          test -d "$APPDIR" || { echo "AppDir missing, skipping the report"; exit 0; }
           echo "== total =="; du -sh "$APPDIR"
           echo "== top directories =="; du -sh "$APPDIR"/usr/* 2>/dev/null | sort -rh | head -10
           echo "== top 25 files =="
