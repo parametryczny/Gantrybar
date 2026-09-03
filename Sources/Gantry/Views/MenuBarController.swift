@@ -273,6 +273,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          title: settings.text("Centrum diagnostyczne…", "Diagnostic Center…")) { [weak self] in
             self?.showDiagnostics()
         })
+        menu.addItem(row(icon: "chart.bar",
+                         title: settings.text("Statystyki floty…", "Fleet statistics…")) { [weak self] in
+            self?.showFleetStats()
+        })
 
         menu.addItem(.separator())
 
@@ -385,6 +389,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     /// Diagnostics rides inside the popover, so open it first when the menu was used with the panel
     /// closed. The overlay is added on the next runloop pass, once the popover content has a size.
+    /// Same overlay treatment as diagnostics: open the popover first when the menu was used with the
+    /// panel closed, then add the panel once the content has a size.
+    @objc private func showFleetStats() {
+        if !popover.isShown { showPopoverFromMenu() }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let host = self.popover.contentViewController?.view else { return }
+            FleetStatsViewController.show(store: self.store, in: host)
+        }
+    }
+
     @objc private func showDiagnostics() {
         if !popover.isShown { showPopoverFromMenu() }
         DispatchQueue.main.async { [weak self] in
