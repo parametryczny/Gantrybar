@@ -10,7 +10,10 @@ Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera poś
 - **Konserwacja i historia**: cztery zadania serwisowe rozliczane w godzinach druku, z odkładaniem i własnymi interwałami, obok listy ostatnich wydruków i statystyk skuteczności.
 - **Centrum diagnostyczne**: dostępne z menu prawego przycisku na ikonie, sprawdza całą flotę i pokazuje opóźnienie oraz ocenę jakości połączenia.
 - **Anycubic Kobra S1**: lokalne MQTT/TLS w trybie LAN, bez konta Anycubic Cloud.
-- **Naprawione powiadomienia systemowe na Windows 11** oraz koniec skakania sekcji AMS w oknie szczegółów.
+- **Statystyki floty**: zbiorcze podsumowanie wydruków, czasu i filamentu z eksportem do pliku tekstowego.
+- **Alert przed końcem druku**, domyślnie wyłączony, do włączenia w ustawieniach.
+- **Instalator Windows schudł z 91 do 52 MB**, a paczka ZIP ze 130 do 76 MB.
+- **Naprawione powiadomienia systemowe na Windows 11**, wentylatory na drukarkach Klipper oraz koniec skakania sekcji AMS w oknie szczegółów.
 
 ## Telegram
 
@@ -34,6 +37,8 @@ Po wybraniu drukarki dostajesz stan zadania, postęp, warstwy, czas do końca, t
 
 Zdjęcia (`/photo`) i `/watch` działają na **wszystkich trzech systemach**. Bambu dekoduje klatkę kluczową H.264 (VideoToolbox na macOS, ffmpeg na Windows, GStreamer na Linuksie), Anycubic idzie przez FLV, a Klipper i Elegoo oddają pierwszą klatkę MJPEG bez żadnego dekodera.
 
+Pod rozmową siedzi **stały pasek komend**, który Telegram trzyma niezależnie od przewijania. Wybór drukarki to klawiatura przyklejona do konkretnej wiadomości, więc gdy rozmowa odjedzie, nie ma jak do niej wrócić; jeden tap w `/status` wrzuca świeżą listę na dole. Pasek instaluje się sam przy pierwszym powiadomieniu, nie trzeba o nim wiedzieć.
+
 Instrukcja krok po kroku: [`docs/telegram-setup.md`](https://github.com/parametryczny/gantrybar/blob/main/docs/telegram-setup.md).
 
 ## Konserwacja, historia i diagnostyka
@@ -55,6 +60,20 @@ Uwagi drukarki (kody HMS) są teraz oddzielone od zadań konserwacji, więc awar
 
 Centrum diagnostyczne otwierasz z menu prawego przycisku na ikonie Gantry. Dla każdej drukarki sprawdza dwie rzeczy: czy odpowiada jej port (z opóźnieniem w milisekundach i oceną jakości) oraz czy Gantry ma z nią żywe połączenie, a przy jego braku podaje powód. W trakcie widzisz nazwę aktualnie badanej drukarki i pasek postępu, a każda drukarka ma twardy limit trzech sekund, więc jeden host, który nie odpowiada, nie zatrzyma przebiegu. Na macOS panel jest nakładką w stylu pozostałych paneli aplikacji.
 
+## Statystyki floty
+
+Nowa pozycja w menu prawego przycisku. `PrinterInsights` zbierał historię, godziny druku i zużycie filamentu osobno dla każdej drukarki, ale nic nie składało tego razem, więc nie dało się odpowiedzieć na pytanie ile wydrukowałem w tym miesiącu.
+
+Panel pokazuje liczbę wydruków, nieudane, skuteczność, czas druku i filament w wybranym okresie (7 dni, 30 dni, rok, cała historia), a pod spodem rozbicie na drukarki posortowane po liczbie zadań. Przycisk eksportu zapisuje to samo podsumowanie jako zwykły tekst.
+
+Uwaga o liczbach: godziny druku i gramy filamentu są licznikami dożywotnimi, więc widok okresowy liczy czas z samych wpisów historii, a zużycie filamentu pokazuje tylko dla całej historii. Inaczej „ostatnie 7 dni" pokazywałoby zużycie z całego życia drukarki.
+
+## Alert przed końcem druku
+
+Powiadomienie przychodziło dotąd dopiero po fakcie. Przy kilku drukarkach uprzedzenie bywa praktyczniejsze niż informacja, że coś skończyło się kwadrans temu.
+
+Alert uzbraja się raz na wydruk i sam przezbraja, gdy pozostały czas wróci powyżej progu (nowe zadanie) albo drukarka przestanie drukować, więc jedno zadanie nie może przypominać o sobie w kółko. Próg to 10 minut. **Domyślnie wyłączony**, bo na zajętej flocie to jeden dodatkowy alert na każde zadanie obok tego o zakończeniu; włącznik jest w sekcji powiadomień.
+
 ## Anycubic Kobra S1
 
 Przy dodawaniu drukarki wybierasz markę **Anycubic**, model **Kobra S1**, włączasz w drukarce tryb LAN i podajesz jej adres IP. Gantry sam pobiera lokalną sesję MQTT, więc konto Anycubic Cloud ani kod dostępu nie są potrzebne.
@@ -68,7 +87,25 @@ Obsługa obejmuje stan zadania, temperatury, sterowanie drukiem, światło komor
 - **Centrum diagnostyczne nie wywraca już aplikacji ani nie zawiesza się w połowie**: okno trzymał kontroler ustawień, więc zamknięcie ustawień zostawiało je osierocone i pierwszy ruch myszy sięgał po zwolnione widoki. Panel żyje teraz wewnątrz aplikacji, tak jak konserwacja. Osobno naprawiony został przebieg testu, który potrafił zamilknąć po pierwszej drukarce.
 - **Panel konserwacji na macOS otwiera się poprawnie**: wcześniej potrafił nie zareagować na kliknięcie. Przy okazji zniknął podskok okna przy otwieraniu.
 - **Panel konserwacji, układ**: wyrównane wiersze akcji, szersze pole interwału mieszczące wartości czterocyfrowe i nazwy zadań, które nie urywają się wielokropkiem.
+- **Wentylatory na drukarkach Klipper**: Aux i Chamber pokazywały kreskę zawsze, bo czytany był wyłącznie obiekt o nazwie `fan`, a wentylatory pomocniczy i komory żyją pod `fan_generic`. Na forkach producenta, które nie publikują gołego `fan`, znikał też Part. Teraz odpytywane są wszystkie wentylatory, jakie maszyna wystawia, i klasyfikowane po nazwie.
+- **Kamera Anycubica na macOS**: wydania nie zawierały ffmpeg, którego ta kamera wymaga, więc funkcja obiecana w README po prostu nie działała. Aplikacja niesie teraz własny, minimalny build.
+- **Kamera P1 i A1 na macOS**: te modele nie mają punktu RTSP i serwują obraz strumieniem JPEG na porcie 6000. macOS próbował wyłącznie RTSP, więc nie miał jak się połączyć. Protokół, który Windows obsługuje od początku, działa teraz także na macOS.
+- **Okno szczegółów na Windows**: przebudowywało sześć sekcji co sekundę, bezwarunkowo, podczas gdy macOS i Linux robią to zdarzeniowo. Przebudowuje się już tylko to, co faktycznie się zmieniło.
+- **Wyciszenie Telegrama** zapisywane jest w tym samym formacie na wszystkich systemach. Starszy zapis jest odczytywany i migrowany, więc aktywne wyciszenie nie przepada przy aktualizacji.
 - **Kody HMS**: poprawione rozpoznawanie katalogów i wycentrowane pola formularzy.
+
+## Rozmiar pakietów
+
+Instalator Windows ważył 91 MB, z czego **139 MB nieskompresowanej zawartości stanowił sam `ffmpeg.exe`**, czyli pełny build ze wszystkimi kodekami, filtrami i muxerami. Gantry używa go wyłącznie jako dekodera H.264 i FLV, więc wydanie niesie teraz build zawierający tylko to, co faktycznie wywołujemy.
+
+| Pakiet | Przed | Po |
+| --- | --- | --- |
+| Instalator Windows | 91 MB | **52 MB** |
+| ZIP Windows | 130 MB | **76 MB** |
+
+Przy okazji zeszliśmy z licencji GPL na LGPL, bo dekoder H.264 nie wymaga tej pierwszej.
+
+W AppImage zdeduplikowano 290 bibliotek, które były w paczce po dwa razy (raz z bundlera Pythona, raz z narzędzia wdrożeniowego). Rozmiar samego pliku prawie się nie zmienił, bo squashfs i tak sklejał identyczne kopie, ale zniknęło ryzyko, że przy dwóch wersjach tej samej biblioteki o wyniku zdecyduje kolejność ładowania.
 
 ## Uwaga dla macOS 26 i nowszych
 
@@ -89,5 +126,5 @@ Po aktualizacji na macOS system może poprosić o ponowne przyznanie dostępu do
 ## Kontrola jakości
 
 - automatyczna kontrola zgodności kontraktu UI macOS, Windows i Linux;
-- 28 testów jednostkowych macOS i 57 testów rdzenia oraz integracji wersji Linux;
+- 33 testy jednostkowe macOS i 61 testów rdzenia oraz integracji wersji Linux;
 - osobne workflow budujące macOS, Windows oraz pakiety `.deb`, `.rpm` i `.AppImage`.
