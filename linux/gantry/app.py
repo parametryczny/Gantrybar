@@ -397,6 +397,11 @@ class Gantry:
         from .telegram import TelegramBot
         self.telegram_bot = TelegramBot(self)
         self.telegram_bot.sync()
+        # Optional always-on-top strip at a screen edge. It owns its own visibility, so creating it
+        # unconditionally is safe: with the setting off it simply never shows itself.
+        from .edgedock import EdgeDock
+        self.edge_dock = EdgeDock(self)
+        self.edge_dock.refresh()
         GLib.timeout_add_seconds(45, self._sync_tick)
         GLib.timeout_add_seconds(8, self._initial_update_check)
         GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
@@ -1047,6 +1052,9 @@ class Gantry:
             card.update(current, str(value) if event == "disconnected" else None)
         self.window.update_header()
         self._refresh_progress_indicators()
+        dock = getattr(self, "edge_dock", None)
+        if dock is not None:
+            dock.refresh()
         if quiet_hours_active(self.config): return False
         printer_name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
         # Heads-up before the end. Armed once per print: it re-arms as soon as the remaining time is

@@ -21,36 +21,53 @@ class SettingsDialog(Gtk.Dialog):
         self._ready = False
         self._original_transparency = str(app.config.data.get("panel_transparency", "low"))
         self.add_button("Gotowe" if self.pl else "Done", Gtk.ResponseType.OK)
-        self.set_default_size(460, 640)
-        self.set_size_request(440, 360)
+        self.set_default_size(640, 720)
+        self.set_size_request(600, 520)
         self.set_resizable(True)
 
-        self.scroll = Gtk.ScrolledWindow()
-        self.scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        root.get_style_context().add_class("settings-root")
-        self.scroll.add(root)
-        self.get_content_area().pack_start(self.scroll, True, True, 0)
+        # Three tabs instead of one long column, matching the macOS window. GTK's StackSwitcher
+        # already renders as a segmented pill bar, so no custom widget is needed here.
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        outer.get_style_context().add_class("settings-root")
+        outer.pack_start(self._header(), False, False, 0)
 
-        root.pack_start(self._header(), False, False, 0)
-        root.pack_start(self._appearance(), False, False, 0)
-        root.pack_start(self._general(), False, False, 0)
-        root.pack_start(self._cards(), False, False, 0)
-        root.pack_start(self._notifications(), False, False, 0)
-        root.pack_start(self._telegram(), False, False, 0)
-        root.pack_start(self._updates(), False, False, 0)
-        root.pack_start(self._about(), False, False, 0)
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.NONE)
+        switcher = Gtk.StackSwitcher(stack=self.stack)
+        switcher.set_halign(Gtk.Align.FILL)
+        switcher.set_homogeneous(True)
+        outer.pack_start(switcher, False, False, 0)
+        outer.pack_start(self.stack, True, True, 0)
+        self.get_content_area().pack_start(outer, True, True, 0)
+
+        self.stack.add_titled(self._page([self._basics(), self._notifications(),
+                                          self._updates(), self._about()]),
+                              "general", "Ogólne" if self.pl else "General")
+        self.stack.add_titled(self._page([self._appearance(), self._cards(), self._dock()]),
+                              "appearance", "Wygląd" if self.pl else "Appearance")
+        self.stack.add_titled(self._page([self._developer(), self._telegram()]),
+                              "advanced", "Zaawansowane" if self.pl else "Advanced")
         self.show_all()
         self.release_link.hide()
         self._connect_live_updates()
         self._ready = True
+
+    @property
+    def scroll(self) -> Gtk.Widget:
+        """The visible tab's scroller. Each tab has its own, so callers that used to reach for a
+        single `scroll` (the preview renderer) get the one currently on screen."""
+        page = self.stack.get_visible_child()
+        if page is not None:
+            return page
+        children = self.stack.get_children()
+        return children[0] if children else self.stack
 
     def _header(self) -> Gtk.Widget:
         header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         header.get_style_context().add_class("settings-header")
         title = Gtk.Label(label="Ustawienia" if self.pl else "Settings", xalign=0)
         title.get_style_context().add_class("settings-title")
-        author = Gtk.Label(label="Kamil Grzegorczyk", xalign=0)
+        author = Gtk.Label(label="Gantry · @_parametryczny", xalign=0)
         author.get_style_context().add_class("settings-author")
         profiles = Gtk.Box(spacing=12)
         profiles.get_style_context().add_class("settings-links")
@@ -95,11 +112,25 @@ class SettingsDialog(Gtk.Dialog):
     def _preview_transparency(self, combo: Gtk.ComboBoxText) -> None:
         self.app.preview_panel_transparency(combo.get_active_id() or "low")
 
-    def _general(self) -> Gtk.Widget:
+    def _page(self, sections: list[Gtk.Widget]) -> Gtk.Widget:
+        """One tab: a scrolling column of section cards."""
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        for section in sections:
+            column.pack_start(section, False, False, 0)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(column)
+        return scroll
+
+    def _basics(self) -> Gtk.Widget:
         self.autostart = self._check(self.app.text["autostart"], autostart_enabled())
         self.spoolbase = self._check(
             "Spoolbase — magazyn filamentów" if self.pl else "Spoolbase — filament stock",
             bool(self.app.config.data.get("spoolbase_enabled", True)))
+        return self._section("PODSTAWY" if self.pl else "BASICS",
+                             [self.autostart, self.spoolbase])
+
+    def _developer(self) -> Gtk.Widget:
         self.developer = self._check(
             "Tryb deweloperski (sterowanie + automatyzacje)" if self.pl
             else "Developer mode (control + automations)",
@@ -115,8 +146,50 @@ class SettingsDialog(Gtk.Dialog):
             xalign=0, wrap=True)
         hint.set_margin_start(24)
         hint.get_style_context().add_class("settings-hint")
-        return self._section("OGÓLNE" if self.pl else "GENERAL",
-                             [self.autostart, self.spoolbase, self.developer, self.allow_scripts, hint])
+        return self._section("TRYB DEWELOPERSKI" if self.pl else "DEVELOPER",
+                             [self.developer, self.allow_scripts, hint])
+
+    def _dock(self) -> Gtk.Widget:
+        """Edge dock: enable, which edge, and which printers appear on the strip."""
+        self.dock_enabled = self._check(
+            "Pokazuj pasek na wierzchu" if self.pl else "Show the strip on top",
+            bool(self.app.config.data.get("edge-dock-enabled", False)))
+        self.dock_edge = Gtk.ComboBoxText()
+        self.dock_edge.append("left", "Lewa" if self.pl else "Left")
+        self.dock_edge.append("right", "Prawa" if self.pl else "Right")
+        edge = str(self.app.config.data.get("edge-dock-edge", "right"))
+        self.dock_edge.set_active_id("left" if edge == "left" else "right")
+        edge_row = Gtk.Box(spacing=10)
+        edge_row.pack_start(Gtk.Label(label="Krawędź" if self.pl else "Edge", xalign=0), False, False, 0)
+        edge_row.pack_end(self.dock_edge, False, False, 0)
+        self.dock_only_printing = self._check(
+            "Tylko drukujące" if self.pl else "Only printing",
+            bool(self.app.config.data.get("edge-dock-only-printing", False)))
+
+        # Stored as an exclusion list, so a newly added printer shows up by itself.
+        hidden = set(str(self.app.config.data.get("edge-dock-hidden", "")).split("\n")) - {""}
+        caption = Gtk.Label(label="KTÓRE DRUKARKI" if self.pl else "WHICH PRINTERS", xalign=0)
+        caption.get_style_context().add_class("settings-section")
+        self.dock_printers: dict[str, Gtk.CheckButton] = {}
+        widgets: list[Gtk.Widget] = [self.dock_enabled, edge_row, self.dock_only_printing, caption]
+        printers = list(getattr(self.app, "printers", []))
+        if not printers:
+            empty = Gtk.Label(label="Brak drukarek" if self.pl else "No printers", xalign=0)
+            empty.get_style_context().add_class("settings-hint")
+            widgets.append(empty)
+        for printer in printers:
+            check = self._check(printer.name, printer.serial not in hidden)
+            self.dock_printers[printer.serial] = check
+            widgets.append(check)
+        hint = Gtk.Label(
+            label=("Wąski pasek przyklejony do krawędzi ekranu, zawsze na wierzchu. Najechanie "
+                   "rozsuwa go do nazw, klik otwiera szczegóły." if self.pl else
+                   "A narrow strip pinned to the screen edge, always on top. Hovering expands it to "
+                   "names, clicking opens details."),
+            xalign=0, wrap=True)
+        hint.get_style_context().add_class("settings-hint")
+        widgets.append(hint)
+        return self._section("PASEK KRAWĘDZIOWY" if self.pl else "EDGE DOCK", widgets)
 
     def _cards(self) -> Gtk.Widget:
         self.card_options: dict[str, Gtk.CheckButton] = {}
@@ -382,12 +455,13 @@ class SettingsDialog(Gtk.Dialog):
 
     def _connect_live_updates(self) -> None:
         """macOS applies settings as controls change; GTK now follows the same Done-only flow."""
-        for combo in (self.language, self.theme, self.transparency):
+        for combo in (self.language, self.theme, self.transparency, self.dock_edge):
             combo.connect("changed", self._live_changed)
         checks = [self.autostart, self.spoolbase, self.developer, self.allow_scripts,
                   self.spool_grams, self.monochrome, self.quiet, self.auto_update,
-                  self.telegram_enabled]
+                  self.telegram_enabled, self.dock_enabled, self.dock_only_printing]
         checks.extend(self.card_options.values())
+        checks.extend(self.dock_printers.values())
         checks.extend(self.notices.values())
         for check in checks:
             check.connect("toggled", self._live_changed)
@@ -422,6 +496,11 @@ class SettingsDialog(Gtk.Dialog):
             allow_script_actions=self.allow_scripts.get_active(),
             auto_update_check=self.auto_update.get_active(),
         )
+        self.app.config.data["edge-dock-enabled"] = self.dock_enabled.get_active()
+        self.app.config.data["edge-dock-edge"] = self.dock_edge.get_active_id() or "right"
+        self.app.config.data["edge-dock-only-printing"] = self.dock_only_printing.get_active()
+        hidden = sorted(serial for serial, widget in self.dock_printers.items() if not widget.get_active())
+        self.app.config.data["edge-dock-hidden"] = "\n".join(hidden)
         self.app.config.data["telegram-enabled"] = self.telegram_enabled.get_active()
         self.app.config.data["telegram-bot-token"] = self.telegram_token.get_text().strip()
         self.app.config.data["telegram-chat-id"] = self.telegram_chat.get_text().strip()
@@ -458,4 +537,7 @@ class SettingsDialog(Gtk.Dialog):
         bot = getattr(self.app, "telegram_bot", None)
         if bot is not None:
             bot.sync()
+        dock = getattr(self.app, "edge_dock", None)
+        if dock is not None:
+            dock.refresh()
         return True

@@ -276,6 +276,37 @@ public static class AppSettings
         set => Defaults.SetInt("notify-finishing-soon-minutes", value);
     }
 
+    // Edge dock: the narrow always-on-top strip pinned to a screen edge. Keys shared verbatim with
+    // macOS/Linux. Off by default, because it is an opt-in second surface, not a tray replacement.
+    public static bool EdgeDockEnabled
+    {
+        get => Defaults.GetBool("edge-dock-enabled", false);
+        set => Defaults.SetBool("edge-dock-enabled", value);
+    }
+
+    /// "left" or "right"; anything else falls back to the right edge.
+    public static string EdgeDockEdge
+    {
+        get { var s = Defaults.GetString("edge-dock-edge"); return s == "left" ? "left" : "right"; }
+        set => Defaults.SetString("edge-dock-edge", value == "left" ? "left" : "right");
+    }
+
+    /// Hide printers that are neither printing nor paused.
+    public static bool EdgeDockOnlyPrinting
+    {
+        get => Defaults.GetBool("edge-dock-only-printing", false);
+        set => Defaults.SetBool("edge-dock-only-printing", value);
+    }
+
+    /// Serials the user unticked, stored as an exclusion list so a newly added printer shows up by
+    /// itself instead of silently missing from the strip.
+    public static HashSet<string> EdgeDockHiddenPrinters
+    {
+        get => new((Defaults.GetString("edge-dock-hidden") ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        set => Defaults.SetString("edge-dock-hidden", string.Join("\n", value.OrderBy(x => x)));
+    }
+
     // Telegram push + bot. Keys shared verbatim with macOS/Linux (see docs/telegram.md).
     public static bool TelegramEnabled
     {

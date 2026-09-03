@@ -157,12 +157,14 @@ def main(out_dir: str) -> None:
     capture(main_window, target / "01-dashboard.png", (750, 780))
 
     settings_window = gapp.SettingsDialog(app)
-    capture(settings_window, target / "02-settings.png", (520, 640))
-    adjustment = settings_window.scroll.get_vadjustment()
-    adjustment.set_value(max(0, adjustment.get_upper() - adjustment.get_page_size()))
-    while Gtk.events_pending():
-        Gtk.main_iteration()
-    capture(settings_window, target / "02b-settings-bottom.png", (520, 640))
+    # One shot per tab; the window carries three pages instead of one long scrolling column.
+    for index, (name, filename) in enumerate((("general", "02-settings.png"),
+                                              ("appearance", "02b-settings-appearance.png"),
+                                              ("advanced", "02c-settings-advanced.png"))):
+        settings_window.stack.set_visible_child_name(name)
+        while Gtk.events_pending():
+            Gtk.main_iteration()
+        capture(settings_window, target / filename, (640, 720))
     settings_window.destroy()
 
     spoolbase = SpoolbaseWindow(app)

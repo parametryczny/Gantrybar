@@ -205,8 +205,8 @@
     "canvas": "#0C0D0E",
     "sectionCard": { "bg": "card @0.5", "border": "line 1px", "radius": 16, "inset": { "x": 14, "y": 12 } },
     "sectionTitle": { "size": 10, "weight": "semibold", "color": "muted", "uppercase": true },
-    "sections": ["APPEARANCE", "GENERAL", "PRINTER CARDS", "NOTIFICATIONS", "TELEGRAM", "DIAGNOSTIC CENTER", "UPDATES"],
+    "tabs": ["GENERAL", "APPEARANCE", "ADVANCED"],
     "scroll": true,
-    "window": { "width": 460, "height": 640, "resizable": true, "minWidth": 440, "minHeight": 360 }
+    "window": { "width": 640, "height": 720, "resizable": true, "minWidth": 600, "minHeight": 520 }
   }
 }

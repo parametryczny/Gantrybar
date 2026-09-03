@@ -14,6 +14,8 @@ public partial class SettingsWindow : Window
     /// without a restart. Set by TrayIcon to re-apply the dashboard's acrylic tint immediately.
     public Action? OnTransparencyChanged;
     public Action? OnThemeChanged;
+    /// Raised when any edge-dock setting changes, so the tray owner can re-pin the strip live.
+    public Action? OnEdgeDockChanged;
 
     public SettingsWindow(PrinterStore? store = null)
     {
@@ -24,11 +26,32 @@ public partial class SettingsWindow : Window
         ApplyLanguage();
         LoadSettings();
 
+        TabGeneral.Checked += (_, _) => ShowPage(PageGeneral);
+        TabAppearance.Checked += (_, _) => ShowPage(PageAppearance);
+        TabAdvanced.Checked += (_, _) => ShowPage(PageAdvanced);
+
         LanguageButton.Click += (_, _) =>
         {
             AppSettings.Polish = !AppSettings.Polish;
             ApplyLanguage();
             RefreshWebSync();
+        };
+        DockEnableCheckBox.Click += (_, _) =>
+        {
+            AppSettings.EdgeDockEnabled = DockEnableCheckBox.IsChecked == true;
+            ApplyDockEnabledState();
+            OnEdgeDockChanged?.Invoke();
+        };
+        DockEdgeButton.Click += (_, _) =>
+        {
+            AppSettings.EdgeDockEdge = AppSettings.EdgeDockEdge == "left" ? "right" : "left";
+            DockEdgeButton.Content = EdgeName();
+            OnEdgeDockChanged?.Invoke();
+        };
+        DockOnlyPrintingCheckBox.Click += (_, _) =>
+        {
+            AppSettings.EdgeDockOnlyPrinting = DockOnlyPrintingCheckBox.IsChecked == true;
+            OnEdgeDockChanged?.Invoke();
         };
         ThemeButton.Click += (_, _) =>
         {
@@ -87,6 +110,73 @@ public partial class SettingsWindow : Window
         // The user may have changed synced settings; let the newer side win on the next merge.
         Closed += (_, _) => SyncService.Shared?.NoteSettingsChanged();
         CloseButton.Click += (_, _) => Close();
+    }
+
+    private void ShowPage(System.Windows.Controls.ScrollViewer page)
+    {
+        PageGeneral.Visibility = ReferenceEquals(page, PageGeneral) ? Visibility.Visible : Visibility.Collapsed;
+        PageAppearance.Visibility = ReferenceEquals(page, PageAppearance) ? Visibility.Visible : Visibility.Collapsed;
+        PageAdvanced.Visibility = ReferenceEquals(page, PageAdvanced) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string EdgeName() => AppSettings.EdgeDockEdge == "left"
+        ? AppSettings.Text("Lewa", "Left") : AppSettings.Text("Prawa", "Right");
+
+    /// Dims the whole dock section, not just the switches, so an off strip reads as inactive.
+    private void ApplyDockEnabledState()
+    {
+        bool on = AppSettings.EdgeDockEnabled;
+        DockEdgeButton.IsEnabled = on;
+        DockOnlyPrintingCheckBox.IsEnabled = on;
+        DockPrintersList.IsEnabled = on;
+        DockPrintersList.Opacity = on ? 1 : 0.45;
+        DockEdgeButton.Opacity = on ? 1 : 0.45;
+    }
+
+    /// One switch row per printer. The serial rides in the control's Tag because the list is rebuilt
+    /// whenever the window refreshes, so a captured index would go stale.
+    private void RebuildDockPrinters()
+    {
+        DockPrintersList.Children.Clear();
+        var printers = _store?.Printers ?? new List<Gantry.Models.SavedPrinter>();
+        if (printers.Count == 0)
+        {
+            DockPrintersList.Children.Add(new System.Windows.Controls.TextBlock
+            {
+                Text = AppSettings.Text("Brak drukarek", "No printers"),
+                Foreground = GTheme.Brush(GTheme.Muted),
+                FontSize = 12,
+                Margin = new Thickness(14, 11, 14, 12),
+            });
+            return;
+        }
+        var hidden = AppSettings.EdgeDockHiddenPrinters;
+        for (int index = 0; index < printers.Count; index++)
+        {
+            var printer = printers[index];
+            if (index > 0)
+            {
+                DockPrintersList.Children.Add(new System.Windows.Controls.Border
+                {
+                    Height = 1, Background = (Brush)FindResource("SettingsLineBrush"),
+                });
+            }
+            var row = new System.Windows.Controls.CheckBox
+            {
+                Content = printer.Name,
+                Tag = printer.Serial,
+                IsChecked = !hidden.Contains(printer.Serial),
+            };
+            row.Click += (sender, _) =>
+            {
+                if (sender is not System.Windows.Controls.CheckBox box || box.Tag is not string serial) return;
+                var set = AppSettings.EdgeDockHiddenPrinters;
+                if (box.IsChecked == true) set.Remove(serial); else set.Add(serial);
+                AppSettings.EdgeDockHiddenPrinters = set;
+                OnEdgeDockChanged?.Invoke();
+            };
+            DockPrintersList.Children.Add(row);
+        }
     }
 
     private void RefreshWebSync()
@@ -220,13 +310,35 @@ public partial class SettingsWindow : Window
 
         AboutHeading.Text = AppSettings.Text("O APLIKACJI", "ABOUT");
         AboutVersion.Text = $"Gantry · {AppSettings.Text("wersja", "version")} {UpdateChecker.CurrentVersion} · DPAPI";
-        AboutAuthor.Text = "Kamil Grzegorczyk · @parametryczny";
+        AboutAuthor.Text = "@_parametryczny";
         GitHubButton.Content = "GitHub";
-        XButton.Content = "X / Twitter";
+        XButton.Content = "@_parametryczny";
         SupportButton.Content = AppSettings.Text("☕  Wesprzyj projekt", "☕  Support the project");
         SupportSubtitle.Text = AppSettings.Text(
             "Wirtualna kawa daje mi kofeinowego kopa do pracy nad kolejnymi wersjami Gantry. 🚀",
             "A virtual coffee gives me a caffeine kick to keep improving Gantry. 🚀");
+
+        TabGeneral.Content = AppSettings.Text("Ogólne", "General");
+        TabAppearance.Content = AppSettings.Text("Wygląd", "Appearance");
+        TabAdvanced.Content = AppSettings.Text("Zaawansowane", "Advanced");
+        HeaderSubtitle.Text = "Gantry · @_parametryczny";
+        FooterVersion.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion} · DPAPI",
+                                              $"Version {UpdateChecker.CurrentVersion} · DPAPI");
+        DeveloperHeading.Text = AppSettings.Text("TRYB DEWELOPERSKI", "DEVELOPER");
+
+        DockHeading.Text = AppSettings.Text("PASEK KRAWĘDZIOWY", "EDGE DOCK");
+        DockEnableCheckBox.Content = AppSettings.Text("Pokazuj pasek na wierzchu", "Show the strip on top");
+        DockEnableCheckBox.IsChecked = AppSettings.EdgeDockEnabled;
+        DockEdgeLabel.Text = AppSettings.Text("Krawędź", "Edge");
+        DockEdgeButton.Content = EdgeName();
+        DockOnlyPrintingCheckBox.Content = AppSettings.Text("Tylko drukujące", "Only printing");
+        DockOnlyPrintingCheckBox.IsChecked = AppSettings.EdgeDockOnlyPrinting;
+        DockPrintersCaption.Text = AppSettings.Text("KTÓRE DRUKARKI", "WHICH PRINTERS");
+        DockHint.Text = AppSettings.Text(
+            "Wąski pasek przyklejony do krawędzi ekranu, zawsze na wierzchu. Najechanie rozsuwa go do nazw, klik otwiera szczegóły.",
+            "A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.");
+        RebuildDockPrinters();
+        ApplyDockEnabledState();
 
         CloseButton.Content = AppSettings.Text("Gotowe", "Done");
     }

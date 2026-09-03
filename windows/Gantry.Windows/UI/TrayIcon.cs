@@ -18,6 +18,7 @@ public sealed class TrayIcon : IDisposable
     private DashboardWindow? _dashboard;
     private SettingsWindow? _settings;
     private SpoolbaseWindow? _spoolbase;
+    private EdgeDockWindow? _edgeDock;
 
     public TrayIcon(PrinterStore store)
     {
@@ -38,6 +39,13 @@ public sealed class TrayIcon : IDisposable
         };
         RefreshTooltip();
         UpdateProgressIcons();
+        // Optional always-on-top strip at a screen edge. It owns its own visibility, so creating it
+        // unconditionally is safe: with the setting off it simply never shows itself.
+        _edgeDock = new EdgeDockWindow(_store, serial =>
+        {
+            ShowDashboard();
+            _dashboard?.ShowDetail(serial);
+        });
         AnnounceInstalledIfPending();
         _ = RunUpdateChecksAsync();
     }
@@ -241,6 +249,7 @@ public sealed class TrayIcon : IDisposable
                 _dashboard?.RefreshTheme();
                 if (_spoolbase is not null) { _spoolbase.Close(); _spoolbase = null; }
             };
+            _settings.OnEdgeDockChanged = () => _edgeDock?.Refresh();
             _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); };
         }
         _settings.Show();
@@ -462,6 +471,7 @@ public sealed class TrayIcon : IDisposable
     public void Dispose()
     {
         foreach (var serial in _progressIcons.Keys.ToList()) RemoveProgressIcon(serial);
+        _edgeDock?.Close();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
     }
