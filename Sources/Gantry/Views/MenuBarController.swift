@@ -22,6 +22,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private let spoolbase = SpoolbaseController()
     private var notificationObserver: Any?
     private var updateNotificationObserver: Any?
+    private var edgeDock: EdgeDockWindowController?
 
     init(store: PrinterStore) {
         self.store = store
@@ -79,6 +80,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 self?.updateStatusItem()
                 self?.updateProgressItems()
             }
+        }
+        // Optional always-on-top strip at a screen edge. It owns its own visibility, so it is safe to
+        // create unconditionally: with the setting off it simply never orders itself in.
+        edgeDock = EdgeDockWindowController(store: store) { [weak self] serial in
+            self?.revealDetails(serial: serial)
         }
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .gantryShowDashboard, object: nil, queue: .main
@@ -463,6 +469,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         addWindow?.showWindow(nil)
         addWindow?.window?.center()
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    /// Opens the popover on the given printer's details from outside the popover itself (the edge
+    /// dock). The popover anchors to the status item, so it has to be shown before the content swap.
+    private func revealDetails(serial: String) {
+        guard let button = anchorButton else { return }
+        if !popover.isShown {
+            popover.appearance = AppSettings.shared.appearance
+            popover.contentViewController?.view.appearance = AppSettings.shared.appearance
+            NSApp.activate(ignoringOtherApps: true)
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            installOutsideClickMonitor()
+        }
+        showDetails(serial: serial)
     }
 
     /// Swaps the popover's content to the in-bubble detail view for one printer, keeping everything

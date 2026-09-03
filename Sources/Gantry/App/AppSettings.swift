@@ -149,6 +149,20 @@ final class AppSettings: ObservableObject {
     @Published var finishingSoonMinutes: Int { didSet { defaults.set(finishingSoonMinutes, forKey: "notify-finishing-soon-minutes") } }
     @Published var notifyHumidity: Bool { didSet { defaults.set(notifyHumidity, forKey: "notify-humidity") } }
 
+    // Edge dock: the narrow always-on-top strip pinned to a screen edge. Off by default — it is an
+    // opt-in second surface, not a replacement for the menu-bar popover.
+    @Published var edgeDockEnabled: Bool { didSet { defaults.set(edgeDockEnabled, forKey: "edge-dock-enabled") } }
+    @Published var edgeDockEdge: EdgeDockEdge { didSet { defaults.set(edgeDockEdge.rawValue, forKey: "edge-dock-edge") } }
+    /// Hide printers that are neither printing nor paused, so a large fleet does not fill the screen
+    /// with idle rings.
+    @Published var edgeDockOnlyPrinting: Bool { didSet { defaults.set(edgeDockOnlyPrinting, forKey: "edge-dock-only-printing") } }
+
+    /// Serials the user unticked. Stored as an exclusion list rather than an inclusion list so a newly
+    /// added printer shows up by itself instead of silently missing from the strip.
+    @Published var edgeDockHiddenPrinters: Set<String> {
+        didSet { defaults.set(edgeDockHiddenPrinters.sorted().joined(separator: "\n"), forKey: "edge-dock-hidden") }
+    }
+
     /// Extra discovery targets (IPs / CIDR / ranges) scanned in addition to the local subnet — lets a
     /// printer reached over a VPN like Tailscale be found. Read at scan time, so not @Published.
     var subnetScanTargets: String {
@@ -194,6 +208,11 @@ final class AppSettings: ObservableObject {
         notifyFinishingSoon = defaults.object(forKey: "notify-finishing-soon") as? Bool ?? false
         finishingSoonMinutes = defaults.object(forKey: "notify-finishing-soon-minutes") as? Int ?? 10
         notifyHumidity = defaults.object(forKey: "notify-humidity") as? Bool ?? true
+        edgeDockEnabled = defaults.object(forKey: "edge-dock-enabled") as? Bool ?? false
+        edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
+        edgeDockOnlyPrinting = defaults.object(forKey: "edge-dock-only-printing") as? Bool ?? false
+        edgeDockHiddenPrinters = Set((defaults.string(forKey: "edge-dock-hidden") ?? "")
+            .split(separator: "\n").map(String.init))
     }
 
     func applyTheme() {
