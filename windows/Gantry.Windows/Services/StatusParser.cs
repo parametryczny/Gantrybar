@@ -68,7 +68,19 @@ public static class StatusParser
             && ctc.TryGetProperty("info", out var ctcInfo) && ctcInfo.ValueKind == JsonValueKind.Object
             && Num(ctcInfo, "temp") is { } chamber)
         {
-            result.ChamberTemperature = chamber;
+            // A heated chamber (H2D) packs this field like the nozzles: current reading in the low
+            // 16 bits, setpoint in the high ones. Machines that only measure the chamber send a plain
+            // reading, which never reaches one packed unit. Read raw, a 65 degree setpoint showed up
+            // as 4259904.
+            if (chamber >= 65536 && Int(ctcInfo, "temp") is { } packedChamber)
+            {
+                result.ChamberTemperature = packedChamber & 0xFFFF;
+                result.ChamberTargetTemperature = (packedChamber >> 16) & 0xFFFF;
+            }
+            else
+            {
+                result.ChamberTemperature = chamber;
+            }
         }
         else if (Num(report, "chamber_temper") is { } legacyChamber && legacyChamber > 10)
         {

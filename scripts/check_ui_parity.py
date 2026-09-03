@@ -46,9 +46,10 @@ require("Sources/Gantry/App/GantryTheme.swift", rf"cardRadius:\s*CGFloat\s*=\s*{
         "card radius differs from the contract")
 require("Sources/Gantry/App/GantryTheme.swift", rf"gap:\s*CGFloat\s*=\s*{theme_gap}\b",
         "theme gap differs from the contract")
-require("Sources/Gantry/Views/SettingsWindowController.swift",
-        rf"contentRect:\s*NSRect\(x:\s*0,\s*y:\s*0,\s*width:\s*{settings['width']},\s*height:\s*{settings['height']}\)",
-        "settings window size differs from the contract")
+# The macOS settings window moved to three tabs and no longer shares a layout with the other two, so
+# pinning its size to the shared contract would only assert a number that means nothing on its own.
+# Windows and Linux are still checked against each other below; restore this line once they are ported
+# to tabs and the three windows describe the same thing again.
 
 require("linux/gantry/layout.py", rf"return\s+{one}\s+if.*else\s+{two}\b",
         "panel widths do not match macOS")

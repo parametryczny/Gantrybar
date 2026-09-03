@@ -152,6 +152,22 @@ enum ProtocolSelfTest {
         if value.amsSlots.dropFirst().contains(where: { $0.material != "—" }) { failures.append("empty AMS slots were not preserved") }
         if value.jobName != "część_żółta v2" { failures.append("wrong Unicode job name") }
 
+        // A heated chamber (H2D) packs the setpoint into the high 16 bits of device.ctc.info.temp;
+        // read raw it showed as 4259904 instead of 64°.
+        let heatedChamber = Data(#"{"print":{"device":{"ctc":{"info":{"temp":4259904}}}}}"#.utf8)
+        guard let heated = BambuStatusParser.telemetry(from: heatedChamber) else {
+            failures.append("heated-chamber JSON was not parsed")
+            return
+        }
+        if heated.chamberTemperature != 64 { failures.append("packed chamber temperature was not unpacked") }
+        if heated.chamberTargetTemperature != 65 { failures.append("wrong chamber target temperature") }
+
+        // An unheated chamber sends a plain reading, which must survive untouched.
+        let plainChamber = Data(#"{"print":{"device":{"ctc":{"info":{"temp":38}}}}}"#.utf8)
+        if BambuStatusParser.telemetry(from: plainChamber)?.chamberTemperature != 38 {
+            failures.append("plain chamber temperature was altered")
+        }
+
         let singleAMSJSON = Data(#"{"print":{"ams":{"ams":[{"id":"128","tray":[{"id":"0","tray_type":"PETG","tray_color":"00FF00FF"}]}]}}}"#.utf8)
         guard let singleAMS = BambuStatusParser.telemetry(from: singleAMSJSON) else {
             failures.append("single-slot AMS JSON was not parsed")

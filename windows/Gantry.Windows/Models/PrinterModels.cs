@@ -52,6 +52,8 @@ public sealed class PrinterTelemetry
     public double? BedTemperature { get; set; }
     public double? BedTargetTemperature { get; set; }
     public double? ChamberTemperature { get; set; }
+    /// <summary>Only machines with a heated chamber (H2D) report a setpoint.</summary>
+    public double? ChamberTargetTemperature { get; set; }
     public int? CurrentLayer { get; set; }
     public int? TotalLayers { get; set; }
     // Cooling fans as a percentage (Bambu 0-15 gear normalised, or Moonraker 0-1). Aux = big_fan1,
@@ -93,6 +95,7 @@ public sealed class PrinterTelemetry
             BedTemperature = BedTemperature,
             BedTargetTemperature = BedTargetTemperature,
             ChamberTemperature = ChamberTemperature,
+            ChamberTargetTemperature = ChamberTargetTemperature,
             CurrentLayer = CurrentLayer,
             TotalLayers = TotalLayers,
             PartFanPercent = PartFanPercent,

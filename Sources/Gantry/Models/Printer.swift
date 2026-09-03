@@ -43,6 +43,8 @@ struct PrinterTelemetry: Equatable, Sendable {
     var bedTemperature: Double?
     var bedTargetTemperature: Double?
     var chamberTemperature: Double?
+    /// Set only by machines with a heated chamber (H2D); nil or 0 elsewhere.
+    var chamberTargetTemperature: Double?
     var currentLayer: Int?
     var totalLayers: Int?
     // Cooling fans as a percentage (parsed from Bambu's 0–15 gear). Aux = big_fan1, chamber = big_fan2.

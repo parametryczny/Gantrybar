@@ -138,6 +138,8 @@ class Telemetry:
     bed: float | None = None
     bed_target: float | None = None
     chamber: float | None = None
+    # Only machines with a heated chamber (H2D) report a setpoint.
+    chamber_target: float | None = None
     current_layer: int | None = None
     total_layers: int | None = None
     stage: int | None = None
@@ -385,7 +387,17 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
         ctc = device.get("ctc")
         info = ctc.get("info") if isinstance(ctc, dict) else None
         if isinstance(info, dict) and _number(info.get("temp")) is not None:
-            result.chamber = _number(info["temp"])
+            # A heated chamber (H2D) packs this field like the nozzles: current reading in the low
+            # 16 bits, setpoint in the high ones. Machines that only measure the chamber send a
+            # plain reading, which never reaches one packed unit. Read raw, a 65 degree setpoint
+            # showed up as 4259904.
+            raw = _number(info["temp"])
+            packed = _integer(info["temp"])
+            if raw is not None and raw >= 65536 and packed is not None:
+                result.chamber = float(packed & 0xFFFF)
+                result.chamber_target = float((packed >> 16) & 0xFFFF)
+            else:
+                result.chamber = raw
             modern_chamber = True
         extruder = device.get("extruder")
         items = extruder.get("info") if isinstance(extruder, dict) else None

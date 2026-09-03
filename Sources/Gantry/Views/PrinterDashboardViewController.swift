@@ -1532,6 +1532,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
                          bedCurrent: telemetry.bedTemperature,
                          bedTarget: telemetry.bedTargetTemperature,
                          chamberCurrent: telemetry.chamberTemperature,
+                         chamberTarget: (telemetry.chamberTargetTemperature ?? 0) > 0
+                             ? telemetry.chamberTargetTemperature : nil,
                          printing: telemetry.state == .printing,
                          error: telemetry.state == .error,
                          settings: settings)
@@ -1974,7 +1976,8 @@ private final class TemperatureBentoView: NSView {
     required init?(coder: NSCoder) { nil }
 
     func update(nozzles: [NozzleTelemetry], bedCurrent: Double?, bedTarget: Double?,
-                chamberCurrent: Double?, printing: Bool, error: Bool, settings: AppSettings) {
+                chamberCurrent: Double?, chamberTarget: Double?,
+                printing: Bool, error: Bool, settings: AppSettings) {
         row.arrangedSubviews.forEach {
             row.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -1998,7 +2001,7 @@ private final class TemperatureBentoView: NSView {
         // Only show a chamber tile when the printer actually reports a chamber temperature — an empty
         // "KOMORA — / —" tile just steals a third of the row, so nozzle + bed take the space instead.
         if chamberCurrent != nil {
-            zones.append((settings.text("KOMORA", "CHAMBER"), chamberCurrent, nil, GantryTheme.chamber))
+            zones.append((settings.text("KOMORA", "CHAMBER"), chamberCurrent, chamberTarget, GantryTheme.chamber))
         }
 
         // Temperatures are coloured by state, per design/kolorystyka.md — the same map for nozzle, bed and

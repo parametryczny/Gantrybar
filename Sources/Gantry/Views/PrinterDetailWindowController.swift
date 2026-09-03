@@ -606,7 +606,9 @@ final class PrinterDetailViewController: NSViewController {
         graph.samples = store.temperatureHistory[serial] ?? []
         nozzleChip.set(current: t.nozzleTemperature, target: t.nozzleTargetTemperature, accent: Self.nozzleColor)
         bedChip.set(current: t.bedTemperature, target: t.bedTargetTemperature, accent: Self.bedColor)
-        chamberChip.set(current: t.chamberTemperature, target: nil, accent: Self.chamberColor)
+        chamberChip.set(current: t.chamberTemperature,
+                        target: (t.chamberTargetTemperature ?? 0) > 0 ? t.chamberTargetTemperature : nil,
+                        accent: Self.chamberColor)
 
         partFan.set(percent: t.partFanPercent)
         auxFan.set(percent: t.auxFanPercent)

@@ -42,7 +42,17 @@ enum BambuStatusParser {
         if let device = report["device"] as? [String: Any],
            let info = (device["ctc"] as? [String: Any])?["info"] as? [String: Any],
            let value = number(info["temp"]) {
-            result.chamberTemperature = value
+            // A heated chamber (H2D) packs this field exactly like the nozzles: the current reading in
+            // the low 16 bits, the setpoint in the high ones. Machines that only measure the chamber
+            // send a plain reading, which never reaches one packed unit, so the raw value is used as
+            // is. Without this the display jumped to numbers like 4259904 (= 65 << 16 | 64) the moment
+            // chamber heating was switched on.
+            if value >= 65536, let packed = integer(info["temp"]) {
+                result.chamberTemperature = Double(packed & 0xFFFF)
+                result.chamberTargetTemperature = Double((packed >> 16) & 0xFFFF)
+            } else {
+                result.chamberTemperature = value
+            }
         } else if let value = number(report["chamber_temper"]), value > 10 {
             result.chamberTemperature = value
         }
