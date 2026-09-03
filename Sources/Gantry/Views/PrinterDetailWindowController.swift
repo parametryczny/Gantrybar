@@ -66,6 +66,8 @@ final class PrinterDetailViewController: NSViewController {
     private let cameraView = CameraView()
     private var cameraCard: NSView?
     private var stream: RTSPCameraStream?
+    /// P1/A1 fallback: those machines have no RTSP endpoint, only the port-6000 JPEG stream.
+    private var jpegStream: BambuJPEGCameraStream?
     private var klipperStream: KlipperCameraStream?
     private var elegooStream: ElegooCameraStream?
     private var anycubicStream: AnycubicCameraStream?
@@ -798,6 +800,8 @@ final class PrinterDetailViewController: NSViewController {
         cameraTimeout = nil
         stream?.stop()
         stream = nil
+        jpegStream?.stop()
+        jpegStream = nil
         klipperStream?.stop()
         klipperStream = nil
         elegooStream?.stop()
@@ -818,12 +822,38 @@ final class PrinterDetailViewController: NSViewController {
         if let image = NSImage(data: data) { cameraView.show(image) }
     }
 
+    /// The X1 answers on RTSP(S); the P1 and A1 do not have that endpoint at all and serve JPEG frames
+    /// on port 6000 instead. So a failed RTSP attempt is not the end of the road, it is the cue to try
+    /// the other protocol before telling the user anything is wrong.
+    private func startBambuJPEGFallback(_ printer: SavedPrinter) {
+        guard jpegStream == nil, !receivedFrame,
+              let code = store.accessCode(for: serial), !code.isEmpty else { return }
+        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą P1/A1…", "Connecting to the P1/A1 camera…"))
+        let stream = BambuJPEGCameraStream(
+            host: cameraHost(for: printer),
+            accessCode: code,
+            onState: { state in Task { @MainActor [weak self] in
+                guard let self else { return }
+                if case .failed = state, !self.receivedFrame {
+                    self.cameraView.showStatus(Self.cameraUnavailableText)
+                }
+            } },
+            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } })
+        jpegStream = stream
+        stream.start()
+    }
+
     private func handleCameraState(_ state: RTSPCameraStream.State) {
         switch state {
         case .connecting, .playing:
             break
         case .failed:
-            if !receivedFrame { cameraView.showStatus(Self.cameraUnavailableText) }
+            // Not necessarily a dead end: on a P1/A1 there is no RTSP endpoint to begin with.
+            guard let printer = store.printers.first(where: { $0.serial == serial }) else {
+                if !receivedFrame { cameraView.showStatus(Self.cameraUnavailableText) }
+                return
+            }
+            startBambuJPEGFallback(printer)
         }
     }
 
