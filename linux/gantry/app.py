@@ -53,6 +53,7 @@ TEXT = {
         "autostart": "Uruchamiaj po zalogowaniu", "notifications": "Powiadomienia",
         "finished_notice": "Zakończenie druku", "error_notice": "Błędy drukarki",
         "paused_notice": "Wstrzymanie druku", "low_notice": "Niski poziom filamentu",
+        "finishing_soon_notice": "Koniec druku za 10 minut",
         "humidity_notice": "Wysoka wilgotność AMS", "quiet": "Godziny ciszy",
         "offline_notice": "Utrata połączenia", "printing": "Drukowanie", "ready": "Gotowa",
         "paused": "Wstrzymana", "finished": "Zakończono", "error": "Błąd", "offline": "Offline",
@@ -77,6 +78,7 @@ TEXT = {
         "autostart": "Start after login", "notifications": "Notifications",
         "finished_notice": "Print finished", "error_notice": "Printer errors",
         "paused_notice": "Print paused", "low_notice": "Low filament",
+        "finishing_soon_notice": "Print finishing in 10 minutes",
         "humidity_notice": "High AMS humidity", "quiet": "Quiet hours",
         "offline_notice": "Connection lost", "printing": "Printing", "ready": "Ready",
         "paused": "Paused", "finished": "Finished", "error": "Error", "offline": "Offline",
@@ -1047,6 +1049,25 @@ class Gantry:
         self._refresh_progress_indicators()
         if quiet_hours_active(self.config): return False
         printer_name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
+        # Heads-up before the end. Armed once per print: it re-arms as soon as the remaining time is
+        # back above the threshold (a new job) or the printer stops printing, so one job cannot nag.
+        warned = getattr(self, "_finishing_soon_warned", None)
+        if warned is None:
+            warned = self._finishing_soon_warned = set()
+        threshold = int(self.config.data.get("notify_finishing_soon_minutes", 10) or 10)
+        remaining = current.remaining_minutes if current.remaining_minutes is not None else 10 ** 9
+        if current.state == PrinterState.PRINTING and 0 < remaining <= threshold:
+            if self.config.data.get("notify_finishing_soon", False) and serial not in warned:
+                warned.add(serial)
+                body = current.job_name or ("Wydruk dobiega końca." if self.language == "pl"
+                                            else "The print is nearly done.")
+                title = (f"Koniec za ~{remaining} min" if self.language == "pl"
+                         else f"Finishing in ~{remaining} min")
+                self.notify(printer_name, f"{title}: {body}")
+                from . import telegram
+                telegram.notify(self, printer_name, title, body)
+        else:
+            warned.discard(serial)
         if current.state != previous.state:
             if current.state == PrinterState.FINISHED:
                 from . import telegram

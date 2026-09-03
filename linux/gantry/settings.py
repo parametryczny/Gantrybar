@@ -150,6 +150,7 @@ class SettingsDialog(Gtk.Dialog):
         for key, config_key in (("finished_notice", "notify_finished"),
                                 ("error_notice", "notify_error"),
                                 ("paused_notice", "notify_paused"),
+                                ("finishing_soon_notice", "notify_finishing_soon"),
                                 ("low_notice", "notify_low_filament"),
                                 ("humidity_notice", "notify_humidity")):
             check = self._check(self.app.text[key], bool(self.app.config.data.get(config_key)))

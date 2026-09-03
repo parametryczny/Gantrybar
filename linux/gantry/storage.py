@@ -42,6 +42,10 @@ DEFAULTS: dict[str, Any] = {
     "notify_error": True,
     "notify_paused": True,
     "notify_low_filament": True,
+    # Heads-up shortly before a job ends, and the remaining-minutes threshold that triggers it.
+    # Off by default: on a busy fleet it is one extra alert per job on top of the finished one.
+    "notify_finishing_soon": False,
+    "notify_finishing_soon_minutes": 10,
     "notify_humidity": True,
     "notify_offline": False,
     "quiet_hours_enabled": True,

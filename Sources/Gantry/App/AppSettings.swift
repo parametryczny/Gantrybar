@@ -142,6 +142,11 @@ final class AppSettings: ObservableObject {
     @Published var notifyError: Bool { didSet { defaults.set(notifyError, forKey: "notify-error") } }
     @Published var notifyPaused: Bool { didSet { defaults.set(notifyPaused, forKey: "notify-paused") } }
     @Published var notifyLowFilament: Bool { didSet { defaults.set(notifyLowFilament, forKey: "notify-low-filament") } }
+    /// Heads-up shortly before a job ends, so a long print can be collected without watching the ETA.
+    /// Off by default: on a busy fleet it is one extra alert per job on top of the finished one.
+    @Published var notifyFinishingSoon: Bool { didSet { defaults.set(notifyFinishingSoon, forKey: "notify-finishing-soon") } }
+    /// Minutes of remaining print time that trigger the heads-up above.
+    @Published var finishingSoonMinutes: Int { didSet { defaults.set(finishingSoonMinutes, forKey: "notify-finishing-soon-minutes") } }
     @Published var notifyHumidity: Bool { didSet { defaults.set(notifyHumidity, forKey: "notify-humidity") } }
 
     /// Extra discovery targets (IPs / CIDR / ranges) scanned in addition to the local subnet — lets a
@@ -186,6 +191,8 @@ final class AppSettings: ObservableObject {
         notifyError = defaults.object(forKey: "notify-error") as? Bool ?? true
         notifyPaused = defaults.object(forKey: "notify-paused") as? Bool ?? true
         notifyLowFilament = defaults.object(forKey: "notify-low-filament") as? Bool ?? true
+        notifyFinishingSoon = defaults.object(forKey: "notify-finishing-soon") as? Bool ?? false
+        finishingSoonMinutes = defaults.object(forKey: "notify-finishing-soon-minutes") as? Int ?? 10
         notifyHumidity = defaults.object(forKey: "notify-humidity") as? Bool ?? true
     }
 

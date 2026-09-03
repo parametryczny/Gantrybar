@@ -45,6 +45,7 @@ final class SettingsWindowController: NSWindowController {
     private let notifyErrorCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notifyPausedCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notifyLowFilamentCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let notifyFinishingSoonCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let notifyHumidityCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let quietHoursCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let quietStartPicker = NSDatePicker()
@@ -316,7 +317,7 @@ final class SettingsWindowController: NSWindowController {
         cardsBody.alignment = .leading
         cardsBody.spacing = 6
 
-        let notificationChecks = [notifyFinishedCheck, notifyErrorCheck, notifyPausedCheck, notifyLowFilamentCheck, notifyHumidityCheck]
+        let notificationChecks = [notifyFinishedCheck, notifyFinishingSoonCheck, notifyErrorCheck, notifyPausedCheck, notifyLowFilamentCheck, notifyHumidityCheck]
         for check in notificationChecks {
             check.target = self
             check.action = #selector(notificationToggled)
@@ -587,11 +588,14 @@ final class SettingsWindowController: NSWindowController {
         notifyFinishedCheck.title = settings.text("Druk zakończony", "Print finished")
         notifyErrorCheck.title = settings.text("Błąd drukarki", "Printer error")
         notifyPausedCheck.title = settings.text("Druk wstrzymany", "Print paused")
+        notifyFinishingSoonCheck.title = String(format: settings.text("Koniec za %d minut", "Finishing in %d minutes"),
+                                                settings.finishingSoonMinutes)
         notifyLowFilamentCheck.title = settings.text("Niski poziom filamentu", "Low filament")
         notifyHumidityCheck.title = settings.text("Wysoka wilgotność AMS", "High AMS humidity")
         notifyFinishedCheck.state = settings.notifyFinished ? .on : .off
         notifyErrorCheck.state = settings.notifyError ? .on : .off
         notifyPausedCheck.state = settings.notifyPaused ? .on : .off
+        notifyFinishingSoonCheck.state = settings.notifyFinishingSoon ? .on : .off
         notifyLowFilamentCheck.state = settings.notifyLowFilament ? .on : .off
         notifyHumidityCheck.state = settings.notifyHumidity ? .on : .off
         quietHoursCheck.title = settings.text("Godziny ciszy (bez powiadomień)", "Quiet hours (no notifications)")
@@ -745,6 +749,7 @@ final class SettingsWindowController: NSWindowController {
         settings.notifyFinished = notifyFinishedCheck.state == .on
         settings.notifyError = notifyErrorCheck.state == .on
         settings.notifyPaused = notifyPausedCheck.state == .on
+        settings.notifyFinishingSoon = notifyFinishingSoonCheck.state == .on
         settings.notifyLowFilament = notifyLowFilamentCheck.state == .on
         settings.notifyHumidity = notifyHumidityCheck.state == .on
     }

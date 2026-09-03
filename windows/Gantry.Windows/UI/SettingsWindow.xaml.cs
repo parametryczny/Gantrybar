@@ -50,6 +50,7 @@ public partial class SettingsWindow : Window
         ScriptActionsCheckBox.Click += (_, _) => AppSettings.AllowScriptActions = ScriptActionsCheckBox.IsChecked == true;
         AutoUpdateCheckBox.Click += (_, _) => AppSettings.AutoUpdate = AutoUpdateCheckBox.IsChecked == true;
         PrintFinishedCheckBox.Click += (_, _) => AppSettings.NotifyPrintFinished = PrintFinishedCheckBox.IsChecked == true;
+        FinishingSoonCheckBox.Click += (_, _) => AppSettings.NotifyFinishingSoon = FinishingSoonCheckBox.IsChecked == true;
         PrinterErrorCheckBox.Click += (_, _) => AppSettings.NotifyPrinterError = PrinterErrorCheckBox.IsChecked == true;
         PrintPausedCheckBox.Click += (_, _) => AppSettings.NotifyPrintPaused = PrintPausedCheckBox.IsChecked == true;
         LowFilamentCheckBox.Click += (_, _) => AppSettings.NotifyLowFilament = LowFilamentCheckBox.IsChecked == true;
@@ -188,6 +189,8 @@ public partial class SettingsWindow : Window
 
         NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
         PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished");
+        FinishingSoonCheckBox.Content = string.Format(
+            AppSettings.Text("Koniec za {0} minut", "Finishing in {0} minutes"), AppSettings.FinishingSoonMinutes);
         PrinterErrorCheckBox.Content = AppSettings.Text("Błąd drukarki", "Printer error");
         PrintPausedCheckBox.Content = AppSettings.Text("Druk wstrzymany", "Print paused");
         LowFilamentCheckBox.Content = AppSettings.Text("Niski poziom filamentu", "Low filament");
@@ -270,6 +273,7 @@ public partial class SettingsWindow : Window
         ScriptActionsCheckBox.IsChecked = AppSettings.AllowScriptActions;
         AutoUpdateCheckBox.IsChecked = AppSettings.AutoUpdate;
         PrintFinishedCheckBox.IsChecked = AppSettings.NotifyPrintFinished;
+        FinishingSoonCheckBox.IsChecked = AppSettings.NotifyFinishingSoon;
         PrinterErrorCheckBox.IsChecked = AppSettings.NotifyPrinterError;
         PrintPausedCheckBox.IsChecked = AppSettings.NotifyPrintPaused;
         LowFilamentCheckBox.IsChecked = AppSettings.NotifyLowFilament;

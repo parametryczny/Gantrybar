@@ -778,6 +778,8 @@ public sealed class PrinterStore
     }
 
     private readonly Dictionary<string, HashSet<string>> _firedAutomations = new();
+    /// Printers already warned that their job is nearly done, so the alert fires once per print.
+    private readonly HashSet<string> _finishingSoonWarned = new();
 
     // Fires conditional automations once per print; re-arms only at a clear end-of-print state so
     // Bambu's partial reports (which drop the job name) don't retrigger a rule mid-print.
@@ -827,6 +829,17 @@ public sealed class PrinterStore
         }
         if (current.State == PrinterState.Finished && previous?.State != PrinterState.Finished)
             PrintHistory.Record(printer.Serial, printer.Name, current.JobName ?? "");
+        // Heads-up before the end. Armed once per print: it re-arms as soon as the remaining time is
+        // back above the threshold (a new job) or the printer stops printing, so one job cannot nag.
+        int remainingMinutes = current.RemainingMinutes ?? int.MaxValue;
+        if (current.State == PrinterState.Printing && remainingMinutes > 0
+            && remainingMinutes <= AppSettings.FinishingSoonMinutes)
+        {
+            if (AppSettings.NotifyFinishingSoon && _finishingSoonWarned.Add(printer.Serial))
+                Push(string.Format(AppSettings.Text("Koniec za ~{0} min", "Finishing in ~{0} min"), remainingMinutes),
+                     current.JobName ?? AppSettings.Text("Wydruk dobiega końca.", "The print is nearly done."));
+        }
+        else _finishingSoonWarned.Remove(printer.Serial);
         if (AppSettings.NotifyPrintFinished && current.State == PrinterState.Finished && previous?.State != PrinterState.Finished)
             Push(AppSettings.Text("Druk zakończony", "Print finished"),
                 current.JobName ?? AppSettings.Text("Zadanie zostało ukończone.", "The job has completed."));

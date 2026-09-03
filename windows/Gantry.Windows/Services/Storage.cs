@@ -261,6 +261,21 @@ public static class AppSettings
         set => Defaults.SetBool("notifications-print-finished", value);
     }
 
+    /// Heads-up shortly before a job ends, so a long print can be collected without watching the ETA.
+    /// Off by default: on a busy fleet it is one extra alert per job on top of the finished one.
+    public static bool NotifyFinishingSoon
+    {
+        get => Defaults.GetBool("notify-finishing-soon", false);
+        set => Defaults.SetBool("notify-finishing-soon", value);
+    }
+
+    /// Minutes of remaining print time that trigger the heads-up above.
+    public static int FinishingSoonMinutes
+    {
+        get => Defaults.GetInt("notify-finishing-soon-minutes", 10);
+        set => Defaults.SetInt("notify-finishing-soon-minutes", value);
+    }
+
     // Telegram push + bot. Keys shared verbatim with macOS/Linux (see docs/telegram.md).
     public static bool TelegramEnabled
     {

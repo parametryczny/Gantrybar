@@ -743,6 +743,9 @@ final class PrinterStore: ObservableObject {
         return cleared
     }
 
+    /// Printers already warned that their job is nearly done, so the alert fires once per print.
+    private var finishingSoonWarned: Set<String> = []
+
     private func notifyChanges(printer: SavedPrinter, previous: PrinterTelemetry?, current: PrinterTelemetry) {
         let settings = AppSettings.shared
         // One place to fan a notification out to every channel: the native banner and (when enabled)
@@ -757,6 +760,18 @@ final class PrinterStore: ObservableObject {
         if settings.notifyFinished, current.state == .finished, previous?.state != .finished {
             push(title: settings.text("Druk zakończony", "Print finished"),
                  body: current.jobName ?? settings.text("Zadanie zostało ukończone.", "The job has completed."))
+        }
+        // Heads-up before the end. Armed once per print: it re-arms as soon as the remaining time is
+        // back above the threshold (a new job) or the printer stops printing, so one job cannot nag.
+        let remainingMinutes = current.remainingMinutes ?? Int.max
+        if current.state == .printing, remainingMinutes > 0, remainingMinutes <= settings.finishingSoonMinutes {
+            if settings.notifyFinishingSoon, !finishingSoonWarned.contains(printer.serial) {
+                finishingSoonWarned.insert(printer.serial)
+                push(title: String(format: settings.text("Koniec za ~%d min", "Finishing in ~%d min"), remainingMinutes),
+                     body: current.jobName ?? settings.text("Wydruk dobiega końca.", "The print is nearly done."))
+            }
+        } else {
+            finishingSoonWarned.remove(printer.serial)
         }
         if settings.notifyError, current.state == .error, previous?.state != .error || previous?.hmsCodes != current.hmsCodes {
             let description = HMSResolver.shared.description(for: current.hmsCodes, serial: printer.serial, language: settings.language)

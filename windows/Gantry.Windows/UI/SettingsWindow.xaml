@@ -147,6 +147,7 @@
             <Border Background="{DynamicResource SettingsCardBrush}" CornerRadius="16" Padding="16,10" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
                 <StackPanel>
                     <CheckBox x:Name="PrintFinishedCheckBox" Margin="0,7"/>
+                    <CheckBox x:Name="FinishingSoonCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="PrinterErrorCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="PrintPausedCheckBox" Margin="0,7"/>
                     <CheckBox x:Name="LowFilamentCheckBox" Margin="0,7"/>
