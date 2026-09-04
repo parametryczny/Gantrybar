@@ -135,6 +135,8 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Połącz ponownie (wszystkie)", "Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Centrum diagnostyczne…", "Diagnostic Center…"), null,
             (_, _) => new DiagnosticsWindow(_store).Show()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Statystyki floty…", "Fleet statistics…"), null,
+            (_, _) => new FleetStatsWindow(_store).Show()));
         menu.Items.Add(new ToolStripSeparator());
 
         var language = new ToolStripMenuItem(AppSettings.Text("Język: PL", "Language: EN"));

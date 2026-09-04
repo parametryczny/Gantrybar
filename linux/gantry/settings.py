@@ -45,7 +45,8 @@ class SettingsDialog(Gtk.Dialog):
                               "general", "Ogólne" if self.pl else "General")
         self.stack.add_titled(self._page([self._appearance(), self._cards(), self._dock()]),
                               "appearance", "Wygląd" if self.pl else "Appearance")
-        self.stack.add_titled(self._page([self._developer(), self._telegram()]),
+        self.stack.add_titled(self._page([self._developer(), self._telegram(),
+                                          self._web(), self._sync()]),
                               "advanced", "Zaawansowane" if self.pl else "Advanced")
         self.show_all()
         self.release_link.hide()
@@ -82,10 +83,6 @@ class SettingsDialog(Gtk.Dialog):
         return header
 
     def _appearance(self) -> Gtk.Widget:
-        self.language = Gtk.ComboBoxText()
-        self.language.append("pl", "Polski")
-        self.language.append("en", "English")
-        self.language.set_active_id(self.app.language)
         self.theme = Gtk.ComboBoxText()
         self.theme.append("light", self.app.text["light"])
         self.theme.append("dark", self.app.text["dark"])
@@ -98,8 +95,8 @@ class SettingsDialog(Gtk.Dialog):
         self.transparency.connect("changed", self._preview_transparency)
 
         form = Gtk.Grid(column_spacing=14, row_spacing=10)
-        rows = (("Język" if self.pl else "Language", self.language),
-                ("Wygląd" if self.pl else "Appearance", self.theme),
+        # Language lives in Basics on macOS and Windows, so it is not listed here.
+        rows = (("Wygląd" if self.pl else "Appearance", self.theme),
                 ("Przezroczystość" if self.pl else "Transparency", self.transparency))
         for row, (text, widget) in enumerate(rows):
             label = Gtk.Label(label=text, xalign=1)
@@ -123,12 +120,19 @@ class SettingsDialog(Gtk.Dialog):
         return scroll
 
     def _basics(self) -> Gtk.Widget:
+        self.language = Gtk.ComboBoxText()
+        self.language.append("pl", "Polski")
+        self.language.append("en", "English")
+        self.language.set_active_id(self.app.language)
+        language_row = Gtk.Box(spacing=10)
+        language_row.pack_start(Gtk.Label(label="Język" if self.pl else "Language", xalign=0), False, False, 0)
+        language_row.pack_end(self.language, False, False, 0)
         self.autostart = self._check(self.app.text["autostart"], autostart_enabled())
         self.spoolbase = self._check(
             "Spoolbase — magazyn filamentów" if self.pl else "Spoolbase — filament stock",
             bool(self.app.config.data.get("spoolbase_enabled", True)))
         return self._section("PODSTAWY" if self.pl else "BASICS",
-                             [self.autostart, self.spoolbase])
+                             [language_row, self.autostart, self.spoolbase])
 
     def _developer(self) -> Gtk.Widget:
         self.developer = self._check(
@@ -248,6 +252,156 @@ class SettingsDialog(Gtk.Dialog):
         quiet_row.set_sensitive(self.quiet.get_active())
         widgets.extend((separator, self.quiet, quiet_row))
         return self._section("POWIADOMIENIA" if self.pl else "NOTIFICATIONS", widgets)
+
+    def _web(self) -> Gtk.Widget:
+        """Read-only LAN dashboard. Until now the server started from the config key with no visible
+        switch anywhere on Linux, which meant a listening socket the user could not turn off."""
+        self.web_enabled = self._check(
+            "Serwer podglądu (sieć lokalna, tylko odczyt)" if self.pl
+            else "Preview server (local network, read only)",
+            bool(self.app.config.data.get("web_dashboard_enabled", True)))
+        from .webserver import PORT, local_ipv4
+        address = local_ipv4()
+        self.web_address = Gtk.Label(
+            label=f"http://{address}:{PORT}" if address else ("brak adresu w sieci" if self.pl
+                                                              else "no network address"),
+            xalign=0, selectable=True)
+        self.web_address.get_style_context().add_class("settings-version")
+        hint = Gtk.Label(
+            label=("Otwórz na telefonie w tej samej sieci Wi-Fi. Tylko podgląd, bez sterowania."
+                   if self.pl else
+                   "Open on a phone on the same Wi-Fi. View only, no control."),
+            xalign=0, wrap=True)
+        hint.get_style_context().add_class("settings-hint")
+        return self._section("PODGLĄD W PRZEGLĄDARCE" if self.pl else "WEB DASHBOARD",
+                             [self.web_enabled, self.web_address, hint])
+
+    def _sync(self) -> Gtk.Widget:
+        """Pairing for the LAN sync service, which ran on Linux with no way to pair from the UI."""
+        sync = getattr(self.app, "sync_service", None)
+        token = sync.token if sync is not None else "—"
+        from .webserver import PORT, local_ipv4
+        address = local_ipv4()
+
+        token_caption = Gtk.Label(
+            label=("Wspólny token (skopiuj na drugi komputer)" if self.pl
+                   else "Shared token (copy to the other computer)"), xalign=0)
+        token_caption.get_style_context().add_class("settings-hint")
+        token_value = Gtk.Label(label=token, xalign=0, selectable=True)
+        token_value.get_style_context().add_class("settings-version")
+        regen = Gtk.Button(label="Nowy" if self.pl else "New")
+        regen.connect("clicked", self._sync_regenerate)
+        token_row = Gtk.Box(spacing=8)
+        token_row.pack_start(token_value, True, True, 0)
+        token_row.pack_end(regen, False, False, 0)
+
+        address_caption = Gtk.Label(
+            label="Adres tego komputera" if self.pl else "This computer's address", xalign=0)
+        address_caption.get_style_context().add_class("settings-hint")
+        address_value = Gtk.Label(label=f"{address}:{PORT}" if address else "—", xalign=0, selectable=True)
+        address_value.get_style_context().add_class("settings-version")
+
+        self.sync_peer_entry = Gtk.Entry()
+        self.sync_peer_entry.set_placeholder_text(
+            "adres drugiego komputera, np. gantry.local" if self.pl
+            else "other computer address, e.g. gantry.local")
+        add_peer = Gtk.Button(label="Dodaj" if self.pl else "Add")
+        add_peer.connect("clicked", self._sync_add_peer)
+        peer_row = Gtk.Box(spacing=8)
+        peer_row.pack_start(self.sync_peer_entry, True, True, 0)
+        peer_row.pack_end(add_peer, False, False, 0)
+
+        self.sync_token_entry = Gtk.Entry()
+        self.sync_token_entry.set_placeholder_text(
+            "wklej token z drugiego komputera" if self.pl else "paste token from the other computer")
+        set_token = Gtk.Button(label="Ustaw token" if self.pl else "Set token")
+        set_token.connect("clicked", self._sync_set_token)
+        set_row = Gtk.Box(spacing=8)
+        set_row.pack_start(self.sync_token_entry, True, True, 0)
+        set_row.pack_end(set_token, False, False, 0)
+
+        self.sync_peers_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._rebuild_sync_peers()
+
+        sync_now = Gtk.Button(label="Synchronizuj teraz" if self.pl else "Sync now")
+        sync_now.set_halign(Gtk.Align.START)
+        sync_now.connect("clicked", lambda *_: sync.sync_now() if sync is not None else None)
+
+        hint = Gtk.Label(
+            label=("Na drugim komputerze wklej powyższy token, potem dodaj adres tego komputera. "
+                   "Tylko sieć lokalna. Kody dostępu do drukarek nie są przesyłane." if self.pl else
+                   "On the other computer paste this token, then add this computer's address. "
+                   "Local network only. Printer access codes are never sent."),
+            xalign=0, wrap=True)
+        hint.get_style_context().add_class("settings-hint")
+        return self._section("SYNCHRONIZACJA MIĘDZY KOMPUTERAMI" if self.pl else "SYNC BETWEEN COMPUTERS",
+                             [token_caption, token_row, address_caption, address_value,
+                              peer_row, set_row, self.sync_peers_box, sync_now, hint])
+
+    def _rebuild_sync_peers(self) -> None:
+        for child in self.sync_peers_box.get_children():
+            self.sync_peers_box.remove(child)
+        sync = getattr(self.app, "sync_service", None)
+        peers = sync.peers() if sync is not None else []
+        if not peers:
+            empty = Gtk.Label(label="Brak sparowanych komputerów." if self.pl else "No paired computers.",
+                              xalign=0)
+            empty.get_style_context().add_class("settings-hint")
+            self.sync_peers_box.pack_start(empty, False, False, 0)
+            self.sync_peers_box.show_all()
+            return
+        for peer in peers:
+            address = str(peer.get("address", ""))
+            error = peer.get("lastError")
+            last = peer.get("lastSyncAt")
+            if error:
+                status = (f"Błąd: {error}" if self.pl else f"Error: {error}")
+            elif last:
+                status = (f"ostatnio: {str(last)[11:16]}" if self.pl else f"last: {str(last)[11:16]}")
+            else:
+                status = ("jeszcze nie zsynchronizowano" if self.pl else "not synced yet")
+            name = Gtk.Label(label=address, xalign=0)
+            name.get_style_context().add_class("settings-version")
+            note = Gtk.Label(label=status, xalign=0)
+            note.get_style_context().add_class("settings-hint")
+            info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            info.pack_start(name, False, False, 0)
+            info.pack_start(note, False, False, 0)
+            remove = Gtk.Button(label="Usuń" if self.pl else "Remove")
+            remove.connect("clicked", self._sync_remove_peer, address)
+            row = Gtk.Box(spacing=8)
+            row.pack_start(info, True, True, 0)
+            row.pack_end(remove, False, False, 0)
+            self.sync_peers_box.pack_start(row, False, False, 0)
+        self.sync_peers_box.show_all()
+
+    def _sync_regenerate(self, *_args: object) -> None:
+        sync = getattr(self.app, "sync_service", None)
+        if sync is not None:
+            sync.regenerate_token()
+            self._rebuild_sync_peers()
+
+    def _sync_add_peer(self, *_args: object) -> None:
+        sync = getattr(self.app, "sync_service", None)
+        address = self.sync_peer_entry.get_text().strip()
+        if sync is not None and address:
+            sync.add_peer(address)
+            self.sync_peer_entry.set_text("")
+            self._rebuild_sync_peers()
+
+    def _sync_set_token(self, *_args: object) -> None:
+        sync = getattr(self.app, "sync_service", None)
+        token = self.sync_token_entry.get_text().strip()
+        if sync is not None and token:
+            sync.set_token(token)
+            self.sync_token_entry.set_text("")
+            self._rebuild_sync_peers()
+
+    def _sync_remove_peer(self, _button: Gtk.Widget, address: str) -> None:
+        sync = getattr(self.app, "sync_service", None)
+        if sync is not None:
+            sync.remove_peer(address)
+            self._rebuild_sync_peers()
 
     def _telegram(self) -> Gtk.Widget:
         self.telegram_enabled = self._check(
@@ -459,7 +613,8 @@ class SettingsDialog(Gtk.Dialog):
             combo.connect("changed", self._live_changed)
         checks = [self.autostart, self.spoolbase, self.developer, self.allow_scripts,
                   self.spool_grams, self.monochrome, self.quiet, self.auto_update,
-                  self.telegram_enabled, self.dock_enabled, self.dock_only_printing]
+                  self.telegram_enabled, self.dock_enabled, self.dock_only_printing,
+                  self.web_enabled]
         checks.extend(self.card_options.values())
         checks.extend(self.dock_printers.values())
         checks.extend(self.notices.values())
@@ -496,6 +651,7 @@ class SettingsDialog(Gtk.Dialog):
             allow_script_actions=self.allow_scripts.get_active(),
             auto_update_check=self.auto_update.get_active(),
         )
+        self.app.config.data["web_dashboard_enabled"] = self.web_enabled.get_active()
         self.app.config.data["edge-dock-enabled"] = self.dock_enabled.get_active()
         self.app.config.data["edge-dock-edge"] = self.dock_edge.get_active_id() or "right"
         self.app.config.data["edge-dock-only-printing"] = self.dock_only_printing.get_active()
@@ -540,4 +696,12 @@ class SettingsDialog(Gtk.Dialog):
         dock = getattr(self.app, "edge_dock", None)
         if dock is not None:
             dock.refresh()
+        # Starting or stopping the LAN server has to follow the switch immediately: leaving a socket
+        # listening after the user turned it off is exactly the problem this section was added for.
+        server = getattr(self.app, "web_server", None)
+        if server is not None:
+            if self.web_enabled.get_active():
+                server.start()
+            else:
+                server.stop()
         return True

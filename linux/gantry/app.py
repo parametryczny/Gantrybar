@@ -538,6 +538,8 @@ class Gantry:
         reconnect.connect("activate", lambda *_: self.reconnect_all()); menu.append(reconnect)
         diagnostics = Gtk.MenuItem(label="Centrum diagnostyczne…" if self.language == "pl" else "Diagnostic Center…")
         diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
+        stats = Gtk.MenuItem(label="Statystyki floty…" if self.language == "pl" else "Fleet statistics…")
+        stats.connect("activate", lambda *_: self.open_fleet_stats()); menu.append(stats)
         menu.append(Gtk.SeparatorMenuItem())
 
         language = Gtk.MenuItem(label="Język: PL" if self.language == "pl" else "Language: EN")
@@ -780,6 +782,12 @@ class Gantry:
         dialog.connect("response", respond)
         dialog.show_all()
         dialog.present()
+
+    def open_fleet_stats(self) -> None:
+        from .fleetstats import FleetStatsDialog
+        dialog = FleetStatsDialog(self)
+        dialog.run()
+        dialog.destroy()
 
     def open_details(self, serial: str) -> None:
         from .details import DetailPanel
