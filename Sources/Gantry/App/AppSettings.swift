@@ -78,6 +78,10 @@ final class AppSettings: ObservableObject {
     /// Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).
     @Published var cardShowSpoolGrams: Bool { didSet { defaults.set(cardShowSpoolGrams, forKey: "card-show-spool-grams") } }
 
+    /// The small chart chip next to the printer name that opens the detail view. Off by default: the
+    /// ⋯ menu already carries "Details", so the chip is a shortcut, not the only way in.
+    @Published var cardShowDetailsChip: Bool { didSet { defaults.set(cardShowDetailsChip, forKey: "card-show-details-chip") } }
+
     /// Calmer palette for people who find the colours tiring: temperature values stay grey (no
     /// heating/cooling tint) and filament colours are muted toward grey.
     @Published var monochrome: Bool { didSet { defaults.set(monochrome, forKey: "monochrome") } }
@@ -202,6 +206,7 @@ final class AppSettings: ObservableObject {
         cardShowTemperatures = defaults.object(forKey: "card-show-temps") as? Bool ?? true
         cardShowFilaments = defaults.object(forKey: "card-show-filaments") as? Bool ?? true
         cardShowSpoolGrams = defaults.object(forKey: "card-show-spool-grams") as? Bool ?? false
+        cardShowDetailsChip = defaults.object(forKey: "card-show-details-chip") as? Bool ?? false
         monochrome = defaults.object(forKey: "monochrome") as? Bool ?? false
         allowScriptActions = defaults.object(forKey: "allow-script-actions") as? Bool ?? false
         telegramEnabled = defaults.object(forKey: "telegram-enabled") as? Bool ?? false

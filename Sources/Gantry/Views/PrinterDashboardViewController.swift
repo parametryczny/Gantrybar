@@ -886,6 +886,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     private let manufacturerLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
     private let stateDot = NSImageView()
+    /// The chart shortcut next to the name; hidden unless Settings turns it on.
+    private let detailsChip = NSView()
     private let jobStateDot = NSView()
     private let jobLabel = MarqueeLabel()
     private let jobSeparator = NSTextField(labelWithString: "·")
@@ -1068,7 +1070,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         // A small "bento" pill next to the name opens the detail view directly (also in the ⋯ menu).
         // Quiet, secondary chip — a thin outline instead of a loud filled blue pill, so a wall of
         // cards doesn't read as a wall of buttons.
-        let detailsChip = NSView()
+        let detailsChip = self.detailsChip
         detailsChip.wantsLayer = true
         detailsChip.layer?.cornerRadius = 10
         detailsChip.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.065).cgColor
@@ -1115,7 +1117,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         jobLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         jobLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         progress.heightAnchor.constraint(equalToConstant: 8).isActive = true
-        percentLabel.font = .monospacedDigitSystemFont(ofSize: 22, weight: .semibold)
+        // Sized for the status line now, not for its own row.
+        percentLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .bold)
         percentLabel.alignment = .left
         // Hug the content instead of a fixed 46 px that clipped "100%".
         percentLabel.setContentHuggingPriority(.required, for: .horizontal)
@@ -1129,17 +1132,21 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         statusLabel.setContentHuggingPriority(.required, for: .horizontal)
         let statusSpacer = NSView()
         statusSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let statusRow = NSStackView(views: [jobStateDot, statusLabel, jobSeparator, jobLabel, statusSpacer])
+        // The percent rides the status line, right-aligned. It used to own a whole row at 22 pt, which
+        // cost about 46 points per card row for one number that fits here.
+        let statusRow = NSStackView(views: [jobStateDot, statusLabel, jobSeparator, jobLabel,
+                                            statusSpacer, percentLabel])
         statusRow.orientation = .horizontal
         statusRow.alignment = .centerY
         statusRow.spacing = 5
 
-        // Layers ride the progress line next to ETA (there was dead space there) so the status line can
-        // hand its full width to the file name instead of truncating it.
-        [percentLabel, etaMetric, layerMetric, NSView()].forEach { progressSummary.addArrangedSubview($0) }
+        // ETA and layers sit beside the bar rather than above it, so the whole progress block is two
+        // lines instead of three.
+        progress.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        [progress, etaMetric, layerMetric].forEach { progressSummary.addArrangedSubview($0) }
         progressSummary.orientation = .horizontal
         progressSummary.alignment = .centerY
-        progressSummary.spacing = 7
+        progressSummary.spacing = 8
         // First temperature row: single nozzle → [Dysza, Stół, Komora?]; dual nozzle → [L, P].
         nozzleRow.orientation = .horizontal
         nozzleRow.alignment = .centerY
@@ -1163,7 +1170,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         let flexibleJobSpace = NSView()
         flexibleJobSpace.setContentHuggingPriority(.defaultLow, for: .vertical)
         flexibleJobSpace.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        let jobStack = NSStackView(views: [header, statusRow, flexibleJobSpace, progressSummary, progress])
+        let jobStack = NSStackView(views: [header, statusRow, flexibleJobSpace, progressSummary])
         jobStack.orientation = .vertical
         jobStack.alignment = .leading
         jobStack.spacing = 1
@@ -1176,8 +1183,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             jobStack.bottomAnchor.constraint(equalTo: jobSurface.bottomAnchor, constant: -2),
             header.widthAnchor.constraint(equalTo: jobStack.widthAnchor),
             statusRow.widthAnchor.constraint(equalTo: jobStack.widthAnchor),
-            progressSummary.widthAnchor.constraint(equalTo: jobStack.widthAnchor),
-            progress.widthAnchor.constraint(equalTo: jobStack.widthAnchor)
+            progressSummary.widthAnchor.constraint(equalTo: jobStack.widthAnchor)
         ])
 
         let stack = NSStackView(views: [jobSurface, tempDivider, tempBento, amsDivider, filamentDock])
@@ -1605,6 +1611,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         progress.isHidden = !settings.cardShowProgress
         tempBento.isHidden = !settings.cardShowTemperatures
         filamentDock.isHidden = groups.isEmpty || !settings.cardShowFilaments
+        detailsChip.isHidden = !settings.cardShowDetailsChip
         // A section rule only shows when its section is visible (no orphan lines).
         tempDivider.isHidden = tempBento.isHidden
         amsDivider.isHidden = filamentDock.isHidden
@@ -1968,7 +1975,7 @@ private final class TemperatureBentoView: NSView {
         // Flat prototype: no box around temperatures (the zone separators still read the columns).
         layer?.masksToBounds = true
         layer?.backgroundColor = NSColor.clear.cgColor
-        heightAnchor.constraint(equalToConstant: 34).isActive = true
+        heightAnchor.constraint(equalToConstant: 22).isActive = true
 
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -2088,18 +2095,20 @@ private final class ThermalZoneView: NSView {
         values.alignment = .firstBaseline
         values.spacing = 3
 
-        labelField.translatesAutoresizingMaskIntoConstraints = false
-        values.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(labelField)
-        addSubview(values)
+        // Label and value share one baseline instead of stacking. Two lines per reading cost 12 points
+        // a card row for a caption that reads just as well beside the number.
+        labelField.setContentHuggingPriority(.required, for: .horizontal)
+        labelField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let line = NSStackView(views: [labelField, values])
+        line.orientation = .horizontal
+        line.alignment = .firstBaseline
+        line.spacing = 5
+        line.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(line)
         NSLayoutConstraint.activate([
-            labelField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            labelField.topAnchor.constraint(equalTo: topAnchor, constant: 3),
-            labelField.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
-            values.centerXAnchor.constraint(equalTo: centerXAnchor),
-            values.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 5),
-            values.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
-            values.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4)
+            line.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            line.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            line.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
     }
 

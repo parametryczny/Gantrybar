@@ -1,0 +1,232 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Skrócenie karty</title>
+<style>
+  :root{
+    --bg:#0C0D0E; --card:#151719; --line:rgba(255,255,255,.09);
+    --tx:#F2F3F1; --sec:#A7AAA6; --mut:#6D716E; --metric:#D4D7D3;
+    --printing:#FF6857; --chamber:#BBA5EF;
+    font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:#08090A;color:var(--tx);padding:22px 60px 22px 22px}
+  h2{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin-bottom:10px}
+  .row{display:flex;flex-direction:column;gap:26px;align-items:flex-start}
+  .col{width:430px}
+  .tag{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5}
+  .tag b{color:var(--tx)}
+  .save{color:#8FD69B}
+
+  /* ---- karta ---- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 10px;
+        position:relative}
+  .measure{position:absolute;right:-52px;top:0;bottom:0;width:38px;
+           border-left:1px dashed rgba(255,255,255,.18);display:flex;align-items:center;
+           justify-content:center;font-size:10px;color:var(--mut)}
+  .job{padding:2px}
+  .hdr{display:flex;align-items:center;gap:7px;height:24px}
+  .pico{opacity:.75}
+  .name{font-size:13px;font-weight:700}
+  .badge{font-size:8.5px;font-weight:700;color:var(--mut);border:1px solid var(--line);
+         border-radius:5px;padding:1px 4px}
+  .chip{width:20px;height:20px;border-radius:10px;background:rgba(255,255,255,.065);
+        display:grid;place-items:center;font-size:10px;color:var(--sec)}
+  .spacer{flex:1}
+  .dots{color:var(--sec);font-size:14px;letter-spacing:1px}
+
+  .status{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;height:14px}
+  .dot{width:6px;height:6px;border-radius:99px;background:var(--printing)}
+  .sep{color:rgba(255,255,255,.25)}
+  .file{color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .sum{display:flex;align-items:baseline;gap:7px;height:28px}
+  .pct{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .meta{font-size:10px;color:var(--sec);font-variant-numeric:tabular-nums}
+  .bar{display:flex;gap:2px;height:8px;margin-top:1px}
+  .bar i{flex:1;height:8px;border-radius:2px;background:rgba(255,255,255,.10)}
+  .bar i.on{background:var(--metric)}
+
+  .rule{height:1px;background:var(--line);margin:6px 0}
+
+  /* temperatury: teraz dwie linie */
+  .temps{display:flex;height:34px}
+  .t{flex:1;position:relative}
+  .t .lab{position:absolute;left:6px;top:3px;font-size:8px;letter-spacing:.6px;color:var(--mut);font-weight:700}
+  .t .val{position:absolute;left:0;right:0;top:14px;text-align:center;
+          font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+  .t .tgt{font-size:7px;color:rgba(255,255,255,.28);margin-left:3px}
+
+  /* temperatury: jedna linia */
+  .temps1{display:flex;height:22px;align-items:center}
+  .t1{flex:1;display:flex;align-items:baseline;gap:5px;padding-left:6px}
+  .t1 .lab{font-size:8px;letter-spacing:.6px;color:var(--mut);font-weight:700}
+  .t1 .val{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* filamenty */
+  .ams{display:flex;gap:10px;height:55px}
+  .grp{flex:1}
+  .ams .head{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--sec);height:14px}
+  .slots{display:flex;gap:5px;margin-top:3px}
+  .slot{flex:1;text-align:center}
+  .pill{height:18px;border-radius:9px;border:1px solid rgba(255,255,255,.14);
+        display:grid;place-items:center;font-size:9px;font-weight:700}
+  .slot small{display:block;font-size:8px;color:var(--mut);margin-top:2px}
+  .vline{width:1px;background:var(--line)}
+</style>
+
+<h2>Teraz · wariant A · wariant B</h2>
+
+<div class="row">
+
+  <!-- ================= TERAZ ================= -->
+  <div class="col">
+    <div class="card">
+      <div class="measure">209</div>
+      <div class="job">
+        <div class="hdr">
+          <span class="pico">🖨</span><span class="name">X1</span>
+          <span class="badge">MQTT</span><span class="chip">📈</span>
+          <span class="spacer"></span><span class="dots">⋯</span>
+        </div>
+        <div class="status"><span class="dot"></span>Drukuje<span class="sep">·</span>
+          <span class="file">SPIRO 125 MM</span></div>
+        <div class="sum"><span class="pct">98%</span>
+          <span class="meta">⏱ 6m · 13:58</span><span class="meta">◱ 103/105</span></div>
+        <div class="bar">
+          <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+          <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+          <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i>
+        </div>
+      </div>
+      <div class="rule"></div>
+      <div class="temps">
+        <div class="t"><span class="lab">DYSZA</span><span class="val">255°<span class="tgt">/255°</span></span></div>
+        <div class="t"><span class="lab">STÓŁ</span><span class="val">65°<span class="tgt">/65°</span></span></div>
+        <div class="t"><span class="lab">KOMORA</span><span class="val" style="color:var(--chamber)">50°<span class="tgt">/—</span></span></div>
+      </div>
+      <div class="rule"></div>
+      <div class="ams">
+        <div class="grp">
+          <div class="head">AMS <span class="sep">·</span> 🌡 33° <span class="sep">·</span> 💧 34%</div>
+          <div class="slots">
+            <div class="slot"><div class="pill" style="border-color:#fff">0%</div><small>PETG</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A2 —</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A3 —</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A4 —</small></div>
+          </div>
+        </div>
+        <div class="vline"></div>
+        <div class="grp" style="max-width:100px">
+          <div class="head">EXT</div>
+          <div class="slots"><div class="slot"><div class="pill" style="background:#2E3B1E">0%</div><small>TPU</small></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="tag"><b>Teraz.</b> Status, procent i pasek to trzy osobne wiersze.
+      Etykieta temperatury stoi nad wartością, więc każdy odczyt zajmuje dwie linie.</div>
+  </div>
+
+  <!-- ================= WARIANT A ================= -->
+  <div class="col">
+    <div class="card">
+      <div class="measure">~185</div>
+      <div class="job">
+        <div class="hdr">
+          <span class="pico">🖨</span><span class="name">X1</span>
+          <span class="badge">MQTT</span><span class="chip">📈</span>
+          <span class="spacer"></span><span class="dots">⋯</span>
+        </div>
+        <div class="status"><span class="dot"></span>Drukuje<span class="sep">·</span>
+          <span class="file">SPIRO 125 MM</span></div>
+        <div class="sum" style="height:24px">
+          <span class="pct" style="font-size:18px">98%</span>
+          <span class="meta">⏱ 6m · 13:58</span><span class="meta">◱ 103/105</span></div>
+        <div class="bar">
+          <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+          <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+          <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i>
+        </div>
+      </div>
+      <div class="rule"></div>
+      <div class="temps1">
+        <div class="t1"><span class="lab">DYSZA</span><span class="val">255°<span class="tgt">/255°</span></span></div>
+        <div class="t1"><span class="lab">STÓŁ</span><span class="val">65°<span class="tgt">/65°</span></span></div>
+        <div class="t1"><span class="lab">KOM.</span><span class="val" style="color:var(--chamber)">50°</span></div>
+      </div>
+      <div class="rule"></div>
+      <div class="ams">
+        <div class="grp">
+          <div class="head">AMS <span class="sep">·</span> 🌡 33° <span class="sep">·</span> 💧 34%</div>
+          <div class="slots">
+            <div class="slot"><div class="pill" style="border-color:#fff">0%</div><small>PETG</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A2 —</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A3 —</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A4 —</small></div>
+          </div>
+        </div>
+        <div class="vline"></div>
+        <div class="grp" style="max-width:100px">
+          <div class="head">EXT</div>
+          <div class="slots"><div class="slot"><div class="pill" style="background:#2E3B1E">0%</div><small>TPU</small></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="tag"><b>Wariant A, ostrożny.</b> Temperatury w jednej linii, procent zmniejszony
+      z 22 do 18 punktów. Układ zostaje ten sam, tylko ciaśniejszy.
+      <span class="save">Około 24 punkty na rząd, 72 w oknie.</span></div>
+  </div>
+
+  <!-- ================= WARIANT B ================= -->
+  <div class="col">
+    <div class="card">
+      <div class="measure">~163</div>
+      <div class="job">
+        <div class="hdr">
+          <span class="pico">🖨</span><span class="name">X1</span>
+          <span class="badge">MQTT</span><span class="chip">📈</span>
+          <span class="spacer"></span><span class="dots">⋯</span>
+        </div>
+        <div class="status"><span class="dot"></span>Drukuje<span class="sep">·</span>
+          <span class="file">SPIRO 125 MM</span>
+          <span class="spacer"></span>
+          <span style="font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">98%</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+          <div class="bar" style="flex:1;margin:0">
+            <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+            <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+            <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i>
+          </div>
+          <span class="meta" style="white-space:nowrap">⏱ 6m · 13:58 · 103/105</span>
+        </div>
+      </div>
+      <div class="rule"></div>
+      <div class="temps1">
+        <div class="t1"><span class="lab">DYSZA</span><span class="val">255°<span class="tgt">/255°</span></span></div>
+        <div class="t1"><span class="lab">STÓŁ</span><span class="val">65°<span class="tgt">/65°</span></span></div>
+        <div class="t1"><span class="lab">KOM.</span><span class="val" style="color:var(--chamber)">50°</span></div>
+      </div>
+      <div class="rule"></div>
+      <div class="ams">
+        <div class="grp">
+          <div class="head">AMS <span class="sep">·</span> 🌡 33° <span class="sep">·</span> 💧 34%</div>
+          <div class="slots">
+            <div class="slot"><div class="pill" style="border-color:#fff">0%</div><small>PETG</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A2 —</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A3 —</small></div>
+            <div class="slot"><div class="pill" style="background:rgba(255,255,255,.05)"></div><small>A4 —</small></div>
+          </div>
+        </div>
+        <div class="vline"></div>
+        <div class="grp" style="max-width:100px">
+          <div class="head">EXT</div>
+          <div class="slots"><div class="slot"><div class="pill" style="background:#2E3B1E">0%</div><small>TPU</small></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="tag"><b>Wariant B, mocniejszy.</b> Procent wchodzi do linii statusu, a czas i warstwy
+      stają obok paska. Cały wiersz z wielkim procentem znika.
+      <span class="save">Około 46 punktów na rząd, 138 w oknie.</span>
+      <br><br>Koszt: procent przestaje być pierwszą rzeczą, którą widać z daleka.</div>
+  </div>
+</div>

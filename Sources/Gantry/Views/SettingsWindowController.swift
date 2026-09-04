@@ -92,6 +92,7 @@ final class SettingsWindowController: NSWindowController {
     private lazy var cardTempsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardFilamentsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardSpoolGramsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
+    private lazy var cardDetailsChipRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
 
     private let dockGroupLabel = NSTextField(labelWithString: "")
     private lazy var dockEnableRow = SettingsToggleRow(target: self, action: #selector(dockEnableToggled))
@@ -436,7 +437,7 @@ final class SettingsWindowController: NSWindowController {
         return [
             makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
             makeGroup(cardsGroupLabel, [cardFileNameRow, cardProgressRow, cardTempsRow,
-                                        cardFilamentsRow, cardSpoolGramsRow]),
+                                        cardFilamentsRow, cardSpoolGramsRow, cardDetailsChipRow]),
             dockGroup
         ]
     }
@@ -650,6 +651,9 @@ final class SettingsWindowController: NSWindowController {
         cardSpoolGramsRow.titleLabel.stringValue = settings.t("Grams on spool")
         cardSpoolGramsRow.setSubtitle("AMS NFC / Spoolbase")
         cardSpoolGramsRow.isOn = settings.cardShowSpoolGrams
+        cardDetailsChipRow.titleLabel.stringValue = settings.t("Details chip on the card")
+        cardDetailsChipRow.setSubtitle(settings.t("Shortcut to the detail view; the ⋯ menu always has it"))
+        cardDetailsChipRow.isOn = settings.cardShowDetailsChip
 
         dockGroupLabel.stringValue = settings.t("EDGE DOCK")
         dockEnableRow.titleLabel.stringValue = settings.t("Show the strip on top")
@@ -830,6 +834,7 @@ final class SettingsWindowController: NSWindowController {
         settings.cardShowTemperatures = cardTempsRow.isOn
         settings.cardShowFilaments = cardFilamentsRow.isOn
         settings.cardShowSpoolGrams = cardSpoolGramsRow.isOn
+        settings.cardShowDetailsChip = cardDetailsChipRow.isOn
         settings.monochrome = monochromeRow.isOn
     }
 
