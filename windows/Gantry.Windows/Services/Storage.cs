@@ -391,11 +391,6 @@ public static class AppSettings
     /// form new code should use; <see cref="Text"/> below stays until every call site is migrated.</summary>
     public static string T(string english) => Translations.Text(english, Language);
 
-    public static string Text(string polish, string english)
-        // Legacy form: the Polish literal is only correct for Polish, so any other language goes
-        // through the catalog, which for English simply returns the key.
-        => Polish ? polish : Translations.Text(english, Language);
-
     /// First launch: use the OS language when a catalog for it exists, else English.
     private static string DefaultLanguage()
     {

@@ -14,7 +14,8 @@ gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
-from .app import Gantry, PrinterCard, TEXT
+from . import i18n
+from .app import Gantry, PrinterCard
 from .core import Printer, PrinterKind, PrinterState, Telemetry
 from .http_clients import HttpConnection
 from .csvimport import parse_printer_csv, template_csv
@@ -176,7 +177,8 @@ class KioskGantry(Gantry):
     def __init__(self) -> None:
         self.config, self.secrets = Config(), SecretStore()
         self.config.data["theme"] = "dark"
-        self.language = str(self.config.data.get("language", "pl")); self.text = TEXT.get(self.language, TEXT["pl"])
+        self.language = str(self.config.data.get("language", "pl"))
+        i18n.set_language(self.language)
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
         self.connections: dict[str, MqttConnection | HttpConnection] = {}

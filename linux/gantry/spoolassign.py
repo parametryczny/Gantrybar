@@ -147,9 +147,8 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         percent = store.percent(assigned)
         info = Gtk.Label(xalign=0)
         info.set_markup(
-            (f"Przypisano: <b>{assigned.get('id')}</b> ({_filament_label(app, assigned.get('filamentDefinitionID'))})"
-             if pl else
-             f"Assigned: <b>{assigned.get('id')}</b> ({_filament_label(app, assigned.get('filamentDefinitionID'))})"))
+            i18n.t("Assigned: <b>{0}</b> ({1})").format(
+                assigned.get("id"), _filament_label(app, assigned.get("filamentDefinitionID"))))
         content.pack_start(info, False, False, 0)
 
         grams_row = Gtk.Box(spacing=8)
@@ -196,8 +195,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         def do_reset(_b: Gtk.Button) -> None:
             if not _confirm(
                     dialog,i18n.t("Reset roll?"),
-                    (f"{assigned.get('id')} · ustaw pełny stan {int(nominal)} g."
-                     if pl else f"{assigned.get('id')} · set a full {int(nominal)} g.")):
+                    i18n.t("{0} · set a full {1} g.").format(assigned.get("id"), int(nominal))):
                 return
             store.reset_to_full(assigned["id"])
             spin.set_value(nominal)
@@ -285,8 +283,8 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
                     if old_location.get("printerSerial") is not None:
                         if not _confirm(
                                 dialog,i18n.t("Move roll?"),
-                                (f"{spool.get('id')} jest teraz: {_location_label(app, old_location)}"
-                                 if pl else f"{spool.get('id')} is currently at {_location_label(app, old_location)}")):
+                                i18n.t("{0} is currently at {1}").format(
+                                    spool.get("id"), _location_label(app, old_location))):
                             return
                     store.assign(spool["id"], location)
             elif choice.startswith("def:"):

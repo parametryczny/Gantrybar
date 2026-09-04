@@ -45,6 +45,37 @@ def dedent_block(text: str) -> str:
     return "\n".join(line[cut:] if line.strip() else "" for line in lines)
 
 
+# Some keys never appear inside a lookup call: they sit in a table (printer stages, card titles,
+# notification labels) that is indexed at runtime and passed to the lookup as a variable. A key that
+# appears verbatim anywhere in the sources therefore counts as used.
+#
+# This is a plain text search rather than a literal parser on purpose: matching quotes across a whole
+# file goes wrong on docstrings and multi-line literals, and a mis-paired quote silently hides every
+# key after it.
+def sources_blob() -> str:
+    parts: list[str] = []
+    for folder, glob in (("Sources/Gantry", "*.swift"), ("windows/Gantry.Windows", "*.cs"),
+                         ("linux/gantry", "*.py")):
+        for path in (ROOT / folder).rglob(glob):
+            if any(part in SKIP_PARTS for part in path.parts):
+                continue
+            parts.append(path.read_text(encoding="utf-8", errors="ignore"))
+    return "\n".join(parts)
+
+
+def mentioned_keys(catalog: set[str], blob: str) -> set[str]:
+    found = set()
+    for key in catalog:
+        if key in blob:
+            found.add(key)
+            continue
+        # A key carrying a newline or a quote appears escaped in the source.
+        escaped = key.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+        if escaped in blob:
+            found.add(key)
+    return found
+
+
 def used_keys() -> set[str]:
     keys: set[str] = set()
     for folder, glob, pattern in CALL_PATTERNS:
@@ -59,9 +90,8 @@ def used_keys() -> set[str]:
 
 
 def main() -> int:
-    # Until Windows and Linux call sites are migrated too, their pairs still live in the catalog with
-    # no t() call pointing at them. Dead entries are therefore a warning by default and only fail the
-    # build under --strict, which CI turns on once every platform is migrated.
+    # CI runs with --strict, which fails on a catalog entry nothing references any more. Without the
+    # flag those are only a warning, which is handy while a migration is half done.
     strict = "--strict" in sys.argv
     catalogs = sorted(CATALOG_DIR.glob("*.json"))
     if not catalogs:
@@ -69,12 +99,19 @@ def main() -> int:
         return 1
 
     used = used_keys()
+    blob = sources_blob()
     problems = 0
     for path in catalogs:
         entries = json.loads(path.read_text(encoding="utf-8"))
         translatable = {k for k in entries if not k.startswith("@")}
+        referenced = used | mentioned_keys(translatable, blob)
         missing = sorted(used - translatable)
-        dead = sorted(translatable - used)
+        # A key that is a strict prefix of another key and ends with a space is an extraction
+        # artifact: the substring search above would always call it used, so flag it separately.
+        truncated = sorted(k for k in translatable
+                           if k.endswith(" ") and k not in used
+                           and any(o != k and o.startswith(k) for o in translatable))
+        dead = sorted(translatable - referenced)
         if "@name" not in entries:
             print(f"{path.name}: brak klucza @name, jezyk nie pokaze sie z nazwa w ustawieniach",
                   file=sys.stderr)
@@ -83,6 +120,11 @@ def main() -> int:
             problems += len(missing)
             print(f"{path.name}: {len(missing)} kluczy uzywanych w kodzie bez wpisu:", file=sys.stderr)
             for key in missing[:20]:
+                print(f"    {key!r}", file=sys.stderr)
+        if truncated:
+            problems += len(truncated)
+            print(f"{path.name}: {len(truncated)} kluczy urwanych w polowie:", file=sys.stderr)
+            for key in truncated[:10]:
                 print(f"    {key!r}", file=sys.stderr)
         if dead:
             if strict:

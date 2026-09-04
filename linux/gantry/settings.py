@@ -14,9 +14,12 @@ from . import i18n
 from .storage import autostart_enabled, set_autostart
 
 
+NOTICE_LABELS = {"finished_notice": "Print finished", "error_notice": "Printer errors", "paused_notice": "Print paused", "low_notice": "Low filament", "finishing_soon_notice": "Print finishing in 10 minutes", "humidity_notice": "High AMS humidity", "offline_notice": "Connection lost"}
+
+
 class SettingsDialog(Gtk.Dialog):
     def __init__(self, app: Any) -> None:
-        super().__init__(title=app.text["settings"], transient_for=app.window, modal=True)
+        super().__init__(title=i18n.t("Settings"), transient_for=app.window, modal=True)
         self.app = app
         self.pl = app.language == "pl"
         self._ready = False
@@ -85,8 +88,8 @@ class SettingsDialog(Gtk.Dialog):
 
     def _appearance(self) -> Gtk.Widget:
         self.theme = Gtk.ComboBoxText()
-        self.theme.append("light", self.app.text["light"])
-        self.theme.append("dark", self.app.text["dark"])
+        self.theme.append("light", i18n.t("Light"))
+        self.theme.append("dark", i18n.t("Dark"))
         self.theme.set_active_id(str(self.app.config.data.get("theme", "dark")))
         self.transparency = Gtk.ComboBoxText()
         self.transparency.append("low",i18n.t("Low"))
@@ -129,7 +132,7 @@ class SettingsDialog(Gtk.Dialog):
         language_row = Gtk.Box(spacing=10)
         language_row.pack_start(Gtk.Label(label=i18n.t("Language"), xalign=0), False, False, 0)
         language_row.pack_end(self.language, False, False, 0)
-        self.autostart = self._check(self.app.text["autostart"], autostart_enabled())
+        self.autostart = self._check(i18n.t("Start after login"), autostart_enabled())
         self.spoolbase = self._check(
 i18n.t("Spoolbase — filament stock"),
             bool(self.app.config.data.get("spoolbase_enabled", True)))
@@ -142,9 +145,7 @@ i18n.t("Spoolbase — filament stock"),
         self.allow_scripts = self._check(i18n.t("Allow automations to run scripts and custom commands"),
             bool(self.app.config.data.get("allow_script_actions", False)))
         hint = Gtk.Label(
-            label=("Wyłączone domyślnie ze względów bezpieczeństwa. Każda reguła nadal pyta o zgodę "
-                   "przy pierwszym uruchomieniu." if self.pl else
-                   "Off by default for safety. Every rule still asks for confirmation the first time it runs."),
+            label=i18n.t("Off by default for safety. Every rule still asks for confirmation the first time it runs."),
             xalign=0, wrap=True)
         hint.set_margin_start(24)
         hint.get_style_context().add_class("settings-hint")
@@ -199,7 +200,7 @@ i18n.t("Only printing"),
             ("card_show_temperatures", "Temperatury", "Temperatures"),
             ("card_show_filaments", "Filamenty / AMS", "Filaments / AMS"),
         ):
-            check = self._check(polish if self.pl else english,
+            check = self._check(i18n.t(english),
                                 bool(self.app.config.data.get(key, True)))
             self.card_options[key] = check
             widgets.append(check)
@@ -221,7 +222,7 @@ i18n.t("Monochrome colours"),
                                 ("finishing_soon_notice", "notify_finishing_soon"),
                                 ("low_notice", "notify_low_filament"),
                                 ("humidity_notice", "notify_humidity")):
-            check = self._check(self.app.text[key], bool(self.app.config.data.get(config_key)))
+            check = self._check(i18n.t(NOTICE_LABELS[key]), bool(self.app.config.data.get(config_key)))
             self.notices[config_key] = check
             widgets.append(check)
         separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
@@ -474,7 +475,7 @@ i18n.t("Open release"))
     def _about(self) -> Gtk.Widget:
         wrapper = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         version = Gtk.Label(
-            label=f"Gantry • {self.app.text['version']} {__version__} • Secret Service", xalign=0)
+            label=f"Gantry • {i18n.t('Version')} {__version__} • Secret Service", xalign=0)
         version.get_style_context().add_class("settings-version")
         support = Gtk.LinkButton.new_with_label(
             "https://buycoffee.to/parametryczny",
@@ -532,16 +533,14 @@ i18n.t("☕  Support the project"))
         if is_newer(release.version, __version__):
             self._available_release = release
             self.update_status.set_text(
-                f"Dostępna wersja {release.version}." if self.pl else
-                f"Version {release.version} is available.")
+                i18n.t("Version {0} is available.").format(release.version))
             self.release_link.set_uri(release.deb_url or release.page_url)
             self.release_link.show()
             if release.deb_url:
                 self.install_update.show()
         else:
             self.update_status.set_text(
-                f"Masz najnowszą wersję ({__version__})." if self.pl else
-                f"You have the latest version ({__version__}).")
+                i18n.t("You have the latest version ({0}).").format(__version__))
         return False
 
     def _install_update(self, *_args: object) -> None:
@@ -641,8 +640,6 @@ i18n.t("☕  Support the project"))
         menu_changed = language_changed or before.get("spoolbase_enabled") != self.app.config.data.get("spoolbase_enabled")
         if language_changed:
             self.app.language = str(self.app.config.data.get("language", "pl"))
-            from .app import TEXT
-            self.app.text = TEXT.get(self.app.language, TEXT["pl"])
         if appearance_changed:
             self.app.apply_theme(animate=True)
         if card_changed or language_changed:

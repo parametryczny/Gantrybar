@@ -637,8 +637,8 @@ class CatalogDialog(Gtk.Dialog):
         content.pack_start(scroll, True, True, 0)
 
         self.add_button(i18n.t("Add manually…"), 100)
-        self.add_button(parent.app.text.get("cancel", "Anuluj"), Gtk.ResponseType.CANCEL)
-        add_btn = self.add_button(parent.app.text.get("add", "Dodaj"), Gtk.ResponseType.OK)
+        self.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+        add_btn = self.add_button(i18n.t("Add printer"), Gtk.ResponseType.OK)
         add_btn.get_style_context().add_class("suggested-action")
         self.connect("response", self._on_response)
         self.show_all()
@@ -779,8 +779,8 @@ class EditorDialog(Gtk.Dialog):
             self.weight.set_value(1000)
             content.pack_start(self.weight, False, False, 0)
 
-        self.add_button(parent.app.text.get("cancel", "Anuluj"), Gtk.ResponseType.CANCEL)
-        save = self.add_button(parent.app.text.get("save", "Zapisz"), Gtk.ResponseType.OK)
+        self.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+        save = self.add_button(i18n.t("Save"), Gtk.ResponseType.OK)
         save.get_style_context().add_class("suggested-action")
         self.connect("response", self._on_response)
         self.show_all()

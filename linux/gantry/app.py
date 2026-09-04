@@ -29,7 +29,7 @@ except (ValueError, ImportError):
     AppIndicator = None
 
 from . import __version__
-from .core import Printer, PrinterKind, PrinterState, Telemetry, expand_scan_targets
+from .core import STATE_LABELS, Printer, PrinterKind, PrinterState, Telemetry, expand_scan_targets
 from .csvimport import parse_printer_csv
 from .discovery import scan
 from .http_clients import HttpConnection
@@ -40,66 +40,16 @@ from .storage import Config, SecretStore, SecretStoreError, autostart_enabled, s
 from .studio import devices as studio_devices
 
 
-TEXT = {
-    "pl": {
-        "printers": "drukarek", "online": "online", "collapse": "Zwiń", "expand": "Rozwiń",
-        "add": "Dodaj drukarkę", "scan": "Skanuj sieć", "settings": "Ustawienia",
-        "quit": "Zakończ", "close": "Zamknij", "save": "Zapisz", "cancel": "Anuluj",
-        "edit": "Edytuj drukarkę", "remove": "Usuń drukarkę", "import": "Importuj z Bambu Studio",
-        "name": "Nazwa", "host": "Adres IP / host", "serial": "Numer seryjny",
-        "code": "Kod dostępu / klucz API", "port": "Port", "found": "Wykryte drukarki",
-        "kind": "Typ drukarki", "api_optional": "Klucz API (opcjonalny)",
-        "searching": "Szukam drukarek…", "none": "Nie znaleziono drukarek",
-        "language": "Język", "theme": "Wygląd", "dark": "Ciemny", "light": "Jasny",
-        "targets": "Dodatkowe adresy VPN", "targets_hint": "IP, zakres a-b lub CIDR /n (maks. 1024 adresy)",
-        "autostart": "Uruchamiaj po zalogowaniu", "notifications": "Powiadomienia",
-        "finished_notice": "Zakończenie druku", "error_notice": "Błędy drukarki",
-        "paused_notice": "Wstrzymanie druku", "low_notice": "Niski poziom filamentu",
-        "finishing_soon_notice": "Koniec druku za 10 minut",
-        "humidity_notice": "Wysoka wilgotność AMS", "quiet": "Godziny ciszy",
-        "offline_notice": "Utrata połączenia", "printing": "Drukowanie", "ready": "Gotowa",
-        "paused": "Wstrzymana", "finished": "Zakończono", "error": "Błąd", "offline": "Offline",
-        "invalid": "Sprawdź wymagane pola i zakres portu.", "secret_error": "Nie udało się zapisać kodu w systemowym pęku kluczy.",
-        "studio_missing": "Nie znaleziono konfiguracji Bambu Studio albo zapisanych drukarek.",
-        "certificate": "Certyfikat drukarki zmienił się. Połączenie zostało zablokowane.",
-        "rejected": "Drukarka odrzuciła kod dostępu.", "version": "Wersja",
-        "import_consent": "Pozwól odczytać konfigurację Bambu Studio",
-        "import_hint": "Przyspiesza dodawanie, ale odczytuje lokalny plik slicera z kodami dostępu. Nic nie jest czytane, dopóki tego nie zaznaczysz.",
-    },
-    "en": {
-        "printers": "printers", "online": "online", "collapse": "Collapse", "expand": "Expand",
-        "add": "Add printer", "scan": "Scan network", "settings": "Settings",
-        "quit": "Quit", "close": "Close", "save": "Save", "cancel": "Cancel",
-        "edit": "Edit printer", "remove": "Remove printer", "import": "Import from Bambu Studio",
-        "name": "Name", "host": "IP address / host", "serial": "Serial number",
-        "code": "Access code / API key", "port": "Port", "found": "Discovered printers",
-        "kind": "Printer type", "api_optional": "API key (optional)",
-        "searching": "Scanning for printers…", "none": "No printers found",
-        "language": "Language", "theme": "Appearance", "dark": "Dark", "light": "Light",
-        "targets": "Additional VPN targets", "targets_hint": "IP, a-b range or CIDR /n (up to 1024 addresses)",
-        "autostart": "Start after login", "notifications": "Notifications",
-        "finished_notice": "Print finished", "error_notice": "Printer errors",
-        "paused_notice": "Print paused", "low_notice": "Low filament",
-        "finishing_soon_notice": "Print finishing in 10 minutes",
-        "humidity_notice": "High AMS humidity", "quiet": "Quiet hours",
-        "offline_notice": "Connection lost", "printing": "Printing", "ready": "Ready",
-        "paused": "Paused", "finished": "Finished", "error": "Error", "offline": "Offline",
-        "invalid": "Check the required fields and port range.", "secret_error": "Could not store the code in the system keyring.",
-        "studio_missing": "Bambu Studio configuration or stored printers were not found.",
-        "certificate": "The printer certificate changed. The connection was blocked.",
-        "rejected": "The printer rejected the access code.", "version": "Version",
-        "import_consent": "Allow reading the Bambu Studio configuration",
-        "import_hint": "Speeds up adding, but reads the local slicer file containing access codes. Nothing is read until you tick this.",
-    },
-}
+# Angielskie klucze katalogu dla wartosci wybieranych dynamicznie (stan drukarki, pola formularza).
+FIELD_LABELS = {"name": "Name", "host": "IP address / host", "serial": "Serial number", "code": "Access code / API key", "port": "Port", "kind": "Printer type", "api_optional": "API key (optional)", "targets": "Additional VPN targets", "targets_hint": "IP, a-b range or CIDR /n (up to 1024 addresses)"}
 
 STAGES = {
-    1: ("Poziomowanie stołu", "Auto bed leveling"), 2: ("Nagrzewanie stołu", "Heating bed"),
-    3: ("Kalibracja drgań", "Vibration calibration"), 4: ("Zmiana filamentu", "Changing filament"),
-    7: ("Nagrzewanie dyszy", "Heating nozzle"), 8: ("Kalibracja ekstruzji", "Calibrating extrusion"),
-    13: ("Bazowanie", "Homing"), 14: ("Czyszczenie dyszy", "Cleaning nozzle"),
-    22: ("Wyładowanie filamentu", "Unloading filament"), 24: ("Ładowanie filamentu", "Loading filament"),
-    49: ("Nagrzewanie komory", "Heating chamber"), 77: ("Przygotowanie AMS", "Preparing AMS"),
+    1: "Auto bed leveling", 2: "Heating bed",
+    3: "Vibration calibration", 4: "Changing filament",
+    7: "Heating nozzle", 8: "Calibrating extrusion",
+    13: "Homing", 14: "Cleaning nozzle",
+    22: "Unloading filament", 24: "Loading filament",
+    49: "Heating chamber", 77: "Preparing AMS",
 }
 
 
@@ -112,14 +62,14 @@ def quiet_hours_active(config: Config, now: datetime | None = None) -> bool:
 
 class PrinterDialog(Gtk.Dialog):
     def __init__(self, app: "Gantry", printer: Printer | None = None) -> None:
-        super().__init__(title=app.text["edit"] if printer else app.text["add"], transient_for=app.window, modal=False)
+        super().__init__(title=i18n.t("Edit printer") if printer else i18n.t("Add printer"), transient_for=app.window, modal=False)
         self.app, self.printer = app, printer
-        self.add_button(app.text["cancel"], Gtk.ResponseType.CANCEL)
-        self.add_button(app.text["save"], Gtk.ResponseType.OK)
+        self.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+        self.add_button(i18n.t("Save"), Gtk.ResponseType.OK)
         self.set_default_size(590, 620)
         box = self.get_content_area(); box.set_spacing(10); box.set_border_width(18)
 
-        self.kind_label = Gtk.Label(label=app.text["kind"], xalign=0)
+        self.kind_label = Gtk.Label(label=i18n.t("Printer type"), xalign=0)
         box.pack_start(self.kind_label, False, False, 0)
         self.kind = Gtk.ComboBoxText()
         for value, label in (("bambu", "Bambu Lab"), ("elegoo", "Elegoo"),
@@ -148,24 +98,24 @@ class PrinterDialog(Gtk.Dialog):
         box.pack_start(csv_button, False, False, 0)
 
         self.bambu_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.combo = Gtk.ComboBoxText(); self.combo.append("manual", app.text["searching"]); self.combo.set_active(0)
+        self.combo = Gtk.ComboBoxText(); self.combo.append("manual", i18n.t("Scanning for printers…")); self.combo.set_active(0)
         self.combo.connect("changed", self._selected)
-        self.bambu_section.pack_start(Gtk.Label(label=app.text["found"], xalign=0), False, False, 0)
+        self.bambu_section.pack_start(Gtk.Label(label=i18n.t("Discovered printers"), xalign=0), False, False, 0)
         self.bambu_section.pack_start(self.combo, False, False, 0)
         self.targets = Gtk.Entry(text=str(app.config.data.get("scan_targets", "")))
         self.targets.set_placeholder_text("100.71.10.5")
-        self.bambu_section.pack_start(Gtk.Label(label=app.text["targets"], xalign=0), False, False, 0)
+        self.bambu_section.pack_start(Gtk.Label(label=i18n.t("Additional VPN targets"), xalign=0), False, False, 0)
         self.bambu_section.pack_start(self.targets, False, False, 0)
-        hint = Gtk.Label(label=app.text["targets_hint"], xalign=0); hint.get_style_context().add_class("meta")
+        hint = Gtk.Label(label=i18n.t("IP, a-b range or CIDR /n (up to 1024 addresses)"), xalign=0); hint.get_style_context().add_class("meta")
         self.bambu_section.pack_start(hint, False, False, 0)
         # Reading the slicer config is opt-in: it holds access codes, so gate the import button on consent.
-        self.import_consent = Gtk.CheckButton(label=app.text["import_consent"])
-        import_hint = Gtk.Label(label=app.text["import_hint"], xalign=0, wrap=True); import_hint.get_style_context().add_class("meta")
+        self.import_consent = Gtk.CheckButton(label=i18n.t("Allow reading the Bambu Studio configuration"))
+        import_hint = Gtk.Label(label=i18n.t("Speeds up adding, but reads the local slicer file containing access codes. Nothing is read until you tick this."), xalign=0, wrap=True); import_hint.get_style_context().add_class("meta")
         self.bambu_section.pack_start(self.import_consent, False, False, 0)
         self.bambu_section.pack_start(import_hint, False, False, 0)
         buttons = Gtk.Box(spacing=8)
-        rescan = Gtk.Button(label=app.text["scan"]); rescan.connect("clicked", lambda _b: self.start_scan())
-        self.import_button = Gtk.Button(label=app.text["import"]); self.import_button.connect("clicked", lambda _b: self._import())
+        rescan = Gtk.Button(label=i18n.t("Scan network")); rescan.connect("clicked", lambda _b: self.start_scan())
+        self.import_button = Gtk.Button(label=i18n.t("Import from Bambu Studio")); self.import_button.connect("clicked", lambda _b: self._import())
         self.import_button.set_sensitive(False)
         self.import_consent.connect("toggled", lambda cb: self.import_button.set_sensitive(cb.get_active()))
         buttons.pack_start(rescan, False, False, 0); buttons.pack_start(self.import_button, False, False, 0)
@@ -180,7 +130,7 @@ class PrinterDialog(Gtk.Dialog):
                     "code": "", "port": str(printer.port if printer else 8883)}
         for key in ("name", "host", "serial", "code", "port"):
             row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-            label = Gtk.Label(label=app.text[key], xalign=0); row.pack_start(label, False, False, 0)
+            label = Gtk.Label(label=i18n.t(FIELD_LABELS[key]), xalign=0); row.pack_start(label, False, False, 0)
             entry = Gtk.Entry(text=defaults[key]); entry.set_visibility(key != "code")
             if key == "serial" and printer and printer.kind == PrinterKind.BAMBU: entry.set_sensitive(False)
             self.fields[key] = entry; self.rows[key] = row; row.pack_start(entry, False, False, 0)
@@ -236,10 +186,10 @@ class PrinterDialog(Gtk.Dialog):
         if not self.printer or self.printer.kind != kind:
             self.fields["port"].set_text(str(defaults[kind]))
         if kind == PrinterKind.BAMBU:
-            self.code_label.set_text(self.app.text["code"].split(" /")[0])
+            self.code_label.set_text(i18n.t("Access code / API key").split(" /")[0])
             self.info.set_text(i18n.t("MQTT/TLS • port 8883. Enter an additional VPN address above and scan again."))
         elif kind == PrinterKind.KLIPPER:
-            self.code_label.set_text(self.app.text["api_optional"])
+            self.code_label.set_text(i18n.t("API key (optional)"))
             self.info.set_text(i18n.t("Moonraker • port 7125. Happy Hare MMU and Creality CFS are detected automatically."))
         elif kind == PrinterKind.PRUSA:
             self.code_label.set_text(i18n.t("PrusaLink API key"))
@@ -259,10 +209,10 @@ class PrinterDialog(Gtk.Dialog):
         try:
             expand_scan_targets(self.targets.get_text())
         except ValueError:
-            self.error.set_text(self.app.text["invalid"]); return
+            self.error.set_text(i18n.t("Check the required fields and port range.")); return
         targets = self.targets.get_text().strip()
         self.app.config.data["scan_targets"] = targets; self.app.config.save()
-        self.combo.remove_all(); self.combo.append("manual", self.app.text["searching"]); self.combo.set_active(0)
+        self.combo.remove_all(); self.combo.append("manual", i18n.t("Scanning for printers…")); self.combo.set_active(0)
         def work() -> None:
             values = scan(targets)
             selected = self.selected_kind
@@ -272,7 +222,7 @@ class PrinterDialog(Gtk.Dialog):
         threading.Thread(target=work, daemon=True).start()
 
     def _scan_done(self, values: list[Printer]) -> bool:
-        self.discovered = values; self.combo.remove_all(); self.combo.append("manual", self.app.text["none"] if not values else "—")
+        self.discovered = values; self.combo.remove_all(); self.combo.append("manual", i18n.t("No printers found") if not values else "—")
         for value in values: self.combo.append(value.serial, f"{value.name} — {value.host}")
         untouched = not any(self.fields[key].get_text().strip() for key in ("name", "host", "serial"))
         self.combo.set_active(1 if values and untouched else 0); return False
@@ -291,7 +241,7 @@ class PrinterDialog(Gtk.Dialog):
         try:
             values = studio_devices()
         except Exception:
-            self.error.set_text(self.app.text["studio_missing"]); return
+            self.error.set_text(i18n.t("Bambu Studio configuration or stored printers were not found.")); return
         imported = 0
         for serial, code, host in values:
             if not host: continue
@@ -301,7 +251,7 @@ class PrinterDialog(Gtk.Dialog):
             self.app.upsert_printer(printer); imported += 1
         if imported:
             self.destroy(); self.app.reconnect_all()
-        else: self.error.set_text(self.app.text["studio_missing"])
+        else: self.error.set_text(i18n.t("Bambu Studio configuration or stored printers were not found."))
 
     def value(self) -> tuple[Printer, str] | None:
         values = {key: field.get_text().strip() for key, field in self.fields.items()}
@@ -313,7 +263,7 @@ class PrinterDialog(Gtk.Dialog):
                   else f"{kind.value}-{values['host']}-{port}")
         secret_required = kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2}
         if not values["name"] or not values["host"] or not serial or not 1 <= port <= 65535 or (secret_required and not values["code"] and not self.printer):
-            self.error.set_text(self.app.text["invalid"]); return None
+            self.error.set_text(i18n.t("Check the required fields and port range.")); return None
         model = {PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper",
                  PrinterKind.PRUSA: "Prusa", PrinterKind.SNAPMAKER: "Snapmaker",
                  PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
@@ -341,7 +291,7 @@ class Gantry:
         self.config, self.secrets = Config(), SecretStore()
         from .insights import PrinterInsights
         self.insights = PrinterInsights(self)
-        self.language = str(self.config.data.get("language", "pl")); self.text = TEXT.get(self.language, TEXT["pl"])
+        self.language = str(self.config.data.get("language", "pl"))
         i18n.set_language(self.language)
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
@@ -424,9 +374,7 @@ class Gantry:
             return False
         self.config.data["update_notified_version"] = version
         self.config.save()
-        body = (f"Wersja {version} jest dostępna. Otwórz Ustawienia → Aktualizacje."
-                if self.language == "pl" else
-                f"Version {version} is available. Open Settings → Updates.")
+        body = i18n.t("Version {0} is available. Open Settings → Updates.").format(version)
         self.notify("Gantry", body)
         return False
 
@@ -507,8 +455,8 @@ class Gantry:
             item = Gtk.MenuItem(label=spoolbase_label); item.connect("activate", lambda *_: self.toggle_spoolbase()); menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
 
-        for label, callback in ((self.text["scan"], lambda *_: self.scan_and_import()),
-                                (self.text["add"], lambda *_: self.open_printer_dialog())):
+        for label, callback in ((i18n.t("Scan network"), lambda *_: self.scan_and_import()),
+                                (i18n.t("Add printer"), lambda *_: self.open_printer_dialog())):
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
         reconnect = Gtk.MenuItem(label=i18n.t("Reconnect (all)"))
         reconnect.connect("activate", lambda *_: self.reconnect_all()); menu.append(reconnect)
@@ -520,24 +468,22 @@ class Gantry:
 
         language = Gtk.MenuItem(label=i18n.t("Language: EN"))
         language.connect("activate", lambda *_: self._toggle_language()); menu.append(language)
-        quiet = Gtk.CheckMenuItem(label=self.text["quiet"]); quiet.set_active(bool(self.config.data.get("quiet_hours_enabled", True)))
+        quiet = Gtk.CheckMenuItem(label=i18n.t("Quiet hours")); quiet.set_active(bool(self.config.data.get("quiet_hours_enabled", True)))
         quiet.connect("toggled", lambda item: self._toggle_quiet(item.get_active())); menu.append(quiet)
         updates = Gtk.MenuItem(label=(i18n.t("Check for updates…")))
         updates.connect("activate", lambda *_: self.check_updates_background()); menu.append(updates)
-        settings = Gtk.MenuItem(label=self.text["settings"]); settings.connect("activate", lambda *_: self.open_settings()); menu.append(settings)
+        settings = Gtk.MenuItem(label=i18n.t("Settings")); settings.connect("activate", lambda *_: self.open_settings()); menu.append(settings)
         legend = Gtk.MenuItem(label=i18n.t("Color legend"))
         legend_menu = Gtk.Menu()
-        for label in (("Niebieski — drukowanie (świeże dane)", "Blue — printing (live data)"),
-                      ("Zielony — gotowe / zakończone", "Green — ready / finished"),
-                      ("Pomarańczowy — pauza, stare dane lub wilgotność AMS", "Orange — paused, stale data, or AMS humidity"),
-                      ("Czerwony — błąd drukarki", "Red — printer error"),
-                      ("Szary — offline / brak / informacja neutralna", "Gray — offline / none / neutral")):
-            item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
+        for label in ("Blue — printing (live data)", "Green — ready / finished",
+                      "Orange — paused, stale data, or AMS humidity", "Red — printer error",
+                      "Gray — offline / none / neutral"):
+            item = Gtk.MenuItem(label=i18n.t(label)); item.set_sensitive(False); legend_menu.append(item)
         legend_menu.append(Gtk.SeparatorMenuItem())
         slot_header = Gtk.MenuItem(label=i18n.t("Filament slots:"))
         slot_header.set_sensitive(False); legend_menu.append(slot_header)
-        for label in (("Biały pierścień — aktywny slot", "White ring — active slot"),):
-            item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
+        for label in ("White ring — active slot",):
+            item = Gtk.MenuItem(label=i18n.t(label)); item.set_sensitive(False); legend_menu.append(item)
         legend.set_submenu(legend_menu); menu.append(legend)
         support = Gtk.MenuItem(label=i18n.t("Support the project ☕"))
         support.connect("activate", lambda *_: Gtk.show_uri_on_window(
@@ -558,7 +504,7 @@ class Gantry:
         self.language = "en" if self.language == "pl" else "pl"
         i18n.set_language(self.language)
         self.config.data["language"] = self.language
-        self.config.save(); self.text = TEXT.get(self.language, TEXT["pl"])
+        self.config.save()
         self.rebuild_cards(); self._tray()
 
     def _refresh_progress_indicators(self) -> None:
@@ -693,11 +639,9 @@ class Gantry:
             action = rule.get("action", {})
             is_script = action.get("type") == "script"
             preview = (action.get("text", "") or "").strip()[:700]
-            what = ("skrypt na tym komputerze" if is_script else "komendę drukarki") if pl else \
-                   ("a script on this computer" if is_script else "a printer command")
-            body = (f"Automatyzacja „{rule.get('name')}” chce wykonać {what}:\n\n{preview}\n\nZezwolić i zapamiętać?"
-                    if pl else
-                    f"Automation \"{rule.get('name')}\" wants to run {what}:\n\n{preview}\n\nAllow and remember?")
+            what = i18n.t("a script on this computer") if is_script else i18n.t("a printer command")
+            body = i18n.t("Automation \"{0}\" wants to run {1}:\n\n{2}\n\nAllow and remember?").format(
+                rule.get("name"), what, preview)
             dialog = Gtk.MessageDialog(transient_for=self.window, modal=True,
                                        message_type=Gtk.MessageType.WARNING, buttons=Gtk.ButtonsType.NONE,
                                        text=(i18n.t("Confirm automation")))
@@ -877,13 +821,13 @@ class Gantry:
                     existing_code = None
                 credential = code or existing_code
                 if updated.kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2} and not credential:
-                    dialog.error.set_text(self.text["code"]); return
+                    dialog.error.set_text(i18n.t("Access code / API key")); return
                 if printer and printer.serial != updated.serial:
                     self.remove_printer(printer)
                 if credential:
                     self.secrets.set(updated.serial, credential)
             except SecretStoreError:
-                dialog.error.set_text(self.text["secret_error"]); return
+                dialog.error.set_text(i18n.t("Could not store the code in the system keyring.")); return
             self.upsert_printer(updated)
             if printer is not None:
                 self.config.set_progress_pinned(updated.serial, dialog.progress_check.get_active())
@@ -1065,7 +1009,7 @@ class Gantry:
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key):
-                body = self.text[current.state.value]
+                body = i18n.t(STATE_LABELS.get(current.state.value, current.state.value))
                 if current.state == PrinterState.ERROR and current.hms_codes:
                     from .hms import description
                     body = description(current.hms_codes, serial, self.language) or body
@@ -1149,7 +1093,7 @@ class Gantry:
             title=i18n.t("Import printers from CSV"),
             transient_for=parent or self.window, action=Gtk.FileChooserAction.OPEN,
         )
-        chooser.add_buttons(self.text["cancel"], Gtk.ResponseType.CANCEL, "Importuj", Gtk.ResponseType.OK)
+        chooser.add_buttons(i18n.t("Cancel"), Gtk.ResponseType.CANCEL, "Importuj", Gtk.ResponseType.OK)
         csv_filter = Gtk.FileFilter(); csv_filter.set_name("CSV"); csv_filter.add_pattern("*.csv"); chooser.add_filter(csv_filter)
         response = chooser.run(); filename = chooser.get_filename(); chooser.destroy()
         if response != Gtk.ResponseType.OK or not filename: return

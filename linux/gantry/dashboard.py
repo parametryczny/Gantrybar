@@ -20,7 +20,7 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from . import i18n
-from .core import Printer, PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
+from .core import STATE_LABELS, Printer, PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
 from .desktop import installed_slicers, open_desktop_app
 
 
@@ -509,14 +509,13 @@ class PrinterCard(Gtk.Frame):
             self.printer_alert.set_no_show_all(False); self.printer_alert.show()
         else:
             self.printer_alert.set_no_show_all(True); self.printer_alert.hide()
-        labels = self.app.text
-        state = labels.get(telemetry.state.value, telemetry.state.value)
+        state = i18n.t(STATE_LABELS.get(telemetry.state.value, telemetry.state.value))
         stages = getattr(self.app, "stages", None)
         if stages and telemetry.stage in stages:
-            state = stages[telemetry.stage][0 if self.app.language == "pl" else 1]
+            state = i18n.t(stages[telemetry.stage])
         if reason:
-            if "certificate-changed" in reason: state = labels["certificate"]
-            elif "access-code-rejected" in reason: state = labels["rejected"]
+            if "certificate-changed" in reason: state = i18n.t("The printer certificate changed. The connection was blocked.")
+            elif "access-code-rejected" in reason: state = i18n.t("The printer rejected the access code.")
         if telemetry.state == PrinterState.ERROR and telemetry.hms_codes:
             from .hms import description
             state = description(telemetry.hms_codes, self.printer.serial, self.app.language) or state
@@ -796,7 +795,7 @@ class CompactPrinterRow(Gtk.Box):
         Gtk.drag_finish(context, True, True, timestamp)
 
     def update(self, telemetry: Telemetry, reason: str | None = None) -> None:
-        status = self.app.text.get(telemetry.state.value, telemetry.state.value)
+        status = i18n.t(STATE_LABELS.get(telemetry.state.value, telemetry.state.value))
         if telemetry.state == PrinterState.PRINTING:
             status += f" · {telemetry.progress}%"
         if reason: status = reason

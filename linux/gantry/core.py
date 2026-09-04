@@ -9,6 +9,10 @@ from enum import Enum
 from typing import Any
 
 
+# Angielskie klucze katalogu dla stanu drukarki, uzywane tam gdzie stan wybierany jest dynamicznie.
+STATE_LABELS = {"printing": "Printing", "ready": "Ready", "paused": "Paused", "finished": "Finished", "error": "Error", "offline": "Offline"}
+
+
 class PrinterState(str, Enum):
     OFFLINE = "offline"
     IDLE = "idle"

@@ -38,7 +38,7 @@ class AutomationsWindow(Gtk.Window):
 
         head = Gtk.Box(spacing=8)
         title = Gtk.Label(xalign=0)
-        title.set_markup(f"<b>{'Automatyzacje' if pl else 'Automations'}</b>  ·  {name}")
+        title.set_markup("<b>{0}</b>  ·  {1}".format(i18n.t("Automations"), name))
         head.pack_start(title, True, True, 0)
         add = Gtk.Button(label="＋ " + (i18n.t("New rule")))
         add.connect("clicked", lambda _b: self._edit(None))

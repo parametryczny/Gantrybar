@@ -395,13 +395,13 @@ class PhaseStepper(Gtk.Box):
 class DetailPanel(Gtk.Box):
     DEFAULT_ORDER = ["status", "recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control"]
     TITLES = {
-        "camera": ("Kamera", "Camera"), "ams": ("Filamenty / AMS", "Filaments / AMS"),
-        "temps": ("Temperatury", "Temperatures"),
-        "fans": ("Wentylatory i prędkość", "Fans & speed"),
-        "control": ("Sterowanie i automatyzacje", "Control & automations"),
-        "recent": ("Ostatnie wydruki", "Recent prints"),
-        "maintenance": ("Konserwacja", "Maintenance"),
-        "stats": ("Statystyki", "Statistics"),
+        "camera": "Camera", "ams": "Filaments / AMS",
+        "temps": "Temperatures",
+        "fans": "Fans & speed",
+        "control": "Control & automations",
+        "recent": "Recent prints",
+        "maintenance": "Maintenance",
+        "stats": "Statistics",
     }
 
     def __init__(self, app: Any, serial: str, on_back: Any) -> None:
@@ -525,8 +525,7 @@ class DetailPanel(Gtk.Box):
         self.connect("destroy", lambda *_: self.camera.stop())
 
     def _title(self, card_id: str) -> str:
-        values = self.TITLES[card_id]
-        return values[0 if self.app.language == "pl" else 1]
+        return i18n.t(self.TITLES[card_id])
 
     def _card(self, card_id: str, title: str | None) -> tuple[Gtk.Box, Gtk.Box]:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)

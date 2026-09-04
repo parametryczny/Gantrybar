@@ -18,7 +18,7 @@ jobs:
       - name: Check macOS / Windows / Linux UI parity
         run: python3 scripts/check_ui_parity.py
       - name: Check translation catalog
-        run: python3 scripts/i18n_check.py
+        run: python3 scripts/i18n_check.py --strict
       - name: Build
         run: swift build --disable-sandbox
       - name: Run protocol self-test
