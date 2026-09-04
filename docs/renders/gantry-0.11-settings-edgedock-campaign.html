@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=2048,height=1536,initial-scale=1">
+<title>Gantry 0.11 — nowe ustawienia i pasek krawędziowy</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;width:2048px;height:1536px;overflow:hidden;background:#ece9e2}
+  body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Arial,sans-serif;color:#f4f4f1;-webkit-font-smoothing:antialiased}
+
+  /* ---- tokeny prosto z GantryTheme.swift / gantry-card-layout.impl.json ---- */
+  :root{
+    --canvas:#0C0D0E; --card:#151719; --line:rgba(255,255,255,.09); --surface:rgba(255,255,255,.052);
+    --text:#F2F3F1; --secondary:#A7AAA6; --muted:#6D716E; --accent:#D4D7D3;
+    --printing:#FF6857; --paused:#EBB55C; --finished:#8FD69B; --error:#FF5A4E;
+    --nozzle:#FF8A61; --bed:#EFBD5F; --chamber:#BBA5EF; --humidity:#73CFAD;
+    --dock:#08090B;              /* EdgeDockView.shapeColor */
+    --sysgreen:#30D158;
+    --cream:#ebe7dd;
+  }
+
+  .board{width:100%;height:100%;padding:18px;display:grid;
+         grid-template-columns:700px 750px 526px;grid-template-rows:480px 500px 484px;
+         gap:18px;background:#ece9e2}
+  .tile{position:relative;overflow:hidden;background:#121416}
+  .dark{background:radial-gradient(circle at 68% 22%,#242629 0,#151719 52%,#0f1011 100%)}
+  .cream{background:var(--cream);color:#181715}
+  .grain:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E")}
+
+  .brand{width:126px;height:auto;object-fit:contain;display:block}
+  .eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;color:#8c9093}
+  .headline{font-size:38px;line-height:.94;letter-spacing:-1.8px;font-weight:500;text-transform:uppercase}
+  .sub{font-size:11px;line-height:1.4;letter-spacing:.5px;color:#9da0a4;text-transform:uppercase}
+  .pill{padding:4px 9px;border-radius:999px;border:1px solid #3d4247;background:#25282c;font-size:9px;
+        letter-spacing:.6px;color:#c7c9c7;text-transform:uppercase;font-weight:600;white-space:nowrap}
+  .pill.new{border-color:#7a4327;background:#3a2318;color:#ff9569}
+  .pill.ok{border-color:#245d38;color:#68dc8a;background:#173725}
+  .tiny{font-size:9px}
+
+  /* =========================================================
+     OKNO USTAWIEŃ — 1:1 wg SettingsWindowController.swift
+     640×720 pt, canvas #0C0D0E, inset 22, tabbar h=40 r=9,
+     grupa: caption 10 semibold muted + card r=12 (card@0.55, line 1px)
+     wiersz: min 44 pt, label 13, subtitle 11, inset 14/14
+     ========================================================= */
+  .win{width:640px;background:var(--canvas);border:1px solid rgba(255,255,255,.11);border-radius:12px;
+       box-shadow:0 34px 74px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.04) inset;overflow:hidden;
+       display:flex;flex-direction:column}
+  .win .traffic{position:absolute;left:14px;top:13px;display:flex;gap:7px;z-index:3}
+  .win .traffic i{width:11px;height:11px;border-radius:50%;background:#3a3d41}
+  .win .traffic i:first-child{background:#4a4d51}
+  .win-head{position:relative;padding:30px 22px 0}
+  .win-title{font-size:19px;font-weight:700;color:var(--text);letter-spacing:-.2px}
+  .win-sub{font-size:11px;color:var(--muted);margin-top:1px}
+
+  .tabbar{margin:14px 22px 0;height:40px;border-radius:9px;background:rgba(255,255,255,.05);
+          border:1px solid var(--line);display:flex;padding:3px;gap:2px}
+  .tabbar b{flex:1;border-radius:7px;display:flex;align-items:center;justify-content:center;
+            font-size:12.5px;font-weight:500;color:var(--secondary)}
+  .tabbar b.on{background:rgba(255,255,255,.13);color:var(--text);font-weight:600;
+               box-shadow:0 -1px 2.5px rgba(0,0,0,.3)}
+
+  .page{padding:18px 22px 0;display:flex;flex-direction:column;gap:18px;overflow:hidden}
+  .glabel{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.3px;margin-bottom:7px}
+  .gcard{background:rgba(21,23,25,.55);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .r{display:flex;align-items:center;min-height:44px;padding:9px 14px;gap:12px}
+  .r + .r{border-top:1px solid var(--line)}
+  .r .tx{flex:1;min-width:0}
+  .r .t{font-size:13px;color:var(--text);line-height:1.2}
+  .r .s{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.25}
+  .r.dim{opacity:.45}
+  .r.small{min-height:40px}
+
+  /* kontrolki AppKit */
+  .sw{width:38px;height:22px;border-radius:11px;background:rgba(255,255,255,.16);position:relative;flex:none}
+  .sw:after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+            background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.45)}
+  .sw.on{background:var(--sysgreen)}
+  .sw.on:after{left:18px}
+  .seg{display:flex;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:7px;padding:2px;flex:none}
+  .seg span{display:flex;align-items:center;justify-content:center;height:20px;padding:0 10px;border-radius:5px;
+            font-size:11px;color:var(--secondary);letter-spacing:.2px;white-space:nowrap}
+  .seg span.on{background:rgba(255,255,255,.17);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+  .btn{height:22px;padding:0 11px;border-radius:6px;border:1px solid rgba(255,255,255,.13);
+       background:rgba(255,255,255,.10);color:var(--text);font-size:12px;display:inline-flex;align-items:center;
+       gap:5px;flex:none;white-space:nowrap}
+  .fld{height:22px;min-width:250px;border-radius:6px;border:1px solid rgba(255,255,255,.13);background:#0F1113;
+       color:var(--secondary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+       display:flex;align-items:center;padding:0 8px;flex:none}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);
+           font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .stepper i{display:block;width:44px;height:22px;border-radius:5px;border:1px solid rgba(255,255,255,.13);
+             background:#0F1113;line-height:20px;text-align:center;font-style:normal}
+  .hint{font-size:11px;color:var(--muted);line-height:1.4}
+  .caption{font-size:10px;font-weight:600;color:var(--muted)}
+
+  .win-foot{margin-top:auto;border-top:1px solid var(--line);padding:11px 22px 14px;display:flex;align-items:center}
+  .win-foot .v{font-size:11px;color:var(--muted)}
+  .win-foot .btn{margin-left:auto;height:24px;padding:0 16px;background:rgba(255,255,255,.14)}
+
+  /* =========================================================
+     PASEK KRAWĘDZIOWY — EdgeDockView.swift
+     zwinięty: 22 pt szerokości, ring 14, gap 8, padY 8, notch 11
+     rozwinięty: rowHeight 20, rowGap 2, padX 11, gap tekstu 8
+     wklęsłe naroża = ćwiartka koła wycięta z kwadratu
+     ========================================================= */
+  .dockwrap{position:absolute;right:0;top:50%;transform:translateY(-50%)}
+  .dockR{position:relative;background:var(--dock);border-radius:12px 0 0 12px}
+  .dockR:before,.dockR:after{content:"";position:absolute;right:0;width:var(--r);height:var(--r)}
+  .dockR:before{top:calc(var(--r) * -1);
+    background:radial-gradient(circle at 0 0,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .dockR:after{bottom:calc(var(--r) * -1);
+    background:radial-gradient(circle at 0 100%,#0000 calc(var(--r) - .5px),var(--dock) var(--r))}
+  .collapsed{--r:11px;width:22px;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:8px}
+  .expanded{--r:11px;padding:8px 11px;display:flex;flex-direction:column;gap:2px;white-space:nowrap}
+  .erow{height:20px;display:flex;align-items:center;gap:8px}
+  .erow .n{font-size:11px;font-weight:600;color:var(--text)}
+  .erow .v{margin-left:auto;padding-left:14px;font-size:11px;color:var(--muted);
+           font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .erow.dimn .n{color:var(--secondary)}
+  .erow.errn .n,.erow.errn .v{color:var(--error)}
+  .ring{width:14px;height:14px;flex:none;display:block}
+
+  /* pulpit */
+  .desk{position:absolute;overflow:hidden;border-radius:10px;
+        background:radial-gradient(120% 90% at 14% 16%,#3b2a5e 0,transparent 55%),
+                   radial-gradient(90% 80% at 80% 74%,#0d4a5c 0,transparent 60%),
+                   linear-gradient(150deg,#1a1c26,#0d0e12 70%);
+        border:1px solid #2a2c33}
+  .menubar{height:22px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:flex-end;
+           gap:13px;padding:0 11px;font-size:9px;color:rgba(255,255,255,.8)}
+
+  /* =========================================================
+     KARTA DRUKARKI — gantry-card-layout.impl.json 1.1.0
+     ========================================================= */
+  .panel{background:rgba(12,13,14,.97);border:1px solid rgba(255,255,255,.1);border-radius:14px;
+         box-shadow:0 30px 66px rgba(0,0,0,.6);padding:10px 12px 12px;width:563px}
+  .phead{height:36px;display:flex;align-items:center;gap:10px}
+  .phead .brand{width:82px}
+  .phead .meta{font-size:10px;color:var(--muted)}
+  .phead .tools{margin-left:auto;display:flex;gap:5px}
+  .phead .tools i{width:18px;height:18px;border-radius:9px;background:rgba(255,255,255,.065);display:block}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pcard{background:rgba(21,23,25,.5);border:1px solid var(--line);border-radius:16px;padding:6px 10px;
+         display:flex;flex-direction:column;gap:3px}
+  .job{background:var(--surface);border:1px solid var(--line);border-radius:10.5px;padding:6px 9px 5px}
+  .jh{display:flex;align-items:center;gap:7px}
+  .jh .dot{width:6px;height:6px;border-radius:3px;background:var(--accent);flex:none}
+  .jh .nm{font-size:14px;font-weight:600;color:var(--text)}
+  .jh .mk{font-size:10px;color:var(--secondary);background:rgba(255,255,255,.025);border-radius:5px;padding:1px 5px}
+  .jh .sp{margin-left:auto;display:flex;gap:4px}
+  .jh .sp i{width:16px;height:16px;border-radius:8px;background:rgba(255,255,255,.065);display:block}
+  .st{display:flex;align-items:center;gap:5px;font-size:10px;margin-top:3px}
+  .st .d{width:6px;height:6px;border-radius:3px;background:var(--accent)}
+  .st .a{color:var(--accent);font-weight:500}
+  .st .sep{color:var(--muted);font-weight:600}
+  .st .f{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+  .psum{display:flex;align-items:center;gap:7px;margin-top:5px}
+  .psum .pc{font-size:22px;font-weight:600;color:var(--accent);
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.5px;line-height:1}
+  .psum .m{font-size:9.5px;color:var(--secondary);display:flex;align-items:center;gap:3px}
+  .psum .m.chip{background:rgba(255,255,255,.05);border-radius:6px;padding:2px 6px}
+  .bar{display:flex;gap:2px;height:8px;margin-top:6px}
+  .bar i{flex:1;border-radius:1px;background:rgba(255,255,255,.12)}
+  .bar i.on{background:var(--accent)}
+  .bento{height:34px;background:var(--surface);border:1px solid var(--line);border-radius:10.5px;display:flex}
+  .bento div{flex:1;position:relative;padding:3px 6px}
+  .bento div + div{border-left:1px solid var(--line)}
+  .bento .k{font-size:7px;font-weight:600;letter-spacing:.3px;color:var(--muted);
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .bento .val{font-size:14px;font-weight:600;color:var(--accent);
+              font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.15}
+  .bento .val s{font-size:8px;color:var(--muted);text-decoration:none;font-weight:400}
+  .fdock{display:flex;gap:6px}
+  .fg{flex:1;background:rgba(255,255,255,.075);border:1px solid var(--line);border-radius:10.5px;padding:4px 6px}
+  .fg .fh{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:var(--text)}
+  .fg .fh em{font-style:normal;font-size:9px;color:var(--humidity);margin-left:auto}
+  .slots{display:flex;gap:5px;margin-top:3px}
+  .slot{flex:1}
+  .slot .sw2{height:18px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+             font-size:9px;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .slot .mt{height:11px;display:flex;align-items:center;justify-content:space-between;margin-top:1px}
+  .slot .mt u{font-size:7.5px;color:var(--muted);text-decoration:none;
+              font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .slot .mt b{font-size:10px;color:var(--text);font-weight:600}
+  .active{outline:1.5px solid rgba(255,255,255,.8);outline-offset:-1.5px}
+
+  /* ================= kafle ================= */
+  /* T1 — kinowe zbliżenie okna ustawień */
+  .t1{grid-column:1;grid-row:1}
+  .t1 .copy{position:absolute;z-index:3;left:44px;top:38px;width:210px}
+  .t1 .headline{font-size:31px}
+  .t1 .sub{margin-top:13px;font-size:9px}
+  .t1 .stage{position:absolute;left:236px;top:-38px;width:640px;
+             transform:perspective(1000px) rotateX(4deg) rotateY(-11deg) rotateZ(-3deg) scale(.79);
+             transform-origin:0 0}
+  .t1 .stage:before{content:"";position:absolute;inset:-2px;border-radius:14px;
+             border-top:2px solid #ff884c;border-left:1px solid #ff884c;
+             filter:drop-shadow(0 0 13px rgba(255,110,50,.47));pointer-events:none;z-index:4}
+  .t1 .pills{position:absolute;left:44px;bottom:34px;display:flex;flex-direction:column;gap:7px;align-items:flex-start;z-index:3}
+
+  /* T2 — trzy zakładki + anatomia wiersza */
+  .t2{grid-column:2/4;grid-row:1;padding:30px 34px}
+  .t2 .headline{width:320px;font-size:34px}
+  .t2 .sub{margin-top:14px;width:290px}
+  .t2 .tabchips{position:absolute;left:34px;bottom:30px;display:flex;gap:8px}
+  .fan{position:absolute;right:30px;top:26px;width:900px;height:430px}
+  .fan .win{position:absolute;transform-origin:0 0}
+  .fan .f3{left:0;top:16px;transform:scale(.575)}
+  .fan .f2{left:212px;top:8px;transform:scale(.575)}
+  .fan .f1{left:424px;top:0;transform:scale(.575)}
+  .fan .shade{position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(90deg,rgba(15,16,17,.55) 0,rgba(15,16,17,.16) 30%,transparent 52%)}
+  .anat{position:absolute;left:34px;top:196px;width:330px}
+  .anat .row-demo{background:rgba(21,23,25,.62);border:1px solid var(--line);border-radius:12px}
+  .anat .guide{position:relative;height:16px;margin-top:6px;font-size:8px;color:#7d8185;letter-spacing:.6px}
+  .anat .guide span{position:absolute;top:0}
+  .anat .guide span:before{content:"";position:absolute;left:0;top:-6px;width:1px;height:6px;background:#4a4e52}
+
+  /* T3 — pasek zwinięty na pulpicie */
+  .t3{grid-column:1;grid-row:2;padding:30px 34px}
+  .t3 .headline{font-size:33px;width:300px}
+  .t3 .sub{margin-top:12px;width:265px}
+  .t3 .desk{left:34px;right:34px;top:196px;height:242px}
+  .t3 .zoom{position:absolute;right:34px;top:34px;width:196px;height:150px;border:1px solid #3a3e43;
+            border-radius:10px;overflow:hidden;background:linear-gradient(150deg,#241f36,#12141c)}
+  .t3 .zoom .lbl{position:absolute;left:10px;bottom:8px;font-size:8px;letter-spacing:.8px;color:#8e9296;
+                 text-transform:uppercase;font-weight:700}
+  .t3 .zoom .dockwrap{transform:translateY(-50%) scale(2.6);transform-origin:100% 50%}
+  .t3 .note{position:absolute;left:34px;bottom:14px;font-size:9px;color:#7d8185;letter-spacing:.6px}
+
+  /* T4 — rozwinięty (cream) */
+  .t4{grid-column:2;grid-row:2}
+  .t4 .brand{position:absolute;left:34px;top:32px;width:104px;z-index:3}
+  .t4 .headline{position:absolute;left:33px;top:92px;width:330px;font-size:40px;color:#201d19;z-index:3}
+  .t4 .sub{position:absolute;left:35px;top:222px;width:290px;color:#6a655f;z-index:3}
+  .t4 .cursor{position:absolute;z-index:4;width:22px;height:30px}
+  .t4 .hoverlab{position:absolute;z-index:4;font-size:9px;letter-spacing:1px;font-weight:700;
+                color:#8a8378;text-transform:uppercase}
+  .t4 .foot{position:absolute;left:35px;bottom:30px;font-size:9px;color:#7a736a;letter-spacing:.5px;width:300px;line-height:1.5}
+  .t4 .foot b{color:#1c1a18}
+
+  /* T5 — sekcja ustawień: PASEK KRAWĘDZIOWY */
+  .t5{grid-column:3;grid-row:2;padding:26px}
+  .t5 .eyebrow{margin-bottom:12px}
+  .t5 .clip{position:absolute;left:26px;right:26px;top:66px;bottom:26px;overflow:hidden;border-radius:12px}
+  .t5 .win{width:640px;transform:scale(.74);transform-origin:0 0;border-radius:12px}
+
+  /* T6 — całość: okno + pasek na jednym ekranie */
+  .t6{grid-column:1/3;grid-row:3}
+  .t6 .copy{position:absolute;left:30px;top:28px;width:250px;z-index:3}
+  .t6 .headline{font-size:36px;margin-top:22px}
+  .t6 .sub{margin-top:13px}
+  .t6 .platforms{position:absolute;left:31px;bottom:28px;display:flex;gap:9px;z-index:3}
+  .t6 .platforms span{border:1px solid #3b3f43;border-radius:7px;padding:8px 11px;font-size:9px;letter-spacing:.5px}
+  .t6 .desk{left:316px;right:24px;top:26px;bottom:26px}
+  .t6 .panel{position:absolute;left:26px;top:44px;transform:scale(.86);transform-origin:0 0}
+  .t6 .callout{position:absolute;right:64px;bottom:26px;font-size:8.5px;color:#9aa0a8;letter-spacing:.7px;
+               text-transform:uppercase;font-weight:700;text-align:right;line-height:1.6}
+
+  /* T7 — cream, spis nowości */
+  .t7{grid-column:3;grid-row:3;padding:30px}
+  .t7 .brand{width:108px}
+  .t7 .headline{font-size:33px;margin-top:34px;color:#201d19}
+  .t7 .sub{color:#6a655f;margin-top:13px}
+  .t7 .stack{position:absolute;left:30px;right:30px;bottom:30px}
+  .t7 .arow{display:flex;align-items:center;border-top:1px solid #c8c1b7;padding:12px 0;color:#211f1b}
+  .t7 .ic{width:32px;height:32px;border-radius:8px;background:#17191b;color:#fff;display:grid;place-items:center;
+          margin-right:11px;flex:none}
+  .t7 .arow b{display:block;font-size:11px}
+  .t7 .arow span{font-size:9px;color:#777168}
+  .t7 .arow em{margin-left:auto;font-style:normal;font-size:8px;font-weight:700;letter-spacing:.6px;
+               color:#8a8378;text-transform:uppercase}
+</style>
+</head>
+<body>
+<main class="board">
+
+  <!-- ============ T1 ============ -->
+  <section class="tile dark grain t1">
+    <div class="copy">
+      <div class="headline">Settings,<br>rebuilt.</div>
+      <div class="sub">Dziewięć sekcji<br>w jednej kolumnie →<br>trzy zakładki.</div>
+    </div>
+    <div class="pills">
+      <span class="pill new">Nowość · 0.11</span>
+      <span class="pill">640 × 720 pt</span>
+    </div>
+    <div class="stage">
+      <div class="win">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <div class="win-head">
+          <div class="win-title">Ustawienia</div>
+          <div class="win-sub">Gantry · @parametryczny</div>
+        </div>
+        <div class="tabbar"><b>Ogólne</b><b class="on">Wygląd</b><b>Zaawansowane</b></div>
+        <div class="page">
+          <div>
+            <div class="glabel">MOTYW</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Wygląd</div></div>
+                <div class="seg"><span>JASNY</span><span class="on">CIEMNY</span></div></div>
+              <div class="r"><div class="tx"><div class="t">Przezroczystość</div></div>
+                <div class="seg"><span>NISKA</span><span class="on">ŚREDNIA</span><span>WYSOKA</span></div></div>
+              <div class="r"><div class="tx"><div class="t">Kolorystyka monochromatyczna</div>
+                <div class="s">Bez barwienia temperatur i filamentów</div></div><div class="sw"></div></div>
+            </div>
+          </div>
+          <div>
+            <div class="glabel">KARTY DRUKAREK</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Nazwa pliku</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Postęp</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Temperatury</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Filamenty / AMS</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Gramy na rolce</div><div class="s">AMS NFC / Spoolbase</div></div>
+                <div class="sw on"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="win-foot"><span class="v">Wersja 0.11.0 • Keychain</span><span class="btn">Gotowe</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ T2 ============ -->
+  <section class="tile dark grain t2">
+    <div class="headline">One row system.<br>Three tabs.</div>
+    <div class="sub">Etykiety w jednej kolumnie po lewej,<br>kontrolki w jednej po prawej — w całym oknie.</div>
+
+    <div class="anat">
+      <div class="row-demo">
+        <div class="r"><div class="tx"><div class="t">Instaluj automatycznie</div>
+          <div class="s">Pobiera i weryfikuje podpis wydania</div></div><div class="sw on"></div></div>
+      </div>
+      <div class="guide">
+        <span style="left:0">14 PT</span>
+        <span style="left:120px">SettingsRowView · min. 44 pt</span>
+        <span style="right:0;text-align:right">14 PT</span>
+      </div>
+    </div>
+
+    <div class="tabchips">
+      <span class="pill">Ogólne</span><span class="pill">Wygląd</span><span class="pill">Zaawansowane</span>
+      <span class="pill ok">Jeden system wierszy</span>
+    </div>
+
+    <div class="fan">
+      <!-- Zaawansowane -->
+      <div class="win f3">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <div class="win-head"><div class="win-title">Ustawienia</div><div class="win-sub">Gantry · @parametryczny</div></div>
+        <div class="tabbar"><b>Ogólne</b><b>Wygląd</b><b class="on">Zaawansowane</b></div>
+        <div class="page">
+          <div><div class="glabel">TRYB DEWELOPERSKI</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Tryb deweloperski</div>
+                <div class="s">Odsłania sterowanie i automatyzacje</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Skrypty w automatyzacjach</div>
+                <div class="s">Pozwala regule uruchomić program lub własną komendę. Domyślnie wyłączone.</div></div>
+                <div class="sw"></div></div>
+            </div></div>
+          <div><div class="glabel">TELEGRAM</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Wysyłaj powiadomienia</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Token bota</div></div>
+                <div class="fld">7451620092:AAH••••••••••••</div></div>
+              <div class="r"><div class="tx"><div class="t">Chat ID</div></div><div class="fld">123456789</div></div>
+              <div class="r"><div class="tx"><div class="t">Test połączenia</div></div><span class="btn">Wyślij</span></div>
+              <div class="r"><div class="tx"><div class="s">Utwórz bota przez @BotFather (token), napisz do niego, a swój
+                chat_id weź od @userinfobot. Wysyła te same zdarzenia co powiadomienia systemowe.</div></div></div>
+            </div></div>
+          <div><div class="glabel">PODGLĄD W PRZEGLĄDARCE</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Serwer podglądu</div>
+                <div class="s">Sieć lokalna, tylko odczyt</div></div><div class="sw on"></div></div>
+            </div></div>
+        </div>
+        <div class="win-foot"><span class="v">Wersja 0.11.0 • Keychain</span><span class="btn">Gotowe</span></div>
+      </div>
+
+      <!-- Wygląd -->
+      <div class="win f2">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <div class="win-head"><div class="win-title">Ustawienia</div><div class="win-sub">Gantry · @parametryczny</div></div>
+        <div class="tabbar"><b>Ogólne</b><b class="on">Wygląd</b><b>Zaawansowane</b></div>
+        <div class="page">
+          <div><div class="glabel">MOTYW</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Wygląd</div></div>
+                <div class="seg"><span>JASNY</span><span class="on">CIEMNY</span></div></div>
+              <div class="r"><div class="tx"><div class="t">Przezroczystość</div></div>
+                <div class="seg"><span>NISKA</span><span class="on">ŚREDNIA</span><span>WYSOKA</span></div></div>
+              <div class="r"><div class="tx"><div class="t">Kolorystyka monochromatyczna</div>
+                <div class="s">Bez barwienia temperatur i filamentów</div></div><div class="sw"></div></div>
+            </div></div>
+          <div><div class="glabel">PASEK KRAWĘDZIOWY</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Pokazuj pasek na wierzchu</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Krawędź</div></div>
+                <div class="seg"><span>LEWA</span><span class="on">PRAWA</span></div></div>
+              <div class="r"><div class="tx"><div class="t">Tylko drukujące</div></div><div class="sw"></div></div>
+            </div>
+            <div class="caption" style="margin:16px 0 7px">Które drukarki</div>
+            <div class="gcard">
+              <div class="r small"><div class="tx"><div class="t">X1</div><div class="s">X1 Carbon</div></div><div class="sw on"></div></div>
+              <div class="r small"><div class="tx"><div class="t">P2S</div><div class="s">P2S</div></div><div class="sw on"></div></div>
+              <div class="r small"><div class="tx"><div class="t">CORE ONE</div><div class="s">Prusa Core One</div></div><div class="sw on"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="win-foot"><span class="v">Wersja 0.11.0 • Keychain</span><span class="btn">Gotowe</span></div>
+      </div>
+
+      <!-- Ogólne -->
+      <div class="win f1">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <div class="win-head"><div class="win-title">Ustawienia</div><div class="win-sub">Gantry · @parametryczny</div></div>
+        <div class="tabbar"><b class="on">Ogólne</b><b>Wygląd</b><b>Zaawansowane</b></div>
+        <div class="page">
+          <div><div class="glabel">PODSTAWY</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Język</div></div>
+                <div class="seg"><span class="on">PL</span><span>EN</span></div></div>
+              <div class="r"><div class="tx"><div class="t">Uruchamiaj przy logowaniu</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Spoolbase</div>
+                <div class="s">Magazyn filamentów w menu</div></div><div class="sw on"></div></div>
+            </div></div>
+          <div><div class="glabel">POWIADOMIENIA</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Druk zakończony</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Koniec za 10 minut</div></div><div class="sw"></div></div>
+              <div class="r"><div class="tx"><div class="t">Błąd drukarki</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Druk wstrzymany</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Niski poziom filamentu</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Wysoka wilgotność AMS</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Godziny ciszy</div></div>
+                <div class="stepper"><i>22:00</i><span style="color:var(--secondary)">–</span><i>07:00</i>
+                  <span class="sw on" style="margin-left:6px"></span></div></div>
+            </div></div>
+          <div><div class="glabel">AKTUALIZACJE</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Sprawdź aktualizacje</div></div><span class="btn">↻ Sprawdź</span></div>
+              <div class="r"><div class="tx"><div class="t">Instaluj automatycznie</div>
+                <div class="s">Pobiera i weryfikuje podpis wydania</div></div><div class="sw on"></div></div>
+            </div></div>
+        </div>
+        <div class="win-foot"><span class="v">Wersja 0.11.0 • Keychain</span><span class="btn">Gotowe</span></div>
+      </div>
+      <div class="shade"></div>
+    </div>
+  </section>
+
+  <!-- ============ T3 ============ -->
+  <section class="tile dark grain t3">
+    <div class="headline">22 pt<br>at rest.</div>
+    <div class="sub">Wąski panel przy krawędzi ekranu, zawsze na wierzchu.
+      W spoczynku tylko kolor i wypełnienie pierścienia.</div>
+
+    <div class="zoom">
+      <div class="dockwrap">
+        <div class="dockR collapsed">
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="11.3"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="12.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="23.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#EBB55C" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="20.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,90,78,.3)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="2" fill="#FF5A4E"/></svg>
+        </div>
+      </div>
+      <span class="lbl">skala 2,6 : 1</span>
+    </div>
+
+    <div class="desk">
+      <div class="menubar"><span>Czw 3 wrz</span><span>11:22</span></div>
+      <div class="dockwrap">
+        <div class="dockR collapsed">
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="11.3"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="12.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="23.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#EBB55C" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="20.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,90,78,.3)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="2" fill="#FF5A4E"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="note">WKLĘSŁE PRZEJŚCIA · PASEK WYRASTA Z KRAWĘDZI, NIE STOI OBOK NIEJ</div>
+  </section>
+
+  <!-- ============ T4 ============ -->
+  <section class="tile cream grain t4">
+    <img class="brand" src="../branding/gantry-wordmark-black.png" alt="Gantry">
+    <div class="headline">Hover.<br>It unfolds.</div>
+    <div class="sub">Nazwy, procent i pozostały czas.<br>Klik otwiera szczegóły drukarki.</div>
+    <div class="foot"><b>NIE ZABIERA FOKUSU</b> · panel nonactivating, widoczny na każdym pulpicie i nad
+      aplikacją pełnoekranową</div>
+
+    <span class="hoverlab" style="right:330px;top:214px">najechanie →</span>
+    <div class="dockwrap" style="transform:translateY(-50%) scale(1.9);transform-origin:100% 50%">
+      <div class="dockR expanded" style="width:214px">
+        <div class="erow">
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="11.3"/></g></svg>
+          <span class="n">X1</span><span class="v">70% · 0:44</span>
+        </div>
+        <div class="erow">
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="12.4"/></g></svg>
+          <span class="n">P2S</span><span class="v">67% · 1:12</span>
+        </div>
+        <div class="erow">
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="23.4"/></g></svg>
+          <span class="n">CORE ONE</span><span class="v">38% · 2:05</span>
+        </div>
+        <div class="erow">
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#EBB55C" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="20.4"/></g></svg>
+          <span class="n">VORON</span><span class="v">46% · 2:34</span>
+        </div>
+        <div class="erow errn">
+          <svg class="ring" viewBox="0 0 14 14">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,90,78,.3)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="2" fill="#FF5A4E"/></svg>
+          <span class="n">SNAPMAKER</span><span class="v">brak</span>
+        </div>
+      </div>
+    </div>
+    <svg class="cursor" viewBox="0 0 22 30" style="right:296px;top:232px">
+      <path d="M2 2 L2 22 L7.5 17 L11 25.5 L14.5 24 L11 15.8 L18 15.5 Z" fill="#17191b" stroke="#fff" stroke-width="1.4"/>
+    </svg>
+  </section>
+
+  <!-- ============ T5 ============ -->
+  <section class="tile dark grain t5">
+    <div class="eyebrow">Ustawienia → Wygląd</div>
+    <div class="clip">
+      <div class="win" style="box-shadow:none;border:0;background:transparent">
+        <div class="page" style="padding:0">
+          <div>
+            <div class="glabel">PASEK KRAWĘDZIOWY</div>
+            <div class="gcard">
+              <div class="r"><div class="tx"><div class="t">Pokazuj pasek na wierzchu</div></div><div class="sw on"></div></div>
+              <div class="r"><div class="tx"><div class="t">Krawędź</div></div>
+                <div class="seg"><span>LEWA</span><span class="on">PRAWA</span></div></div>
+              <div class="r"><div class="tx"><div class="t">Tylko drukujące</div></div><div class="sw"></div></div>
+            </div>
+            <div class="caption" style="margin:16px 0 7px">Które drukarki</div>
+            <div class="gcard">
+              <div class="r small"><div class="tx"><div class="t">X1</div><div class="s">X1 Carbon</div></div><div class="sw on"></div></div>
+              <div class="r small"><div class="tx"><div class="t">P2S</div><div class="s">P2S</div></div><div class="sw on"></div></div>
+              <div class="r small"><div class="tx"><div class="t">CORE ONE</div><div class="s">Prusa Core One</div></div><div class="sw on"></div></div>
+              <div class="r small"><div class="tx"><div class="t">VORON</div><div class="s">Klipper / Moonraker</div></div><div class="sw on"></div></div>
+              <div class="r small"><div class="tx"><div class="t">SNAPMAKER</div><div class="s">Artisan</div></div><div class="sw"></div></div>
+            </div>
+            <div class="hint" style="margin-top:10px">Wąski pasek przyklejony do krawędzi ekranu, zawsze na wierzchu.
+              Najechanie rozsuwa go do nazw, klik otwiera szczegóły.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ T6 ============ -->
+  <section class="tile dark grain t6">
+    <div class="copy">
+      <img class="brand" src="../branding/gantry-wordmark-white.png" alt="Gantry" style="width:112px">
+      <div class="headline">All your printers.<br>One view.</div>
+      <div class="sub">Popover w pasku menu.<br>Pasek przy krawędzi.<br>Lokalnie. Bez chmury.</div>
+    </div>
+    <div class="platforms"><span>● macOS</span><span>▦ Windows</span><span>△ Linux</span></div>
+
+    <div class="desk">
+      <div class="menubar"><span>Gantry</span><span>Czw 3 wrz</span><span>11:22</span></div>
+      <div class="panel">
+        <div class="phead">
+          <img class="brand" src="../branding/gantry-wordmark-white.png" alt="Gantry">
+          <span class="meta">5 drukarek · 4 pracuje</span>
+          <span class="tools"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="cards">
+
+          <div class="pcard">
+            <div class="job">
+              <div class="jh"><span class="dot"></span><span class="nm">X1</span><span class="mk">MQTT</span>
+                <span class="sp"><i></i><i></i><i></i></span></div>
+              <div class="st"><span class="d"></span><span class="a">Drukowanie</span><span class="sep">·</span>
+                <span class="f">ADAPTER-PVC110-SPIRO100</span></div>
+              <div class="psum"><span class="pc">70%</span><span class="m chip">◷ 0h 44m · 08:48</span>
+                <span class="m">▤ 120/276</span></div>
+              <div class="bar">
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
+            <div class="bento">
+              <div><div class="k">DYSZA</div><div class="val">255° <s>/ 255°</s></div></div>
+              <div><div class="k">STÓŁ</div><div class="val">65° <s>/ 65°</s></div></div>
+              <div><div class="k">KOMORA</div><div class="val">51° <s>/ —</s></div></div>
+            </div>
+            <div class="fdock">
+              <div class="fg"><div class="fh">AMS <em>🌡33° 💧42%</em></div>
+                <div class="slots">
+                  <div class="slot"><div class="sw2 active" style="background:#e8e6e1;color:#17191b">7%</div>
+                    <div class="mt"><u>A1</u><b>PLA</b></div></div>
+                  <div class="slot"><div class="sw2" style="background:#2a2d31;color:#fff">61%</div>
+                    <div class="mt"><u>A2</u><b>PETG</b></div></div>
+                </div></div>
+              <div class="fg"><div class="fh">EXT</div>
+                <div class="slots">
+                  <div class="slot"><div class="sw2" style="background:#3a3d42;color:#fff">38%</div>
+                    <div class="mt"><u>E</u><b>PETG</b></div></div>
+                </div></div>
+            </div>
+          </div>
+
+          <div class="pcard">
+            <div class="job">
+              <div class="jh"><span class="dot"></span><span class="nm">P2S</span><span class="mk">MQTT</span>
+                <span class="sp"><i></i><i></i><i></i></span></div>
+              <div class="st"><span class="d"></span><span class="a">Drukowanie</span><span class="sep">·</span>
+                <span class="f">zero clearance dwscal 7482</span></div>
+              <div class="psum"><span class="pc">67%</span><span class="m chip">◷ 1h 12m · 09:34</span>
+                <span class="m">▤ 95/226</span></div>
+              <div class="bar">
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
+            <div class="bento">
+              <div><div class="k">DYSZA</div><div class="val">250° <s>/ 250°</s></div></div>
+              <div><div class="k">STÓŁ</div><div class="val">65° <s>/ 65°</s></div></div>
+              <div><div class="k">KOMORA</div><div class="val">52° <s>/ —</s></div></div>
+            </div>
+            <div class="fdock">
+              <div class="fg"><div class="fh">HT <em>🌡33° 💧43%</em></div>
+                <div class="slots">
+                  <div class="slot"><div class="sw2" style="background:#2f3236;color:#fff">9%</div>
+                    <div class="mt"><u>A1</u><b>PLA</b></div></div>
+                  <div class="slot"><div class="sw2 active" style="background:#d9b25c;color:#17191b">63%</div>
+                    <div class="mt"><u>A2</u><b>PETG</b></div></div>
+                </div></div>
+              <div class="fg"><div class="fh">EXT</div>
+                <div class="slots">
+                  <div class="slot"><div class="sw2" style="background:#3a3d42;color:#fff">56%</div>
+                    <div class="mt"><u>E</u><b>PLA</b></div></div>
+                </div></div>
+            </div>
+          </div>
+
+          <div class="pcard">
+            <div class="job">
+              <div class="jh"><span class="dot"></span><span class="nm">CORE ONE</span><span class="mk">PrusaLink</span>
+                <span class="sp"><i></i><i></i><i></i></span></div>
+              <div class="st"><span class="d"></span><span class="a">Drukowanie</span><span class="sep">·</span>
+                <span class="f">gearshell_x3</span></div>
+              <div class="psum"><span class="pc">38%</span><span class="m chip">◷ 2h 05m · 10:41</span>
+                <span class="m">▤ 81/218</span></div>
+              <div class="bar">
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
+            <div class="bento">
+              <div><div class="k">DYSZA</div><div class="val">234° <s>/ 235°</s></div></div>
+              <div><div class="k">STÓŁ</div><div class="val">65° <s>/ 65°</s></div></div>
+              <div><div class="k">KOMORA</div><div class="val">41° <s>/ —</s></div></div>
+            </div>
+            <div class="fdock">
+              <div class="fg"><div class="fh">EXT</div>
+                <div class="slots">
+                  <div class="slot"><div class="sw2 active" style="background:#c9502f;color:#fff">38%</div>
+                    <div class="mt"><u>E</u><b>PETG</b></div></div>
+                </div></div>
+            </div>
+          </div>
+
+          <div class="pcard">
+            <div class="job">
+              <div class="jh"><span class="dot"></span><span class="nm">VORON</span><span class="mk">Klipper</span>
+                <span class="sp"><i></i><i></i><i></i></span></div>
+              <div class="st"><span class="d"></span><span class="a">Drukowanie</span><span class="sep">·</span>
+                <span class="f">bracket_rev4.gcode</span></div>
+              <div class="psum"><span class="pc">46%</span><span class="m chip">◷ 2h 34m · 11:18</span>
+                <span class="m">▤ 25/115</span></div>
+              <div class="bar">
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+                <i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
+            <div class="bento">
+              <div><div class="k">DYSZA</div><div class="val">256° <s>/ 255°</s></div></div>
+              <div><div class="k">STÓŁ</div><div class="val">65° <s>/ 65°</s></div></div>
+              <div><div class="k">KOMORA</div><div class="val">41° <s>/ —</s></div></div>
+            </div>
+            <div class="fdock">
+              <div class="fg"><div class="fh">EXT</div>
+                <div class="slots">
+                  <div class="slot"><div class="sw2" style="background:#4b4f54;color:#fff">18%</div>
+                    <div class="mt"><u>E</u><b>PLA</b></div></div>
+                </div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="dockwrap">
+        <div class="dockR collapsed">
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="11.3"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="12.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#FF6857" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="23.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14"><g transform="rotate(-90 7 7)">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="6" fill="none" stroke="#EBB55C" stroke-width="2" stroke-linecap="round"
+                    stroke-dasharray="37.7" stroke-dashoffset="20.4"/></g></svg>
+          <svg class="ring" viewBox="0 0 14 14">
+            <circle cx="7" cy="7" r="6" fill="none" stroke="rgba(255,90,78,.3)" stroke-width="2"/>
+            <circle cx="7" cy="7" r="2" fill="#FF5A4E"/></svg>
+        </div>
+      </div>
+      <div class="callout">Pasek krawędziowy →<br>poziom statusBar · każdy pulpit</div>
+    </div>
+  </section>
+
+  <!-- ============ T7 ============ -->
+  <section class="tile cream grain t7">
+    <img class="brand" src="../branding/gantry-wordmark-black.png" alt="Gantry">
+    <div class="headline">Nowe<br>w 0.11.</div>
+    <div class="sub">Dwie powierzchnie, jeden system wierszy</div>
+    <div class="stack">
+      <div class="arow"><div class="ic">◐</div><div><b>Pasek krawędziowy</b>
+        <span>Pierścień postępu na drukarkę, zawsze na wierzchu</span></div><em>domyślnie off</em></div>
+      <div class="arow"><div class="ic">▤</div><div><b>Nowe okno ustawień</b>
+        <span>Ogólne · Wygląd · Zaawansowane</span></div><em>3 zakładki</em></div>
+      <div class="arow"><div class="ic">≡</div><div><b>SettingsRowView</b>
+        <span>Wspólna kolumna etykiet i kontrolek</span></div><em>44 pt</em></div>
+    </div>
+  </section>
+
+</main>
+</body>
+</html>

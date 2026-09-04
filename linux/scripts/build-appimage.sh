@@ -50,7 +50,8 @@ mkdir -p "$APPDIR/usr/lib/gantry" \
 
 # Translation catalog, shared verbatim with the macOS and Windows builds. Staged into the package
 # before PyInstaller runs so --collect-data picks it up wherever that version puts collected data.
-install -Dm0644 "$ROOT/i18n/pl.json" "$ROOT/linux/gantry/data/i18n-pl.json"
+mkdir -p "$ROOT/linux/gantry/data/i18n"
+cp "$ROOT"/i18n/*.json "$ROOT/linux/gantry/data/i18n/"
 
 # PyInstaller provides the private Python runtime. Hidden GI repositories are loaded dynamically
 # by Gantry and therefore must be declared explicitly for a reproducible portable build.

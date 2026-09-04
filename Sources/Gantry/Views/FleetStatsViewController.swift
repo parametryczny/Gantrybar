@@ -147,7 +147,7 @@ final class FleetStatsViewController: NSViewController {
     }
 
     private func rows() -> [Row] {
-        let polish = AppSettings.shared.language == .pl
+        let polish = AppSettings.shared.isPolish
         let cutoff = periodDays == Int.max ? Date.distantPast
                                            : Date().addingTimeInterval(-Double(periodDays) * 86_400)
         return store.printers.map { printer in

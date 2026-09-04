@@ -232,7 +232,7 @@ final class SyncService {
         return SyncSettings(
             updatedAt: settingsClock,
             theme: s.theme.rawValue,
-            language: s.language.rawValue,
+            language: s.language,
             panelTransparency: s.panelTransparency.rawValue,
             spoolbaseEnabled: s.spoolbaseEnabled,
             webDashboardEnabled: s.webDashboardEnabled,
@@ -255,7 +255,9 @@ final class SyncService {
         defer { isApplyingRemote = false }
         let s = AppSettings.shared
         if let theme = AppTheme(rawValue: v.theme) { s.theme = theme }
-        if let language = AppLanguage(rawValue: v.language) { s.language = language }
+        // Only accept a language the receiving machine actually has a catalog for, so a peer on a
+        // newer build cannot strand this one on a code it cannot render.
+        if Localization.available().contains(where: { $0.code == v.language }) { s.language = v.language }
         if let transparency = PanelTransparency(rawValue: v.panelTransparency) { s.panelTransparency = transparency }
         s.spoolbaseEnabled = v.spoolbaseEnabled
         s.webDashboardEnabled = v.webDashboardEnabled

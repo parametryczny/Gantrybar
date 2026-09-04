@@ -1,11 +1,6 @@
 import AppKit
 import Combine
 
-enum AppLanguage: String, CaseIterable {
-    case pl
-    case en
-}
-
 enum AppTheme: String, CaseIterable {
     case light
     case dark
@@ -39,9 +34,15 @@ enum PanelTransparency: String, CaseIterable {
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
-    @Published var language: AppLanguage {
-        didSet { defaults.set(language.rawValue, forKey: "app-language") }
+    /// Language code ("pl", "en", "de"…). Free-form on purpose: the list comes from the catalogs
+    /// present in i18n/, so a new language is one file and no code change.
+    @Published var language: String {
+        didSet { defaults.set(language, forKey: "app-language") }
     }
+
+    /// Kept because a handful of call sites still ask for Polish specifically (insights snapshots
+    /// build their own strings).
+    var isPolish: Bool { language == "pl" }
 
     @Published var theme: AppTheme {
         didSet {
@@ -174,16 +175,21 @@ final class AppSettings: ObservableObject {
 
     /// System language on first launch: Polish only if the OS preference is Polish, else English —
     /// matching the Windows side, where the default follows CurrentUICulture.
-    private static func detectedLanguage() -> AppLanguage {
-        let code = Locale.preferredLanguages.first?.prefix(2).lowercased()
-        return code == "pl" ? .pl : .en
+    /// First launch: use the OS language when a catalog for it exists, else English.
+    private static func detectedLanguage() -> String {
+        let code = String(Locale.preferredLanguages.first?.prefix(2).lowercased() ?? "en")
+        return Localization.available().contains { $0.code == code } ? code : "en"
     }
 
     private init() {
-        let resolvedLanguage = defaults.string(forKey: "app-language").flatMap(AppLanguage.init(rawValue:)) ?? Self.detectedLanguage()
+        // A stored language whose catalog has since been removed must not leave the app on a dead
+        // code, so it falls back to detection rather than being trusted blindly.
+        let stored = defaults.string(forKey: "app-language")
+        let known = Localization.available().map(\.code)
+        let resolvedLanguage = stored.flatMap { known.contains($0) ? $0 : nil } ?? Self.detectedLanguage()
         // didSet doesn't fire during init, so persist the resolved language now — otherwise other
         // readers (e.g. UpdateService) that read the raw default would fall back to a different value.
-        defaults.set(resolvedLanguage.rawValue, forKey: "app-language")
+        defaults.set(resolvedLanguage, forKey: "app-language")
         language = resolvedLanguage
         theme = AppTheme(rawValue: defaults.string(forKey: "app-theme") ?? "dark") ?? .dark
         panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
@@ -232,11 +238,13 @@ final class AppSettings: ObservableObject {
     /// Looks the English source string up in the shipped catalog (i18n/pl.json). This is the form new
     /// code should use; `text(_:_:)` below stays until every call site is migrated.
     func t(_ english: String) -> String {
-        language == .pl ? Localization.polish(for: english) : english
+        Localization.text(english, language: language)
     }
 
     func text(_ polish: String, _ english: String) -> String {
-        language == .pl ? polish : english
+        // Legacy form: the Polish literal is only correct for Polish, so any other language goes
+        // through the catalog, which for English simply returns the key.
+        language == "pl" ? polish : Localization.text(english, language: language)
     }
 
     func stateLabel(_ state: PrinterState) -> String {

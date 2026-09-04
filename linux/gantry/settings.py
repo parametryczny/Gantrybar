@@ -10,6 +10,7 @@ from typing import Any
 from gi.repository import GLib, Gtk  # type: ignore
 
 from . import __version__
+from . import i18n
 from .storage import autostart_enabled, set_autostart
 
 
@@ -120,9 +121,10 @@ class SettingsDialog(Gtk.Dialog):
         return scroll
 
     def _basics(self) -> Gtk.Widget:
+        # Wypelniane tym, co znalazl loader, wiec nowy plik i18n/<kod>.json pojawia sie sam.
         self.language = Gtk.ComboBoxText()
-        self.language.append("pl", "Polski")
-        self.language.append("en", "English")
+        for code, name in i18n.available():
+            self.language.append(code, name)
         self.language.set_active_id(self.app.language)
         language_row = Gtk.Box(spacing=10)
         language_row.pack_start(Gtk.Label(label="Język" if self.pl else "Language", xalign=0), False, False, 0)

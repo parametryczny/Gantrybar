@@ -25,7 +25,9 @@ final class SettingsWindowController: NSWindowController {
 
     // MARK: General
     private let basicsGroupLabel = NSTextField(labelWithString: "")
-    private let languageControl = NSSegmentedControl(labels: ["PL", "EN"], trackingMode: .selectOne, target: nil, action: nil)
+    /// A popup, not a two-way segment: the list is whatever catalogs i18n/ contains, so a new
+    /// language file appears here on its own.
+    private let languageControl = NSPopUpButton(frame: .zero, pullsDown: false)
     private lazy var languageRow = SettingsRowView(control: languageControl)
     private lazy var launchRow = SettingsToggleRow(target: self, action: #selector(launchAtLoginChanged))
     private lazy var spoolbaseRow = SettingsToggleRow(target: self, action: #selector(spoolbaseToggled))
@@ -282,7 +284,8 @@ final class SettingsWindowController: NSWindowController {
             self?.show(tab: tab)
         }
 
-        configureSegmented(languageControl, action: #selector(languageChanged), widths: [70, 70])
+        languageControl.target = self
+        languageControl.action = #selector(languageChanged)
         configureSegmented(themeControl, action: #selector(themeChanged), widths: [82, 82])
         configureSegmented(transparencyControl, action: #selector(transparencyChanged), widths: [72, 72, 72])
         configureSegmented(dockEdgeControl, action: #selector(dockEdgeChanged), widths: [78, 78])
@@ -565,7 +568,12 @@ final class SettingsWindowController: NSWindowController {
     private func refreshGeneral(_ settings: AppSettings, version: String) {
         basicsGroupLabel.stringValue = settings.text("PODSTAWY", "BASICS")
         languageRow.titleLabel.stringValue = settings.text("Język", "Language")
-        languageControl.selectedSegment = settings.language == .pl ? 0 : 1
+        let languages = Localization.available()
+        languageControl.removeAllItems()
+        for language in languages { languageControl.addItem(withTitle: language.name) }
+        if let index = languages.firstIndex(where: { $0.code == settings.language }) {
+            languageControl.selectItem(at: index)
+        }
         launchRow.titleLabel.stringValue = settings.text("Uruchamiaj przy logowaniu", "Launch at login")
         launchRow.isOn = LaunchAtLoginManager.isEnabled
         spoolbaseRow.titleLabel.stringValue = settings.text("Spoolbase", "Spoolbase")
@@ -758,7 +766,10 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func languageChanged() {
-        AppSettings.shared.language = languageControl.selectedSegment == 0 ? .pl : .en
+        let languages = Localization.available()
+        let index = languageControl.indexOfSelectedItem
+        guard index >= 0, index < languages.count else { return }
+        AppSettings.shared.language = languages[index].code
     }
 
     @objc private func quietHoursChanged() {

@@ -138,13 +138,23 @@ enum ProtocolSelfTest {
     /// The translation catalog has to actually load and resolve, otherwise every screen silently
     /// falls back to English and nobody notices until a user reports it.
     private static func checkLocalization(_ failures: inout [String]) {
-        if Localization.loadedCount == 0 { failures.append("translation catalog did not load") }
-        if Localization.polish(for: "Launch at login") != "Uruchamiaj przy logowaniu" {
+        if Localization.loadedCount(for: "pl") == 0 { failures.append("translation catalog did not load") }
+        if Localization.text("Launch at login", language: "pl") != "Uruchamiaj przy logowaniu" {
             failures.append("known catalog entry did not resolve")
         }
         // A string with no entry must fall through to English, never to an empty label.
         let unknown = "Gantry self-test string with no catalog entry"
-        if Localization.polish(for: unknown) != unknown { failures.append("missing key did not fall back") }
+        if Localization.text(unknown, language: "pl") != unknown { failures.append("missing key did not fall back") }
+        // English is the key space itself, so it needs no catalog and must pass strings through.
+        if Localization.text("Launch at login", language: "en") != "Launch at login" {
+            failures.append("English did not pass through")
+        }
+        // Every discovered language must carry a display name; the list drives the Settings popup.
+        let languages = Localization.available()
+        if !languages.contains(where: { $0.code == "en" }) { failures.append("English missing from language list") }
+        if !languages.contains(where: { $0.code == "pl" && $0.name == "Polski" }) {
+            failures.append("Polish catalog did not announce its name")
+        }
     }
 
     private static func checkTelemetry(_ failures: inout [String]) {

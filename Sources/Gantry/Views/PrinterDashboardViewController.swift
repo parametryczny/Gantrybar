@@ -260,7 +260,7 @@ final class PrinterDashboardViewController: NSViewController {
         guard isViewLoaded else { return }
         let online = store.telemetry.values.filter { $0.state != .offline }.count
         let settings = AppSettings.shared
-        summaryLabel.stringValue = settings.language == .pl
+        summaryLabel.stringValue = settings.isPolish
             ? "\(store.printers.count) drukarek · \(store.activePrintCount) pracuje"
             : "\(store.printers.count) printers · \(store.activePrintCount) printing"
         let supportsCompactMode = store.printers.count >= 4

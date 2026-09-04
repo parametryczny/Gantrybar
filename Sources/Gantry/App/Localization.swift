@@ -1,42 +1,87 @@
 import Foundation
 
-/// The shipped translation catalog, keyed by the English source string the way gettext keys by msgid.
+/// Translation catalogs, keyed by the English source string the way gettext keys by msgid.
 ///
-/// Two consequences worth knowing. A key that is missing from the catalog falls back to the English
-/// string itself, so a forgotten entry degrades to readable text instead of showing `settings.launch`
-/// to the user. And adding a language means adding one JSON file, without touching any call site.
+/// Three consequences worth knowing. A key missing from a catalog falls back to the English string
+/// itself, so a forgotten entry degrades to readable text instead of showing `settings.launch` to the
+/// user. English needs no catalog at all, because it *is* the key. And a new language is one file
+/// dropped into `i18n/`: nothing here or in Settings enumerates languages by hand.
 ///
-/// The catalog is the repository's `i18n/pl.json`, copied into the bundle by scripts/build-app.sh.
+/// Each catalog names itself under the `@name` key ("Polski", "Deutsch"), so the Settings list needs
+/// no table of language names in code. Keys starting with `@` are metadata, never lookup text.
 enum Localization {
-    /// Polish text for an English source string, or the string itself when the catalog has no entry.
-    static func polish(for english: String) -> String { table[english] ?? english }
+    /// A language the app can switch to. `en` is always present and always first.
+    struct Language: Equatable, Sendable {
+        let code: String
+        let name: String
+    }
 
-    /// Entries the catalog does not cover. Only used by the parity check, never at runtime.
-    static var loadedCount: Int { table.count }
+    static let english = Language(code: "en", name: "English")
 
-    private static let table: [String: String] = {
-        for url in candidates() {
-            guard let data = try? Data(contentsOf: url),
-                  let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: String]
-            else { continue }
-            return parsed
+    /// Text for an English source string in the given language.
+    static func text(_ english: String, language code: String) -> String {
+        guard code != "en" else { return english }
+        return table(for: code)[english] ?? english
+    }
+
+    /// Every language the app can offer: English plus one entry per catalog found on disk.
+    static func available() -> [Language] {
+        var found: [Language] = [english]
+        for (code, url) in discovered().sorted(by: { $0.key < $1.key }) {
+            guard code != "en" else { continue }
+            let name = (loadTable(at: url)["@name"]) ?? code.uppercased()
+            found.append(Language(code: code, name: name))
+        }
+        return found
+    }
+
+    /// Entry count for a language, used by the self-test; never needed at runtime.
+    static func loadedCount(for code: String) -> Int { table(for: code).count }
+
+    // MARK: Loading
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: [String: String]] = [:]
+
+    private static func table(for code: String) -> [String: String] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = cache[code] { return cached }
+        let loaded = discovered()[code].map(loadTable(at:)) ?? [:]
+        cache[code] = loaded
+        return loaded
+    }
+
+    private static func loadTable(at url: URL) -> [String: String] {
+        guard let data = try? Data(contentsOf: url),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+        else { return [:] }
+        return parsed
+    }
+
+    /// Catalog files by language code, taking the first directory that has any.
+    private static func discovered() -> [String: URL] {
+        for directory in searchPaths() {
+            let files = (try? FileManager.default.contentsOfDirectory(at: directory,
+                                                                      includingPropertiesForKeys: nil)) ?? []
+            let catalogs = files.filter { $0.pathExtension == "json" }
+            if !catalogs.isEmpty {
+                return Dictionary(catalogs.map { ($0.deletingPathExtension().lastPathComponent, $0) },
+                                  uniquingKeysWith: { first, _ in first })
+            }
         }
         return [:]
-    }()
+    }
 
-    private static func candidates() -> [URL] {
-        var urls: [URL] = []
-        if let bundled = Bundle.main.url(forResource: "pl", withExtension: "json", subdirectory: "i18n") {
-            urls.append(bundled)
+    private static func searchPaths() -> [URL] {
+        var paths: [URL] = []
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("i18n") {
+            paths.append(bundled)
         }
-        if let flat = Bundle.main.url(forResource: "i18n-pl", withExtension: "json") {
-            urls.append(flat)
-        }
-        // Running from `swift run` there is no bundle, so fall back to the checkout next to the binary.
-        let executable = Bundle.main.bundleURL.deletingLastPathComponent()
-        urls.append(executable.appendingPathComponent("i18n/pl.json"))
-        urls.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("i18n/pl.json"))
-        return urls
+        // Running from `swift run` there is no bundle, so fall back to the checkout.
+        paths.append(Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("i18n"))
+        paths.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("i18n"))
+        return paths
     }
 }

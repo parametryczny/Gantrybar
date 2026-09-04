@@ -140,7 +140,7 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripSeparator());
 
         var language = new ToolStripMenuItem(AppSettings.Text("Język: PL", "Language: EN"));
-        language.Click += (_, _) => { AppSettings.Polish = !AppSettings.Polish; RebuildMenu(); };
+        language.Click += (_, _) => { CycleLanguage(); RebuildMenu(); };
         menu.Items.Add(language);
 
         var quiet = new ToolStripMenuItem(
@@ -209,6 +209,14 @@ public sealed class TrayIcon : IDisposable
         _notifyIcon.ContextMenuStrip?.Dispose();
         _notifyIcon.ContextMenuStrip = BuildMenu();
         _dashboard?.RefreshLanguage();
+    }
+
+    /// Moves to the next installed catalog, so a dropped-in language is reachable without code.
+    private static void CycleLanguage()
+    {
+        var codes = Localization.Available().Select(entry => entry.Code).ToList();
+        int index = codes.IndexOf(AppSettings.Language);
+        AppSettings.Language = codes[(index < 0 ? 0 : index + 1) % codes.Count];
     }
 
     private DashboardWindow EnsureDashboard()

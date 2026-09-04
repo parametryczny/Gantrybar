@@ -7,11 +7,12 @@ final class HMSResolver {
 
     private init() {}
 
-    func description(for codes: [String], serial: String, language: AppLanguage) -> String? {
+    func description(for codes: [String], serial: String, language: String) -> String? {
         let actionable = actionableCodes(codes, serial: serial, language: language)
         guard !actionable.isEmpty else { return nil }
         let prefix = String(serial.prefix(3)).uppercased()
-        let languageCode = language == .pl ? "pl" : "en"
+        // Bambu ships the HMS catalog in Polish and English only; anything else reads English.
+        let languageCode = language == "pl" ? "pl" : "en"
         let lookup = messages(prefix: prefix, languageCode: languageCode)
         for code in actionable {
             let normalized = normalize(code)
@@ -23,10 +24,11 @@ final class HMSResolver {
     /// Bambu's catalog contains internal HMS markers with an intentionally empty description.
     /// Bambu Studio does not present those as user-facing faults, so Gantry suppresses them. Truly
     /// unknown codes remain actionable and keep their raw HMS fallback.
-    func actionableCodes(_ codes: [String], serial: String, language: AppLanguage) -> [String] {
+    func actionableCodes(_ codes: [String], serial: String, language: String) -> [String] {
         guard !codes.isEmpty else { return [] }
         let prefix = String(serial.prefix(3)).uppercased()
-        let languageCode = language == .pl ? "pl" : "en"
+        // Bambu ships the HMS catalog in Polish and English only; anything else reads English.
+        let languageCode = language == "pl" ? "pl" : "en"
         let lookup = messages(prefix: prefix, languageCode: languageCode)
         return codes.filter { code in
             guard let knownMessage = lookup[normalize(code)] else { return true }

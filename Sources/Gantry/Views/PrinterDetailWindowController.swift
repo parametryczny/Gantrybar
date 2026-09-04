@@ -223,7 +223,7 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     @objc private func customizePressed(_ sender: NSButton) {
-        let pl = AppSettings.shared.language == .pl
+        let pl = AppSettings.shared.isPolish
         let hidden = hiddenModules()
         let menu = NSMenu()
         for id in Self.hideableModules where cardViews[id] != nil {
@@ -491,7 +491,7 @@ final class PrinterDetailViewController: NSViewController {
 
     @objc private func showPrintHistory() {
         let settings = AppSettings.shared
-        let entries = PrinterInsightsStore.shared.snapshot(serial: serial, polish: settings.language == .pl).history
+        let entries = PrinterInsightsStore.shared.snapshot(serial: serial, polish: settings.isPolish).history
         let rows = entries.map { entry -> String in
             let minutes = Int(entry.durationSeconds / 60)
             let duration = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
@@ -636,7 +636,7 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     private func refreshInsights(settings: AppSettings) {
-        let snapshot = PrinterInsightsStore.shared.snapshot(serial: serial, polish: settings.language == .pl)
+        let snapshot = PrinterInsightsStore.shared.snapshot(serial: serial, polish: settings.isPolish)
         func clear(_ stack: NSStackView) {
             stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
         }

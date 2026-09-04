@@ -58,6 +58,11 @@ def main() -> int:
         print("Ujednolic je w zrodlach, inaczej katalog zgubi jeden z wariantow.", file=sys.stderr)
         return 1
     OUT.parent.mkdir(exist_ok=True)
+    # Keys starting with "@" are catalog metadata, not translatable text: "@name" carries the language
+    # name shown in Settings. Preserve whatever the existing file declares.
+    if OUT.exists():
+        previous = json.loads(OUT.read_text(encoding="utf-8"))
+        catalog.update({k: v for k, v in previous.items() if k.startswith("@")})
     OUT.write_text(json.dumps(dict(sorted(catalog.items())), ensure_ascii=False, indent=2) + "\n",
                    encoding="utf-8")
     print(f"Zapisano {OUT.relative_to(ROOT)}: {len(catalog)} hasel")

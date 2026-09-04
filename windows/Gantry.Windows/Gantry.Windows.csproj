@@ -40,7 +40,7 @@
     <!-- Gantry wordmark logo (embedded resource, used in the dashboard header). -->
     <Resource Include="Assets\wordmark.png" />
     <!-- Translation catalog, shared verbatim with the macOS and Linux builds. -->
-    <Content Include="..\..\i18n\pl.json" Link="i18n\pl.json">
+    <Content Include="..\..\i18n\*.json" Link="i18n\%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

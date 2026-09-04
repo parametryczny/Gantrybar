@@ -288,8 +288,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         menu.addItem(row(icon: "globe",
                          title: settings.text("Język", "Language"),
-                         accessory: .value(settings.language == .pl ? "PL" : "EN")) {
-            AppSettings.shared.language = AppSettings.shared.language == .pl ? .en : .pl
+                         accessory: .value(settings.language.uppercased())) {
+            // Cycles through the installed catalogs, so a dropped-in language is reachable here too.
+            let codes = Localization.available().map(\.code)
+            let next = codes.firstIndex(of: AppSettings.shared.language).map { ($0 + 1) % codes.count } ?? 0
+            AppSettings.shared.language = codes[next]
         })
         menu.addItem(row(icon: QuietHours.isEnabled ? "moon.fill" : "moon",
                          title: settings.text("Godziny ciszy", "Quiet hours"),

@@ -10,5 +10,5 @@ __pycache__/
 # Locally built minimal ffmpeg for the macOS bundle (scripts/build-ffmpeg-macos-minimal.sh)
 vendor/
 
-# Staged from i18n/pl.json by the Linux packaging scripts.
-linux/gantry/data/i18n-pl.json
+# Staged from i18n/ by the Linux packaging scripts.
+linux/gantry/data/i18n/

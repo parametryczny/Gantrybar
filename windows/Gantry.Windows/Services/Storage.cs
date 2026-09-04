@@ -139,11 +139,21 @@ public static class AppSettings
         set => Defaults.SetString("app-theme", value == "light" ? "light" : "dark");
     }
 
-    public static bool Polish
+    /// Language code ("pl", "en", "de"…). Free-form on purpose: the list comes from the catalogs
+    /// present in i18n/, so a new language is one file and no code change. A stored code whose
+    /// catalog has since been removed falls back to detection rather than being trusted blindly.
+    public static string Language
     {
-        get => (Defaults.GetString("app-language") ?? DefaultLanguage()) == "pl";
-        set => Defaults.SetString("app-language", value ? "pl" : "en");
+        get
+        {
+            string stored = Defaults.GetString("app-language") ?? DefaultLanguage();
+            return Localization.Available().Any(entry => entry.Code == stored) ? stored : DefaultLanguage();
+        }
+        set => Defaults.SetString("app-language", value);
     }
+
+    /// Kept because a number of call sites still ask for Polish specifically.
+    public static bool Polish => Language == "pl";
 
     /// Developer mode: reveals the printer control + automations tile in the detail window.
     public static bool DeveloperMode
@@ -379,12 +389,19 @@ public static class AppSettings
 
     /// <summary>Looks the English source string up in the shipped catalog (i18n/pl.json). This is the
     /// form new code should use; <see cref="Text"/> below stays until every call site is migrated.</summary>
-    public static string T(string english) => Polish ? Localization.ToPolish(english) : english;
+    public static string T(string english) => Localization.Text(english, Language);
 
-    public static string Text(string polish, string english) => Polish ? polish : english;
+    public static string Text(string polish, string english)
+        // Legacy form: the Polish literal is only correct for Polish, so any other language goes
+        // through the catalog, which for English simply returns the key.
+        => Polish ? polish : Localization.Text(english, Language);
 
+    /// First launch: use the OS language when a catalog for it exists, else English.
     private static string DefaultLanguage()
-        => System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "pl" ? "pl" : "en";
+    {
+        string code = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+        return Localization.Available().Any(entry => entry.Code == code) ? code : "en";
+    }
 }
 
 /// <summary>Persists the configured printer list (saved-printers-v1), same schema as macOS.</summary>

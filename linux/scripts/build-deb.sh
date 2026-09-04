@@ -42,7 +42,8 @@ Description: Gantry 3D printer status monitor
 EOF
 
 # Translation catalog, shared verbatim with the macOS and Windows builds.
-install -Dm0644 "$ROOT/i18n/pl.json" "$ROOT/linux/gantry/data/i18n-pl.json"
+mkdir -p "$ROOT/linux/gantry/data/i18n"
+cp "$ROOT"/i18n/*.json "$ROOT/linux/gantry/data/i18n/"
 cp -a "$ROOT/linux/gantry/." "$BUILD/usr/lib/python3/dist-packages/gantry/"
 find "$BUILD/usr/lib/python3/dist-packages/gantry" -type d -name __pycache__ -prune -exec rm -rf {} +
 install -m 0755 "$ROOT/linux/packaging/gantry" "$BUILD/usr/bin/gantry"

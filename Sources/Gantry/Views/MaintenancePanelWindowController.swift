@@ -89,7 +89,7 @@ final class MaintenancePanelViewController: NSViewController {
         body.spacing = 8
         body.translatesAutoresizingMaskIntoConstraints = false
 
-        let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.language == .pl)
+        let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.isPolish)
         let title = label(s.text("Konserwacja · \(printer.name)", "Maintenance · \(printer.name)"), 18, .bold)
         let instructions = button(s.text("Instrukcje", "Instructions")) { [weak self] in self?.showInstructions() }
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.text("Zamknij", "Close"))!,

@@ -19,7 +19,8 @@ mkdir -p "$TOPDIR/BUILD" "$TOPDIR/BUILDROOT" "$TOPDIR/RPMS" "$TOPDIR/SOURCES" \
 # Build from a clean source archive so rpmbuild validates exactly what will be installed.
 mkdir -p "$SOURCE/linux"
 # Translation catalog, shared verbatim with the macOS and Windows builds.
-install -Dm0644 "$ROOT/i18n/pl.json" "$ROOT/linux/gantry/data/i18n-pl.json"
+mkdir -p "$ROOT/linux/gantry/data/i18n"
+cp "$ROOT"/i18n/*.json "$ROOT/linux/gantry/data/i18n/"
 cp -a "$ROOT/linux/gantry" "$SOURCE/linux/gantry"
 cp -a "$ROOT/linux/assets" "$SOURCE/linux/assets"
 cp -a "$ROOT/linux/packaging" "$SOURCE/linux/packaging"
