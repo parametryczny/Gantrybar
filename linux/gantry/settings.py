@@ -336,9 +336,9 @@ i18n.t("paste token from the other computer"))
             error = peer.get("lastError")
             last = peer.get("lastSyncAt")
             if error:
-                status = (f"Błąd: {error}" if self.pl else f"Error: {error}")
+                status = (i18n.t("Error: {0}").format(error))
             elif last:
-                status = (f"ostatnio: {str(last)[11:16]}" if self.pl else f"last: {str(last)[11:16]}")
+                status = (i18n.t("last: {0}").format(str(last)[11:16]))
             else:
                 status = (i18n.t("not synced yet"))
             name = Gtk.Label(label=address, xalign=0)
@@ -443,7 +443,7 @@ i18n.t("Connection works."))
     def _updates(self) -> Gtk.Widget:
         row = Gtk.Box(spacing=10)
         self.update_status = Gtk.Label(
-            label=f"Wersja {__version__}" if self.pl else f"Version {__version__}",
+            label=i18n.t("Version {0}").format(__version__),
             xalign=0, wrap=True)
         self.update_status.get_style_context().add_class("settings-hint")
         self.update_button = Gtk.Button(

@@ -40,22 +40,20 @@ def trigger_summary(rule: dict[str, Any], pl: bool) -> str:
     t = rule.get("trigger", {})
     kind, value = t.get("type", "manual"), t.get("value")
     if kind == "at_layer":
-        return f"po warstwie {value}" if pl else f"at layer {value}"
+        return i18n.t("at layer {0}").format(value)
     if kind == "at_progress":
-        return f"po {value}%" if pl else f"at {value}%"
+        return i18n.t("at {0}%").format(value)
     if kind == "on_state":
-        return f"gdy stan: {value}" if pl else f"on state: {value}"
+        return i18n.t("on state: {0}").format(value)
     returni18n.t("manually")
 
 
 def action_summary(rule: dict[str, Any], pl: bool) -> str:
     label = {
-        "light_on": ("światło wł.", "light on"), "light_off": ("światło wył.", "light off"),
-        "pause": ("pauza", "pause"), "resume": ("wznów", "resume"), "stop": ("stop", "stop"),
-        "notify": ("powiadomienie", "notification"), "command": ("własna komenda", "custom command"),
-        "script": ("skrypt", "script"),
-    }.get(rule.get("action", {}).get("type", "light_off"), ("", ""))
-    return label[0 if pl else 1]
+        "light_on": "light on", "light_off": "light off", "pause": "pause", "resume": "resume",
+        "stop": "stop", "notify": "notification", "command": "custom command", "script": "script",
+    }.get(rule.get("action", {}).get("type", "light_off"), "")
+    return i18n.t(label) if label else ""
 
 
 class AutomationStore:

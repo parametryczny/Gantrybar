@@ -164,7 +164,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
 
         pct = Gtk.Label(xalign=0)
         pct.get_style_context().add_class("subtitle")
-        pct.set_text(f"{percent}% · {int(nominal)} g nominał" if pl else f"{percent}% · {int(nominal)} g nominal")
+        pct.set_text(i18n.t("{0}% · {1} g nominal").format(percent, int(nominal)))
         content.pack_start(pct, False, False, 0)
 
         actions = Gtk.Box(spacing=6)
@@ -201,7 +201,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
                 return
             store.reset_to_full(assigned["id"])
             spin.set_value(nominal)
-            pct.set_text(f"100% · {int(nominal)} g nominał" if pl else f"100% · {int(nominal)} g nominal")
+            pct.set_text(i18n.t("100% · {0} g nominal").format(int(nominal)))
             _refresh(app, serial)
 
         save.connect("clicked", do_save)

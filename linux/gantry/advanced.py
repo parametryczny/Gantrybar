@@ -16,11 +16,11 @@ class AdvancedDialog(Gtk.Dialog):
         self.printer = next((printer for printer in app.printers if printer.serial == serial), None)
         self.pl = app.language == "pl"
         name = self.printer.name if self.printer is not None else serial
-        super().__init__(title=("Zaawansowane — " if self.pl else "Advanced — ") + name,
+        super().__init__(title=i18n.t("Advanced — {0}").format(name),
                          transient_for=app.window, modal=True)
         self.set_default_size(470, 510 if self._klipper else 310)
-        self.add_button("Anuluj" if self.pl else "Cancel", Gtk.ResponseType.CANCEL)
-        self.add_button("Zapisz" if self.pl else "Save", Gtk.ResponseType.OK)
+        self.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+        self.add_button(i18n.t("Save"), Gtk.ResponseType.OK)
         values = overrides_for(app.config, serial)
         self.fields: dict[str, Gtk.Entry] = {}
         root = self.get_content_area(); root.set_spacing(8); root.set_border_width(14)

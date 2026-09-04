@@ -119,11 +119,10 @@ class FleetStatsDialog(Gtk.Dialog):
         success_text = f"{success}%" if success is not None else "—"
 
         lines = [
-            f"{'Okres' if self.pl else 'Period'}: {self._period_label(self.period_days)}",
-            (f"{'Wydruki' if self.pl else 'Prints'}: {prints} "
-             f"({'nieudane' if self.pl else 'failed'}: {failed})"),
-            f"{'Skuteczność' if self.pl else 'Success rate'}: {success_text}",
-            f"{'Czas druku' if self.pl else 'Print time'}: {hours:.1f} h",
+            i18n.t("Period: {0}").format(self._period_label(self.period_days)),
+            i18n.t("Prints: {0} (failed: {1})").format(prints, failed),
+            i18n.t("Success rate: {0}").format(success_text),
+            i18n.t("Print time: {0} h").format(f"{hours:.1f}"),
         ]
         if grams > 0:
             lines.append(f"Filament: {grams / 1000:.2f} kg")
@@ -136,9 +135,9 @@ class FleetStatsDialog(Gtk.Dialog):
                                  False, False, 0)
         for row in sorted(rows, key=lambda item: item["prints"], reverse=True):
             row_success = self._success(row["prints"], row["failed"])
-            detail = (f"{row['prints']} {'wydruków' if self.pl else 'prints'} · {row['hours']:.1f} h · "
-                      f"{row_success}%" if row_success is not None else
-                      f"{row['prints']} {'wydruków' if self.pl else 'prints'} · {row['hours']:.1f} h · —")
+            detail = i18n.t("{0} prints · {1} h · {2}").format(
+                row["prints"], f"{row['hours']:.1f}",
+                f"{row_success}%" if row_success is not None else "—")
             self.body.pack_start(self._card([row["name"], detail], title_first=True), False, False, 0)
         self.body.show_all()
 
@@ -165,14 +164,13 @@ class FleetStatsDialog(Gtk.Dialog):
                     hours: float, grams: float, success: int | None) -> str:
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         success_text = f"{success}%" if success is not None else "—"
-        out = [f"Gantry {'statystyki floty' if self.pl else 'fleet statistics'}",
-               f"{'Wygenerowano' if self.pl else 'Generated'}: {stamp}",
-               f"{'Okres' if self.pl else 'Period'}: {self._period_label(self.period_days)}",
+        out = [i18n.t("Gantry fleet statistics"),
+               i18n.t("Generated: {0}").format(stamp),
+               i18n.t("Period: {0}").format(self._period_label(self.period_days)),
                "",
-               (f"{'Wydruki' if self.pl else 'Prints'}: {prints}  "
-                f"({'nieudane' if self.pl else 'failed'}: {failed})"),
-               f"{'Skuteczność' if self.pl else 'Success rate'}: {success_text}",
-               f"{'Czas druku' if self.pl else 'Print time'}: {hours:.1f} h"]
+               i18n.t("Prints: {0} (failed: {1})").format(prints, failed),
+               i18n.t("Success rate: {0}").format(success_text),
+               i18n.t("Print time: {0} h").format(f"{hours:.1f}")]
         if grams > 0:
             out.append(f"Filament: {grams / 1000:.2f} kg")
         out.append("")
@@ -180,8 +178,8 @@ class FleetStatsDialog(Gtk.Dialog):
         for row in sorted(rows, key=lambda item: item["prints"], reverse=True):
             row_success = self._success(row["prints"], row["failed"])
             mark = f"{row_success}%" if row_success is not None else "—"
-            out.append(f"  {row['name']}: {row['prints']} {'wydruków' if self.pl else 'prints'}, "
-                       f"{row['hours']:.1f} h, {mark}")
+            out.append("  " + i18n.t("{0}: {1} prints, {2} h, {3}").format(
+                row["name"], row["prints"], f"{row['hours']:.1f}", mark))
         return "\n".join(out) + "\n"
 
     def _export(self, *_args: object) -> None:

@@ -27,11 +27,11 @@ def _filament_signature(groups: Any, *extra: Any) -> tuple:
         for group in groups))
 
 
-_SPEED_NAMES = {1: ("Cichy", "Silent"), 2: ("Standard", "Standard"),
-                3: ("Sport", "Sport"), 4: ("Wariat", "Ludicrous")}
-_STATES = {PrinterState.PRINTING: ("Drukuje", "Printing"), PrinterState.PAUSED: ("Pauza", "Paused"),
-           PrinterState.FINISHED: ("Zakończono", "Finished"), PrinterState.ERROR: ("Błąd", "Error"),
-           PrinterState.IDLE: ("Bezczynny", "Idle"), PrinterState.OFFLINE: ("Offline", "Offline")}
+# Klucze angielskie; polskie odpowiedniki siedza w katalogu tlumaczen.
+_SPEED_NAMES = {1: "Silent", 2: "Standard", 3: "Sport", 4: "Ludicrous"}
+_STATES = {PrinterState.PRINTING: "Printing", PrinterState.PAUSED: "Paused",
+           PrinterState.FINISHED: "Finished", PrinterState.ERROR: "Error",
+           PrinterState.IDLE: "Idle", PrinterState.OFFLINE: "Offline"}
 
 
 class TempGraph(Gtk.DrawingArea):
@@ -194,7 +194,7 @@ class DetailWindow(Gtk.Window):
 
     def update(self, tel: Telemetry) -> None:
         pl = self._pl()
-        state = _STATES.get(tel.state, (tel.state.value, tel.state.value))[0 if pl else 1]
+        state = i18n.t(_STATES.get(tel.state, tel.state.value))
         self.subtitle.set_text(f"{self.serial}")
         job = tel.job_name if (tel.state in {PrinterState.PRINTING, PrinterState.PAUSED} and tel.job_name) else "—"
         self.status.set_text(f"{state}  ·  {job}")
@@ -206,7 +206,7 @@ class DetailWindow(Gtk.Window):
         else:
             eta = "—"
         layers = "—" if tel.current_layer is None else f"{tel.current_layer}/{tel.total_layers or '—'}"
-        self.meta.set_text(f"{tel.progress}%   ·   ETA {eta}   ·   {'Warstwa' if pl else 'Layer'} {layers}")
+        self.meta.set_text(i18n.t("{0}%   ·   ETA {1}   ·   Layer {2}").format(tel.progress, eta, layers))
 
         self._printing = tel.state == PrinterState.PRINTING
         self._errored = tel.state == PrinterState.ERROR
@@ -280,7 +280,7 @@ class DetailWindow(Gtk.Window):
         self.hw.pack_start(self._tile(i18n.t("Aux fan"), fan(tel.aux_fan), strong=True), True, True, 0)
         self.hw.pack_start(self._tile(i18n.t("Chamber fan"), fan(tel.chamber_fan), strong=True), True, True, 0)
         if tel.speed_level or tel.speed_percent is not None:
-            name = _SPEED_NAMES.get(tel.speed_level or 0, ("", ""))[0 if pl else 1]
+            name = i18n.t(_SPEED_NAMES[tel.speed_level]) if tel.speed_level in _SPEED_NAMES else ""
             pct = f"{tel.speed_percent}%" if tel.speed_percent is not None else ""
             self.hw.pack_start(self._tile(i18n.t("Speed"), (f"{name} {pct}").strip() or "—", strong=True), True, True, 0)
         if tel.nozzle_diameter:
@@ -630,7 +630,7 @@ class DetailPanel(Gtk.Box):
 
     def update(self, tel: Telemetry) -> None:
         pl = self.app.language == "pl"
-        state = _STATES.get(tel.state, (tel.state.value, tel.state.value))[0 if pl else 1]
+        state = i18n.t(_STATES.get(tel.state, tel.state.value))
         colors = {PrinterState.PRINTING: "#0a84ff", PrinterState.IDLE: "#30d158",
                   PrinterState.FINISHED: "#30d158", PrinterState.PAUSED: "#ff9f0a",
                   PrinterState.ERROR: "#ff453a", PrinterState.OFFLINE: "#8e8e93"}
@@ -642,8 +642,7 @@ class DetailPanel(Gtk.Box):
         self.state_label.set_text(state); self.state_label.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
         self.percent.set_text(f"{tel.progress}%"); self.phase.update(tel.progress, tel.state)
         self.job.set_text(tel.job_name or "")
-        self.layer.set_text((f"Warstwa {tel.current_layer} / {tel.total_layers}" if pl else
-                             f"Layer {tel.current_layer} / {tel.total_layers}")
+        self.layer.set_text(i18n.t("Layer {0} / {1}").format(tel.current_layer, tel.total_layers)
                             if tel.current_layer is not None and tel.total_layers else "")
         if tel.remaining_minutes and tel.state in {PrinterState.PRINTING, PrinterState.PAUSED}:
             finish = (datetime.now() + timedelta(minutes=tel.remaining_minutes)).strftime("%H:%M")
@@ -669,8 +668,8 @@ class DetailPanel(Gtk.Box):
         self._clear(self.maintenance)
         ordered = sorted(snap["tasks"], key=lambda task: (not task.urgent, not task.due, task.remaining_hours))[:2]
         for task in ordered:
-            timing = (f"przekroczono o {task.overdue_hours:.0f} h" if pl else f"overdue by {task.overdue_hours:.0f} h") if task.due \
-                else (f"za {task.remaining_hours:.0f} h druku" if pl else f"in {task.remaining_hours:.0f} print h")
+            timing = (i18n.t("overdue by {0:.0f} h").format(task.overdue_hours)) if task.due \
+                else (i18n.t("in {0:.0f} print h").format(task.remaining_hours))
             self.maintenance.pack_start(self._line(f"{'!' if task.urgent else '⚠' if task.due else '○'}  {task.title} · {timing}"), False, False, 0)
         self._clear(self.stats)
         success = "—" if snap["success"] is None else f"{snap['success']}%"
@@ -726,7 +725,7 @@ class DetailPanel(Gtk.Box):
             fan_row.pack_start(self._metric(name, value), True, True, 0)
         self.hardware.pack_start(fan_row, False, False, 0)
         if tel.speed_level or tel.speed_percent is not None:
-            speed = _SPEED_NAMES.get(tel.speed_level or 0, ("—", "—"))[0 if pl else 1]
+            speed = i18n.t(_SPEED_NAMES[tel.speed_level]) if tel.speed_level in _SPEED_NAMES else "—"
             if tel.speed_percent is not None: speed += f" · {tel.speed_percent}%"
             self.hardware.pack_start(self._metric(i18n.t("Speed"), speed), False, False, 0)
         if tel.nozzle_diameter:

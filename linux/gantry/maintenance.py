@@ -46,7 +46,7 @@ class MaintenancePanel(Gtk.Frame):
         self.body.pack_start(header, False, False, 0)
         nozzle = f"{self.telemetry.nozzle_diameter:.1f} mm" if self.telemetry.nozzle_diameter else "—"
         summary = self._label(f"{snap['total_hours']:.1f} " +
-                              (f"h druku · dysza {nozzle}" if self.pl else f"print h · nozzle {nozzle}"))
+                              (i18n.t("print h · nozzle {0}").format(nozzle)))
         self.body.pack_start(summary, False, False, 0)
 
         alerts = self._alerts()
@@ -95,7 +95,7 @@ class MaintenancePanel(Gtk.Frame):
         if codes:
             return [(description([code], self.printer.serial, self.app.language) or f"HMS {code}", code) for code in codes]
         if getattr(self.telemetry, "error_code", 0):
-            return [(f"Kod błędu: 0x{self.telemetry.error_code:X}" if self.pl else f"Error code: 0x{self.telemetry.error_code:X}", None)]
+            return [(i18n.t("Error code: 0x{0:X}").format(self.telemetry.error_code), None)]
         from .core import PrinterState
         if self.telemetry.state == PrinterState.ERROR:
             return [(i18n.t("Printer reported an error"), None)]
@@ -126,8 +126,8 @@ class MaintenancePanel(Gtk.Frame):
 
     def _task(self, task: Any) -> Gtk.Widget:
         icon = "!" if task.urgent else "⚠" if task.due else "○"
-        timing = ((f"Przekroczono o {task.overdue_hours:.0f} h" if self.pl else f"Overdue by {task.overdue_hours:.0f} h")
-                  if task.due else (f"Za {task.remaining_hours:.0f} h druku" if self.pl else f"In {task.remaining_hours:.0f} print h"))
+        timing = ((i18n.t("Overdue by {0:.0f} h").format(task.overdue_hours))
+                  if task.due else (i18n.t("In {0:.0f} print h").format(task.remaining_hours)))
         if self.pl:
             timing = timing.replace(" druku", "")
         heading = Gtk.Box(spacing=5)

@@ -94,7 +94,7 @@ class CameraView(Gtk.Box):
             else:
                 self._run_mjpeg()
         except Exception as exc:  # noqa: BLE001 - surface, never crash the thread
-            self._set_status(f"Błąd kamery: {exc}" if self.app.language == "pl" else f"Camera error: {exc}")
+            self._set_status(i18n.t("Camera error: {0}").format(exc))
 
     def _run_bambu(self) -> None:
         pl = self.app.language == "pl"

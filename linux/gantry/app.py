@@ -935,7 +935,7 @@ class Gantry:
         dialog = Gtk.MessageDialog(
             transient_for=parent or self.window, modal=True, message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.NONE,
-            text=(f"Usunąć drukarkę {printer.name}?" if pl else f"Remove printer {printer.name}?"))
+            text=(i18n.t("Remove printer {0}?").format(printer.name)))
         dialog.format_secondary_text(i18n.t("This printer's saved access code and certificate pin will be removed."))
         dialog.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
         dialog.add_button(i18n.t("Remove"), Gtk.ResponseType.OK)
@@ -1081,7 +1081,7 @@ class Gantry:
                     and slot.remaining is not None and slot.remaining <= 10
                     and (previous_remaining.get(slot.slot_id) is None or previous_remaining[slot.slot_id] > 10)), None)
         if low and self.config.data.get("notify_low_filament"):
-            body = f"Niski poziom filamentu: {low.label} ({low.remaining}%)" if self.language == "pl" else f"Low filament: {low.label} ({low.remaining}%)"
+            body = i18n.t("Low filament: {0} ({1}%)").format(low.label, low.remaining)
             self.notify(printer_name, body)
             from . import telegram
             telegram.notify(self, printer_name, body, "")
@@ -1155,7 +1155,7 @@ class Gantry:
         if response != Gtk.ResponseType.OK or not filename: return
         try:
             count = self.import_records(parse_printer_csv(Path(filename).read_text(encoding="utf-8-sig")))
-            message = f"Zaimportowano {count} drukarek." if self.language == "pl" else f"Imported {count} printers."
+            message = i18n.t("Imported {0} printers.").format(count)
             kind = Gtk.MessageType.INFO
         except (OSError, UnicodeError, ValueError, SecretStoreError) as error:
             message = str(error); kind = Gtk.MessageType.ERROR

@@ -26,8 +26,9 @@ CALL_PATTERNS: list[tuple[str, str, str]] = [
     ("Sources/Gantry", "*.swift", r'(?<![A-Za-z0-9_])t\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]'),
     ("Sources/Gantry", "*.swift", r'(?<![A-Za-z0-9_])t\(\s*"""\n(.*?)\n\s*"""\s*\)'),
     ("windows/Gantry.Windows", "*.cs", r'(?<![A-Za-z0-9_])T\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]'),
-    ("linux/gantry", "*.py", r'(?<![A-Za-z0-9_.])t\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]'),
-    ("linux/gantry", "*.py", r"(?<![A-Za-z0-9_.])t\(\s*'((?:[^'\\]|\\.)*)'\s*[,)]"),
+    # Linux calls it as i18n.t(...), so the dot must be allowed here, unlike the bare t() on macOS.
+    ("linux/gantry", "*.py", r'(?<![A-Za-z0-9_])(?:i18n\.)?t\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]'),
+    ("linux/gantry", "*.py", r"(?<![A-Za-z0-9_])(?:i18n\.)?t\(\s*'((?:[^'\\]|\\.)*)'\s*[,)]"),
 ]
 
 
