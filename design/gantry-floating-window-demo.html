@@ -82,7 +82,7 @@
           flex-direction:column;gap:8px}
   .scroll::-webkit-scrollbar{width:6px}
   .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:99px}
-  .scroll.two{display:grid;grid-template-columns:1fr 1fr;align-content:start}
+  .scroll.grid{display:grid;align-content:start}
 
   /* ================= PRAWDZIWA KARTA GANTRY, WARIANT B ================= */
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 10px}
@@ -192,9 +192,11 @@
 <div class="bar">
   <div class="grp"><span>Rozmiar</span>
     <button data-size="240,150">Zwinięty</button>
+    <button data-size="880,104">Pasek</button>
     <button data-size="380,330">Wąski</button>
     <button data-size="470,400" class="on">Panel</button>
-    <button data-size="760,420">Dwie kolumny</button>
+    <button data-size="760,430">2 kolumny</button>
+    <button data-size="1060,440">3 kolumny</button>
   </div>
   <div class="grp"><span>Flota</span>
     <button data-n="1">1</button>
@@ -247,26 +249,43 @@
 </div>
 
 <p class="hint">
-  <b>Spróbuj:</b> rozciągnij okno powyżej 600 px, a karty ustawią się w dwie kolumny, dokładnie jak
-  <code>printerCard.perRow.wide = 2</code> w tokenach. Zwęź poniżej 340 px, a panel przechodzi w
+  <b>Spróbuj:</b> ciągnij prawą krawędź w prawo i patrz na plakietkę nad oknem. Kolumny dochodzą
+  same, jedna po drugiej, bez sufitu na dwóch. Zwęź poniżej 340 px, a panel przechodzi w
   <b>tryb zwinięty</b>, ten sam wiersz 31 px, który aplikacja ma dziś pod przełącznikiem trybu
-  kompaktowego. Wyłącz „Temperatury" albo „Filamenty", to są prawdziwe przełączniki z Ustawień,
-  sekcja Karty drukarek.
+  kompaktowego. Spłaszcz okno poniżej 170 px wysokości i rozciągnij w bok, a dostaniesz
+  <b>pasek przez ekran</b>: zwinięte wiersze też układają się w kolumny. Wyłącz „Temperatury"
+  albo „Filamenty", to są prawdziwe przełączniki z Ustawień, sekcja Karty drukarek.
 </p>
 
-<h2>Progi układu, prosto z tokenów</h2>
+<h2>Jak wypada liczba kolumn</h2>
 <table>
-  <tr><th style="width:170px">Szerokość okna</th><th style="width:150px">Co robi panel</th><th>Skąd to</th></tr>
-  <tr><td><code>&lt; 340 px</code></td><td>wiersze zwinięte</td>
-      <td>istniejący tryb kompaktowy, <code>CompactPrinterRowView</code>, wysokość 31 pt</td></tr>
-  <tr><td><code>340 do 599 px</code></td><td>jedna karta w rzędzie</td>
-      <td><code>printerCard.perRow.medium = 1</code></td></tr>
-  <tr><td><code>≥ 600 px</code></td><td>dwie karty w rzędzie</td>
-      <td><code>grid.breakpoints.wide.minWidth = 600</code>, <code>perRow.wide = 2</code></td></tr>
-  <tr><td colspan="3" style="color:var(--sec)">Wysokość nie zmienia układu, tylko ile widać naraz.
-      Panel przewija się tak samo jak dziś w popoverze, więc nie wprowadzamy drugiej reguły
-      przepełnienia obok tej, którą aplikacja już ma.</td></tr>
+  <tr><th style="width:210px">Warunek</th><th style="width:170px">Co robi panel</th><th>Skąd to</th></tr>
+  <tr><td>szerokość <code>&lt; 340 px</code><br>albo wysokość <code>&lt; 170 px</code></td>
+      <td>wiersze zwinięte</td>
+      <td>istniejący tryb kompaktowy, <code>CompactPrinterRowView</code>, wysokość 31 pt.
+          Niskie i szerokie okno to pasek przez ekran, więc wiersze też idą w kolumny
+          (najwęższy wiersz 210 px)</td></tr>
+  <tr><td>reszta</td><td>karty, liczba kolumn z szerokości</td>
+      <td><code>kolumny = floor((szerokość − 20 + 8) / (285 + 8))</code>, gdzie 285 px to najwęższa
+          karta, przy której moduły filamentu i temperatury jeszcze się czytają</td></tr>
 </table>
+
+<table style="margin-top:10px;max-width:560px">
+  <tr><th>Szerokość okna</th><th>Kolumny</th><th>Zgodność z tokenami</th></tr>
+  <tr><td><code>340 do 599 px</code></td><td>1</td><td><code>perRow.medium = 1</code></td></tr>
+  <tr><td><code>600 do 892 px</code></td><td>2</td><td><code>perRow.wide = 2</code> przy 600 px</td></tr>
+  <tr><td><code>893 do 1185 px</code></td><td>3</td><td>poza tokenami, wynika ze wzoru</td></tr>
+  <tr><td><code>1186 do 1478 px</code></td><td>4</td><td>poza tokenami, wynika ze wzoru</td></tr>
+  <tr><td><code>≥ 1479 px</code></td><td>5 i dalej</td><td>bez sufitu</td></tr>
+</table>
+
+<p class="hint" style="margin-top:12px">
+  Wzór jest tak dobrany, że <b>trafia w istniejące progi</b>: pierwsza kolumna kończy się przy
+  600 px, czyli dokładnie tam, gdzie <code>grid.breakpoints.wide.minWidth</code>. Powyżej tokeny
+  po prostu nie miały co opisywać, bo popover nigdy nie był szerszy. Jeżeli to wchodzi,
+  <code>gantry-design-tokens.json</code> dostanie <code>printerCard.minWidth = 285</code>
+  i <code>perRow</code> przestanie być listą progów.
+</p>
 
 <p class="note">
   <b>Co realnie dochodzi w kodzie:</b> nic z rysowania. Karta, wiersz zwinięty, przełączniki
@@ -397,18 +416,29 @@ function compactHTML(p){
   </div>`;
 }
 
+// Najwęższa karta, przy której moduły filamentu i temperatury jeszcze się czytają, oraz najwęższy
+// wiersz zwinięty. Liczba kolumn wypada z tych dwóch liczb, więc panel nie ma sufitu na dwóch
+// kolumnach: im szersze okno, tym więcej kart obok siebie.
+const CARD_MIN = 285, ROW_MIN = 210, GAP = 8, PAD = 20;
+
+const columnsFor = min => Math.max(1, Math.floor((w.clientWidth - PAD + GAP) / (min + GAP)));
+
 function render(){
-  const W = w.clientWidth;
+  const W = w.clientWidth, H = w.clientHeight;
   const list = FLEET.slice(0, fleetN);
   count.textContent = `${list.filter(p => p.state === 'print').length} z ${list.length} drukują`;
-  sizeTag.textContent = `${Math.round(W)} × ${Math.round(w.clientHeight)}`;
 
-  // Progi wprost z design/gantry-design-tokens.json.
-  const two = W >= 600;
-  scroll.classList.toggle('two', two);
-  scroll.innerHTML = W < 340
-    ? list.map(compactHTML).join('')
-    : list.map(cardHTML).join('');
+  // Zwinięte wiersze, gdy okno jest wąskie albo za niskie na kartę. Niskie i szerokie okno to
+  // pasek przez cały ekran, więc wiersze też układają się w kolumny.
+  const compact = W < 340 || H < 170;
+  const cols = columnsFor(compact ? ROW_MIN : CARD_MIN);
+
+  scroll.classList.toggle('grid', cols > 1);
+  scroll.style.gridTemplateColumns = cols > 1 ? `repeat(${cols},minmax(0,1fr))` : '';
+  scroll.innerHTML = list.map(compact ? compactHTML : cardHTML).join('');
+
+  sizeTag.textContent = `${Math.round(W)} × ${Math.round(H)} · ${
+    compact ? 'zwinięte' : 'karty'} · ${cols} ${cols === 1 ? 'kolumna' : cols < 5 ? 'kolumny' : 'kolumn'}`;
 }
 
 /* ---------- przeciąganie ---------- */
@@ -451,7 +481,8 @@ const pick = b => [...b.parentNode.querySelectorAll('button')]
   .forEach(x => x.classList.toggle('on', x === b));
 
 document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => {
-  const [x,y] = b.dataset.size.split(',').map(Number);
+  let [x,y] = b.dataset.size.split(',').map(Number);
+  x = Math.min(x, desk.clientWidth);  y = Math.min(y, desk.clientHeight);
   w.style.width = x + 'px'; w.style.height = y + 'px';
   w.style.left = Math.max(0, Math.min(w.offsetLeft, desk.clientWidth - x)) + 'px';
   w.style.top  = Math.max(0, Math.min(w.offsetTop,  desk.clientHeight - y)) + 'px';
