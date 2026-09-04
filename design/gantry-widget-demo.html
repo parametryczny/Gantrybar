@@ -1,0 +1,659 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gantry · widget na pulpit</title>
+<style>
+  :root{
+    --bg:#08090A; --card:#151719; --card2:#1B1E21; --line:rgba(255,255,255,.09);
+    --tx:#F2F3F1; --sec:#A7AAA6; --mut:#6D716E; --metric:#D4D7D3;
+    --printing:#FF6857; --ok:#30D158; --warn:#FFD60A; --idle:#8E8E93; --chamber:#BBA5EF;
+    --ui:-apple-system,'SF Pro Text','Segoe UI Variable','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--tx);font-family:var(--ui);padding:28px 32px 80px;
+       -webkit-font-smoothing:antialiased}
+
+  h1{font-size:19px;font-weight:700;letter-spacing:-.2px}
+  .lead{font-size:12.5px;color:var(--sec);line-height:1.65;max-width:760px;margin-top:8px}
+  h2{font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--mut);
+     margin:38px 0 4px;font-weight:700}
+  .sub{font-size:11.5px;color:var(--mut);line-height:1.6;max-width:760px;margin-bottom:16px}
+
+  /* pulpit pod widgetami */
+  .desk{background:
+          radial-gradient(120% 90% at 12% 0%, #2b3550 0%, transparent 60%),
+          radial-gradient(90% 80% at 92% 100%, #4a2f3d 0%, transparent 55%),
+          linear-gradient(150deg,#11151d,#1b1a20);
+        border:1px solid var(--line);border-radius:18px;padding:26px;
+        display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+  .desk.light{background:
+          radial-gradient(120% 90% at 12% 0%, #cfd9ee 0%, transparent 60%),
+          radial-gradient(90% 80% at 92% 100%, #efd6de 0%, transparent 55%),
+          linear-gradient(150deg,#e8ecf3,#dfe1e8)}
+
+  .unit{display:flex;flex-direction:column;gap:9px}
+  .cap{font-size:10px;color:var(--mut);letter-spacing:.4px}
+  .cap b{color:var(--sec);font-weight:600}
+  .desk.light .cap{color:#5d636b} .desk.light .cap b{color:#2c3138}
+
+  /* ---------- korpus widgetu ---------- */
+  .w{background:rgba(24,26,29,.82);border:1px solid rgba(255,255,255,.10);
+     border-radius:20px;padding:14px;position:relative;overflow:hidden;
+     backdrop-filter:blur(24px) saturate(150%);
+     box-shadow:0 12px 34px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.05)}
+  .desk.light .w{background:rgba(255,255,255,.74);border-color:rgba(0,0,0,.09);
+     box-shadow:0 12px 30px rgba(20,25,40,.16), inset 0 1px 0 rgba(255,255,255,.9);
+     color:#15181C}
+  .desk.light .w .sec2{color:#5d636b}
+  .desk.light .w .mut2{color:#868d95}
+  .desk.light .track{stroke:rgba(0,0,0,.10)}
+  .desk.light .bar i{background:rgba(0,0,0,.10)}
+  .desk.light .rule{background:rgba(0,0,0,.08)}
+  .desk.light .row+.row{border-top-color:rgba(0,0,0,.07)}
+  /* The dark palette's greys vanish on a light widget; these are their light-mode counterparts. */
+  .desk.light .w .rjob, .desk.light .w .foot .k, .desk.light .w .job{color:#767c84}
+  .desk.light .w .reta{color:#5d636b}
+  .desk.light .w .barline{background:rgba(0,0,0,.10)}
+
+  .s{width:170px;height:170px}
+  .m{width:364px;height:170px}
+  .l{width:364px;height:364px}
+
+  .sec2{color:var(--sec)} .mut2{color:var(--mut)}
+
+  /* nagłówek widgetu */
+  .whead{display:flex;align-items:center;gap:6px}
+  .glyph{width:16px;height:16px;flex:none;opacity:.9}
+  .pname{font-size:12px;font-weight:700;letter-spacing:-.1px;overflow:hidden;
+         text-overflow:ellipsis;white-space:nowrap}
+  .state{display:flex;align-items:center;gap:5px;font-size:9.5px;font-weight:600;
+         letter-spacing:.2px;margin-top:3px}
+  .dot{width:6px;height:6px;border-radius:99px;flex:none}
+  .d-print{background:var(--printing)} .d-idle{background:var(--idle)}
+  .d-ok{background:var(--ok)} .d-err{background:var(--warn)}
+
+  /* pierścień */
+  .ring{position:relative;display:grid;place-items:center}
+  .ring svg{transform:rotate(-90deg)}
+  .track{fill:none;stroke:rgba(255,255,255,.11)}
+  .prog{fill:none;stroke:var(--printing);stroke-linecap:round}
+  .ringtx{position:absolute;text-align:center;line-height:1.05}
+  .ringtx .p{font-size:27px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.8px}
+  .ringtx .p span{font-size:12px;font-weight:500;margin-left:1px}
+  .ringtx .u{font-size:8.5px;color:var(--mut);letter-spacing:.5px;margin-top:1px}
+
+  /* pasek */
+  .bar{display:flex;gap:2px;height:7px}
+  .bar i{flex:1;border-radius:2px;background:rgba(255,255,255,.11)}
+  .bar i.on{background:var(--metric)}
+  .barline{height:6px;border-radius:99px;background:rgba(255,255,255,.11);overflow:hidden}
+  .barline i{display:block;height:100%;border-radius:99px;background:var(--printing)}
+
+  .foot{display:flex;gap:10px;font-size:9.5px;font-variant-numeric:tabular-nums}
+  .foot>div{display:flex;flex-direction:column;gap:1px}
+  .foot .k{font-size:8px;letter-spacing:.6px;color:var(--mut);font-weight:700}
+  .foot .v{font-size:11px;font-weight:600;white-space:nowrap}
+
+  .big{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-1.2px;
+       line-height:1}
+  .big span{font-size:14px;font-weight:500}
+  .job{font-size:10px;color:var(--sec);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rule{height:1px;background:rgba(255,255,255,.08)}
+
+  /* wiersz floty (M/L) */
+  .row{display:flex;align-items:center;gap:9px;padding:7px 0}
+  .row+.row{border-top:1px solid rgba(255,255,255,.07)}
+  .rname{font-size:11px;font-weight:600;width:52px;flex:none;overflow:hidden;
+         text-overflow:ellipsis;white-space:nowrap}
+  .rmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+  .rjob{font-size:9px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rpct{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;width:34px;
+        text-align:right;flex:none}
+  .reta{font-size:9px;color:var(--sec);font-variant-numeric:tabular-nums;width:40px;
+        text-align:right;flex:none}
+
+  .col{display:flex;flex-direction:column;height:100%}
+  .grow{flex:1}
+  .split{display:flex;gap:14px;height:100%}
+
+  /* tabela realiów */
+  table{border-collapse:collapse;width:100%;max-width:900px;margin-top:6px;font-size:12px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);font-weight:700}
+  td b{font-weight:600}
+  .yes{color:var(--ok)} .partly{color:var(--warn)} .no{color:var(--printing)}
+
+  .toggle{position:fixed;top:20px;right:24px;display:flex;gap:6px;z-index:9}
+  .toggle button{font:inherit;font-size:11px;font-weight:600;color:var(--sec);
+    background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;
+    cursor:pointer}
+  .toggle button.on{color:var(--tx);border-color:rgba(255,255,255,.28)}
+  .note{font-size:11.5px;color:var(--sec);line-height:1.65;max-width:820px;margin-top:14px;
+        border-left:2px solid rgba(255,255,255,.14);padding-left:12px}
+  .note b{color:var(--tx)}
+</style>
+
+<div class="toggle">
+  <button id="bDark" class="on">Ciemny</button>
+  <button id="bLight">Jasny</button>
+</div>
+
+<h1>Widget na pulpit</h1>
+<p class="lead">
+  Uproszczone bento: nazwa drukarki, postęp, warstwy i czas do końca. Bez temperatur, bez filamentów,
+  bez sterowania. Widget ma się czytać z dwóch metrów, a nie zastępować kartę w aplikacji.
+  Trzy rozmiary odpowiadają rodzinom widgetów macOS i przekładają się 1:1 na kafelki Windows
+  oraz na panel GNOME/KDE.
+</p>
+
+<h2>Rozmiary</h2>
+<p class="sub">Mały to jedna drukarka. Średni to jedna drukarka z kontekstem albo trzy w skrócie.
+  Duży to cała flota.</p>
+
+<div class="desk" id="desk">
+
+  <!-- ============ MAŁY ============ -->
+  <div class="unit">
+    <div class="w s">
+      <div class="col">
+        <div class="whead">
+          <svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+            <rect x="2.2" y="5.4" width="11.6" height="7.2" rx="1.4"/>
+            <path d="M4.6 5.4V3.2h6.8v2.2M5.4 12.6v1.2h5.2v-1.2"/>
+          </svg>
+          <div class="pname">X1C</div>
+        </div>
+        <div class="state"><i class="dot d-print"></i><span style="color:var(--printing)">Drukuje</span></div>
+        <div class="grow" style="display:grid;place-items:center">
+          <div class="ring">
+            <svg width="94" height="94">
+              <circle class="track" cx="47" cy="47" r="39" stroke-width="8"/>
+              <circle class="prog" cx="47" cy="47" r="39" stroke-width="8"
+                      stroke-dasharray="245" stroke-dashoffset="65"/>
+            </svg>
+            <div class="ringtx">
+              <div class="p">73<span>%</span></div>
+              
+            </div>
+          </div>
+        </div>
+        <div class="foot" style="justify-content:space-between">
+          <div><div class="k">WARSTWA</div><div class="v">184<span class="mut2" style="font-size:9px">/251</span></div></div>
+          <div style="text-align:right"><div class="k">ZOSTAŁO</div><div class="v">1 h 12 min</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>Mały</b> · 170×170 · jedna drukarka</div>
+  </div>
+
+  <!-- ============ ŚREDNI ============ -->
+  <div class="unit">
+    <div class="w m">
+      <div class="split">
+        <div class="col" style="width:104px;flex:none;justify-content:center">
+          <div class="ring">
+            <svg width="96" height="96">
+              <circle class="track" cx="48" cy="48" r="40" stroke-width="8"/>
+              <circle class="prog" cx="48" cy="48" r="40" stroke-width="8"
+                      stroke-dasharray="251" stroke-dashoffset="68"/>
+            </svg>
+            <div class="ringtx">
+              <div class="p">73<span>%</span></div>
+              
+            </div>
+          </div>
+        </div>
+        <div class="col" style="flex:1;min-width:0">
+          <div class="whead">
+            <svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="2.2" y="5.4" width="11.6" height="7.2" rx="1.4"/>
+              <path d="M4.6 5.4V3.2h6.8v2.2M5.4 12.6v1.2h5.2v-1.2"/>
+            </svg>
+            <div class="pname">X1 Carbon</div>
+          </div>
+          <div class="state"><i class="dot d-print"></i><span style="color:var(--printing)">Drukuje</span>
+            <span class="mut2">·</span><span class="sec2" style="font-weight:500">gantry-bracket.3mf</span></div>
+          <div class="grow"></div>
+          <div class="bar" style="margin-bottom:9px">
+            <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+            <i class="on"></i><i class="on"></i><i></i><i></i><i></i>
+          </div>
+          <div class="foot">
+            <div style="flex:1"><div class="k">WARSTWA</div><div class="v">184 / 251</div></div>
+            <div style="flex:1"><div class="k">ZOSTAŁO</div><div class="v">1 h 12 min</div></div>
+            <div style="flex:1"><div class="k">KONIEC</div><div class="v">15:42</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>Średni</b> · 364×170 · jedna drukarka z kontekstem</div>
+  </div>
+
+  <!-- ============ ŚREDNI, FLOTA ============ -->
+  <div class="unit">
+    <div class="w m">
+      <div class="col">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="pname">Flota</div>
+          <div class="mut2" style="font-size:9.5px;font-weight:600">2 z 3 drukują</div>
+        </div>
+        <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+          <div class="row" style="border:0">
+            <i class="dot d-print"></i>
+            <div class="rname">X1C</div>
+            <div class="rmid">
+              <div class="rjob">gantry-bracket.3mf</div>
+              <div class="barline"><i style="width:73%"></i></div>
+            </div>
+            <div class="rpct">73%</div><div class="reta">1:12</div>
+          </div>
+          <div class="row">
+            <i class="dot d-print"></i>
+            <div class="rname">P1S</div>
+            <div class="rmid">
+              <div class="rjob">vase_v3.3mf</div>
+              <div class="barline"><i style="width:24%;background:var(--printing)"></i></div>
+            </div>
+            <div class="rpct">24%</div><div class="reta">3:48</div>
+          </div>
+          <div class="row">
+            <i class="dot d-idle"></i>
+            <div class="rname mut2">X2D</div>
+            <div class="rmid">
+              <div class="rjob">Bezczynna</div>
+              <div class="barline"></div>
+            </div>
+            <div class="rpct mut2">—</div><div class="reta mut2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>Średni, wariant floty</b> · ten sam rozmiar, trzy drukarki</div>
+  </div>
+
+  <!-- ============ DUŻY ============ -->
+  <div class="unit">
+    <div class="w l">
+      <div class="col">
+        <div style="display:flex;align-items:center;gap:6px">
+          <svg class="glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+            <rect x="2.2" y="5.4" width="11.6" height="7.2" rx="1.4"/>
+            <path d="M4.6 5.4V3.2h6.8v2.2M5.4 12.6v1.2h5.2v-1.2"/>
+          </svg>
+          <div class="pname" style="font-size:13px">Gantry</div>
+          <div class="grow"></div>
+          <div class="mut2" style="font-size:9.5px;font-weight:600">2 z 3 drukują</div>
+        </div>
+
+        <div style="display:flex;gap:12px;margin:16px 0 14px;align-items:center">
+          <div class="ring">
+            <svg width="104" height="104">
+              <circle class="track" cx="52" cy="52" r="44" stroke-width="9"/>
+              <circle class="prog" cx="52" cy="52" r="44" stroke-width="9"
+                      stroke-dasharray="277" stroke-dashoffset="75"/>
+            </svg>
+            <div class="ringtx">
+              <div class="p">73<span>%</span></div>
+              <div class="u">X1 CARBON</div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px">
+            <div class="job" style="font-size:11px;color:var(--tx);font-weight:600">gantry-bracket.3mf</div>
+            <div class="foot" style="flex-direction:column;gap:7px">
+              <div style="flex-direction:row;justify-content:space-between;width:100%">
+                <span class="k" style="align-self:center">WARSTWA</span><span class="v">184 / 251</span></div>
+              <div style="flex-direction:row;justify-content:space-between;width:100%">
+                <span class="k" style="align-self:center">ZOSTAŁO</span><span class="v">1 h 12 min</span></div>
+              <div style="flex-direction:row;justify-content:space-between;width:100%">
+                <span class="k" style="align-self:center">KONIEC</span><span class="v">15:42</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rule"></div>
+
+        <div class="grow" style="display:flex;flex-direction:column;justify-content:space-evenly">
+          <div class="row">
+            <i class="dot d-print"></i><div class="rname">P1S</div>
+            <div class="rmid">
+              <div class="rjob">vase_v3.3mf · warstwa 61/254</div>
+              <div class="barline"><i style="width:24%"></i></div>
+            </div>
+            <div class="rpct">24%</div><div class="reta">3:48</div>
+          </div>
+          <div class="row">
+            <i class="dot d-idle"></i><div class="rname mut2">X2D</div>
+            <div class="rmid">
+              <div class="rjob">Bezczynna · komora 28°</div>
+              <div class="barline"></div>
+            </div>
+            <div class="rpct mut2">—</div><div class="reta mut2"></div>
+          </div>
+          <div class="row">
+            <i class="dot d-ok"></i><div class="rname">A1</div>
+            <div class="rmid">
+              <div class="rjob">Skończone · odbierz wydruk</div>
+              <div class="barline"><i style="width:100%;background:var(--ok)"></i></div>
+            </div>
+            <div class="rpct" style="color:var(--ok)">100%</div><div class="reta mut2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>Duży</b> · 364×364 · cała flota</div>
+  </div>
+
+</div>
+
+<h2>Warianty małego widgetu</h2>
+<p class="sub">Ten sam rozmiar, trzy sposoby na te same dane. Wybierz jeden, resztę wytnę.</p>
+
+<div class="desk" id="desk2">
+  <div class="unit">
+    <div class="w s">
+      <div class="col">
+        <div class="whead"><div class="pname">X1C</div></div>
+        <div class="state"><i class="dot d-print"></i><span style="color:var(--printing)">Drukuje</span></div>
+        <div class="grow" style="display:grid;place-items:center">
+          <div class="ring">
+            <svg width="94" height="94">
+              <circle class="track" cx="47" cy="47" r="39" stroke-width="8"/>
+              <circle class="prog" cx="47" cy="47" r="39" stroke-width="8"
+                      stroke-dasharray="245" stroke-dashoffset="65"/>
+            </svg>
+            <div class="ringtx"><div class="p">73<span>%</span></div></div>
+          </div>
+        </div>
+        <div class="foot" style="justify-content:space-between">
+          <div><div class="k">WARSTWA</div><div class="v">184<span class="mut2" style="font-size:9px">/251</span></div></div>
+          <div style="text-align:right"><div class="k">ZOSTAŁO</div><div class="v">1 h 12 min</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>A · pierścień</b> · procent w środku, warstwa u dołu</div>
+  </div>
+
+  <div class="unit">
+    <div class="w s">
+      <div class="col">
+        <div class="whead"><div class="pname">X1C</div></div>
+        <div class="state"><i class="dot d-print"></i><span style="color:var(--printing)">Drukuje</span></div>
+        <div class="grow" style="display:flex;flex-direction:column;justify-content:flex-end;gap:9px">
+          <div class="job">gantry-bracket.3mf</div>
+          <div class="big">73<span>%</span></div>
+          <div class="bar">
+            <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i>
+            <i class="on"></i><i class="on"></i><i></i><i></i><i></i>
+          </div>
+        </div>
+        <div class="foot" style="justify-content:space-between;margin-top:10px">
+          <div><div class="k">WARSTWA</div><div class="v">184/251</div></div>
+          <div style="text-align:right"><div class="k">ZOSTAŁO</div><div class="v">1:12</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>B · pasek</b> · ten sam język co karta w aplikacji</div>
+  </div>
+
+  <div class="unit">
+    <div class="w s">
+      <div class="col" style="justify-content:space-between">
+        <div>
+          <div class="whead"><div class="pname">X1C</div></div>
+          <div class="state"><i class="dot d-print"></i><span style="color:var(--printing)">Drukuje</span></div>
+        </div>
+        <div>
+          <div class="big" style="font-size:44px;letter-spacing:-2px">73<span style="font-size:18px">%</span></div>
+          <div class="sec2" style="font-size:10.5px;margin-top:5px;font-variant-numeric:tabular-nums">
+            zostało 1 h 12 min</div>
+          <div class="mut2" style="font-size:9.5px;margin-top:2px;font-variant-numeric:tabular-nums">
+            warstwa 184 z 251</div>
+        </div>
+        <div class="barline"><i style="width:73%"></i></div>
+      </div>
+    </div>
+    <div class="cap"><b>C · minimalny</b> · czytelny z drugiego końca pokoju</div>
+  </div>
+</div>
+
+<h2>Pięć drukarek i więcej</h2>
+<p class="sub">Widget ma stały rozmiar, więc flota nie może go rozpychać. Zamiast tego wchodzi
+  reguła przepełnienia: widget ma stałą pojemność, sortuje po tym, co skończy się najszybciej,
+  a resztę zwija w jedną linię. Trzy sposoby na to samo.</p>
+
+<div class="desk" id="desk3">
+
+  <!-- lista skondensowana -->
+  <div class="unit">
+    <div class="w l">
+      <div class="col">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="pname" style="font-size:13px">Flota</div>
+          <div class="grow"></div>
+          <div class="mut2" style="font-size:9.5px;font-weight:600">4 z 7 drukują</div>
+        </div>
+        <div class="grow" style="display:flex;flex-direction:column;justify-content:space-evenly">
+          <div class="row" style="border:0">
+            <i class="dot d-print"></i><div class="rname">X1C</div>
+            <div class="rmid"><div class="barline"><i style="width:96%"></i></div></div>
+            <div class="rpct">96%</div><div class="reta">0:08</div>
+          </div>
+          <div class="row">
+            <i class="dot d-print"></i><div class="rname">P1S</div>
+            <div class="rmid"><div class="barline"><i style="width:73%"></i></div></div>
+            <div class="rpct">73%</div><div class="reta">1:12</div>
+          </div>
+          <div class="row">
+            <i class="dot d-print"></i><div class="rname">A1</div>
+            <div class="rmid"><div class="barline"><i style="width:41%"></i></div></div>
+            <div class="rpct">41%</div><div class="reta">2:35</div>
+          </div>
+          <div class="row">
+            <i class="dot d-print"></i><div class="rname">X2D</div>
+            <div class="rmid"><div class="barline"><i style="width:24%"></i></div></div>
+            <div class="rpct">24%</div><div class="reta">3:48</div>
+          </div>
+          <div class="row">
+            <i class="dot d-err" style="background:var(--warn)"></i><div class="rname">P1P</div>
+            <div class="rmid"><div class="rjob" style="color:var(--warn)">Wstrzymana · brak filamentu</div></div>
+            <div class="rpct mut2">62%</div><div class="reta mut2"></div>
+          </div>
+        </div>
+        <div class="rule"></div>
+        <div class="mut2" style="font-size:9.5px;padding-top:8px;letter-spacing:.3px">
+          + 2 bezczynne · A1 mini, X1E</div>
+      </div>
+    </div>
+    <div class="cap"><b>A · lista skondensowana</b> · 5 wierszy, reszta zwinięta w stopkę</div>
+  </div>
+
+  <!-- siatka pierścieni -->
+  <div class="unit">
+    <div class="w l">
+      <div class="col">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="pname" style="font-size:13px">Flota</div>
+          <div class="grow"></div>
+          <div class="mut2" style="font-size:9.5px;font-weight:600">4 z 7 drukują</div>
+        </div>
+        <div class="grow" style="display:grid;grid-template-columns:repeat(3,1fr);
+             grid-template-rows:repeat(2,1fr);gap:6px;place-items:center;padding:10px 0 4px">
+
+          <div style="text-align:center">
+            <div class="ring">
+              <svg width="74" height="74">
+                <circle class="track" cx="37" cy="37" r="30" stroke-width="6"/>
+                <circle class="prog" cx="37" cy="37" r="30" stroke-width="6"
+                        stroke-dasharray="188" stroke-dashoffset="8"/>
+              </svg>
+              <div class="ringtx"><div class="p" style="font-size:17px">96<span style="font-size:9px">%</span></div></div>
+            </div>
+            <div style="font-size:10px;font-weight:600;margin-top:3px">X1C</div>
+            <div class="mut2" style="font-size:8.5px;font-variant-numeric:tabular-nums">0:08</div>
+          </div>
+
+          <div style="text-align:center">
+            <div class="ring">
+              <svg width="74" height="74">
+                <circle class="track" cx="37" cy="37" r="30" stroke-width="6"/>
+                <circle class="prog" cx="37" cy="37" r="30" stroke-width="6"
+                        stroke-dasharray="188" stroke-dashoffset="51"/>
+              </svg>
+              <div class="ringtx"><div class="p" style="font-size:17px">73<span style="font-size:9px">%</span></div></div>
+            </div>
+            <div style="font-size:10px;font-weight:600;margin-top:3px">P1S</div>
+            <div class="mut2" style="font-size:8.5px;font-variant-numeric:tabular-nums">1:12</div>
+          </div>
+
+          <div style="text-align:center">
+            <div class="ring">
+              <svg width="74" height="74">
+                <circle class="track" cx="37" cy="37" r="30" stroke-width="6"/>
+                <circle class="prog" cx="37" cy="37" r="30" stroke-width="6"
+                        stroke-dasharray="188" stroke-dashoffset="111"/>
+              </svg>
+              <div class="ringtx"><div class="p" style="font-size:17px">41<span style="font-size:9px">%</span></div></div>
+            </div>
+            <div style="font-size:10px;font-weight:600;margin-top:3px">A1</div>
+            <div class="mut2" style="font-size:8.5px;font-variant-numeric:tabular-nums">2:35</div>
+          </div>
+
+          <div style="text-align:center">
+            <div class="ring">
+              <svg width="74" height="74">
+                <circle class="track" cx="37" cy="37" r="30" stroke-width="6"/>
+                <circle class="prog" cx="37" cy="37" r="30" stroke-width="6"
+                        stroke-dasharray="188" stroke-dashoffset="143"/>
+              </svg>
+              <div class="ringtx"><div class="p" style="font-size:17px">24<span style="font-size:9px">%</span></div></div>
+            </div>
+            <div style="font-size:10px;font-weight:600;margin-top:3px">X2D</div>
+            <div class="mut2" style="font-size:8.5px;font-variant-numeric:tabular-nums">3:48</div>
+          </div>
+
+          <div style="text-align:center">
+            <div class="ring">
+              <svg width="74" height="74">
+                <circle class="track" cx="37" cy="37" r="30" stroke-width="6"/>
+                <circle class="prog" cx="37" cy="37" r="30" stroke-width="6"
+                        stroke-dasharray="188" stroke-dashoffset="71"
+                        style="stroke:var(--warn)"/>
+              </svg>
+              <div class="ringtx"><div class="p" style="font-size:17px">62<span style="font-size:9px">%</span></div></div>
+            </div>
+            <div style="font-size:10px;font-weight:600;margin-top:3px">P1P</div>
+            <div style="font-size:8.5px;color:var(--warn)">wstrzymana</div>
+          </div>
+
+          <div style="text-align:center">
+            <div class="ring">
+              <svg width="74" height="74">
+                <circle class="track" cx="37" cy="37" r="30" stroke-width="6"/>
+              </svg>
+              <div class="ringtx"><div class="p mut2" style="font-size:15px">+2</div></div>
+            </div>
+            <div class="mut2" style="font-size:10px;font-weight:600;margin-top:3px">bezczynne</div>
+            <div class="mut2" style="font-size:8.5px">A1 mini, X1E</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>B · siatka pierścieni</b> · 6 kafli, ostatni to licznik reszty</div>
+  </div>
+
+  <!-- średni z priorytetem -->
+  <div class="unit">
+    <div class="w m">
+      <div class="col">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="pname">Kończą się</div>
+          <div class="grow"></div>
+          <div class="mut2" style="font-size:9.5px;font-weight:600">4 z 7 drukują</div>
+        </div>
+        <div class="grow" style="display:flex;flex-direction:column;justify-content:center">
+          <div class="row" style="border:0">
+            <i class="dot d-print"></i><div class="rname">X1C</div>
+            <div class="rmid">
+              <div class="rjob">gantry-bracket.3mf</div>
+              <div class="barline"><i style="width:96%"></i></div>
+            </div>
+            <div class="rpct">96%</div><div class="reta">0:08</div>
+          </div>
+          <div class="row">
+            <i class="dot d-print"></i><div class="rname">P1S</div>
+            <div class="rmid">
+              <div class="rjob">vase_v3.3mf</div>
+              <div class="barline"><i style="width:73%"></i></div>
+            </div>
+            <div class="rpct">73%</div><div class="reta">1:12</div>
+          </div>
+        </div>
+        <div class="rule"></div>
+        <div class="mut2" style="font-size:9.5px;padding-top:7px;letter-spacing:.3px">
+          + 2 drukują · 1 wstrzymana · 2 bezczynne</div>
+      </div>
+    </div>
+    <div class="cap"><b>C · tylko najpilniejsze</b> · dwie na wierzchu, reszta jako licznik</div>
+  </div>
+
+</div>
+
+<p class="note">
+  <b>Reguła przepełnienia</b> jest jedna, niezależnie od wariantu. Kolejność: najpierw błąd
+  i wstrzymanie, potem drukujące posortowane po czasie do końca (najbliższy koniec na górze),
+  potem skończone czekające na odbiór, na końcu bezczynne. Bezczynne nigdy nie zajmują miejsca,
+  bo o nich i tak nic nie trzeba wiedzieć: zwijają się w licznik. Pojemność to 5 wierszy w dużym,
+  2 w średnim i 1 w małym. W ustawieniach dochodzi wybór, które drukarki widget w ogóle bierze
+  pod uwagę, tak samo jak przy panelu krawędziowym.
+</p>
+
+<h2>Co realnie da się zrobić na każdym systemie</h2>
+<p class="sub">Widget na pulpicie to trzy różne technologie, nie jedna. Poniżej stan faktyczny,
+  zanim cokolwiek zaczniemy pisać.</p>
+
+<table>
+  <tr><th style="width:96px">System</th><th style="width:190px">Prawdziwy widget systemowy</th>
+      <th>Co to znaczy w praktyce</th></tr>
+  <tr>
+    <td><b>macOS</b></td>
+    <td class="partly">WidgetKit, wymaga rozszerzenia</td>
+    <td>Widgety na pulpicie działają od Sonomy. Trzeba dołożyć do bundla rozszerzenie
+        <b>.appex</b> napisane w SwiftUI plus App Group do dzielenia danych z aplikacją. Nasz build
+        jest na SwiftPM i podpisywany własnym certyfikatem, więc to realne, ale to osobny cel
+        budowania i zmiana skryptu pakowania. Widget odświeża się przez timeline, nie na żywo:
+        system daje kilkadziesiąt odświeżeń dziennie, więc postęp co minutę odpada.</td>
+  </tr>
+  <tr>
+    <td><b>Windows 11</b></td>
+    <td class="no">tablica widgetów, nie pulpit</td>
+    <td>Windows nie ma widgetów na pulpicie. Tablica widgetów wymaga paczki <b>MSIX</b>,
+        Adaptive Cards i rejestracji dostawcy, a i tak wyświetla się w panelu bocznym, nie na tapecie.
+        Sensowna droga to <b>własne okno przypięte do pulpitu</b>, czyli to samo, co już mamy
+        w panelu krawędziowym, tylko jako swobodny kafelek.</td>
+  </tr>
+  <tr>
+    <td><b>GNU/Linux</b></td>
+    <td class="no">brak jednego standardu</td>
+    <td>GNOME chce rozszerzenia powłoki w JavaScript, KDE chce plasmoidu w QML, a reszta pulpitów
+        nie ma nic. Trzy osobne implementacje dla jednego widgetu. Tu też wychodzi
+        <b>własne okno przypięte do pulpitu</b> (typ okna <i>desktop</i>, bez ramki, poniżej okien).</td>
+  </tr>
+</table>
+
+<p class="note">
+  <b>Wniosek:</b> jedna wspólna droga to własne okno bez ramki, przyklejone do pulpitu, na tym
+  samym rysowaniu co panel krawędziowy. Wygląda identycznie na trzech systemach, odświeża się na żywo
+  z telemetrii, nie wymaga MSIX ani rozszerzeń powłoki i działa od razu.
+  Prawdziwy widget WidgetKit na macOS można dołożyć potem jako bonus dla tego jednego systemu,
+  ale z gorszym odświeżaniem, bo tak działa timeline.
+</p>
+
+<script>
+  const desks = ['desk','desk2','desk3'].map(id => document.getElementById(id));
+  const bd = document.getElementById('bDark'), bl = document.getElementById('bLight');
+  function set(light){
+    desks.forEach(d => d.classList.toggle('light', light));
+    bd.classList.toggle('on', !light); bl.classList.toggle('on', light);
+  }
+  bd.onclick = () => set(false); bl.onclick = () => set(true);
+</script>
