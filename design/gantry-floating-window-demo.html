@@ -5,19 +5,19 @@
   :root{
     --bg:#08090A; --card:#151719; --line:rgba(255,255,255,.09);
     --tx:#F2F3F1; --sec:#A7AAA6; --mut:#6D716E; --metric:#D4D7D3;
-    --printing:#FF6857; --ok:#30D158; --warn:#FFD60A; --idle:#8E8E93;
+    --printing:#FF6857; --ok:#8FD69B; --warn:#FFD60A; --idle:#8E8E93; --chamber:#BBA5EF;
     --ui:-apple-system,'SF Pro Text','Segoe UI Variable','Segoe UI',system-ui,sans-serif;
   }
   *{box-sizing:border-box;margin:0}
   body{background:var(--bg);color:var(--tx);font-family:var(--ui);padding:24px 28px 60px;
        -webkit-font-smoothing:antialiased}
   h1{font-size:19px;font-weight:700;letter-spacing:-.2px}
-  .lead{font-size:12.5px;color:var(--sec);line-height:1.65;max-width:820px;margin-top:8px}
+  .lead{font-size:12.5px;color:var(--sec);line-height:1.65;max-width:840px;margin-top:8px}
   .lead b{color:var(--tx)}
 
   /* ---------- pasek sterowania makietą ---------- */
   .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0 12px}
-  .grp{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);
+  .grp{display:flex;align-items:center;gap:5px;background:#141618;border:1px solid var(--line);
        border-radius:10px;padding:5px 8px}
   .grp>span{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);
             font-weight:700;margin-right:2px}
@@ -25,11 +25,10 @@
     border:1px solid transparent;border-radius:7px;padding:4px 9px;cursor:pointer}
   .bar button:hover{color:var(--tx)}
   .bar button.on{color:var(--tx);background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.16)}
-  .bar input[type=range]{width:96px;accent-color:#FF6857}
+  .bar input[type=range]{width:90px;accent-color:#FF6857}
 
   /* ---------- pulpit ---------- */
-  .desk{position:relative;height:560px;border-radius:16px;overflow:hidden;
-        border:1px solid var(--line);
+  .desk{position:relative;height:600px;border-radius:16px;overflow:hidden;border:1px solid var(--line);
         background:
           radial-gradient(120% 90% at 10% 0%, #2b3550 0%, transparent 58%),
           radial-gradient(90% 80% at 95% 100%, #4a2f3d 0%, transparent 55%),
@@ -41,149 +40,180 @@
           linear-gradient(150deg,#e9edf4,#dee0e7)}
 
   /* udawane okna, żeby było widać co znaczy „na wierzchu" */
-  .fake{position:absolute;border-radius:11px;overflow:hidden;z-index:5;
-        background:#1C1F24;border:1px solid rgba(255,255,255,.10);
-        box-shadow:0 18px 44px rgba(0,0,0,.45)}
+  .fake{position:absolute;border-radius:11px;overflow:hidden;z-index:5;background:#1C1F24;
+        border:1px solid rgba(255,255,255,.10);box-shadow:0 18px 44px rgba(0,0,0,.45)}
   .desk.light .fake{background:#fbfbfd;border-color:rgba(0,0,0,.10);
         box-shadow:0 18px 40px rgba(20,25,40,.18)}
-  .fake .tb{height:26px;background:rgba(255,255,255,.05);display:flex;align-items:center;
-            gap:5px;padding:0 9px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .fake .tb{height:26px;background:rgba(255,255,255,.05);display:flex;align-items:center;gap:5px;
+            padding:0 9px;border-bottom:1px solid rgba(255,255,255,.07)}
   .desk.light .fake .tb{background:rgba(0,0,0,.035);border-bottom-color:rgba(0,0,0,.07)}
   .fake .tb i{width:8px;height:8px;border-radius:99px;background:rgba(255,255,255,.16)}
   .desk.light .fake .tb i{background:rgba(0,0,0,.14)}
   .fake .tb span{font-size:9.5px;color:var(--mut);margin-left:5px}
-  .fake .body{padding:11px;display:flex;flex-direction:column;gap:6px}
-  .fake .body i{display:block;height:6px;border-radius:3px;background:rgba(255,255,255,.07)}
-  .desk.light .fake .body i{background:rgba(0,0,0,.06)}
-  #fakeA{left:26px;top:38px;width:470px;height:290px}
-  #fakeB{right:34px;bottom:40px;width:270px;height:180px}
+  .fake .fb{padding:11px;display:flex;flex-direction:column;gap:6px}
+  .fake .fb i{display:block;height:6px;border-radius:3px;background:rgba(255,255,255,.07)}
+  .desk.light .fake .fb i{background:rgba(0,0,0,.06)}
+  #fakeA{left:24px;top:34px;width:480px;height:330px}
+  #fakeB{right:30px;bottom:34px;width:280px;height:190px}
 
-  /* ---------- pływające okno Gantry ---------- */
-  #w{position:absolute;left:360px;top:150px;width:340px;height:250px;z-index:20;
-     background:rgba(21,23,26,.86);border:1px solid rgba(255,255,255,.11);border-radius:16px;
-     backdrop-filter:blur(26px) saturate(150%);overflow:hidden;
-     box-shadow:0 18px 46px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);
-     display:flex;flex-direction:column;min-width:150px;min-height:96px}
+  /* ---------- pływające okno = panel Gantry odpięty od menu ---------- */
+  #w{position:absolute;left:392px;top:120px;width:470px;height:400px;z-index:20;
+     background:rgba(12,13,14,.86);border:1px solid rgba(255,255,255,.11);border-radius:16px;
+     backdrop-filter:blur(28px) saturate(160%);overflow:hidden;
+     box-shadow:0 20px 52px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.06);
+     display:flex;flex-direction:column;min-width:190px;min-height:120px}
   #w.below{z-index:1}
-  #w.solid{backdrop-filter:none}
-  .desk.light #w{background:rgba(255,255,255,.80);border-color:rgba(0,0,0,.10);color:#15181C;
-     box-shadow:0 18px 40px rgba(20,25,40,.20), inset 0 1px 0 rgba(255,255,255,.95)}
-  .desk.light #w .mut2{color:#868d95}
-  .desk.light #w .sec2{color:#5d636b}
-  .desk.light #w .track{stroke:rgba(0,0,0,.12)}
-  .desk.light #w .barline{background:rgba(0,0,0,.11)}
-  .desk.light #w .rule{background:rgba(0,0,0,.08)}
-  .desk.light #w .hdr{border-bottom-color:rgba(0,0,0,.07)}
-  .desk.light #w .rjob{color:#767c84}
+  .desk.light #w{background:rgba(246,247,249,.88);border-color:rgba(0,0,0,.10);color:#15181C;
+     box-shadow:0 20px 46px rgba(20,25,40,.22), inset 0 1px 0 rgba(255,255,255,.95)}
 
-  /* pasek tytułu: uchwyt do przeciągania, pojawia się przy najechaniu */
-  .hdr{display:flex;align-items:center;gap:6px;padding:7px 10px 6px;flex:none;
-       border-bottom:1px solid rgba(255,255,255,.07);cursor:grab}
-  .hdr:active{cursor:grabbing}
-  #w.locked .hdr{cursor:default}
-  .hdr .brand{font-size:11px;font-weight:700;letter-spacing:-.1px}
-  .hdr .count{font-size:9.5px;color:var(--mut);font-weight:600}
-  .hdr .grip{margin-left:auto;display:flex;gap:2px;opacity:0;transition:opacity .14s}
-  #w:hover .hdr .grip{opacity:.55}
-  .hdr .grip i{width:3px;height:3px;border-radius:99px;background:currentColor}
+  /* pasek tytułu Gantry: uchwyt do przeciągania */
+  .hdrbar{display:flex;align-items:center;gap:7px;padding:8px 11px 7px;flex:none;cursor:grab;
+          border-bottom:1px solid rgba(255,255,255,.07)}
+  .hdrbar:active{cursor:grabbing}
+  #w.locked .hdrbar{cursor:default}
+  .desk.light .hdrbar{border-bottom-color:rgba(0,0,0,.07)}
+  .wordmark{font-size:12px;font-weight:700;letter-spacing:-.2px}
+  .hcount{font-size:9.5px;color:var(--mut);font-weight:600}
+  .hdrbar .sp{flex:1}
+  .hdrbar .act{font-size:12px;color:var(--sec);opacity:0;transition:opacity .14s;letter-spacing:1px}
+  #w:hover .hdrbar .act{opacity:.85}
 
-  .body{flex:1;min-height:0;padding:6px 10px 8px;display:flex;flex-direction:column}
-  .foot{flex:none;padding:0 10px 8px;font-size:9.5px;color:var(--mut);letter-spacing:.3px}
+  .scroll{flex:1;min-height:0;overflow:auto;padding:9px 10px 10px;display:flex;
+          flex-direction:column;gap:8px}
+  .scroll::-webkit-scrollbar{width:6px}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:99px}
+  .scroll.two{display:grid;grid-template-columns:1fr 1fr;align-content:start}
 
-  .mut2{color:var(--mut)} .sec2{color:var(--sec)}
-  .rule{height:1px;background:rgba(255,255,255,.08);margin:5px 0 6px}
+  /* ================= PRAWDZIWA KARTA GANTRY, WARIANT B ================= */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 10px}
+  .desk.light .card{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.08)}
+  .job{padding:2px}
+  .hdr{display:flex;align-items:center;gap:7px;height:24px}
+  .pico{opacity:.75;font-size:11px}
+  .name{font-size:13px;font-weight:700}
+  .badge{font-size:8.5px;font-weight:700;color:var(--mut);border:1px solid var(--line);
+         border-radius:5px;padding:1px 4px}
+  .desk.light .badge{border-color:rgba(0,0,0,.14)}
+  .chip{width:20px;height:20px;border-radius:10px;background:rgba(255,255,255,.065);
+        display:grid;place-items:center;font-size:10px;color:var(--sec)}
+  .desk.light .chip{background:rgba(0,0,0,.05)}
+  .spacer{flex:1}
+  .dots{color:var(--sec);font-size:14px;letter-spacing:1px}
 
-  /* wiersz drukarki */
-  .r{display:flex;align-items:center;gap:8px;flex:1;min-height:0}
-  .r+.r{border-top:1px solid rgba(255,255,255,.06)}
-  .dot{width:6px;height:6px;border-radius:99px;flex:none}
-  .d-print{background:var(--printing)} .d-idle{background:var(--idle)}
-  .d-ok{background:var(--ok)} .d-pause{background:var(--warn)}
-  .rname{font-weight:600;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rmid{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;justify-content:center}
-  .rjob{font-size:9px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .barline{height:5px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}
-  .barline i{display:block;height:100%;border-radius:99px;background:var(--printing);
-             transition:width .5s ease}
-  .rpct{font-weight:600;font-variant-numeric:tabular-nums;text-align:right;flex:none}
-  .reta{font-size:9px;color:var(--sec);font-variant-numeric:tabular-nums;text-align:right;
-        flex:none;width:34px}
+  .status{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;height:15px}
+  .sdot{width:6px;height:6px;border-radius:99px;flex:none}
+  .sep{color:rgba(255,255,255,.25)}
+  .desk.light .sep{color:rgba(0,0,0,.22)}
+  .file{color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        min-width:0}
+  .desk.light .file{color:#15181C}
+  .bigpct{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;flex:none}
 
-  /* siatka kafli (szerokie okno) */
-  .grid{flex:1;min-height:0;display:grid;gap:8px}
-  .tile{border-radius:11px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.06);
-        padding:8px 9px;display:flex;align-items:center;gap:9px;min-width:0}
-  .desk.light .tile{background:rgba(0,0,0,.035);border-color:rgba(0,0,0,.06)}
-  .ring{position:relative;display:grid;place-items:center;flex:none}
-  .ring svg{transform:rotate(-90deg)}
-  .track{fill:none;stroke:rgba(255,255,255,.12)}
-  .prog{fill:none;stroke:var(--printing);stroke-linecap:round;transition:stroke-dashoffset .5s ease}
-  .ringtx{position:absolute;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;
-          letter-spacing:-.4px}
-  .tmeta{min-width:0;display:flex;flex-direction:column;gap:2px}
-  .tname{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .tsub{font-size:9px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prow{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .bar{display:flex;gap:2px;height:8px;flex:1}
+  .bar i{flex:1;height:8px;border-radius:2px;background:rgba(255,255,255,.10)}
+  .desk.light .bar i{background:rgba(0,0,0,.09)}
+  .bar i.on{background:var(--metric)}
+  .desk.light .bar i.on{background:#5c6167}
+  .meta{font-size:10px;color:var(--sec);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .rule{height:1px;background:var(--line);margin:6px 0}
+  .desk.light .rule{background:rgba(0,0,0,.08)}
+
+  .temps1{display:flex;height:22px;align-items:center}
+  .t1{flex:1;display:flex;align-items:baseline;gap:5px;padding-left:6px;min-width:0}
+  .t1 .lab{font-size:8px;letter-spacing:.6px;color:var(--mut);font-weight:700}
+  .t1 .val{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .t1 .tgt{font-size:7px;color:rgba(255,255,255,.28);margin-left:2px}
+  .desk.light .t1 .tgt{color:rgba(0,0,0,.30)}
+
+  .ams{display:flex;gap:10px}
+  .grp2{flex:1;min-width:0}
+  .ams .head{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--sec);height:14px;
+             white-space:nowrap;overflow:hidden}
+  .slots{display:flex;gap:5px;margin-top:3px}
+  .slot{flex:1;text-align:center;min-width:0}
+  .pill{height:18px;border-radius:9px;border:1px solid rgba(255,255,255,.14);display:grid;
+        place-items:center;font-size:9px;font-weight:700}
+  .desk.light .pill{border-color:rgba(0,0,0,.14)}
+  .slot small{display:block;font-size:8px;color:var(--mut);margin-top:2px;overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap}
+  .vline{width:1px;background:var(--line);flex:none}
+  .desk.light .vline{background:rgba(0,0,0,.08)}
+
+  /* ================= PRAWDZIWY WIERSZ ZWINIĘTY (tryb kompaktowy) ================= */
+  .crow{height:31px;border-radius:12px;background:rgba(255,255,255,.055);
+        border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:7px;
+        padding:0 10px 0 9px;flex:none}
+  .desk.light .crow{background:rgba(0,0,0,.045);border-color:rgba(0,0,0,.06)}
+  .crow .ci{font-size:11px;opacity:.8}
+  .crow .cn{font-size:11px;font-weight:600;flex:none}
+  .crow .cs{font-size:10px;font-weight:500;color:var(--sec);overflow:hidden;
+            text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .crow .cp{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;flex:none}
 
   /* uchwyty zmiany rozmiaru */
   .rz{position:absolute;z-index:3}
-  .rz-r{right:0;top:10px;bottom:10px;width:6px;cursor:ew-resize}
-  .rz-b{left:10px;right:10px;bottom:0;height:6px;cursor:ns-resize}
+  .rz-r{right:0;top:12px;bottom:12px;width:6px;cursor:ew-resize}
+  .rz-b{left:12px;right:12px;bottom:0;height:6px;cursor:ns-resize}
   .rz-c{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
   .rz-c::after{content:"";position:absolute;right:3px;bottom:3px;width:8px;height:8px;
     border-right:2px solid currentColor;border-bottom:2px solid currentColor;opacity:0;
-    border-radius:0 0 3px 0;transition:opacity .14s}
+    transition:opacity .14s}
   #w:hover .rz-c::after{opacity:.4}
   #w.locked .rz{display:none}
-
-  .size{position:absolute;right:9px;top:-24px;font-size:10px;color:var(--mut);
-        font-variant-numeric:tabular-nums;background:rgba(0,0,0,.5);border-radius:6px;
+  .sizetag{position:absolute;right:9px;top:-23px;font-size:10px;color:var(--mut);
+        font-variant-numeric:tabular-nums;background:rgba(0,0,0,.55);border-radius:6px;
         padding:2px 6px;opacity:0;transition:opacity .14s;pointer-events:none;white-space:nowrap}
-  #w.sizing .size{opacity:1}
+  #w.sizing .sizetag{opacity:1}
 
-  .hint{font-size:11.5px;color:var(--mut);line-height:1.6;margin-top:12px;max-width:820px}
+  .hint{font-size:11.5px;color:var(--mut);line-height:1.65;margin-top:12px;max-width:840px}
   .hint b{color:var(--sec)}
   h2{font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--mut);
      margin:34px 0 8px;font-weight:700}
-  table{border-collapse:collapse;width:100%;max-width:880px;font-size:12px}
+  table{border-collapse:collapse;width:100%;max-width:900px;font-size:12px}
   th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
   th{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);font-weight:700}
   code{font-family:ui-monospace,'SF Mono',monospace;font-size:11px;color:var(--metric)}
-  .note{font-size:11.5px;color:var(--sec);line-height:1.65;max-width:860px;margin-top:14px;
+  .note{font-size:11.5px;color:var(--sec);line-height:1.65;max-width:880px;margin-top:14px;
         border-left:2px solid rgba(255,255,255,.14);padding-left:12px}
   .note b{color:var(--tx)}
 </style>
 
-<h1>Gantry jako pływające okno</h1>
+<h1>Gantry odpięty od paska menu</h1>
 <p class="lead">
-  Tak jak Rainmeter, conky czy Themia: <b>własne okno bez ramki systemowej</b>, zawsze widoczne,
-  przesuwane i skalowane. Chwyć za pasek u góry, żeby przesunąć. Ciągnij prawą krawędź, dolną
-  albo róg, żeby zmienić rozmiar. Zawartość <b>przebudowuje się sama</b> pod dostępne miejsce,
-  bo widget o szerokości 160 px i 600 px to dwa różne układy, a nie ten sam pomniejszony.
+  To nie jest osobny, uproszczony widget. To <b>ten sam panel i ta sama karta</b>, którą masz dziś
+  w popoverze, tylko we własnym oknie bez ramki systemowej: zawsze na wierzchu, przesuwane
+  i skalowane. Karta jest w wariancie B, tym co wszedł do aplikacji: status, plik i procent w jednej
+  linii, pasek z metrykami obok, temperatury w jednej linii, pod spodem moduły filamentu.
+  Progi układu to <b>te same wartości co w</b> <code>design/gantry-design-tokens.json</code>.
 </p>
 
 <div class="bar">
   <div class="grp"><span>Rozmiar</span>
-    <button data-size="170,120">Mini</button>
-    <button data-size="250,190">Mały</button>
-    <button data-size="340,250" class="on">Średni</button>
-    <button data-size="600,300">Szeroki</button>
-    <button data-size="420,470">Wysoki</button>
+    <button data-size="240,150">Zwinięty</button>
+    <button data-size="380,330">Wąski</button>
+    <button data-size="470,400" class="on">Panel</button>
+    <button data-size="760,420">Dwie kolumny</button>
   </div>
   <div class="grp"><span>Flota</span>
     <button data-n="1">1</button>
-    <button data-n="3">3</button>
-    <button data-n="5" class="on">5</button>
-    <button data-n="8">8</button>
+    <button data-n="2">2</button>
+    <button data-n="4" class="on">4</button>
+    <button data-n="6">6</button>
   </div>
   <div class="grp"><span>Warstwa</span>
     <button id="onTop" class="on">Na wierzchu</button>
     <button id="below">Na tapecie</button>
   </div>
-  <div class="grp"><span>Krycie</span>
-    <input type="range" id="op" min="35" max="100" value="86">
+  <div class="grp"><span>Karta</span>
+    <button data-opt="temps" class="on">Temperatury</button>
+    <button data-opt="ams" class="on">Filamenty</button>
+    <button data-opt="chip" class="on">Szczegóły</button>
   </div>
+  <div class="grp"><span>Krycie</span><input type="range" id="op" min="35" max="100" value="86"></div>
   <div class="grp">
-    <button id="lock">Zablokuj pozycję</button>
+    <button id="lock">Zablokuj</button>
     <button id="theme">Jasny</button>
   </div>
 </div>
@@ -191,24 +221,25 @@
 <div class="desk" id="desk">
   <div class="fake" id="fakeA">
     <div class="tb"><i></i><i></i><i></i><span>Slicer</span></div>
-    <div class="body"><i style="width:80%"></i><i style="width:55%"></i><i style="width:70%"></i>
+    <div class="fb"><i style="width:80%"></i><i style="width:55%"></i><i style="width:70%"></i>
       <i style="width:40%"></i><i style="width:62%"></i><i style="width:74%"></i>
-      <i style="width:36%"></i><i style="width:58%"></i></div>
+      <i style="width:36%"></i><i style="width:58%"></i><i style="width:66%"></i></div>
   </div>
   <div class="fake" id="fakeB">
     <div class="tb"><i></i><i></i><i></i><span>Przeglądarka</span></div>
-    <div class="body"><i style="width:70%"></i><i style="width:48%"></i><i style="width:60%"></i></div>
+    <div class="fb"><i style="width:70%"></i><i style="width:48%"></i><i style="width:60%"></i></div>
   </div>
 
   <div id="w">
-    <div class="size" id="sizeTag">340 × 250</div>
-    <div class="hdr" id="hdr">
-      <span class="brand">Gantry</span>
-      <span class="count" id="count">3 z 5 drukują</span>
-      <span class="grip"><i></i><i></i><i></i></span>
+    <div class="sizetag" id="sizeTag">470 × 400</div>
+    <div class="hdrbar" id="hdr">
+      <span class="pico">🖨</span>
+      <span class="wordmark">Gantry</span>
+      <span class="hcount" id="count"></span>
+      <span class="sp"></span>
+      <span class="act">⋯</span>
     </div>
-    <div class="body" id="body"></div>
-    <div class="foot" id="foot" hidden></div>
+    <div class="scroll" id="scroll"></div>
     <div class="rz rz-r" data-rz="r"></div>
     <div class="rz rz-b" data-rz="b"></div>
     <div class="rz rz-c" data-rz="c"></div>
@@ -216,178 +247,190 @@
 </div>
 
 <p class="hint">
-  <b>Spróbuj:</b> zwęź okno do minimum, a wiersze zgubią nazwę pliku i czas, zostanie sama nazwa
-  drukarki i procent. Rozciągnij w bok powyżej 520 px, a lista zamieni się w siatkę kafli
-  z pierścieniami. Przełącz na „Na tapecie", żeby zobaczyć różnicę: okno wpada pod slicer i
-  przeglądarkę, czyli dokładnie to, czego chcemy uniknąć.
+  <b>Spróbuj:</b> rozciągnij okno powyżej 600 px, a karty ustawią się w dwie kolumny, dokładnie jak
+  <code>printerCard.perRow.wide = 2</code> w tokenach. Zwęź poniżej 340 px, a panel przechodzi w
+  <b>tryb zwinięty</b>, ten sam wiersz 31 px, który aplikacja ma dziś pod przełącznikiem trybu
+  kompaktowego. Wyłącz „Temperatury" albo „Filamenty", to są prawdziwe przełączniki z Ustawień,
+  sekcja Karty drukarek.
 </p>
 
-<h2>Progi przebudowy układu</h2>
+<h2>Progi układu, prosto z tokenów</h2>
 <table>
-  <tr><th style="width:150px">Szerokość</th><th style="width:120px">Układ</th><th>Co jest widoczne</th></tr>
-  <tr><td><code>&lt; 200 px</code></td><td>mini</td>
-      <td>kropka stanu, nazwa drukarki, procent</td></tr>
-  <tr><td><code>200 do 300 px</code></td><td>zwarty</td>
-      <td>plus pasek postępu</td></tr>
-  <tr><td><code>300 do 520 px</code></td><td>normalny</td>
-      <td>plus nazwa pliku i czas do końca</td></tr>
-  <tr><td><code>≥ 520 px</code></td><td>siatka</td>
-      <td>kafle z pierścieniem, dwie lub trzy kolumny zależnie od szerokości</td></tr>
-  <tr><td colspan="3" style="color:var(--sec)">Wysokość decyduje ile pozycji się mieści.
-      Nadmiar zwija się w stopkę <code>+ N bezczynne</code>, kolejność jak w makiecie widgetu:
-      błąd, wstrzymane, drukujące po czasie do końca, skończone, bezczynne.</td></tr>
+  <tr><th style="width:170px">Szerokość okna</th><th style="width:150px">Co robi panel</th><th>Skąd to</th></tr>
+  <tr><td><code>&lt; 340 px</code></td><td>wiersze zwinięte</td>
+      <td>istniejący tryb kompaktowy, <code>CompactPrinterRowView</code>, wysokość 31 pt</td></tr>
+  <tr><td><code>340 do 599 px</code></td><td>jedna karta w rzędzie</td>
+      <td><code>printerCard.perRow.medium = 1</code></td></tr>
+  <tr><td><code>≥ 600 px</code></td><td>dwie karty w rzędzie</td>
+      <td><code>grid.breakpoints.wide.minWidth = 600</code>, <code>perRow.wide = 2</code></td></tr>
+  <tr><td colspan="3" style="color:var(--sec)">Wysokość nie zmienia układu, tylko ile widać naraz.
+      Panel przewija się tak samo jak dziś w popoverze, więc nie wprowadzamy drugiej reguły
+      przepełnienia obok tej, którą aplikacja już ma.</td></tr>
 </table>
 
 <p class="note">
-  <b>Czym to jest w kodzie:</b> tą samą mechaniką okna, którą ma już panel krawędziowy.
-  macOS <code>NSPanel</code> bez ramki na poziomie <code>.statusBar</code>, Windows
-  <code>Topmost</code> z <code>WS_EX_NOACTIVATE</code> i <code>WS_EX_TOOLWINDOW</code> (poza Alt+Tab),
-  Linux <code>set_keep_above</code> plus <code>stick</code>. Nowe jest tylko: swobodna pozycja
-  z zapamiętaniem, przeciąganie, zmiana rozmiaru i progi przebudowy układu.
-  Na GNOME z Waylandem nie ma protokołu always-on-top, więc tam kafelek będzie zwykłym oknem.
-  Na X11, Sway i Hyprland działa normalnie.
+  <b>Co realnie dochodzi w kodzie:</b> nic z rysowania. Karta, wiersz zwinięty, przełączniki
+  zawartości i motyw są już napisane na trzech systemach. Nowe jest wyłącznie okno:
+  swobodna pozycja z zapamiętaniem, przeciąganie za pasek, zmiana rozmiaru i wybór progu kolumn.
+  Mechanika always-on-top też stoi, bo używa jej panel krawędziowy: macOS <code>NSPanel</code>
+  na poziomie <code>.statusBar</code>, Windows <code>Topmost</code> z <code>WS_EX_NOACTIVATE</code>
+  i <code>WS_EX_TOOLWINDOW</code>, Linux <code>set_keep_above</code> plus <code>stick</code>.
+  Na GNOME z Waylandem nie ma protokołu always-on-top, tam będzie zwykłe okno. Na X11, Sway,
+  Hyprland, Windows i macOS działa.
 </p>
 
 <script>
 const FLEET = [
-  {n:'X1C',  s:'print', p:96, job:'gantry-bracket.3mf', eta:'0:08', layer:'241/251'},
-  {n:'P1S',  s:'print', p:73, job:'vase_v3.3mf',        eta:'1:12', layer:'184/251'},
-  {n:'A1',   s:'print', p:41, job:'clip_x4.3mf',        eta:'2:35', layer:'96/233'},
-  {n:'P1P',  s:'pause', p:62, job:'Wstrzymana · brak filamentu', eta:'', layer:'—'},
-  {n:'X2D',  s:'idle',  p:0,  job:'Bezczynna',          eta:'', layer:'—'},
-  {n:'A1 mini', s:'done', p:100, job:'Skończone · odbierz wydruk', eta:'', layer:'—'},
-  {n:'X1E',  s:'idle',  p:0,  job:'Bezczynna',          eta:'', layer:'—'},
-  {n:'CC2',  s:'idle',  p:0,  job:'Bezczynna',          eta:'', layer:'—'},
+  {n:'X1', model:'MQTT', state:'print', pct:98, file:'SPIRO 125 MM', eta:'6m · 13:58',
+   layer:'103/105', noz:[255,255], bed:[65,65], cham:[50,null],
+   ams:[{name:'AMS', env:'🌡 33° · 💧 34%', slots:[
+          {c:'#E8E4DC', t:'PETG', p:'0%', active:true},
+          {c:null, t:'A2 —'},{c:null, t:'A3 —'},{c:null, t:'A4 —'}]},
+        {name:'EXT', ext:true, slots:[{c:'#2E3B1E', t:'TPU', p:'0%'}]}]},
+
+  {n:'P1S', model:'MQTT', state:'print', pct:73, file:'vase_v3.3mf', eta:'1 h 12 · 15:42',
+   layer:'184/251', noz:[221,220], bed:[60,60], cham:[38,null],
+   ams:[{name:'AMS A', env:'🌡 31° · 💧 29%', slots:[
+          {c:'#9DA0A1', t:'PLA'},{c:'#F4D45A', t:'PLA', p:'62%', active:true},
+          {c:'#D52F08', t:'PLA'},{c:'#846F62', t:'PETG'}]},
+        {name:'EXT', ext:true, slots:[{c:'#3B7900', t:'PLA'}]}]},
+
+  {n:'A1', model:'MQTT', state:'pause', pct:62, file:'clip_x4.3mf', eta:'wstrzymana',
+   layer:'96/233', noz:[42,0], bed:[60,60], cham:[null,null],
+   ams:[{name:'AMS Lite', env:'🌡 28°', slots:[
+          {c:'#1B6CA8', t:'PLA', p:'8%', active:true},
+          {c:null, t:'A2 —'},{c:'#E0E0E0', t:'PLA'},{c:null, t:'A4 —'}]}]},
+
+  {n:'X2D', model:'MQTT', state:'idle', pct:0, file:'', eta:'', layer:'',
+   noz:[24,0], bed:[23,0], cham:[28,null],
+   ams:[{name:'AMS HT', env:'🌡 32° · 💧 40%', slots:[{c:'#080909', t:'PA-CF', p:'44%'}]},
+        {name:'EXT', ext:true, slots:[{c:null, t:'—'}]}]},
+
+  {n:'A1 mini', model:'MQTT', state:'done', pct:100, file:'bracket.3mf', eta:'odbierz wydruk',
+   layer:'233/233', noz:[58,0], bed:[35,0], cham:[null,null],
+   ams:[{name:'AMS Lite', env:'🌡 27°', slots:[
+          {c:'#7A4FCF', t:'PLA', p:'71%'},{c:null, t:'A2 —'},
+          {c:null, t:'A3 —'},{c:null, t:'A4 —'}]}]},
+
+  {n:'CC2', model:'SDCP', state:'idle', pct:0, file:'', eta:'', layer:'',
+   noz:[25,0], bed:[24,0], cham:[null,null],
+   ams:[{name:'CFS', env:'💧 21%', slots:[
+          {c:'#C8442E', t:'PLA'},{c:null, t:'2 —'},{c:null, t:'3 —'},{c:null, t:'4 —'}]}]},
 ];
-const RANK = {pause:0, print:1, done:2, idle:3};
-const DOT  = {print:'d-print', pause:'d-pause', done:'d-ok', idle:'d-idle'};
+
+const LABEL = {print:'Drukuje', pause:'Wstrzymana', idle:'Bezczynna', done:'Skończone'};
+const COLOR = {print:'var(--printing)', pause:'var(--warn)', idle:'var(--idle)', done:'var(--ok)'};
+const ICON  = {print:'🖨', pause:'⏸', idle:'○', done:'✓'};
 
 const w = document.getElementById('w'), desk = document.getElementById('desk');
-const body = document.getElementById('body'), foot = document.getElementById('foot');
-const count = document.getElementById('count'), sizeTag = document.getElementById('sizeTag');
-let fleetSize = 5;
+const scroll = document.getElementById('scroll'), count = document.getElementById('count');
+const sizeTag = document.getElementById('sizeTag');
+let fleetN = 4;
+const opt = {temps:true, ams:true, chip:true};
 
-/** Sorted the way the widget shows it: trouble first, then soonest to finish, idle last. */
-function ordered(){
-  return FLEET.slice(0, fleetSize).sort((a,b) =>
-    RANK[a.s] - RANK[b.s] || b.p - a.p);
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+/** The 15 segment bar the card actually draws. */
+function segBar(pct){
+  let out = '';
+  for (let i = 0; i < 15; i++) out += `<i class="${i < Math.round(pct/100*15) ? 'on' : ''}"></i>`;
+  return `<div class="bar">${out}</div>`;
 }
 
-function ring(pct, state, px){
-  const r = (px/2) - 4, c = 2 * Math.PI * r;
-  const stroke = state === 'pause' ? 'var(--warn)' : state === 'done' ? 'var(--ok)'
-               : state === 'idle' ? 'transparent' : 'var(--printing)';
-  return `<div class="ring">
-    <svg width="${px}" height="${px}">
-      <circle class="track" cx="${px/2}" cy="${px/2}" r="${r}" stroke-width="5"/>
-      <circle class="prog" cx="${px/2}" cy="${px/2}" r="${r}" stroke-width="5"
-              stroke-dasharray="${c.toFixed(1)}"
-              stroke-dashoffset="${(c * (1 - pct/100)).toFixed(1)}"
-              style="stroke:${stroke}"/>
-    </svg>
-    <div class="ringtx">${state === 'idle' ? '<span class="mut2">—</span>' : pct + '%'}</div>
+function temps(p){
+  const cell = (lab, v, tint) => {
+    if (v[0] === null) return '';
+    return `<div class="t1"><span class="lab">${lab}</span>
+      <span class="val"${tint ? ' style="color:var(--chamber)"' : ''}>${v[0]}°${
+        v[1] ? `<span class="tgt">/${v[1]}°</span>` : ''}</span></div>`;
+  };
+  return `<div class="temps1">${cell('DYSZA', p.noz)}${cell('STÓŁ', p.bed)}${cell('KOM.', p.cham, true)}</div>`;
+}
+
+function amsBlock(groups){
+  return `<div class="ams">${groups.map((g, i) => `
+    ${i ? '<div class="vline"></div>' : ''}
+    <div class="grp2"${g.ext ? ' style="max-width:104px"' : ''}>
+      <div class="head">${esc(g.name)}${g.env ? ` <span class="sep">·</span> ${g.env}` : ''}</div>
+      <div class="slots">${g.slots.map(s => `
+        <div class="slot">
+          <div class="pill" style="${s.c ? `background:${s.c};` : 'background:rgba(255,255,255,.05);'}${
+            s.active ? 'border-color:#fff;' : ''}">${s.p || ''}</div>
+          <small>${esc(s.t)}</small>
+        </div>`).join('')}</div>
+    </div>`).join('')}</div>`;
+}
+
+function cardHTML(p){
+  const printing = p.state === 'print' || p.state === 'pause';
+  return `<div class="card">
+    <div class="job">
+      <div class="hdr">
+        <span class="pico">🖨</span><span class="name">${esc(p.n)}</span>
+        <span class="badge">${p.model}</span>
+        ${opt.chip ? '<span class="chip">📈</span>' : ''}
+        <span class="spacer"></span><span class="dots">⋯</span>
+      </div>
+      <div class="status">
+        <span class="sdot" style="background:${COLOR[p.state]}"></span>
+        <span style="color:${COLOR[p.state]}">${LABEL[p.state]}</span>
+        ${p.file ? `<span class="sep">·</span><span class="file">${esc(p.file)}</span>` : ''}
+        <span class="spacer"></span>
+        ${p.state === 'idle' ? '' : `<span class="bigpct">${p.pct}%</span>`}
+      </div>
+      ${p.state === 'idle' ? '' : `<div class="prow">${segBar(p.pct)}
+        <span class="meta">⏱ ${esc(p.eta)}${p.layer ? ' · ' + p.layer : ''}</span></div>`}
+    </div>
+    ${opt.temps ? '<div class="rule"></div>' + temps(p) : ''}
+    ${opt.ams ? '<div class="rule"></div>' + amsBlock(p.ams) : ''}
+  </div>`;
+}
+
+function compactHTML(p){
+  const sub = p.state === 'idle' ? LABEL[p.state]
+            : p.file ? `${LABEL[p.state]} · ${p.file}` : LABEL[p.state];
+  return `<div class="crow">
+    <span class="ci" style="color:${COLOR[p.state]}">${ICON[p.state]}</span>
+    <span class="cn">${esc(p.n)}</span>
+    <span class="cs">${esc(sub)}</span>
+    ${p.state === 'idle' ? '' : `<span class="cp">${p.pct}%</span>`}
   </div>`;
 }
 
 function render(){
-  const W = w.clientWidth, H = w.clientHeight;
-  const list = ordered();
-  const printing = list.filter(p => p.s === 'print').length;
-  count.textContent = `${printing} z ${list.length} drukują`;
-  sizeTag.textContent = `${Math.round(W)} × ${Math.round(H)}`;
+  const W = w.clientWidth;
+  const list = FLEET.slice(0, fleetN);
+  count.textContent = `${list.filter(p => p.state === 'print').length} z ${list.length} drukują`;
+  sizeTag.textContent = `${Math.round(W)} × ${Math.round(w.clientHeight)}`;
 
-  const avail = H - 34 - 14;                       // minus pasek tytułu i oddechy
-  body.classList.toggle('grid', W >= 520);
-
-  if (W >= 520){
-    // Siatka kafli. Kolumny z szerokości, wiersze z wysokości.
-    const cols = W >= 760 ? 3 : 2, rowH = 58;
-    const rows = Math.max(1, Math.floor((avail + 8) / (rowH + 8)));
-    const cap  = cols * rows;
-    const shown = list.slice(0, cap), rest = list.length - shown.length;
-    body.className = 'body grid';
-    body.style.gridTemplateColumns = `repeat(${cols},1fr)`;
-    body.style.gridAutoRows = rowH + 'px';
-    body.innerHTML = shown.map(p => `
-      <div class="tile">
-        ${ring(p.p, p.s, 40)}
-        <div class="tmeta">
-          <div class="tname">${p.n}</div>
-          <div class="tsub">${p.eta ? 'zostało ' + p.eta : p.job}</div>
-        </div>
-      </div>`).join('');
-    setFoot(rest, list);
-    return;
-  }
-
-  // Lista. Gęstość zależy od szerokości.
-  const mode = W < 200 ? 'mini' : W < 300 ? 'compact' : 'normal';
-  const rowH = mode === 'normal' ? 40 : mode === 'compact' ? 30 : 24;
-  const cap  = Math.max(1, Math.floor(avail / rowH));
-  const shown = list.slice(0, cap), rest = list.length - shown.length;
-
-  body.className = 'body';
-  body.style.gridTemplateColumns = '';
-  body.innerHTML = shown.map(p => {
-    const pct = p.s === 'idle' ? '<span class="mut2">—</span>' : p.p + '%';
-    const bar = `<div class="barline"><i style="width:${p.s === 'idle' ? 0 : p.p}%;
-                  background:${p.s === 'pause' ? 'var(--warn)'
-                             : p.s === 'done' ? 'var(--ok)' : 'var(--printing)'}"></i></div>`;
-    if (mode === 'mini') return `
-      <div class="r" style="gap:6px">
-        <i class="dot ${DOT[p.s]}"></i>
-        <div class="rname" style="font-size:10px;flex:1;min-width:0">${p.n}</div>
-        <div class="rpct" style="font-size:10px">${pct}</div>
-      </div>`;
-    if (mode === 'compact') return `
-      <div class="r">
-        <i class="dot ${DOT[p.s]}"></i>
-        <div class="rname" style="font-size:10.5px;width:46px">${p.n}</div>
-        <div class="rmid">${bar}</div>
-        <div class="rpct" style="font-size:11px;width:32px">${pct}</div>
-      </div>`;
-    return `
-      <div class="r">
-        <i class="dot ${DOT[p.s]}"></i>
-        <div class="rname" style="font-size:11px;width:56px">${p.n}</div>
-        <div class="rmid">
-          <div class="rjob">${p.job}</div>
-          ${bar}
-        </div>
-        <div class="rpct" style="font-size:12px;width:34px">${pct}</div>
-        <div class="reta">${p.eta}</div>
-      </div>`;
-  }).join('');
-  setFoot(rest, list);
-}
-
-function setFoot(rest, list){
-  if (rest <= 0){ foot.hidden = true; return; }
-  const hidden = list.slice(list.length - rest);
-  const idle = hidden.filter(p => p.s === 'idle').length;
-  foot.hidden = false;
-  foot.textContent = idle === rest ? `+ ${rest} bezczynne` : `+ ${rest} dalsze`;
+  // Progi wprost z design/gantry-design-tokens.json.
+  const two = W >= 600;
+  scroll.classList.toggle('two', two);
+  scroll.innerHTML = W < 340
+    ? list.map(compactHTML).join('')
+    : list.map(cardHTML).join('');
 }
 
 /* ---------- przeciąganie ---------- */
-let drag = null;
+let drag = null, size = null;
 document.getElementById('hdr').addEventListener('pointerdown', e => {
   if (w.classList.contains('locked')) return;
   drag = {x:e.clientX, y:e.clientY, l:w.offsetLeft, t:w.offsetTop};
-  e.target.setPointerCapture(e.pointerId);
+  e.currentTarget.setPointerCapture(e.pointerId);
 });
 document.addEventListener('pointermove', e => {
   if (drag){
-    const maxL = desk.clientWidth - w.offsetWidth, maxT = desk.clientHeight - w.offsetHeight;
-    w.style.left = Math.min(Math.max(0, drag.l + e.clientX - drag.x), maxL) + 'px';
-    w.style.top  = Math.min(Math.max(0, drag.t + e.clientY - drag.y), maxT) + 'px';
+    w.style.left = Math.min(Math.max(0, drag.l + e.clientX - drag.x),
+                            desk.clientWidth - w.offsetWidth) + 'px';
+    w.style.top  = Math.min(Math.max(0, drag.t + e.clientY - drag.y),
+                            desk.clientHeight - w.offsetHeight) + 'px';
   }
   if (size){
     if (size.dir !== 'b')
-      w.style.width  = Math.max(150, Math.min(size.w + e.clientX - size.x,
+      w.style.width  = Math.max(190, Math.min(size.w + e.clientX - size.x,
                         desk.clientWidth - w.offsetLeft)) + 'px';
     if (size.dir !== 'r')
-      w.style.height = Math.max(96, Math.min(size.h + e.clientY - size.y,
+      w.style.height = Math.max(120, Math.min(size.h + e.clientY - size.y,
                         desk.clientHeight - w.offsetTop)) + 'px';
     render();
   }
@@ -396,9 +439,6 @@ document.addEventListener('pointerup', () => {
   drag = null;
   if (size){ size = null; w.classList.remove('sizing'); }
 });
-
-/* ---------- zmiana rozmiaru ---------- */
-let size = null;
 w.querySelectorAll('.rz').forEach(h => h.addEventListener('pointerdown', e => {
   size = {dir:h.dataset.rz, x:e.clientX, y:e.clientY, w:w.offsetWidth, h:w.offsetHeight};
   w.classList.add('sizing');
@@ -407,31 +447,36 @@ w.querySelectorAll('.rz').forEach(h => h.addEventListener('pointerdown', e => {
 }));
 
 /* ---------- pasek sterowania ---------- */
-function pick(btn){ [...btn.parentNode.querySelectorAll('button')]
-  .forEach(b => b.classList.toggle('on', b === btn)); }
+const pick = b => [...b.parentNode.querySelectorAll('button')]
+  .forEach(x => x.classList.toggle('on', x === b));
 
 document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => {
   const [x,y] = b.dataset.size.split(',').map(Number);
   w.style.width = x + 'px'; w.style.height = y + 'px';
-  w.style.left = Math.min(w.offsetLeft, desk.clientWidth - x) + 'px';
-  w.style.top  = Math.min(w.offsetTop,  desk.clientHeight - y) + 'px';
+  w.style.left = Math.max(0, Math.min(w.offsetLeft, desk.clientWidth - x)) + 'px';
+  w.style.top  = Math.max(0, Math.min(w.offsetTop,  desk.clientHeight - y)) + 'px';
   pick(b); w.classList.add('sizing'); render();
   setTimeout(() => w.classList.remove('sizing'), 900);
 });
 document.querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
-  fleetSize = Number(b.dataset.n); pick(b); render();
+  fleetN = Number(b.dataset.n); pick(b); render();
+});
+document.querySelectorAll('[data-opt]').forEach(b => b.onclick = () => {
+  opt[b.dataset.opt] = !opt[b.dataset.opt];
+  b.classList.toggle('on', opt[b.dataset.opt]);
+  render();
 });
 document.getElementById('onTop').onclick = e => { w.classList.remove('below'); pick(e.target); };
 document.getElementById('below').onclick = e => { w.classList.add('below'); pick(e.target); };
 document.getElementById('op').oninput = e => {
   const v = e.target.value / 100;
   w.style.background = desk.classList.contains('light')
-    ? `rgba(255,255,255,${v})` : `rgba(21,23,26,${v})`;
+    ? `rgba(246,247,249,${v})` : `rgba(12,13,14,${v})`;
 };
 document.getElementById('lock').onclick = e => {
-  w.classList.toggle('locked');
-  e.target.classList.toggle('on', w.classList.contains('locked'));
-  e.target.textContent = w.classList.contains('locked') ? 'Odblokuj pozycję' : 'Zablokuj pozycję';
+  const on = w.classList.toggle('locked');
+  e.target.classList.toggle('on', on);
+  e.target.textContent = on ? 'Odblokuj' : 'Zablokuj';
 };
 document.getElementById('theme').onclick = e => {
   const light = desk.classList.toggle('light');
