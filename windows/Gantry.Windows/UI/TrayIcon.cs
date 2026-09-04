@@ -214,7 +214,7 @@ public sealed class TrayIcon : IDisposable
     /// Moves to the next installed catalog, so a dropped-in language is reachable without code.
     private static void CycleLanguage()
     {
-        var codes = Localization.Available().Select(entry => entry.Code).ToList();
+        var codes = Translations.Available().Select(entry => entry.Code).ToList();
         int index = codes.IndexOf(AppSettings.Language);
         AppSettings.Language = codes[(index < 0 ? 0 : index + 1) % codes.Count];
     }

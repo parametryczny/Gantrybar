@@ -33,7 +33,7 @@ public partial class SettingsWindow : Window
         LanguageButton.Click += (_, _) =>
         {
             // Cycles through the installed catalogs; the button label shows the current one.
-            var codes = Localization.Available().Select(entry => entry.Code).ToList();
+            var codes = Translations.Available().Select(entry => entry.Code).ToList();
             int index = codes.IndexOf(AppSettings.Language);
             AppSettings.Language = codes[(index < 0 ? 0 : index + 1) % codes.Count];
             ApplyLanguage();
@@ -258,7 +258,7 @@ public partial class SettingsWindow : Window
         AppearanceHeading.Text = AppSettings.Text("WYGLĄD", "APPEARANCE");
         GeneralHeading.Text = AppSettings.Text("OGÓLNE", "GENERAL");
         LanguageLabel.Text = AppSettings.Text("Język", "Language");
-        LanguageButton.Content = Localization.Available()
+        LanguageButton.Content = Translations.Available()
             .FirstOrDefault(entry => entry.Code == AppSettings.Language)?.Name ?? AppSettings.Language;
         ThemeLabel.Text = AppSettings.Text("Wygląd", "Appearance");
         ThemeButton.Content = AppSettings.Theme == "dark" ? AppSettings.Text("Ciemny", "Dark") : AppSettings.Text("Jasny", "Light");

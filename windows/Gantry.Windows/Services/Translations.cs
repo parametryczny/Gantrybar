@@ -14,7 +14,7 @@ namespace Gantry.Services;
 /// Each catalog names itself under the "@name" key ("Polski", "Deutsch"), so the Settings list needs
 /// no table of language names in code. Keys starting with "@" are metadata, never lookup text.
 /// </summary>
-public static class Localization
+public static class Translations
 {
     public sealed record Language(string Code, string Name);
 
@@ -63,7 +63,7 @@ public static class Localization
                 }
                 catch (Exception ex)
                 {
-                    Gantry.App.LogError("LocalizationLoad", ex);
+                    Gantry.App.LogError("TranslationsLoad", ex);
                 }
             }
             Cache[language] = loaded;
@@ -88,7 +88,7 @@ public static class Localization
                 }
                 catch (Exception ex)
                 {
-                    Gantry.App.LogError("LocalizationScan", ex);
+                    Gantry.App.LogError("TranslationsScan", ex);
                 }
             }
             return _files = new Dictionary<string, string>();

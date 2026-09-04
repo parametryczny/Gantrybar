@@ -168,7 +168,7 @@ public sealed class SyncService
         {
             // Only accept a language this machine actually has a catalog for, so a peer on a newer
             // build cannot strand it on a code it cannot render.
-            if (Localization.Available().Any(entry => entry.Code == v.Language)) AppSettings.Language = v.Language;
+            if (Translations.Available().Any(entry => entry.Code == v.Language)) AppSettings.Language = v.Language;
             AppSettings.PanelTransparency = v.PanelTransparency switch { "low" => 0, "high" => 2, _ => 1 };
             AppSettings.SpoolbaseEnabled = v.SpoolbaseEnabled;
             AppSettings.WebDashboardEnabled = v.WebDashboardEnabled;
