@@ -175,13 +175,12 @@ final class FleetStatsViewController: NSViewController {
         let success = prints == 0 ? nil : Int((Double(prints - failed) / Double(prints) * 100).rounded())
 
         var lines: [String] = []
-        lines.append(String(format: s.t("Period: %@"), periodLabel()))
-        lines.append(String(format: s.t("Prints: %d (failed: %d)"), prints, failed))
-        lines.append(String(format: s.t("Success rate: %@"),
-                            success.map { "\($0)%" } ?? "—"))
-        lines.append(String(format: s.t("Print time: %.1f h"), hours))
+        lines.append(s.t("Period: {0}", periodLabel()))
+        lines.append(s.t("Prints: {0} (failed: {1})", prints, failed))
+        lines.append(s.t("Success rate: {0}", success.map { "\($0)%" } ?? "—"))
+        lines.append(s.t("Print time: {0} h", hours))
         if grams > 0 {
-            lines.append(String(format: s.t("Filament: %.2f kg"), grams / 1000))
+            lines.append(s.t("Filament: {0} kg", grams / 1000))
         }
 
         body.addArrangedSubview(label(s.t("SUMMARY"), 10, .bold, GantryTheme.muted))
@@ -194,8 +193,7 @@ final class FleetStatsViewController: NSViewController {
             body.addArrangedSubview(label(s.t("No printers."), 12, .regular, GantryTheme.secondary))
         }
         for row in all.sorted(by: { $0.prints > $1.prints }) {
-            let detail = String(format: s.t("%d prints · %.1f h · %@"),
-                                row.prints, row.hours, row.successPercent.map { "\($0)%" } ?? "—")
+            let detail = s.t("{0} prints · {1} h · {2}", row.prints, row.hours, row.successPercent.map { "\($0)%" } ?? "—")
             let box = card([row.name, detail], titleFirst: true)
             body.addArrangedSubview(box)
             box.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true

@@ -90,7 +90,7 @@ final class MaintenancePanelViewController: NSViewController {
         body.translatesAutoresizingMaskIntoConstraints = false
 
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.isPolish)
-        let title = label(String(format: s.t("Maintenance · %@"), printer.name), 18, .bold)
+        let title = label(s.t("Maintenance · {0}", printer.name), 18, .bold)
         let instructions = button(s.t("Instructions")) { [weak self] in self?.showInstructions() }
         let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
                              target: self, action: #selector(closePressed))
@@ -103,8 +103,7 @@ final class MaintenancePanelViewController: NSViewController {
         header.spacing = 8
         body.addArrangedSubview(header)
         header.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
-        let summary = label(String(format: s.t("%.1f print h · nozzle %@"),
-                                   snapshot.totalPrintHours,
+        let summary = label(s.t("{0} print h · nozzle {1}", snapshot.totalPrintHours,
                                    telemetry.nozzleDiameter.map { String(format: "%.1f mm", $0) } ?? "—"),
                             12, .regular, GantryTheme.secondary)
         body.addArrangedSubview(summary)
@@ -164,7 +163,7 @@ final class MaintenancePanelViewController: NSViewController {
         }
         if telemetry.errorCode != 0 {
             return [(
-                String(format: s.t("Error code: 0x%llX"), telemetry.errorCode),
+                s.t("Error code: 0x{0}", telemetry.errorCode),
                 nil
             )]
         }
@@ -244,13 +243,13 @@ final class MaintenancePanelViewController: NSViewController {
         let title = label("\(icon)  \(task.title)", 11, .semibold)
         let timing: String
         if task.isDue {
-            timing = String(format: s.t("Overdue by %.0f h"), task.overdueHours)
+            timing = s.t("Overdue by {0} h", task.overdueHours)
         } else if let until = task.snoozedUntil, until > Date() {
             // Day + month only: the full date pushed the task title into an ellipsis in a two-column card.
             let day = until.formatted(.dateTime.day().month(.abbreviated))
-            timing = String(format: s.t("Snoozed until %@"), day)
+            timing = s.t("Snoozed until {0}", day)
         } else {
-            timing = String(format: s.t("In %.0f print h"), task.remainingHours)
+            timing = s.t("In {0} print h", task.remainingHours)
         }
         let timingLabel = label(timing.replacingOccurrences(of: " druku", with: ""), 10, .regular, GantryTheme.secondary)
         timingLabel.setContentHuggingPriority(.required, for: .horizontal)

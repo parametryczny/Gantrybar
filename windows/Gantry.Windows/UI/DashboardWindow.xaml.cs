@@ -572,22 +572,20 @@ public partial class DashboardWindow : Window
     private void Rebuild()
     {
         bool pl = AppSettings.Polish;
-        FooterText.Text = AppSettings.Text("Drukuj spokojnie — wszystko pod kontrolą",
-                                           "Print in peace — everything under control");
+        FooterText.Text = AppSettings.T("Print in peace — everything under control");
         StatusLine.Text = _store.IsScanning
-            ? AppSettings.Text("Skanowanie…", "Scanning…")
-            : (_store.GlobalMessage ?? AppSettings.Text($"{_store.Printers.Count} drukarek · {_store.ActivePrintCount} pracuje",
-                                                        $"{_store.Printers.Count} printers · {_store.ActivePrintCount} working"));
+            ? AppSettings.T("Scanning…")
+            : (_store.GlobalMessage ?? string.Format(AppSettings.T("{0} printers · {1} working"), _store.Printers.Count, _store.ActivePrintCount));
 
         bool compact = UseCompactMode();
         CompactButton.Visibility = _store.Printers.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
-        CompactButton.Content = compact ? AppSettings.Text("Rozwiń", "Expand") : AppSettings.Text("Zwiń", "Collapse");
+        CompactButton.Content = compact ? AppSettings.T("Expand") : AppSettings.T("Collapse");
         // Columns toggle (1 ↔ 2) only makes sense in the card view; the icon shows the current layout.
         ColumnsButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         ColumnsButton.Content = AppSettings.DashboardColumns == 2 ? "▥" : "▭";
         ColumnsButton.ToolTip = AppSettings.DashboardColumns == 2
-            ? AppSettings.Text("Jedna kolumna", "One column")
-            : AppSettings.Text("Dwie kolumny", "Two columns");
+            ? AppSettings.T("One column")
+            : AppSettings.T("Two columns");
 
         var serials = _store.Printers.Select(p => p.Serial).ToList();
         var wideSerials = _store.Printers.Where(NeedsWideSpan).Select(p => p.Serial).ToHashSet();
@@ -601,7 +599,7 @@ public partial class DashboardWindow : Window
                 _views.Clear();
                 CardsPanel.Children.Add(new TextBlock
                 {
-                    Text = AppSettings.Text("Brak drukarek. Kliknij +, aby dodać.", "No printers. Click + to add one."),
+                    Text = AppSettings.T("No printers. Click + to add one."),
                     Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                     Margin = new Thickness(8)
                 });
@@ -810,7 +808,7 @@ public partial class DashboardWindow : Window
                 Content = detailsIcon, Width = 24, Height = 18, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
                 Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0),
-                ToolTip = AppSettings.Text("Szczegóły", "Details")
+                ToolTip = AppSettings.T("Details")
             };
             details.Click += (_, _) => _owner.ShowDetail(Serial);
             var leftCluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -821,8 +819,8 @@ public partial class DashboardWindow : Window
             Grid.SetColumn(leftCluster, 0);
             header.Children.Add(leftCluster);
 
-            _printerAlert = StatusButton(AppSettings.Text("Uwaga drukarki", "Printer alert"));
-            _maintenance = StatusButton(AppSettings.Text("Konserwacja", "Maintenance"));
+            _printerAlert = StatusButton(AppSettings.T("Printer alert"));
+            _maintenance = StatusButton(AppSettings.T("Maintenance"));
             foreach (var statusButton in new[] { _printerAlert, _maintenance })
             {
                 statusButton.Click += (_, _) => OpenMaintenance();
@@ -1024,7 +1022,7 @@ public partial class DashboardWindow : Window
             // Only a running/paused print has a job to show; finished/idle still echoes the last file
             // name, so treat those as "no active job" (matches macOS).
             bool hasActiveJob = (t.State is PrinterState.Printing or PrinterState.Paused) && !string.IsNullOrEmpty(t.JobName);
-            _job.Text = hasActiveJob ? t.JobName! : AppSettings.Text("BRAK AKTYWNEGO ZADANIA", "NO ACTIVE JOB");
+            _job.Text = hasActiveJob ? t.JobName! : AppSettings.T("NO ACTIVE JOB");
             _job.ToolTip = hasActiveJob ? t.JobName : null;
             SetSegments(_bar, t.Progress, accent);
             _percent.Text = $"{t.Progress}%";
@@ -1041,8 +1039,8 @@ public partial class DashboardWindow : Window
                 ? t.Nozzles
                 : new List<NozzleTelemetry> { new() { Position = NozzlePosition.Single, CurrentTemperature = t.NozzleTemperature, TargetTemperature = t.NozzleTargetTemperature } };
             bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
-            string bedLabel = pl ? "Stół" : "Bed";
-            string chamberLabel = pl ? "Komora" : "Chamber";
+            string bedLabel = AppSettings.T("Bed");
+            string chamberLabel = AppSettings.T("Chamber");
             // Temperature value colour follows STATE (design/kolorystyka.md §3), the same map for nozzle,
             // bed and chamber: heating warm, cooling cool, at-temperature the neutral metric colour (white
             // while the printer holds it during a print), cold/idle muted, firmware alarm red. In
@@ -1063,13 +1061,13 @@ public partial class DashboardWindow : Window
             {
                 var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
                 var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
-                cells.Add(Cell(pl ? "Dysze L" : "Nozzles L", left.CurrentTemperature, left.TargetTemperature));
+                cells.Add(Cell(AppSettings.T("Nozzles L"), left.CurrentTemperature, left.TargetTemperature));
                 cells.Add(Cell("P", right?.CurrentTemperature, right?.TargetTemperature));
             }
             else
             {
                 var single = nozzles[0];
-                cells.Add(Cell(pl ? "Dysza" : "Nozzle", single.CurrentTemperature, single.TargetTemperature));
+                cells.Add(Cell(AppSettings.T("Nozzle"), single.CurrentTemperature, single.TargetTemperature));
             }
             cells.Add(Cell(bedLabel, t.BedTemperature, t.BedTargetTemperature));
             // Chamber tile only when there is an actual reading (no empty "— / —" tile).
@@ -1123,7 +1121,7 @@ public partial class DashboardWindow : Window
             bool offline = t.State == PrinterState.Offline;
             _offlineOverlay.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
             if (offline) _offlineText.Text = string.IsNullOrEmpty(message)
-                ? AppSettings.Text("Brak połączenia z drukarką", "No connection to the printer") : message!;
+                ? AppSettings.T("No connection to the printer") : message!;
 
             // When offline the message is already shown by the scrim overlay, so don't also repeat it in
             // the orange in-card line (that duplicated the text on the offline card).
@@ -1580,7 +1578,7 @@ public partial class DashboardWindow : Window
         {
             panel.Background = System.Windows.Media.Brushes.Transparent;
             panel.Cursor = Cursors.Hand;
-            panel.ToolTip = AppSettings.Text("Kliknij, aby przypisać rolkę", "Click to assign a spool");
+            panel.ToolTip = AppSettings.T("Click to assign a spool");
             panel.MouseLeftButtonUp += (_, _) => onClick(location, title, slot.Material, slot.ColorHex);
         }
         return panel;
@@ -1654,33 +1652,33 @@ public partial class DashboardWindow : Window
             items.Children.Add(button);
         }
 
-        Item(AppSettings.Text("Szczegóły", "Details"), () => ShowDetail(serial));
-        Item(AppSettings.Text("Połącz ponownie", "Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
+        Item(AppSettings.T("Details"), () => ShowDetail(serial));
+        Item(AppSettings.T("Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 
         var slicers = SlicerLauncher.Installed();
         if (printer.Kind == PrinterKind.Bambu)
         {
             var bambu = slicers.FirstOrDefault(s => s.Name == "Bambu Studio");
             if (bambu is not null)
-                Item(AppSettings.Text("Kamera w Bambu Studio", "Camera in Bambu Studio"), () => SlicerLauncher.Open(bambu.Path));
+                Item(AppSettings.T("Camera in Bambu Studio"), () => SlicerLauncher.Open(bambu.Path));
         }
         foreach (var slicer in slicers)
-            Item(AppSettings.Text($"Otwórz w {slicer.Name}", $"Open in {slicer.Name}"), () => SlicerLauncher.Open(slicer.Path));
+            Item(string.Format(AppSettings.T("Open in {0}"), slicer.Name), () => SlicerLauncher.Open(slicer.Path));
 
-        Item(AppSettings.Text("Kopiuj adres IP", "Copy IP address"), () =>
+        Item(AppSettings.T("Copy IP address"), () =>
         {
             if (Current() is { Host.Length: > 0 } p) { try { Clipboard.SetText(p.Host); } catch { } }
         });
 
-        Item(AppSettings.Text("Edytuj drukarkę", "Edit printer"), () =>
+        Item(AppSettings.T("Edit printer"), () =>
         {
             if (Current() is { } p) OpenPrinterWindow(p);
         });
-        Item(AppSettings.Text("Usuń drukarkę", "Remove printer"), () =>
+        Item(AppSettings.T("Remove printer"), () =>
         {
             if (Current() is not { } p) return;
             var confirm = MessageBox.Show(this,
-                AppSettings.Text($"Usunąć drukarkę {p.Name}?", $"Remove printer {p.Name}?"),
+                string.Format(AppSettings.T("Remove printer {0}?"), p.Name),
                 "Gantry", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm == MessageBoxResult.Yes) _store.Remove(p);
         });

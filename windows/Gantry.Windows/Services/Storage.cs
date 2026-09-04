@@ -454,7 +454,7 @@ public static class AccessCodeStore
 
     public static string ReadAccessCode(string serial)
         => AccessCode(serial) ?? throw new InvalidOperationException(
-            AppSettings.Text("Brak zapisanego kodu dostępu.", "No stored access code."));
+            AppSettings.T("No stored access code."));
 
     public static void Delete(string serial)
     {

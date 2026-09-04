@@ -59,11 +59,9 @@ public sealed class TrayIcon : IDisposable
         {
             if (UpdateChecker.TakePendingInstalled() is not { } inst) return;
             var body = inst.Verified
-                ? AppSettings.Text($"Zainstalowano wersję {inst.Version}. Hash zweryfikowany — wszystko OK.",
-                                   $"Installed version {inst.Version}. Hash verified — all good.")
-                : AppSettings.Text($"Zainstalowano wersję {inst.Version}. Wszystko OK.",
-                                   $"Installed version {inst.Version}. All good.");
-            ShowNotification(AppSettings.Text("Zaktualizowano Gantry", "Gantry updated"), body, null);
+                ? string.Format(AppSettings.T("Installed version {0}. Hash verified — all good."), inst.Version)
+                : string.Format(AppSettings.T("Installed version {0}. All good."), inst.Version);
+            ShowNotification(AppSettings.T("Gantry updated"), body, null);
         }
         catch (Exception ex) { Gantry.App.LogError("UpdateAnnounce", ex); }
     }
@@ -96,9 +94,8 @@ public sealed class TrayIcon : IDisposable
                             UpdateChecker.MarkNotified(release.Version);
                             _pendingUpdateUrl = release.PageUrl;
                             ShowNotification(
-                                AppSettings.Text("Dostępna aktualizacja Gantry", "Gantry update available"),
-                                AppSettings.Text($"Wersja {release.Version} jest do pobrania. Kliknij, aby otworzyć stronę.",
-                                                 $"Version {release.Version} is available. Click to open the page."),
+                                AppSettings.T("Gantry update available"),
+                                string.Format(AppSettings.T("Version {0} is available. Click to open the page."), release.Version),
                                 null);
                         }
                     }
@@ -121,30 +118,30 @@ public sealed class TrayIcon : IDisposable
         var menu = new ContextMenuStrip();
         bool pl = AppSettings.Polish;
 
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Pokaż drukarki", "Show printers"), null, (_, _) => ShowDashboard()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Show printers"), null, (_, _) => ShowDashboard()));
         if (AppSettings.SpoolbaseEnabled)
         {
             menu.Items.Add(new ToolStripMenuItem(
-                AppSettings.Text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock"),
+                AppSettings.T("Spoolbase — filament stock"),
                 null, (_, _) => ToggleSpoolbase()));
         }
         menu.Items.Add(new ToolStripSeparator());
 
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Szukaj drukarek…", "Scan for printers…"), null, (_, _) => { ShowDashboard(); _store.Scan(); }));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Dodaj drukarkę…", "Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Połącz ponownie (wszystkie)", "Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Centrum diagnostyczne…", "Diagnostic Center…"), null,
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Scan for printers…"), null, (_, _) => { ShowDashboard(); _store.Scan(); }));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Diagnostic Center…"), null,
             (_, _) => new DiagnosticsWindow(_store).Show()));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Statystyki floty…", "Fleet statistics…"), null,
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Fleet statistics…"), null,
             (_, _) => new FleetStatsWindow(_store).Show()));
         menu.Items.Add(new ToolStripSeparator());
 
-        var language = new ToolStripMenuItem(AppSettings.Text("Język: PL", "Language: EN"));
+        var language = new ToolStripMenuItem(AppSettings.T("Language: EN"));
         language.Click += (_, _) => { CycleLanguage(); RebuildMenu(); };
         menu.Items.Add(language);
 
         var quiet = new ToolStripMenuItem(
-            AppSettings.Text($"Godziny ciszy ({QuietHours.RangeLabel()})", $"Quiet hours ({QuietHours.RangeLabel()})"))
+            string.Format(AppSettings.T("Quiet hours ({0})"), QuietHours.RangeLabel()))
         {
             Checked = QuietHours.Enabled,
             CheckOnClick = true
@@ -153,19 +150,19 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(quiet);
 
         menu.Items.Add(new ToolStripMenuItem(
-            AppSettings.Text($"Sprawdź aktualizacje… (v{UpdateChecker.CurrentVersion})", $"Check for updates… (v{UpdateChecker.CurrentVersion})"),
+            string.Format(AppSettings.T("Check for updates… (v{0})"), UpdateChecker.CurrentVersion),
             null, (_, _) => ShowUpdateChecker()));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Ustawienia…", "Settings…"), null, (_, _) => ShowSettings()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Settings…"), null, (_, _) => ShowSettings()));
         menu.Items.Add(BuildColourLegend());
 
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Postaw kawę ☕️", "Buy me a coffee ☕️"), null, (_, _) =>
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Buy me a coffee ☕️"), null, (_, _) =>
         {
             try { Process.Start(new ProcessStartInfo("https://buycoffee.to/parametryczny") { UseShellExecute = true }); }
             catch { /* browser unavailable */ }
         }));
 
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.Text("Zakończ Gantry", "Quit Gantry"), null, (_, _) => Application.Current.Shutdown()));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Quit Gantry"), null, (_, _) => Application.Current.Shutdown()));
         _ = pl;
         return menu;
     }
@@ -174,15 +171,14 @@ public sealed class TrayIcon : IDisposable
     /// the colours crisp; mirrors the macOS "Colour legend" submenu.</summary>
     private static ToolStripMenuItem BuildColourLegend()
     {
-        var legend = new ToolStripMenuItem(AppSettings.Text("🎨  Legenda kolorów", "🎨  Colour legend"));
+        var legend = new ToolStripMenuItem(AppSettings.T("🎨  Colour legend"));
         (string Dot, string Text)[] entries =
         {
-            ("🔵", AppSettings.Text("Drukuje (świeże dane)", "Printing (live data)")),
-            ("🟢", AppSettings.Text("Gotowe / zakończone", "Ready / finished")),
-            ("🟠", AppSettings.Text("Uwaga: nieświeże dane, pauza lub wilgotność AMS",
-                                    "Attention: stale data, paused, or AMS humidity")),
-            ("🔴", AppSettings.Text("Błąd drukarki", "Printer error")),
-            ("⚪", AppSettings.Text("Offline / brak / neutralna informacja", "Offline / none / neutral")),
+            ("🔵", AppSettings.T("Printing (live data)")),
+            ("🟢", AppSettings.T("Ready / finished")),
+            ("🟠", AppSettings.T("Attention: stale data, paused, or AMS humidity")),
+            ("🔴", AppSettings.T("Printer error")),
+            ("⚪", AppSettings.T("Offline / none / neutral")),
         };
         foreach (var (dot, text) in entries)
         {
@@ -190,14 +186,12 @@ public sealed class TrayIcon : IDisposable
             legend.DropDownItems.Add(new ToolStripMenuItem($"{dot}  {text}"));
         }
         legend.DropDownItems.Add(new ToolStripSeparator());
-        var header = new ToolStripMenuItem(AppSettings.Text("Sloty filamentu:", "Filament slots:")) { Enabled = false };
+        var header = new ToolStripMenuItem(AppSettings.T("Filament slots:")) { Enabled = false };
         legend.DropDownItems.Add(header);
         (string Dot, string Text)[] slotEntries =
         {
-            ("⭕", AppSettings.Text("Slot AMS z białym pierścieniem — aktywny (drukuje z niego)",
-                                    "AMS slot with a white ring — active (printing from it)")),
-            ("🔴", AppSettings.Text("Czerwona kropka na slocie — mało filamentu (≤15%)",
-                                    "Red dot on a slot — low filament (≤15%)")),
+            ("⭕", AppSettings.T("AMS slot with a white ring — active (printing from it)")),
+            ("🔴", AppSettings.T("Red dot on a slot — low filament (≤15%)")),
         };
         foreach (var (dot, text) in slotEntries)
             legend.DropDownItems.Add(new ToolStripMenuItem($"{dot}  {text}"));
@@ -290,8 +284,8 @@ public sealed class TrayIcon : IDisposable
         int active = _store.ActivePrintCount;
         int total = _store.Printers.Count;
         SetMainText(active > 0
-            ? AppSettings.Text($"Gantry — {active} drukuje", $"Gantry — {active} printing")
-            : AppSettings.Text($"Gantry — {total} drukarek", $"Gantry — {total} printers"));
+            ? string.Format(AppSettings.T("Gantry — {0} printing"), active)
+            : string.Format(AppSettings.T("Gantry — {0} printers"), total));
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]

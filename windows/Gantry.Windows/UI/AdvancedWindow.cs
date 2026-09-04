@@ -30,38 +30,38 @@ public sealed class AdvancedWindow : Window
         var printer = store.Printers.FirstOrDefault(p => p.Serial == serial);
         _klipper = printer?.Kind == PrinterKind.Klipper;
 
-        Title = (_pl ? "Zaawansowane — " : "Advanced — ") + (printer?.Name ?? serial);
+        Title = (AppSettings.T("Advanced — ")) + (printer?.Name ?? serial);
         Width = 480; Height = _klipper ? 540 : 320; MinWidth = 400;
         Background = GTheme.Brush(GTheme.Canvas);
         Foreground = GTheme.Brush(GTheme.Text);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var stack = new StackPanel { Margin = new Thickness(18) };
-        stack.Children.Add(Label(_pl ? "IP kamery (opcjonalnie)" : "Camera IP (optional)", true));
-        stack.Children.Add(Hint(_pl ? "Gdy kamera jest pod innym adresem niż drukarka (np. Raspberry Pi z kamerą)." : "When the camera is on a different address than the printer (e.g. a Pi cam)."));
+        stack.Children.Add(Label(AppSettings.T("Camera IP (optional)"), true));
+        stack.Children.Add(Hint(AppSettings.T("When the camera is on a different address than the printer (e.g. a Pi cam).")));
         _camera.Text = "";
         stack.Children.Add(_camera);
 
-        stack.Children.Add(Label(_pl ? "Własne komendy światła (opcjonalnie)" : "Custom light commands (optional)", true, 14));
+        stack.Children.Add(Label(AppSettings.T("Custom light commands (optional)"), true, 14));
         stack.Children.Add(Hint(_klipper
-            ? (_pl ? "Klipper: linia G-code, np. „SET_PIN PIN=caselight VALUE=1”." : "Klipper: a G-code line, e.g. “SET_PIN PIN=caselight VALUE=1”.")
-            : (_pl ? "Bambu: surowy JSON MQTT (jak w automatyzacjach)." : "Bambu: raw MQTT JSON (as in automations).")));
-        stack.Children.Add(LabeledRow(_pl ? "Wł.:" : "On:", _ledOn));
-        stack.Children.Add(LabeledRow(_pl ? "Wył.:" : "Off:", _ledOff));
+            ? (AppSettings.T("Klipper: a G-code line, e.g. “SET_PIN PIN=caselight VALUE=1”."))
+            : (AppSettings.T("Bambu: raw MQTT JSON (as in automations)."))));
+        stack.Children.Add(LabeledRow(AppSettings.T("On:"), _ledOn));
+        stack.Children.Add(LabeledRow(AppSettings.T("Off:"), _ledOff));
 
         if (_klipper)
         {
-            stack.Children.Add(Label(_pl ? "Nazwy obiektów Klipper (opcjonalnie)" : "Klipper object names (optional)", true, 14));
-            stack.Children.Add(Hint(_pl ? "Dla niestandardowych konfiguracji. Puste = domyślne (extruder / heater_bed / auto / fan)." : "For non-standard configs. Empty = defaults (extruder / heater_bed / auto / fan)."));
-            stack.Children.Add(LabeledRow(_pl ? "Dysza:" : "Nozzle:", _nozzle));
-            stack.Children.Add(LabeledRow(_pl ? "Stół:" : "Bed:", _bed));
-            stack.Children.Add(LabeledRow(_pl ? "Komora:" : "Chamber:", _chamber));
-            stack.Children.Add(LabeledRow(_pl ? "Wentylator:" : "Fan:", _fan));
+            stack.Children.Add(Label(AppSettings.T("Klipper object names (optional)"), true, 14));
+            stack.Children.Add(Hint(AppSettings.T("For non-standard configs. Empty = defaults (extruder / heater_bed / auto / fan).")));
+            stack.Children.Add(LabeledRow(AppSettings.T("Nozzle:"), _nozzle));
+            stack.Children.Add(LabeledRow(AppSettings.T("Bed:"), _bed));
+            stack.Children.Add(LabeledRow(AppSettings.T("Chamber:"), _chamber));
+            stack.Children.Add(LabeledRow(AppSettings.T("Fan:"), _fan));
         }
 
-        var save = new Button { Content = _pl ? "Zapisz" : "Save", Padding = new Thickness(14, 6, 14, 6) };
+        var save = new Button { Content = AppSettings.T("Save"), Padding = new Thickness(14, 6, 14, 6) };
         save.Click += (_, _) => Save();
-        var close = new Button { Content = _pl ? "Zamknij" : "Close", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
+        var close = new Button { Content = AppSettings.T("Close"), Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
         close.Click += (_, _) => Close();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0), Children = { close, save } };
         stack.Children.Add(buttons);

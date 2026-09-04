@@ -59,7 +59,7 @@ public partial class SettingsWindow : Window
         ThemeButton.Click += (_, _) =>
         {
             AppSettings.Theme = AppSettings.Theme == "dark" ? "light" : "dark";
-            ThemeButton.Content = AppSettings.Theme == "dark" ? AppSettings.Text("Ciemny", "Dark") : AppSettings.Text("Jasny", "Light");
+            ThemeButton.Content = AppSettings.Theme == "dark" ? AppSettings.T("Dark") : AppSettings.T("Light");
             ApplyThemeVisuals();
             OnThemeChanged?.Invoke();
             ApplyModernChrome();
@@ -123,7 +123,7 @@ public partial class SettingsWindow : Window
     }
 
     private static string EdgeName() => AppSettings.EdgeDockEdge == "left"
-        ? AppSettings.Text("Lewa", "Left") : AppSettings.Text("Prawa", "Right");
+        ? AppSettings.T("Left") : AppSettings.T("Right");
 
     /// Dims the whole dock section, not just the switches, so an off strip reads as inactive.
     private void ApplyDockEnabledState()
@@ -146,7 +146,7 @@ public partial class SettingsWindow : Window
         {
             DockPrintersList.Children.Add(new System.Windows.Controls.TextBlock
             {
-                Text = AppSettings.Text("Brak drukarek", "No printers"),
+                Text = AppSettings.T("No printers"),
                 Foreground = GTheme.Brush(GTheme.Muted),
                 FontSize = 12,
                 Margin = new Thickness(14, 11, 14, 12),
@@ -184,21 +184,19 @@ public partial class SettingsWindow : Window
 
     private void RefreshWebSync()
     {
-        WebHeading.Text = AppSettings.Text("PODGLĄD W PRZEGLĄDARCE", "WEB DASHBOARD");
-        WebDashboardCheckBox.Content = AppSettings.Text("Serwer podglądu (sieć lokalna)", "Preview server (local network)");
+        WebHeading.Text = AppSettings.T("WEB DASHBOARD");
+        WebDashboardCheckBox.Content = AppSettings.T("Preview server (local network)");
         WebDashboardCheckBox.IsChecked = AppSettings.WebDashboardEnabled;
         var ip = GantryWebServer.LocalIPv4();
-        WebAddressLabel.Text = ip != null ? $"http://{ip}:{GantryWebServer.Port}" : AppSettings.Text("brak adresu IP", "no IP address");
+        WebAddressLabel.Text = ip != null ? $"http://{ip}:{GantryWebServer.Port}" : AppSettings.T("no IP address");
 
-        SyncHeading.Text = AppSettings.Text("SYNCHRONIZACJA MIĘDZY KOMPUTERAMI", "SYNC BETWEEN COMPUTERS");
-        SyncTokenLabel.Text = AppSettings.Text("Wspólny token (skopiuj na drugi komputer)", "Shared token (copy to the other computer)");
-        SyncNewTokenButton.Content = AppSettings.Text("Nowy", "New");
-        SyncAddPeerButton.Content = AppSettings.Text("Dodaj", "Add");
-        SyncSetTokenButton.Content = AppSettings.Text("Ustaw token", "Set token");
-        SyncNowButton.Content = AppSettings.Text("Synchronizuj teraz", "Sync now");
-        SyncHint.Text = AppSettings.Text(
-            "Na drugim komputerze wklej powyższy token („Ustaw token”), potem dodaj adres tego komputera. Tylko sieć lokalna. Kody dostępu do drukarek nie są przesyłane.",
-            "On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.");
+        SyncHeading.Text = AppSettings.T("SYNC BETWEEN COMPUTERS");
+        SyncTokenLabel.Text = AppSettings.T("Shared token (copy to the other computer)");
+        SyncNewTokenButton.Content = AppSettings.T("New");
+        SyncAddPeerButton.Content = AppSettings.T("Add");
+        SyncSetTokenButton.Content = AppSettings.T("Set token");
+        SyncNowButton.Content = AppSettings.T("Sync now");
+        SyncHint.Text = AppSettings.T("On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.");
 
         var sync = SyncService.Shared;
         SyncTokenBox.Text = sync?.Token ?? "";
@@ -207,20 +205,20 @@ public partial class SettingsWindow : Window
         if (sync != null)
         {
             if (sync.Peers.Count == 0)
-                SyncPeersList.Children.Add(new System.Windows.Controls.TextBlock { Text = AppSettings.Text("Brak sparowanych komputerów.", "No paired computers."), FontSize = 11, Foreground = GTheme.Brush(GTheme.Muted), Margin = new System.Windows.Thickness(0, 2, 0, 4) });
+                SyncPeersList.Children.Add(new System.Windows.Controls.TextBlock { Text = AppSettings.T("No paired computers."), FontSize = 11, Foreground = GTheme.Brush(GTheme.Muted), Margin = new System.Windows.Thickness(0, 2, 0, 4) });
             foreach (var peer in sync.Peers.ToList())
             {
                 var grid = new System.Windows.Controls.Grid { Margin = new System.Windows.Thickness(0, 2, 0, 2) };
                 grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
                 grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
-                string status = peer.LastError != null ? AppSettings.Text($"Błąd: {peer.LastError}", $"Error: {peer.LastError}")
-                    : peer.LastSyncAt is { } ls ? AppSettings.Text($"ostatnio: {ls.ToLocalTime():HH:mm}", $"last: {ls.ToLocalTime():HH:mm}")
-                    : AppSettings.Text("jeszcze nie zsynchronizowano", "not synced yet");
+                string status = peer.LastError != null ? string.Format(AppSettings.T("Error: {0}"), peer.LastError)
+                    : peer.LastSyncAt is { } ls ? string.Format(AppSettings.T("last: {0:HH:mm}"), ls.ToLocalTime())
+                    : AppSettings.T("not synced yet");
                 var info = new System.Windows.Controls.StackPanel();
                 info.Children.Add(new System.Windows.Controls.TextBlock { Text = peer.Address, FontFamily = new System.Windows.Media.FontFamily("Consolas"), FontSize = 11, Foreground = GTheme.Brush(GTheme.Text) });
                 info.Children.Add(new System.Windows.Controls.TextBlock { Text = status, FontSize = 10, Foreground = peer.LastError != null ? GTheme.Brush(GTheme.StatusPrinting) : GTheme.Brush(GTheme.Secondary) });
                 grid.Children.Add(info);
-                var remove = new System.Windows.Controls.Button { Content = AppSettings.Text("Usuń", "Remove"), MinWidth = 60, Height = 24, FontSize = 11 };
+                var remove = new System.Windows.Controls.Button { Content = AppSettings.T("Remove"), MinWidth = 60, Height = 24, FontSize = 11 };
                 string peerId = peer.Id;
                 remove.Click += (_, _) => { SyncService.Shared?.RemovePeer(peerId); RefreshWebSync(); };
                 System.Windows.Controls.Grid.SetColumn(remove, 1);
@@ -252,55 +250,51 @@ public partial class SettingsWindow : Window
 
     private void ApplyLanguage()
     {
-        Title = AppSettings.Text("Ustawienia Gantry", "Gantry Settings");
-        Heading.Text = AppSettings.Text("Ustawienia", "Settings");
+        Title = AppSettings.T("Gantry Settings");
+        Heading.Text = AppSettings.T("Settings");
 
-        AppearanceHeading.Text = AppSettings.Text("WYGLĄD", "APPEARANCE");
-        GeneralHeading.Text = AppSettings.Text("OGÓLNE", "GENERAL");
-        LanguageLabel.Text = AppSettings.Text("Język", "Language");
+        AppearanceHeading.Text = AppSettings.T("APPEARANCE");
+        GeneralHeading.Text = AppSettings.T("GENERAL");
+        LanguageLabel.Text = AppSettings.T("Language");
         LanguageButton.Content = Translations.Available()
             .FirstOrDefault(entry => entry.Code == AppSettings.Language)?.Name ?? AppSettings.Language;
-        ThemeLabel.Text = AppSettings.Text("Wygląd", "Appearance");
-        ThemeButton.Content = AppSettings.Theme == "dark" ? AppSettings.Text("Ciemny", "Dark") : AppSettings.Text("Jasny", "Light");
-        TransparencyLabel.Text = AppSettings.Text("Przezroczystość", "Transparency");
+        ThemeLabel.Text = AppSettings.T("Appearance");
+        ThemeButton.Content = AppSettings.Theme == "dark" ? AppSettings.T("Dark") : AppSettings.T("Light");
+        TransparencyLabel.Text = AppSettings.T("Transparency");
         TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
-        StartupCheckBox.Content = AppSettings.Text("Uruchamiaj z Windows", "Start with Windows");
-        SpoolbaseCheckBox.Content = AppSettings.Text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock");
-        DeveloperCheckBox.Content = AppSettings.Text("Tryb deweloperski (sterowanie + automatyzacje)", "Developer mode (control + automations)");
-        ScriptActionsCheckBox.Content = AppSettings.Text("Zezwól automatyzacjom na skrypty i własne komendy", "Allow automations to run scripts and custom commands");
-        ScriptActionsHint.Text = AppSettings.Text(
-            "Wyłączone domyślnie ze względów bezpieczeństwa: uniemożliwia podrzuconej regule ciche uruchomienie kodu. Każda reguła i tak pyta o zgodę przy pierwszym odpaleniu.",
-            "Off by default for safety: stops a planted rule from silently running code. Each rule still asks for confirmation the first time it fires.");
-        AutoUpdateCheckBox.Content = AppSettings.Text("Automatycznie pobieraj i instaluj aktualizacje", "Download and install updates automatically");
+        StartupCheckBox.Content = AppSettings.T("Start with Windows");
+        SpoolbaseCheckBox.Content = AppSettings.T("Spoolbase — filament stock");
+        DeveloperCheckBox.Content = AppSettings.T("Developer mode (control + automations)");
+        ScriptActionsCheckBox.Content = AppSettings.T("Allow automations to run scripts and custom commands");
+        ScriptActionsHint.Text = AppSettings.T("Off by default for safety: stops a planted rule from silently running code. Each rule still asks for confirmation the first time it fires.");
+        AutoUpdateCheckBox.Content = AppSettings.T("Download and install updates automatically");
 
-        CardsHeading.Text = AppSettings.Text("KARTY DRUKAREK", "PRINTER CARDS");
-        CardFileNameCheckBox.Content = AppSettings.Text("Nazwa pliku", "File name");
-        CardProgressCheckBox.Content = AppSettings.Text("Postęp", "Progress");
-        CardTempsCheckBox.Content = AppSettings.Text("Temperatury", "Temperatures");
-        CardFilamentsCheckBox.Content = AppSettings.Text("Filamenty / AMS", "Filaments / AMS");
-        CardSpoolGramsCheckBox.Content = AppSettings.Text("Gramy na rolce (AMS NFC / Spoolbase)", "Grams on spool (AMS NFC / Spoolbase)");
-        MonochromeCheckBox.Content = AppSettings.Text("Kolorystyka monochromatyczna", "Monochrome colours");
+        CardsHeading.Text = AppSettings.T("PRINTER CARDS");
+        CardFileNameCheckBox.Content = AppSettings.T("File name");
+        CardProgressCheckBox.Content = AppSettings.T("Progress");
+        CardTempsCheckBox.Content = AppSettings.T("Temperatures");
+        CardFilamentsCheckBox.Content = AppSettings.T("Filaments / AMS");
+        CardSpoolGramsCheckBox.Content = AppSettings.T("Grams on spool (AMS NFC / Spoolbase)");
+        MonochromeCheckBox.Content = AppSettings.T("Monochrome colours");
 
-        NotificationsHeading.Text = AppSettings.Text("POWIADOMIENIA", "NOTIFICATIONS");
-        PrintFinishedCheckBox.Content = AppSettings.Text("Druk zakończony", "Print finished");
+        NotificationsHeading.Text = AppSettings.T("NOTIFICATIONS");
+        PrintFinishedCheckBox.Content = AppSettings.T("Print finished");
         FinishingSoonCheckBox.Content = string.Format(
-            AppSettings.Text("Koniec za {0} minut", "Finishing in {0} minutes"), AppSettings.FinishingSoonMinutes);
-        PrinterErrorCheckBox.Content = AppSettings.Text("Błąd drukarki", "Printer error");
-        PrintPausedCheckBox.Content = AppSettings.Text("Druk wstrzymany", "Print paused");
-        LowFilamentCheckBox.Content = AppSettings.Text("Niski poziom filamentu", "Low filament");
-        HighHumidityCheckBox.Content = AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity");
-        QuietHoursCheckBox.Content = AppSettings.Text("Godziny ciszy (bez powiadomień)", "Quiet hours (no notifications)");
-        QuietFromLabel.Text = AppSettings.Text("od", "from");
-        QuietToLabel.Text = AppSettings.Text("do", "to");
+            AppSettings.T("Finishing in {0} minutes"), AppSettings.FinishingSoonMinutes);
+        PrinterErrorCheckBox.Content = AppSettings.T("Printer error");
+        PrintPausedCheckBox.Content = AppSettings.T("Print paused");
+        LowFilamentCheckBox.Content = AppSettings.T("Low filament");
+        HighHumidityCheckBox.Content = AppSettings.T("High AMS humidity");
+        QuietHoursCheckBox.Content = AppSettings.T("Quiet hours (no notifications)");
+        QuietFromLabel.Text = AppSettings.T("from");
+        QuietToLabel.Text = AppSettings.T("to");
 
         TelegramHeading.Text = "TELEGRAM";
-        TelegramEnableCheckBox.Content = AppSettings.Text("Wysyłaj powiadomienia na Telegram", "Send notifications to Telegram");
-        TelegramTokenLabel.Text = AppSettings.Text("Token bota:", "Bot token:");
+        TelegramEnableCheckBox.Content = AppSettings.T("Send notifications to Telegram");
+        TelegramTokenLabel.Text = AppSettings.T("Bot token:");
         TelegramChatLabel.Text = "Chat ID:";
-        TelegramTestButton.Content = AppSettings.Text("Wyślij test", "Send test");
-        TelegramHint.Text = AppSettings.Text(
-            "Utwórz bota przez @BotFather (token), napisz do niego, a chat_id weź od @userinfobot. Wysyła te same zdarzenia co powyżej + komendy z czatu (/help).",
-            "Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as above + chat commands (/help).");
+        TelegramTestButton.Content = AppSettings.T("Send test");
+        TelegramHint.Text = AppSettings.T("Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as above + chat commands (/help).");
         TelegramEnableCheckBox.IsChecked = AppSettings.TelegramEnabled;
         TelegramTokenBox.Text = AppSettings.TelegramBotToken;
         TelegramChatBox.Text = AppSettings.TelegramChatId;
@@ -308,43 +302,38 @@ public partial class SettingsWindow : Window
         TelegramChatBox.IsEnabled = AppSettings.TelegramEnabled;
         TelegramTestButton.IsEnabled = AppSettings.TelegramEnabled;
 
-        UpdatesHeading.Text = AppSettings.Text("AKTUALIZACJE", "UPDATES");
-        UpdateStatus.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion}", $"Version {UpdateChecker.CurrentVersion}");
-        CheckUpdatesButton.Content = AppSettings.Text("Sprawdź aktualizacje", "Check for updates");
+        UpdatesHeading.Text = AppSettings.T("UPDATES");
+        UpdateStatus.Text = string.Format(AppSettings.T("Version {0}"), UpdateChecker.CurrentVersion);
+        CheckUpdatesButton.Content = AppSettings.T("Check for updates");
 
-        AboutHeading.Text = AppSettings.Text("O APLIKACJI", "ABOUT");
-        AboutVersion.Text = $"Gantry · {AppSettings.Text("wersja", "version")} {UpdateChecker.CurrentVersion} · DPAPI";
+        AboutHeading.Text = AppSettings.T("ABOUT");
+        AboutVersion.Text = $"Gantry · {AppSettings.T("version")} {UpdateChecker.CurrentVersion} · DPAPI";
         AboutAuthor.Text = "@_parametryczny";
         GitHubButton.Content = "GitHub";
         XButton.Content = "@_parametryczny";
-        SupportButton.Content = AppSettings.Text("☕  Wesprzyj projekt", "☕  Support the project");
-        SupportSubtitle.Text = AppSettings.Text(
-            "Wirtualna kawa daje mi kofeinowego kopa do pracy nad kolejnymi wersjami Gantry. 🚀",
-            "A virtual coffee gives me a caffeine kick to keep improving Gantry. 🚀");
+        SupportButton.Content = AppSettings.T("☕  Support the project");
+        SupportSubtitle.Text = AppSettings.T("A virtual coffee gives me a caffeine kick to keep improving Gantry. 🚀");
 
-        TabGeneral.Content = AppSettings.Text("Ogólne", "General");
-        TabAppearance.Content = AppSettings.Text("Wygląd", "Appearance");
-        TabAdvanced.Content = AppSettings.Text("Zaawansowane", "Advanced");
+        TabGeneral.Content = AppSettings.T("General");
+        TabAppearance.Content = AppSettings.T("Appearance");
+        TabAdvanced.Content = AppSettings.T("Advanced");
         HeaderSubtitle.Text = "Gantry · @_parametryczny";
-        FooterVersion.Text = AppSettings.Text($"Wersja {UpdateChecker.CurrentVersion} · DPAPI",
-                                              $"Version {UpdateChecker.CurrentVersion} · DPAPI");
-        DeveloperHeading.Text = AppSettings.Text("TRYB DEWELOPERSKI", "DEVELOPER");
+        FooterVersion.Text = string.Format(AppSettings.T("Version {0} · DPAPI"), UpdateChecker.CurrentVersion);
+        DeveloperHeading.Text = AppSettings.T("DEVELOPER");
 
-        DockHeading.Text = AppSettings.Text("PASEK KRAWĘDZIOWY", "EDGE DOCK");
-        DockEnableCheckBox.Content = AppSettings.Text("Pokazuj pasek na wierzchu", "Show the strip on top");
+        DockHeading.Text = AppSettings.T("EDGE DOCK");
+        DockEnableCheckBox.Content = AppSettings.T("Show the strip on top");
         DockEnableCheckBox.IsChecked = AppSettings.EdgeDockEnabled;
-        DockEdgeLabel.Text = AppSettings.Text("Krawędź", "Edge");
+        DockEdgeLabel.Text = AppSettings.T("Edge");
         DockEdgeButton.Content = EdgeName();
-        DockOnlyPrintingCheckBox.Content = AppSettings.Text("Tylko drukujące", "Only printing");
+        DockOnlyPrintingCheckBox.Content = AppSettings.T("Only printing");
         DockOnlyPrintingCheckBox.IsChecked = AppSettings.EdgeDockOnlyPrinting;
-        DockPrintersCaption.Text = AppSettings.Text("KTÓRE DRUKARKI", "WHICH PRINTERS");
-        DockHint.Text = AppSettings.Text(
-            "Wąski pasek przyklejony do krawędzi ekranu, zawsze na wierzchu. Najechanie rozsuwa go do nazw, klik otwiera szczegóły.",
-            "A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.");
+        DockPrintersCaption.Text = AppSettings.T("WHICH PRINTERS");
+        DockHint.Text = AppSettings.T("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.");
         RebuildDockPrinters();
         ApplyDockEnabledState();
 
-        CloseButton.Content = AppSettings.Text("Gotowe", "Done");
+        CloseButton.Content = AppSettings.T("Done");
     }
 
     /// <summary>
@@ -376,9 +365,9 @@ public partial class SettingsWindow : Window
 
     private static string TransparencyName(int level) => level switch
     {
-        0 => AppSettings.Text("Niska", "Low"),
-        2 => AppSettings.Text("Wysoka", "High"),
-        _ => AppSettings.Text("Średnia", "Medium"),
+        0 => AppSettings.T("Low"),
+        2 => AppSettings.T("High"),
+        _ => AppSettings.T("Medium"),
     };
 
     private void LoadSettings()
@@ -429,27 +418,27 @@ public partial class SettingsWindow : Window
         var chat = AppSettings.TelegramChatId;
         if (token.Length == 0 || chat.Length == 0)
         {
-            TelegramStatus.Text = AppSettings.Text("Wpisz token i chat_id.", "Enter a token and chat_id.");
+            TelegramStatus.Text = AppSettings.T("Enter a token and chat_id.");
             return;
         }
-        TelegramStatus.Text = AppSettings.Text("Wysyłanie…", "Sending…");
-        var text = TelegramService.Format("Gantry", AppSettings.Text("Test powiadomienia", "Test notification"),
-                                          AppSettings.Text("Połączenie działa.", "The connection works."));
+        TelegramStatus.Text = AppSettings.T("Sending…");
+        var text = TelegramService.Format("Gantry", AppSettings.T("Test notification"),
+                                          AppSettings.T("The connection works."));
         bool ok = await TelegramService.SendMessageAsync(token, chat, text);
-        TelegramStatus.Text = ok ? AppSettings.Text("Wysłano ✓", "Sent ✓")
-                                 : AppSettings.Text("Nie udało się. Sprawdź token i chat_id.", "Failed. Check the token and chat_id.");
+        TelegramStatus.Text = ok ? AppSettings.T("Sent ✓")
+                                 : AppSettings.T("Failed. Check the token and chat_id.");
     }
 
     private async Task CheckUpdatesAsync()
     {
         CheckUpdatesButton.IsEnabled = false;
-        UpdateStatus.Text = AppSettings.Text("Sprawdzam…", "Checking…");
+        UpdateStatus.Text = AppSettings.T("Checking…");
         try
         {
             var result = await UpdateChecker.LatestAsync();
             if (result is not { } r)
             {
-                UpdateStatus.Text = AppSettings.Text("Nie udało się sprawdzić.", "Could not check.");
+                UpdateStatus.Text = AppSettings.T("Could not check.");
             }
             else if (r.IsNewer)
             {
@@ -458,29 +447,24 @@ public partial class SettingsWindow : Window
                 // asset or the download fails.
                 if (!string.IsNullOrEmpty(r.Release.SetupUrl))
                 {
-                    UpdateStatus.Text = AppSettings.Text($"Pobieram wersję {r.Release.Version}…",
-                                                         $"Downloading {r.Release.Version}…");
+                    UpdateStatus.Text = string.Format(AppSettings.T("Downloading {0}…"), r.Release.Version);
                     if (await UpdateChecker.DownloadAndInstallAsync(r.Release))
                     {
-                        UpdateStatus.Text = AppSettings.Text("Instaluję i uruchamiam ponownie…",
-                                                             "Installing and restarting…");
+                        UpdateStatus.Text = AppSettings.T("Installing and restarting…");
                         System.Windows.Application.Current?.Shutdown();   // the helper installs + relaunches
                         return;
                     }
-                    UpdateStatus.Text = AppSettings.Text("Nie udało się pobrać — otwieram stronę…",
-                                                         "Download failed — opening page…");
+                    UpdateStatus.Text = AppSettings.T("Download failed — opening page…");
                 }
                 else
                 {
-                    UpdateStatus.Text = AppSettings.Text($"Dostępna wersja {r.Release.Version} — otwieram stronę…",
-                                                         $"Version {r.Release.Version} available — opening page…");
+                    UpdateStatus.Text = string.Format(AppSettings.T("Version {0} available — opening page…"), r.Release.Version);
                 }
                 try { Process.Start(new ProcessStartInfo(r.Release.PageUrl) { UseShellExecute = true }); } catch { }
             }
             else
             {
-                UpdateStatus.Text = AppSettings.Text($"Masz najnowszą wersję ({UpdateChecker.CurrentVersion}).",
-                                                     $"You have the latest version ({UpdateChecker.CurrentVersion}).");
+                UpdateStatus.Text = string.Format(AppSettings.T("You have the latest version ({0})."), UpdateChecker.CurrentVersion);
             }
         }
         finally

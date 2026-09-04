@@ -72,7 +72,7 @@ public sealed class MqttClient : IPrinterConnection
             }
             catch (OperationCanceledException) when (connectTimeout.IsCancellationRequested)
             {
-                ReportDisconnected(AppSettings.Text("Przekroczono czas połączenia z drukarką", "Connection to the printer timed out"));
+                ReportDisconnected(AppSettings.T("Connection to the printer timed out"));
                 return;
             }
 
@@ -91,7 +91,7 @@ public sealed class MqttClient : IPrinterConnection
             }
             catch
             {
-                ReportDisconnected(_certificateMismatch ? CertificateMismatchMessage : AppSettings.Text("Nie udało się nawiązać połączenia TLS", "TLS handshake failed"));
+                ReportDisconnected(_certificateMismatch ? CertificateMismatchMessage : AppSettings.T("TLS handshake failed"));
                 return;
             }
 
@@ -140,7 +140,7 @@ public sealed class MqttClient : IPrinterConnection
                     case 2: // CONNACK
                         if (packet.Body.Length < 2 || packet.Body[1] != 0)
                         {
-                            ReportDisconnected(AppSettings.Text("Drukarka odrzuciła kod dostępu", "The printer rejected the access code"));
+                            ReportDisconnected(AppSettings.T("The printer rejected the access code"));
                             Stop();
                             return;
                         }
@@ -195,7 +195,5 @@ public sealed class MqttClient : IPrinterConnection
         _onEvent(new MqttEvent { Type = MqttEventType.Disconnected, Reason = reason });
     }
 
-    private static string CertificateMismatchMessage => AppSettings.Text(
-        "Certyfikat drukarki zmienił się. Połączenie zablokowano; usuń i dodaj drukarkę ponownie.",
-        "The printer certificate changed. Connection blocked; remove and re-add the printer.");
+    private static string CertificateMismatchMessage => AppSettings.T("The printer certificate changed. Connection blocked; remove and re-add the printer.");
 }

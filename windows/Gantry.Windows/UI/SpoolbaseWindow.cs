@@ -77,7 +77,7 @@ public sealed class SpoolbaseWindow : Window
         titles.Children.Add(title);
         titles.Children.Add(_summary);
 
-        var add = new Button { Content = "+", Width = 32, Height = 30, FontSize = 17, ToolTip = Pl ? "Dodaj filament" : "Add filament" };
+        var add = new Button { Content = "+", Width = 32, Height = 30, FontSize = 17, ToolTip = AppSettings.T("Add filament") };
         add.Click += (_, _) => OpenCatalog();
         StyleSoftButton(add);
 
@@ -107,7 +107,7 @@ public sealed class SpoolbaseWindow : Window
         _search.VerticalContentAlignment = VerticalAlignment.Center;
         var placeholder = new TextBlock
         {
-            Text = Pl ? "Szukaj nazwy, koloru lub kodu…" : "Search name, colour or code…",
+            Text = AppSettings.T("Search name, colour or code…"),
             Foreground = Muted(), IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center, FontSize = 12
         };
         _search.TextChanged += (_, _) =>
@@ -122,7 +122,7 @@ public sealed class SpoolbaseWindow : Window
         searchBox.Child = searchGrid;
         var filter = new Button
         {
-            Content = Pl ? "☷  Filtry" : "☷  Filters", MinWidth = 82, Height = 32,
+            Content = AppSettings.T("☷  Filters"), MinWidth = 82, Height = 32,
             Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(9, 0, 9, 0)
         };
         StyleSoftButton(filter);
@@ -164,7 +164,7 @@ public sealed class SpoolbaseWindow : Window
         {
             _list.Children.Add(new TextBlock
             {
-                Text = Pl ? "Brak filamentów dla wybranych filtrów" : "No filaments match the filters",
+                Text = AppSettings.T("No filaments match the filters"),
                 Foreground = Muted(),
                 FontSize = 12,
                 FontWeight = FontWeights.Medium,
@@ -205,7 +205,7 @@ public sealed class SpoolbaseWindow : Window
         head.Children.Add(new TextBlock { Text = type, FontSize = 12.5, FontWeight = FontWeights.SemiBold });
         var count = new TextBlock
         {
-            Text = $"{items.Count} {(items.Count == 1 ? (Pl ? "filament" : "filament") : (Pl ? "filamentów" : "filaments"))}",
+            Text = $"{items.Count} {(items.Count == 1 ? (AppSettings.T("filament")) : (AppSettings.T("filaments")))}",
             FontSize = 9.5, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Bottom
         };
         Grid.SetColumn(count, 1);
@@ -256,7 +256,7 @@ public sealed class SpoolbaseWindow : Window
             Margin = new Thickness(2),
             Cursor = Cursors.Hand,
             Child = row,
-            ToolTip = Pl ? "Kliknij, aby zmienić liczbę szpul" : "Click to change spool count"
+            ToolTip = AppSettings.T("Click to change spool count")
         };
         tile.MouseEnter += (_, _) => tile.Background = Surface();
         tile.MouseLeave += (_, _) => tile.Background = Brushes.Transparent;
@@ -324,14 +324,14 @@ public sealed class SpoolbaseWindow : Window
     private ContextMenu BuildTileMenu(Filament item)
     {
         var menu = new ContextMenu();
-        var stock = new MenuItem { Header = Pl ? "Zmień liczbę szpul…" : "Change spool count…" };
+        var stock = new MenuItem { Header = AppSettings.T("Change spool count…") };
         stock.Click += (_, _) => OpenEditor(item, countOnly: true);
         menu.Items.Add(stock);
-        var edit = new MenuItem { Header = Pl ? "Edytuj…" : "Edit…" };
+        var edit = new MenuItem { Header = AppSettings.T("Edit…") };
         edit.Click += (_, _) => OpenEditor(item, countOnly: false);
         menu.Items.Add(edit);
         menu.Items.Add(new Separator());
-        var del = new MenuItem { Header = Pl ? "Usuń z moich filamentów" : "Remove from my filaments" };
+        var del = new MenuItem { Header = AppSettings.T("Remove from my filaments") };
         del.Click += (_, _) => ConfirmDelete(item);
         menu.Items.Add(del);
         return menu;
@@ -390,7 +390,7 @@ public sealed class SpoolbaseWindow : Window
     private void ShowFilters(Button anchor)
     {
         var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
-        var typeHeader = new MenuItem { Header = Pl ? "Typ" : "Type", IsEnabled = false };
+        var typeHeader = new MenuItem { Header = AppSettings.T("Type"), IsEnabled = false };
         menu.Items.Add(typeHeader);
         foreach (var value in FilamentCatalogMeta.Types.Where(type => _store.Filaments.Any(f => f.Type == type)))
         {
@@ -399,10 +399,10 @@ public sealed class SpoolbaseWindow : Window
             menu.Items.Add(item);
         }
         menu.Items.Add(new Separator());
-        var low = new MenuItem { Header = Pl ? "Niski stan" : "Low stock", IsCheckable = true, IsChecked = _lowOnly };
+        var low = new MenuItem { Header = AppSettings.T("Low stock"), IsCheckable = true, IsChecked = _lowOnly };
         low.Click += (_, _) => { _lowOnly = !_lowOnly; Render(); }; menu.Items.Add(low);
         menu.Items.Add(new Separator());
-        menu.Items.Add(new MenuItem { Header = Pl ? "Marka" : "Brand", IsEnabled = false });
+        menu.Items.Add(new MenuItem { Header = AppSettings.T("Brand"), IsEnabled = false });
         foreach (var value in _store.Filaments.Select(f => f.Brand).Where(value => value.Length > 0).Distinct().OrderBy(value => value))
         {
             var item = new MenuItem { Header = value, IsCheckable = true, IsChecked = value == _selectedBrand };
@@ -423,7 +423,7 @@ public sealed class SpoolbaseWindow : Window
         }
         if (_selectedType != null) Add(_selectedType, () => _selectedType = null);
         if (_selectedBrand != null) Add(_selectedBrand, () => _selectedBrand = null);
-        if (_lowOnly) Add(Pl ? "Niski stan" : "Low stock", () => _lowOnly = false);
+        if (_lowOnly) Add(AppSettings.T("Low stock"), () => _lowOnly = false);
         _chips.Visibility = _chips.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -444,8 +444,8 @@ public sealed class SpoolbaseWindow : Window
     private void ConfirmDelete(Filament item)
     {
         var result = MessageBox.Show(this,
-            $"{item.Brand} • {item.Name} • {item.ColorName}\n" + (Pl ? "Produkt pozostanie w katalogu." : "The product stays in the catalog."),
-            Pl ? "Usunąć z moich filamentów?" : "Remove from my filaments?",
+            $"{item.Brand} • {item.Name} • {item.ColorName}\n" + (AppSettings.T("The product stays in the catalog.")),
+            AppSettings.T("Remove from my filaments?"),
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (result == MessageBoxResult.OK) _store.Delete(item.Id);
     }

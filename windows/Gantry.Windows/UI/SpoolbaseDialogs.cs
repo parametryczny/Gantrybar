@@ -122,7 +122,7 @@ public sealed class SpoolbaseCatalogWindow : Window
     {
         _store = store;
         _catalog = FilamentCatalog.Load();
-        Title = Pl ? "Dodaj filament" : "Add filament";
+        Title = AppSettings.T("Add filament");
         Width = 460; Height = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = GTheme.Brush(GTheme.Canvas);
@@ -139,7 +139,7 @@ public sealed class SpoolbaseCatalogWindow : Window
         _search.TextChanged += (_, _) => ApplyFilter();
         var codeButton = new Button
         {
-            Content = Pl ? "▣  Skanuj kod…" : "▣  Scan code…", MinWidth = 105, Margin = new Thickness(8, 0, 0, 0)
+            Content = AppSettings.T("▣  Scan code…"), MinWidth = 105, Margin = new Thickness(8, 0, 0, 0)
         };
         codeButton.Click += (_, _) => ScanManufacturerCode();
         var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
@@ -148,7 +148,7 @@ public sealed class SpoolbaseCatalogWindow : Window
         searchRow.Children.Add(_search); Grid.SetColumn(codeButton, 1); searchRow.Children.Add(codeButton);
         DockPanel.SetDock(searchRow, Dock.Top); root.Children.Add(searchRow);
 
-        var addManual = new Button { Content = Pl ? "Dodaj ręcznie…" : "Add manually…", Height = 32, Margin = new Thickness(0, 10, 0, 0) };
+        var addManual = new Button { Content = AppSettings.T("Add manually…"), Height = 32, Margin = new Thickness(0, 10, 0, 0) };
         addManual.Click += (_, _) => { var e = new SpoolbaseEditWindow(_store, null, false) { Owner = this }; if (e.ShowDialog() == true) Close(); };
         DockPanel.SetDock(addManual, Dock.Bottom);
         root.Children.Add(addManual);
@@ -161,12 +161,12 @@ public sealed class SpoolbaseCatalogWindow : Window
             box.Background = GTheme.Brush(GTheme.Surface);
             box.Foreground = Ink; box.CaretBrush = Ink; box.BorderThickness = new Thickness(0);
         }
-        var addBtn = new Button { Content = Pl ? "Dodaj do moich" : "Add to mine", Height = 32, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(10, 0, 10, 0) };
+        var addBtn = new Button { Content = AppSettings.T("Add to mine"), Height = 32, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(10, 0, 10, 0) };
         addBtn.Click += (_, _) => AddSelected();
         var footer = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        footer.Children.Add(new TextBlock { Text = Pl ? "Liczba szpul" : "Spools", Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        footer.Children.Add(new TextBlock { Text = AppSettings.T("Spools"), Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
         footer.Children.Add(_qty);
-        footer.Children.Add(new TextBlock { Text = Pl ? "Waga (g)" : "Weight (g)", Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
+        footer.Children.Add(new TextBlock { Text = AppSettings.T("Weight (g)"), Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
         footer.Children.Add(_weight);
         footer.Children.Add(addBtn);
         DockPanel.SetDock(footer, Dock.Bottom);
@@ -234,9 +234,8 @@ public sealed class SpoolbaseCatalogWindow : Window
         }
 
         var add = MessageBox.Show(this,
-            AppSettings.Text($"Odczytany kod: {code}\n\nNie znaleziono go w bazie. Dodać własny filament z tym kodem?",
-                             $"Scanned code: {code}\n\nIt was not found in the catalog. Add a custom filament with this code?"),
-            AppSettings.Text("Nie znaleziono kodu", "Code not found"),
+            string.Format(AppSettings.T("Scanned code: {0}\n\nIt was not found in the catalog. Add a custom filament with this code?"), code),
+            AppSettings.T("Code not found"),
             MessageBoxButton.YesNo, MessageBoxImage.Information);
         if (add == MessageBoxResult.Yes)
         {
@@ -286,11 +285,11 @@ public sealed class SpoolbaseEditWindow : Window
     {
         _store = store;
         _isNew = filament == null;
-        _original = filament ?? new Filament { Type = "PLA", ColorName = Pl ? "Nowy" : "New", ColorHex = "8E8E93",
+        _original = filament ?? new Filament { Type = "PLA", ColorName = AppSettings.T("New"), ColorHex = "8E8E93",
                                                ManufacturerCode = prefilledManufacturerCode ?? "" };
 
-        Title = _isNew ? (Pl ? "Nowy filament" : "New filament")
-                       : (countOnly ? (Pl ? "Liczba szpul" : "Spool count") : (Pl ? "Edytuj filament" : "Edit filament"));
+        Title = _isNew ? (AppSettings.T("New filament"))
+                       : (countOnly ? (AppSettings.T("Spool count")) : (AppSettings.T("Edit filament")));
         // Grow to fit the fields instead of a fixed height that clipped the form (the manufacturer code,
         // spool count and the buttons fell off the bottom). Cap the height and scroll on a small screen.
         Width = 400;
@@ -320,20 +319,20 @@ public sealed class SpoolbaseEditWindow : Window
             else _type.Foreground = Brushes.Black;   // fallback: readable on the default light combo
             _type.Margin = new Thickness(0, 0, 0, 8);
 
-            stack.Children.Add(Field(Pl ? "Marka" : "Brand", _brand, _original.Brand));
-            stack.Children.Add(Field(Pl ? "Nazwa" : "Name", _name, _original.Name));
-            stack.Children.Add(Label(Pl ? "Typ" : "Type"));
+            stack.Children.Add(Field(AppSettings.T("Brand"), _brand, _original.Brand));
+            stack.Children.Add(Field(AppSettings.T("Name"), _name, _original.Name));
+            stack.Children.Add(Label(AppSettings.T("Type")));
             stack.Children.Add(_type);
-            stack.Children.Add(Field(Pl ? "Kolor" : "Colour", _colorName, _original.ColorName));
+            stack.Children.Add(Field(AppSettings.T("Colour"), _colorName, _original.ColorName));
             stack.Children.Add(Field("Hex", _colorHex, _original.ColorHex));
-            stack.Children.Add(Field(Pl ? "Kod producenta" : "Manufacturer code", _code, _original.ManufacturerCode));
-            stack.Children.Add(Field(Pl ? "Liczba szpul" : "Spool count", _count, _original.SpoolCount.ToString()));
-            if (_isNew) stack.Children.Add(Field(Pl ? "Waga rolki (g)" : "Roll weight (g)", _weight, "1000"));
+            stack.Children.Add(Field(AppSettings.T("Manufacturer code"), _code, _original.ManufacturerCode));
+            stack.Children.Add(Field(AppSettings.T("Spool count"), _count, _original.SpoolCount.ToString()));
+            if (_isNew) stack.Children.Add(Field(AppSettings.T("Roll weight (g)"), _weight, "1000"));
         }
 
-        var save = new Button { Content = Pl ? "Zapisz" : "Save", Height = 32, Width = 100 };
+        var save = new Button { Content = AppSettings.T("Save"), Height = 32, Width = 100 };
         save.Click += (_, _) => Commit(countOnly);
-        var cancel = new Button { Content = Pl ? "Anuluj" : "Cancel", Height = 32, Width = 100, Margin = new Thickness(8, 0, 0, 0) };
+        var cancel = new Button { Content = AppSettings.T("Cancel"), Height = 32, Width = 100, Margin = new Thickness(8, 0, 0, 0) };
         cancel.Click += (_, _) => { DialogResult = false; Close(); };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
         buttons.Children.Add(save); buttons.Children.Add(cancel);

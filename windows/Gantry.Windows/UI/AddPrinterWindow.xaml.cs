@@ -82,43 +82,33 @@ public partial class AddPrinterWindow : Window
 
     private void Localize()
     {
-        Title = _editing is null ? AppSettings.Text("Dodaj drukarkę", "Add printer") : AppSettings.Text("Edytuj drukarkę", "Edit printer");
+        Title = _editing is null ? AppSettings.T("Add printer") : AppSettings.T("Edit printer");
         Heading.Text = Title;
-        DetectedLabel.Text = AppSettings.Text("Wykryte drukarki", "Detected printers");
-        ImportButton.Content = AppSettings.Text("Importuj z Bambu Studio", "Import from Bambu Studio");
-        ImportConsent.Content = AppSettings.Text("Pozwól odczytać konfigurację Bambu Studio", "Allow reading the Bambu Studio configuration");
-        ImportHint.Text = AppSettings.Text(
-            "Przyspiesza dodawanie, ale odczytuje lokalny plik slicera z kodami dostępu. Nic nie jest czytane, dopóki tego nie zaznaczysz.",
-            "Speeds up adding, but reads the local slicer file containing access codes. Nothing is read until you tick this.");
-        SubnetTargetsLabel.Text = AppSettings.Text("Nie widać drukarki? Dodatkowe adresy do skanowania (VPN):",
-                                                   "Printer not listed? Extra scan targets (VPN):");
-        SubnetTargetsHint.Text = AppSettings.Text(
-            $"Bambu wykrywa się w sieci lokalnej. Drukarkę spoza LAN (np. przez Tailscale) dopisz tu jej adresem, potem kliknij ⟳. Pojedynczy adres (zalecane), zakres a-b lub CIDR /n. Duże zakresy odrzucane (limit {SubnetTargets.MaxHosts}).",
-            $"Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. A single address (best), an a-b range or CIDR /n. Large ranges are rejected (limit {SubnetTargets.MaxHosts}).");
+        DetectedLabel.Text = AppSettings.T("Detected printers");
+        ImportButton.Content = AppSettings.T("Import from Bambu Studio");
+        ImportConsent.Content = AppSettings.T("Allow reading the Bambu Studio configuration");
+        ImportHint.Text = AppSettings.T("Speeds up adding, but reads the local slicer file containing access codes. Nothing is read until you tick this.");
+        SubnetTargetsLabel.Text = AppSettings.T("Printer not listed? Extra scan targets (VPN):");
+        SubnetTargetsHint.Text = string.Format(AppSettings.T("Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. A single address (best), an a-b range or CIDR /n. Large ranges are rejected (limit {0})."), SubnetTargets.MaxHosts);
         if (!SubnetTargetsBox.IsKeyboardFocusWithin) SubnetTargetsBox.Text = AppSettings.SubnetScanTargets;
         ValidateSubnetTargets();
-        NameLabel.Text = AppSettings.Text("Nazwa (opcjonalnie)", "Name (optional)");
-        HostLabel.Text = AppSettings.Text("Adres IP", "IP address");
-        SerialLabel.Text = AppSettings.Text("Numer seryjny", "Serial number");
-        CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN");
+        NameLabel.Text = AppSettings.T("Name (optional)");
+        HostLabel.Text = AppSettings.T("IP address");
+        SerialLabel.Text = AppSettings.T("Serial number");
+        CodeLabel.Text = AppSettings.T("Access Code / PIN");
         BambuRadio.Content = "Bambu";
         ElegooRadio.Content = "Elegoo";
         AnycubicRadio.Content = "Anycubic";
         KlipperRadio.Content = "Klipper";
         PrusaRadio.Content = "Prusa";
         SnapmakerRadio.Content = "Snapmaker";
-        ElegooModelLabel.Text = AppSettings.Text("Model Elegoo", "Elegoo model");
-        SnapmakerHint.Text = AppSettings.Text(
-            "Snapmaker 2.0 / Artisan (HTTP, port 8080). Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
-            "Snapmaker 2.0 / Artisan (HTTP, port 8080). After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle.");
-        AnycubicHint.Text = AppSettings.Text(
-            "Anycubic Kobra S1: wpisz adres IP i włącz tryb LAN w drukarce. Gantry automatycznie pobierze dane MQTT przez port 18910. Kamera FLV: port 18088.",
-            "Anycubic Kobra S1: enter its IP address and enable LAN mode on the printer. Gantry obtains MQTT settings automatically through port 18910. FLV camera: port 18088.");
-        ApiKeyLabel.Text = AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
-        CancelButton.Content = AppSettings.Text("Anuluj", "Cancel");
-        SaveButton.Content = _editing is null ? AppSettings.Text("Dodaj", "Add") : AppSettings.Text("Zapisz", "Save");
-        ProgressCheck.Content = AppSettings.Text("Pokaż postęp tej drukarki w zasobniku",
-                                                 "Show this printer's progress in the tray");
+        ElegooModelLabel.Text = AppSettings.T("Elegoo model");
+        SnapmakerHint.Text = AppSettings.T("Snapmaker 2.0 / Artisan (HTTP, port 8080). After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle.");
+        AnycubicHint.Text = AppSettings.T("Anycubic Kobra S1: enter its IP address and enable LAN mode on the printer. Gantry obtains MQTT settings automatically through port 18910. FLV camera: port 18088.");
+        ApiKeyLabel.Text = AppSettings.T("API key (optional)");
+        CancelButton.Content = AppSettings.T("Cancel");
+        SaveButton.Content = _editing is null ? AppSettings.T("Add") : AppSettings.T("Save");
+        ProgressCheck.Content = AppSettings.T("Show this printer's progress in the tray");
     }
 
     private bool IsKlipper => KlipperRadio.IsChecked == true;
@@ -148,26 +138,26 @@ public partial class AddPrinterWindow : Window
         ImportConsent.Visibility = ImportHint.Visibility = ImportButton.Visibility = isBambu ? Visibility.Visible : Visibility.Collapsed;
         SubnetTargetsLabel.Visibility = SubnetTargetsBox.Visibility = SubnetTargetsError.Visibility = SubnetTargetsHint.Visibility = isBambu ? Visibility.Visible : Visibility.Collapsed;
         HostLabel.Text = hostBased
-            ? AppSettings.Text("Adres IP / nazwa hosta", "IP address / host name")
-            : AppSettings.Text("Adres IP", "IP address");
+            ? AppSettings.T("IP address / host name")
+            : AppSettings.T("IP address");
         PortLabel.Text = IsPrusa
-            ? AppSettings.Text("Port PrusaLink (domyślnie 80)", "PrusaLink port (default 80)")
+            ? AppSettings.T("PrusaLink port (default 80)")
             : IsKlipper
-                ? AppSettings.Text("Port Moonraker (domyślnie 7125)", "Moonraker port (default 7125)")
+                ? AppSettings.T("Moonraker port (default 7125)")
                 : IsSnapmaker
-                    ? AppSettings.Text("Port Snapmaker (domyślnie 8080)", "Snapmaker port (default 8080)")
+                    ? AppSettings.T("Snapmaker port (default 8080)")
                     : IsAnycubic
-                        ? AppSettings.Text("Port bootstrap Anycubic (18910)", "Anycubic bootstrap port (18910)")
+                        ? AppSettings.T("Anycubic bootstrap port (18910)")
                     : IsElegooCc2
-                        ? AppSettings.Text("Port MQTT Elegoo (domyślnie 1883)", "Elegoo MQTT port (default 1883)")
+                        ? AppSettings.T("Elegoo MQTT port (default 1883)")
                         : IsElegoo
-                            ? AppSettings.Text("Port SDCP (domyślnie 3030)", "SDCP port (default 3030)")
-                    : AppSettings.Text("Port (zwykle 8883 — zmień przy tunelu, np. socat)", "Port (usually 8883 — change for a tunnel, e.g. socat)");
-        if (IsElegooCc2) CodeLabel.Text = AppSettings.Text("Kod dostępu Elegoo (LAN-only)", "Elegoo access code (LAN-only)");
-        else if (!IsElegoo) CodeLabel.Text = AppSettings.Text("Kod dostępu (Access Code / PIN)", "Access Code / PIN");
+                            ? AppSettings.T("SDCP port (default 3030)")
+                    : AppSettings.T("Port (usually 8883 — change for a tunnel, e.g. socat)");
+        if (IsElegooCc2) CodeLabel.Text = AppSettings.T("Elegoo access code (LAN-only)");
+        else if (!IsElegoo) CodeLabel.Text = AppSettings.T("Access Code / PIN");
         ApiKeyLabel.Text = IsPrusa
-            ? AppSettings.Text("Klucz API PrusaLink", "PrusaLink API key")
-            : AppSettings.Text("Klucz API (opcjonalnie)", "API key (optional)");
+            ? AppSettings.T("PrusaLink API key")
+            : AppSettings.T("API key (optional)");
     }
 
     private void OnStoreUpdated(object? sender, EventArgs e) => Dispatcher.Invoke(RefreshDetected);
@@ -182,8 +172,8 @@ public partial class AddPrinterWindow : Window
         foreach (var d in filtered)
             DetectedList.Items.Add(new DiscoveredItem(d));
         DetectedLabel.Text = _store.IsScanning
-            ? AppSettings.Text("Skanowanie…", "Scanning…")
-            : AppSettings.Text($"Wykryte drukarki ({filtered.Count})", $"Detected printers ({filtered.Count})");
+            ? AppSettings.T("Scanning…")
+            : string.Format(AppSettings.T("Detected printers ({0})"), filtered.Count);
         if (selectedSerial is not null)
         {
             _restoringSelection = true;
@@ -214,7 +204,7 @@ public partial class AddPrinterWindow : Window
         try
         {
             int count = _store.ImportFromBambuStudio();
-            MessageBox.Show(this, AppSettings.Text($"Zaimportowano drukarek: {count}", $"Imported printers: {count}"), "Gantry");
+            MessageBox.Show(this, string.Format(AppSettings.T("Imported printers: {0}"), count), "Gantry");
             Close();
         }
         catch (Exception ex)
@@ -232,7 +222,7 @@ public partial class AddPrinterWindow : Window
             if (portText.Length > 0)
             {
                 if (!int.TryParse(portText, out var parsed) || parsed <= 0 || parsed > 65535)
-                    throw new ArgumentException(AppSettings.Text("Nieprawidłowy port.", "Invalid port."));
+                    throw new ArgumentException(AppSettings.T("Invalid port."));
                 port = parsed;
             }
             if (IsElegoo)
@@ -292,10 +282,8 @@ public partial class AddPrinterWindow : Window
         }
         SubnetTargetsError.Visibility = Visibility.Visible;
         SubnetTargetsError.Text = SubnetTargets.IsTooLarge(input)
-            ? AppSettings.Text($"Zakres za duży (max {SubnetTargets.MaxHosts}) — podaj węższy zakres lub pojedynczy adres.",
-                               $"Range too large (max {SubnetTargets.MaxHosts}) — use a narrower range or a single address.")
-            : AppSettings.Text("Nieprawidłowy wpis — użyj IP, zakresu a-b lub CIDR /n.",
-                               "Invalid entry — use an IP, an a-b range or CIDR /n.");
+            ? string.Format(AppSettings.T("Range too large (max {0}) — use a narrower range or a single address."), SubnetTargets.MaxHosts)
+            : AppSettings.T("Invalid entry — use an IP, an a-b range or CIDR /n.");
     }
 
     private void ShowError(string message)

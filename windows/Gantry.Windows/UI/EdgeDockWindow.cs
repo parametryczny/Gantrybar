@@ -102,10 +102,10 @@ public sealed class EdgeDockWindow : Window
         PrinterState.Printing or PrinterState.Paused => entry.RemainingMinutes is > 0
             ? $"{entry.Progress}% · {entry.RemainingMinutes / 60}:{entry.RemainingMinutes % 60:00}"
             : $"{entry.Progress}%",
-        PrinterState.Finished => AppSettings.Text("gotowe", "done"),
-        PrinterState.Idle => AppSettings.Text("bezcz.", "idle"),
-        PrinterState.Error => AppSettings.Text("błąd", "error"),
-        _ => AppSettings.Text("brak", "offline"),
+        PrinterState.Finished => AppSettings.T("done"),
+        PrinterState.Idle => AppSettings.T("idle"),
+        PrinterState.Error => AppSettings.T("error"),
+        _ => AppSettings.T("offline"),
     };
 
     private double ExpandedWidth()

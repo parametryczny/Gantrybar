@@ -23,11 +23,11 @@ SKIP_PARTS = {".build", "obj", "bin", "__pycache__", "node_modules", "build", "d
 
 # One pattern per platform's lookup call. Group 1 is the English key.
 CALL_PATTERNS: list[tuple[str, str, str]] = [
-    ("Sources/Gantry", "*.swift", r'(?<![A-Za-z0-9_])t\(\s*"((?:[^"\\]|\\.)*)"\s*\)'),
+    ("Sources/Gantry", "*.swift", r'(?<![A-Za-z0-9_])t\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]'),
     ("Sources/Gantry", "*.swift", r'(?<![A-Za-z0-9_])t\(\s*"""\n(.*?)\n\s*"""\s*\)'),
-    ("windows/Gantry.Windows", "*.cs", r'(?<![A-Za-z0-9_])T\(\s*"((?:[^"\\]|\\.)*)"\s*\)'),
-    ("linux/gantry", "*.py", r'(?<![A-Za-z0-9_.])t\(\s*"((?:[^"\\]|\\.)*)"\s*\)'),
-    ("linux/gantry", "*.py", r"(?<![A-Za-z0-9_.])t\(\s*'((?:[^'\\]|\\.)*)'\s*\)"),
+    ("windows/Gantry.Windows", "*.cs", r'(?<![A-Za-z0-9_])T\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]'),
+    ("linux/gantry", "*.py", r'(?<![A-Za-z0-9_.])t\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]'),
+    ("linux/gantry", "*.py", r"(?<![A-Za-z0-9_.])t\(\s*'((?:[^'\\]|\\.)*)'\s*[,)]"),
 ]
 
 

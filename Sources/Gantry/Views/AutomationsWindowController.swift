@@ -18,7 +18,7 @@ final class AutomationsWindowController: NSWindowController {
         let name = store.printers.first(where: { $0.serial == serial })?.name ?? serial
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 640),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = String(format: AppSettings.shared.t("Automations — %@"), name)
+        window.title = AppSettings.shared.t("Automations — {0}", name)
         window.contentMinSize = NSSize(width: 520, height: 420)
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -134,7 +134,7 @@ final class AutomationsWindowController: NSWindowController {
         // Scripts get an explicit confirmation; they run with the user's privileges.
         if auto.action.isScript, !ScriptRunner.shared.isRunning(auto.id) {
             let alert = NSAlert()
-            alert.messageText = String(format: AppSettings.shared.t("Run script “%@”?"), auto.name)
+            alert.messageText = AppSettings.shared.t("Run script “{0}”?", auto.name)
             alert.informativeText = AppSettings.shared.t("The script will run with your privileges.")
             alert.addButton(withTitle: AppSettings.shared.t("Run"))
             alert.addButton(withTitle: AppSettings.shared.t("Cancel"))
@@ -198,6 +198,9 @@ private final class AutomationRowView: NSView {
     required init?(coder: NSCoder) { nil }
 
     private func t(_ english: String) -> String { AppSettings.shared.t(english) }
+    private func t(_ english: String, _ arguments: Any...) -> String {
+        AppSettings.shared.t(english, arguments: arguments)
+    }
 
     private func build() {
         enabledCheck.state = automation.enabled ? .on : .off

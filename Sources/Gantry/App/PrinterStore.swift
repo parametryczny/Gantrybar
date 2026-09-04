@@ -150,7 +150,7 @@ final class PrinterStore: ObservableObject {
             guard allowCodeAction(auto, printerName: name) else { break }
             ScriptRunner.shared.run(auto.id, script: content)
             NotificationService.post(title: name,
-                                     body: String(format: AppSettings.shared.t("Ran script: %@"), auto.name))
+                                     body: AppSettings.shared.t("Ran script: {0}", auto.name))
         }
     }
 
@@ -162,7 +162,7 @@ final class PrinterStore: ObservableObject {
         let s = AppSettings.shared
         guard s.allowScriptActions else {
             NotificationService.post(title: printerName,
-                body: String(format: s.t("Skipped \"%@\" — script/command actions are disabled (Settings → Security)."), auto.name))
+                body: s.t("Skipped \"{0}\" — script/command actions are disabled (Settings → Security).", auto.name))
             return false
         }
         if s.isScriptRuleApproved(auto.id) { return true }
@@ -176,7 +176,7 @@ final class PrinterStore: ObservableObject {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = s.t("Confirm automation")
-        alert.informativeText = String(format: s.t("Automation \"%@\" (%@) wants to run %@:\n\n%@\n\nAllow and remember for this rule?"),
+        alert.informativeText = s.t("Automation \"{0}\" ({1}) wants to run {2}:\n\n{3}\n\nAllow and remember for this rule?",
                  auto.name, printerName,
                  isScript ? s.t("a script on this Mac") : s.t("a printer command"), preview)
         alert.addButton(withTitle: s.t("Allow"))
@@ -633,8 +633,7 @@ final class PrinterStore: ObservableObject {
             let detached = SpoolbaseShared.spools.detachAssignmentsReplacedByNFC(
                 printerSerial: serial, previous: previous?.filamentGroups ?? [], current: value.filamentGroups)
             for item in detached {
-                let text = String(format: AppSettings.shared.t("%@ returned to storage (NFC tag detected in %@)"),
-                                  item.spoolID, item.slot)
+                let text = AppSettings.shared.t("{0} returned to storage (NFC tag detected in {1})", item.spoolID, item.slot)
                 spoolNotices[serial, default: []].append(text)
             }
             recordTemperature(serial: serial, value: value)
@@ -764,7 +763,7 @@ final class PrinterStore: ObservableObject {
         if current.state == .printing, remainingMinutes > 0, remainingMinutes <= settings.finishingSoonMinutes {
             if settings.notifyFinishingSoon, !finishingSoonWarned.contains(printer.serial) {
                 finishingSoonWarned.insert(printer.serial)
-                push(title: String(format: settings.t("Finishing in ~%d min"), remainingMinutes),
+                push(title: settings.t("Finishing in ~{0} min", remainingMinutes),
                      body: current.jobName ?? settings.t("The print is nearly done."))
             }
         } else {
@@ -773,7 +772,7 @@ final class PrinterStore: ObservableObject {
         if settings.notifyError, current.state == .error, previous?.state != .error || previous?.hmsCodes != current.hmsCodes {
             let description = HMSResolver.shared.description(for: current.hmsCodes, serial: printer.serial, language: settings.language)
                 ?? (current.errorCode != 0
-                    ? String(format: settings.t("Error code: 0x%llX"), current.errorCode)
+                    ? settings.t("Error code: 0x{0}", current.errorCode)
                     : settings.t("The printer reported an error."))
             push(title: settings.t("Printer error"), body: description)
         } else if settings.notifyPaused, current.state == .paused, previous?.state != .paused {

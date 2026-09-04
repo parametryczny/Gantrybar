@@ -23,7 +23,7 @@ final class PrinterAdvancedWindowController: NSWindowController {
         let height: CGFloat = (store.printers.first(where: { $0.serial == serial })?.kind == .klipper) ? 540 : 320
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: height),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = String(format: AppSettings.shared.t("Advanced — %@"), name)
+        window.title = AppSettings.shared.t("Advanced — {0}", name)
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildUI()
@@ -39,6 +39,9 @@ final class PrinterAdvancedWindowController: NSWindowController {
     }
 
     private func t(_ english: String) -> String { AppSettings.shared.t(english) }
+    private func t(_ english: String, _ arguments: Any...) -> String {
+        AppSettings.shared.t(english, arguments: arguments)
+    }
 
     private func buildUI() {
         guard let content = window?.contentView else { return }

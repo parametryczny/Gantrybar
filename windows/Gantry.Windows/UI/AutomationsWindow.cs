@@ -31,7 +31,7 @@ public sealed class AutomationsWindow : Window
         _store = store;
         _serial = serial;
         _pl = AppSettings.Polish;
-        Title = (_pl ? "Automatyzacje — " : "Automations — ") + (store.Printers.FirstOrDefault(p => p.Serial == serial)?.Name ?? serial);
+        Title = (AppSettings.T("Automations — ")) + (store.Printers.FirstOrDefault(p => p.Serial == serial)?.Name ?? serial);
         Width = 600; Height = 640; MinWidth = 520; MinHeight = 420;
         Background = GTheme.Brush(GTheme.Canvas);
         Foreground = GTheme.Brush(GTheme.Text);
@@ -39,14 +39,14 @@ public sealed class AutomationsWindow : Window
 
         var root = new DockPanel { Margin = new Thickness(16) };
 
-        var addButton = new Button { Content = _pl ? "＋ Dodaj automatyzację" : "＋ Add automation", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 6, 12, 6) };
-        addButton.Click += (_, _) => { AddRow(new PrinterAutomation { Name = _pl ? "Nowa automatyzacja" : "New automation", TriggerKind = "layer", TriggerValue = 1, ActionKind = "lightOff" }); };
-        var saveButton = new Button { Content = _pl ? "Zapisz" : "Save", HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(14, 6, 14, 6) };
+        var addButton = new Button { Content = AppSettings.T("＋ Add automation"), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 6, 12, 6) };
+        addButton.Click += (_, _) => { AddRow(new PrinterAutomation { Name = AppSettings.T("New automation"), TriggerKind = "layer", TriggerValue = 1, ActionKind = "lightOff" }); };
+        var saveButton = new Button { Content = AppSettings.T("Save"), HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(14, 6, 14, 6) };
         saveButton.Click += (_, _) => Save();
 
         var header = new StackPanel();
-        header.Children.Add(new TextBlock { Text = _pl ? "Automatyzacje" : "Automations", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = White() });
-        header.Children.Add(new TextBlock { Text = _pl ? "Wyzwalacz → akcja. Reguły warunkowe odpalają się raz na wydruk. Skrypty działają z Twoimi uprawnieniami." : "Trigger → action. Conditional rules fire once per print. Scripts run with your privileges.", FontSize = 11, Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 8) });
+        header.Children.Add(new TextBlock { Text = AppSettings.T("Automations"), FontSize = 15, FontWeight = FontWeights.Bold, Foreground = White() });
+        header.Children.Add(new TextBlock { Text = AppSettings.T("Trigger → action. Conditional rules fire once per print. Scripts run with your privileges."), FontSize = 11, Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 8) });
         var topButtons = new Grid();
         topButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         topButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -96,7 +96,7 @@ public sealed class AutomationsWindow : Window
 
         row.Enabled = new CheckBox { IsChecked = auto.Enabled, VerticalAlignment = VerticalAlignment.Center };
         row.Name = new TextBox { Text = auto.Name, MinWidth = 180, VerticalAlignment = VerticalAlignment.Center };
-        var runButton = new Button { Content = _pl ? "Uruchom" : "Run", Padding = new Thickness(10, 3, 10, 3) };
+        var runButton = new Button { Content = AppSettings.T("Run"), Padding = new Thickness(10, 3, 10, 3) };
         runButton.Click += (_, _) => RunRow(row);
         var deleteButton = new Button { Content = "🗑", Padding = new Thickness(8, 3, 8, 3) };
         deleteButton.Click += (_, _) => { _list.Children.Remove(row.Root); _rows.Remove(row); Save(); };
@@ -114,7 +114,7 @@ public sealed class AutomationsWindow : Window
         row.TriggerValue = new TextBox { Text = auto.TriggerValue.ToString(), Width = 70, VerticalAlignment = VerticalAlignment.Center };
         row.State = Combo(StateOptions.Select(s => (s.Label(_pl), s.Label(false))).ToArray(), Math.Max(0, Array.IndexOf(StateOptions.Select(s => s.ToString()).ToArray(), auto.TriggerState)));
         var trigRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        trigRow.Children.Add(new TextBlock { Text = _pl ? "Wyzwalacz: " : "Trigger: ", Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
+        trigRow.Children.Add(new TextBlock { Text = AppSettings.T("Trigger: "), Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
         trigRow.Children.Add(row.Trigger);
         trigRow.Children.Add(new TextBlock { Text = " ", Width = 6 });
         trigRow.Children.Add(row.TriggerValue);
@@ -124,7 +124,7 @@ public sealed class AutomationsWindow : Window
 
         row.Action = Combo(ActionNames, Array.IndexOf(ActionKinds, auto.ActionKind));
         var actRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        actRow.Children.Add(new TextBlock { Text = _pl ? "Akcja: " : "Action: ", Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
+        actRow.Children.Add(new TextBlock { Text = AppSettings.T("Action: "), Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
         actRow.Children.Add(row.Action);
         stack.Children.Add(actRow);
 
@@ -143,7 +143,7 @@ public sealed class AutomationsWindow : Window
         if (auto.IsScript && !ScriptRunner.IsRunning(auto.Id))
         {
             var confirm = MessageBox.Show(this,
-                _pl ? "Skrypt uruchomi się z Twoimi uprawnieniami." : "The script will run with your privileges.",
+                AppSettings.T("The script will run with your privileges."),
                 _pl ? $"Uruchomić skrypt „{auto.Name}”?" : $"Run script “{auto.Name}”?",
                 MessageBoxButton.OKCancel);
             if (confirm != MessageBoxResult.OK) return;

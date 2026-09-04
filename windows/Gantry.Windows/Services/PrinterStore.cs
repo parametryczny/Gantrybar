@@ -132,7 +132,7 @@ public sealed class PrinterStore
                     .ToList();
                 IsScanning = false;
                 if (Discovered.Count == 0)
-                    GlobalMessage = AppSettings.Text("Nie znaleziono nowych drukarek.", "No new printers found.");
+                    GlobalMessage = AppSettings.T("No new printers found.");
                 RaiseUpdated();
             });
         });
@@ -144,7 +144,7 @@ public sealed class PrinterStore
             {
                 if (_scanToken != token || !IsScanning) return;
                 IsScanning = false;
-                GlobalMessage = AppSettings.Text("Skanowanie przekroczyło 8 sekund.", "Scan exceeded 8 seconds.");
+                GlobalMessage = AppSettings.T("Scan exceeded 8 seconds.");
                 RaiseUpdated();
             });
         });
@@ -195,7 +195,7 @@ public sealed class PrinterStore
     public void Add(DiscoveredPrinter discovered, string accessCode, string? customName = null)
     {
         var code = accessCode.Trim();
-        if (code.Length == 0) throw new ArgumentException(AppSettings.Text("Podaj kod PIN / Access Code drukarki.", "Enter the printer PIN / Access Code."));
+        if (code.Length == 0) throw new ArgumentException(AppSettings.T("Enter the printer PIN / Access Code."));
         var name = customName?.Trim();
         var printer = new SavedPrinter
         {
@@ -215,7 +215,7 @@ public sealed class PrinterStore
         var cleanHost = host.Trim();
         var cleanCode = accessCode.Trim();
         if (cleanSerial.Length == 0 || cleanHost.Length == 0 || cleanCode.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP, numer seryjny i kod dostępu są wymagane.", "IP address, serial number and access code are required."));
+            throw new ArgumentException(AppSettings.T("IP address, serial number and access code are required."));
         var cleanName = name.Trim();
         string suffix = cleanSerial.Length >= 4 ? cleanSerial[^4..] : cleanSerial;
         Upsert(new SavedPrinter
@@ -232,7 +232,7 @@ public sealed class PrinterStore
     {
         var cleanHost = host.Trim();
         if (cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
+            throw new ArgumentException(AppSettings.T("IP address / host name is required."));
         var cleanName = name.Trim();
         // The API key is a secret: keep it out of the plaintext config and in DPAPI, keyed by serial
         // — the same place Bambu access codes live.
@@ -260,9 +260,9 @@ public sealed class PrinterStore
     {
         var cleanSerial = serial.Trim(); var cleanHost = host.Trim(); var cleanCode = accessCode.Trim();
         if (cleanSerial.Length == 0 || cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP i numer seryjny Elegoo są wymagane.", "Elegoo IP address and serial number are required."));
+            throw new ArgumentException(AppSettings.T("Elegoo IP address and serial number are required."));
         if (generation == 2 && cleanCode.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Podaj kod dostępu Elegoo CC2 i włącz tryb LAN-only.", "Enter the Elegoo CC2 access code and enable LAN-only mode."));
+            throw new ArgumentException(AppSettings.T("Enter the Elegoo CC2 access code and enable LAN-only mode."));
         var printer = new SavedPrinter { Serial = cleanSerial,
             Name = string.IsNullOrWhiteSpace(name) ? $"Centauri Carbon {(generation == 2 ? "2 " : "")}{cleanSerial[^Math.Min(4, cleanSerial.Length)..]}" : name.Trim(),
             Model = generation == 2 ? "Elegoo Centauri Carbon 2" : "Elegoo Centauri Carbon", Host = cleanHost,
@@ -276,7 +276,7 @@ public sealed class PrinterStore
     {
         var cleanHost = host.Trim();
         if (cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
+            throw new ArgumentException(AppSettings.T("IP address / host name is required."));
         var cleanName = name.Trim();
         // No stored secret: Snapmaker authorizes each session via a token confirmed on the printer's
         // touchscreen, so there is nothing to keep in DPAPI.
@@ -301,7 +301,7 @@ public sealed class PrinterStore
 
     public void AddAnycubicKobraS1(string name, string host, int? port)
     {
-        var cleanHost = host.Trim(); if (cleanHost.Length == 0) throw new ArgumentException(AppSettings.Text("Adres IP jest wymagany.", "IP address is required."));
+        var cleanHost = host.Trim(); if (cleanHost.Length == 0) throw new ArgumentException(AppSettings.T("IP address is required."));
         var printer = new SavedPrinter { Serial = $"anycubic-kobra-s1-{cleanHost}", Name = string.IsNullOrWhiteSpace(name) ? $"Kobra S1 {cleanHost}" : name.Trim(),
             Model = "Anycubic Kobra S1", Host = cleanHost, Kind = PrinterKind.AnycubicKobraS1, Port = port ?? 18910 };
         var index = Printers.FindIndex(p => p.Serial == printer.Serial); if (index >= 0) Printers[index] = printer; else Printers.Add(printer);
@@ -312,7 +312,7 @@ public sealed class PrinterStore
     {
         var cleanHost = host.Trim();
         if (cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP / nazwa hosta jest wymagana.", "IP address / host name is required."));
+            throw new ArgumentException(AppSettings.T("IP address / host name is required."));
         var cleanName = name.Trim();
         // Keep the PrusaLink API key in DPAPI, not the plaintext config.
         StoreSecret(apiKey, $"prusa-{cleanHost}");
@@ -358,7 +358,7 @@ public sealed class PrinterStore
 
         Discovered.RemoveAll(d => devices.Any(x => x.Serial == d.Serial));
         if (imported == 0)
-            throw new BambuStudioConfigException(AppSettings.Text("Nie znaleziono drukarek z zapisanym kodem i adresem IP.", "No printers with a stored code and IP address."));
+            throw new BambuStudioConfigException(AppSettings.T("No printers with a stored code and IP address."));
         RaiseUpdated();
         return imported;
     }
@@ -370,12 +370,12 @@ public sealed class PrinterStore
         var cleanName = name.Trim();
         var entered = accessCode.Trim();
         if (cleanSerial.Length == 0 || cleanHost.Length == 0)
-            throw new ArgumentException(AppSettings.Text("Adres IP i numer seryjny są wymagane.", "IP address and serial number are required."));
+            throw new ArgumentException(AppSettings.T("IP address and serial number are required."));
         string? code = entered.Length == 0
             ? (_sessionCodes.TryGetValue(originalSerial, out var s) ? s : AccessCodeStore.AccessCode(originalSerial))
             : entered;
         if (string.IsNullOrEmpty(code))
-            throw new ArgumentException(AppSettings.Text("Podaj kod PIN / Access Code drukarki.", "Enter the printer PIN / Access Code."));
+            throw new ArgumentException(AppSettings.T("Enter the printer PIN / Access Code."));
 
         if (_clients.Remove(originalSerial, out var existing)) existing.Stop();
         if (originalSerial != cleanSerial)
@@ -455,7 +455,7 @@ public sealed class PrinterStore
         if (_reconnectTasks.Remove(printer.Serial, out var task)) task.Cancel();
         if (_clients.Remove(printer.Serial, out var existing)) existing.Stop();
         Telemetry[printer.Serial] = new PrinterTelemetry();
-        ConnectionMessages[printer.Serial] = AppSettings.Text("Łączenie…", "Connecting…");
+        ConnectionMessages[printer.Serial] = AppSettings.T("Connecting…");
 
         if (printer.Kind == PrinterKind.Klipper)
         {
@@ -556,8 +556,7 @@ public sealed class PrinterStore
                 foreach (var (spoolId, slot) in SpoolbaseShared.Spools.DetachAssignmentsReplacedByNfc(serial, previous?.FilamentGroups ?? new(), value.FilamentGroups))
                 {
                     if (!SpoolNotices.TryGetValue(serial, out var list)) SpoolNotices[serial] = list = new();
-                    list.Add(AppSettings.Text($"{spoolId} wróciła do magazynu (wykryto tag NFC w {slot})",
-                                              $"{spoolId} returned to storage (NFC tag detected in {slot})"));
+                    list.Add(string.Format(AppSettings.T("{0} returned to storage (NFC tag detected in {1})"), spoolId, slot));
                 }
                 RecordTemperature(serial, value);
                 if (Printers.FirstOrDefault(p => p.Serial == serial) is { } observedPrinter)
@@ -577,8 +576,8 @@ public sealed class PrinterStore
                 var offline = Telemetry.TryGetValue(serial, out var o) ? o : new PrinterTelemetry();
                 offline.State = PrinterState.Offline;
                 Telemetry[serial] = offline;
-                ConnectionMessages[serial] = (evt.Reason ?? AppSettings.Text("Rozłączono", "Disconnected")) +
-                                             AppSettings.Text(" • ponowna próba za 20 s", " • retrying in 20 s");
+                ConnectionMessages[serial] = (evt.Reason ?? AppSettings.T("Disconnected")) +
+                                             AppSettings.T(" • retrying in 20 s");
                 ScheduleReconnect(serial);
                 break;
         }
@@ -600,7 +599,7 @@ public sealed class PrinterStore
             if (refreshNeeded)
             {
                 _lastAddressScan = DateTime.Now;
-                _post(() => { ConnectionMessages[serial] = AppSettings.Text("Szukam aktualnego adresu IP…", "Looking up current IP…"); RaiseUpdated(); });
+                _post(() => { ConnectionMessages[serial] = AppSettings.T("Looking up current IP…"); RaiseUpdated(); });
                 await RefreshAddressesAsync();
             }
 
@@ -739,7 +738,7 @@ public sealed class PrinterStore
             case "script":
                 if (!AllowCodeAction(auto, name)) break;
                 ScriptRunner.Run(auto.Id, auto.ActionText);
-                NotificationService.Post(name, AppSettings.Text($"Uruchomiono skrypt: {auto.Name}", $"Ran script: {auto.Name}"));
+                NotificationService.Post(name, string.Format(AppSettings.T("Ran script: {0}"), auto.Name));
                 break;
         }
     }
@@ -752,9 +751,7 @@ public sealed class PrinterStore
     {
         if (!AppSettings.AllowScriptActions)
         {
-            NotificationService.Post(printerName, AppSettings.Text(
-                $"Pominięto „{auto.Name}” — akcje skryptowe/komendy są wyłączone (Ustawienia → Bezpieczeństwo).",
-                $"Skipped \"{auto.Name}\" — script/command actions are disabled (Settings → Security)."));
+            NotificationService.Post(printerName, string.Format(AppSettings.T("Skipped \"{0}\" — script/command actions are disabled (Settings → Security)."), auto.Name));
             return false;
         }
         if (AppSettings.IsScriptRuleApproved(auto.Id)) return true;
@@ -765,10 +762,12 @@ public sealed class PrinterStore
             var preview = (auto.ActionText ?? "").Trim();
             if (preview.Length > 700) preview = preview[..700] + "…";
             bool script = auto.ActionKind == "script";
-            var msg = AppSettings.Text(
-                $"Automatyzacja „{auto.Name}” ({printerName}) chce wykonać {(script ? "skrypt na tym komputerze" : "komendę drukarki")}:\n\n{preview}\n\nZezwolić i zapamiętać dla tej reguły?",
-                $"Automation \"{auto.Name}\" ({printerName}) wants to run {(script ? "a script on this PC" : "a printer command")}:\n\n{preview}\n\nAllow and remember for this rule?");
-            approved = System.Windows.MessageBox.Show(msg, "Gantry — " + AppSettings.Text("Potwierdzenie", "Confirm"),
+            var msg = string.Format(
+                AppSettings.T("Automation \"{0}\" ({1}) wants to run {2}:\n\n{3}\n\nAllow and remember for this rule?"),
+                auto.Name, printerName,
+                script ? AppSettings.T("a script on this Mac") : AppSettings.T("a printer command"),
+                preview);
+            approved = System.Windows.MessageBox.Show(msg, "Gantry — " + AppSettings.T("Confirm"),
                 System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning) == System.Windows.MessageBoxResult.Yes;
         }
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
@@ -836,26 +835,26 @@ public sealed class PrinterStore
             && remainingMinutes <= AppSettings.FinishingSoonMinutes)
         {
             if (AppSettings.NotifyFinishingSoon && _finishingSoonWarned.Add(printer.Serial))
-                Push(string.Format(AppSettings.Text("Koniec za ~{0} min", "Finishing in ~{0} min"), remainingMinutes),
-                     current.JobName ?? AppSettings.Text("Wydruk dobiega końca.", "The print is nearly done."));
+                Push(string.Format(AppSettings.T("Finishing in ~{0} min"), remainingMinutes),
+                     current.JobName ?? AppSettings.T("The print is nearly done."));
         }
         else _finishingSoonWarned.Remove(printer.Serial);
         if (AppSettings.NotifyPrintFinished && current.State == PrinterState.Finished && previous?.State != PrinterState.Finished)
-            Push(AppSettings.Text("Druk zakończony", "Print finished"),
-                current.JobName ?? AppSettings.Text("Zadanie zostało ukończone.", "The job has completed."));
+            Push(AppSettings.T("Print finished"),
+                current.JobName ?? AppSettings.T("The job has completed."));
 
         if (AppSettings.NotifyPrinterError && current.State == PrinterState.Error && (previous?.State != PrinterState.Error || !SequenceEqual(previous?.HmsCodes, current.HmsCodes)))
         {
             string description = HmsResolver.Description(current.HmsCodes, printer.Serial, pl)
                 ?? (current.ErrorCode != 0
-                    ? string.Format(AppSettings.Text("Kod błędu: 0x{0:X}", "Error code: 0x{0:X}"), current.ErrorCode)
-                    : AppSettings.Text("Drukarka zgłosiła błąd.", "The printer reported an error."));
-            Push(AppSettings.Text("Błąd drukarki", "Printer error"), description);
+                    ? string.Format(AppSettings.T("Error code: 0x{0:X}"), current.ErrorCode)
+                    : AppSettings.T("The printer reported an error."));
+            Push(AppSettings.T("Printer error"), description);
         }
         else if (AppSettings.NotifyPrintPaused && current.State == PrinterState.Paused && previous?.State != PrinterState.Paused)
         {
-            Push(AppSettings.Text("Druk wstrzymany", "Print paused"),
-                current.JobName ?? AppSettings.Text("Drukarka oczekuje na działanie.", "The printer needs attention."));
+            Push(AppSettings.T("Print paused"),
+                current.JobName ?? AppSettings.T("The printer needs attention."));
         }
 
         // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
@@ -864,12 +863,12 @@ public sealed class PrinterStore
         var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(LowAndTrusted).Select(s => s.Id));
         var newLow = current.AmsSlots.Where(s => LowAndTrusted(s) && !previousLow.Contains(s.Id)).ToList();
         if (AppSettings.NotifyLowFilament && newLow.FirstOrDefault() is { } slot)
-            Push(AppSettings.Text("Niski poziom filamentu", "Low filament"),
+            Push(AppSettings.T("Low filament"),
                 $"{slot.Label} • {slot.Material} • {slot.RemainingPercent ?? 0}%");
 
         if (AppSettings.NotifyHighAmsHumidity && IsHumidityHigh(current.AmsHumidity) && !IsHumidityHigh(previous?.AmsHumidity))
-            Push(AppSettings.Text("Wysoka wilgotność AMS", "High AMS humidity"),
-                AppSettings.Text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant."));
+            Push(AppSettings.T("High AMS humidity"),
+                AppSettings.T("Check or dry the desiccant."));
     }
 
     private static bool IsHumidityHigh(int? value)

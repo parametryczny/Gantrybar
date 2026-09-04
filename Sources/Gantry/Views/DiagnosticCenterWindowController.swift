@@ -188,8 +188,7 @@ final class DiagnosticCenterViewController: NSViewController {
     private func beginProbe() {
         let s = AppSettings.shared
         let printer = runPrinters[runIndex]
-        status.stringValue = String(format: s.t("Testing %d of %d: %@"),
-                                    runIndex + 1, runPrinters.count, printer.name)
+        status.stringValue = s.t("Testing {0} of {1}: {2}", runIndex + 1, runPrinters.count, printer.name)
         let port = UInt16(printer.port ?? (printer.kind == .elegooCC2 ? 1883 : printer.kind == .klipper ? 7125 : 8883))
         probeStarted = Date()
         pending = Self.probe(host: printer.host, port: port, limit: Self.perPrinterLimit)
@@ -225,8 +224,7 @@ final class DiagnosticCenterViewController: NSViewController {
             beginProbe()
         } else {
             pollTimer?.invalidate(); pollTimer = nil
-            status.stringValue = String(format: s.t("Tests complete: %d printers in %.1f s"),
-                                        runPrinters.count, Date().timeIntervalSince(runStarted))
+            status.stringValue = s.t("Tests complete: {0} printers in {1} s", runPrinters.count, Date().timeIntervalSince(runStarted))
             progress.isHidden = true
             runButton.isEnabled = true
             isRunning = false

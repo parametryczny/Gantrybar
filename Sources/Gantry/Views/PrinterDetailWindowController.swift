@@ -597,7 +597,7 @@ final class PrinterDetailViewController: NSViewController {
             remainingLabel.isHidden = true
         }
         if let cur = t.currentLayer, let total = t.totalLayers, total > 0 {
-            layerLabel.stringValue = String(format: settings.t("Layer %d / %d"), cur, total)
+            layerLabel.stringValue = settings.t("Layer {0} / {1}", cur, total)
             layerLabel.isHidden = false
         } else {
             layerLabel.isHidden = true
@@ -619,7 +619,7 @@ final class PrinterDetailViewController: NSViewController {
             speedLabel.stringValue = text
             speedLabel.isHidden = false
         } else if let mag = t.speedPercent {
-            speedLabel.stringValue = String(format: settings.t("Speed: %d%%"), mag)
+            speedLabel.stringValue = settings.t("Speed: {0}%%", mag)
             speedLabel.isHidden = false
         } else {
             speedLabel.isHidden = true
@@ -672,8 +672,8 @@ final class PrinterDetailViewController: NSViewController {
         }.prefix(2))
         for task in shown {
             let timing = task.isDue
-                ? String(format: settings.t("overdue by %.0f h"), task.overdueHours)
-                : String(format: settings.t("in %.0f print h"), task.remainingHours)
+                ? settings.t("overdue by {0} h", task.overdueHours)
+                : settings.t("in {0} print h", task.remainingHours)
             maintenanceStack.addArrangedSubview(line("\(task.isUrgent ? "!" : task.isDue ? "⚠" : "○")  \(task.title) · \(timing)",
                 color: task.isUrgent ? .systemRed : task.isDue ? .systemYellow : GantryTheme.secondary,
                 weight: task.isDue ? .semibold : .regular))

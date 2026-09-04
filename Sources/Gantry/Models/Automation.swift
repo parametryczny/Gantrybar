@@ -8,13 +8,14 @@ enum AutomationTrigger: Codable, Equatable, Sendable {
     case atProgress(Int)
     case onState(String)   // PrinterState.rawValue
 
-    func summary(_ t: (String, String) -> String) -> String {
+    /// `t` looks the English source string up in the catalog; positional placeholders are filled by
+    /// the caller's helper, the same way every other translated string works.
+    func summary(_ t: (String, [Any]) -> String) -> String {
         switch self {
-        case .manual: t("ręcznie", "manually")
-        case .atLayer(let n): t("po warstwie \(n)", "at layer \(n)")
-        case .atProgress(let p): t("po \(p)%", "at \(p)%")
-        case .onState(let s): t("gdy stan: \(PrinterState(rawValue: s)?.label ?? s)",
-                                 "on state: \(s)")
+        case .manual: t("manually", [])
+        case .atLayer(let n): t("at layer {0}", [n])
+        case .atProgress(let p): t("at {0}%", [p])
+        case .onState(let s): t("on state: {0}", [s])
         }
     }
 }
@@ -29,15 +30,15 @@ enum AutomationAction: Codable, Equatable, Sendable {
     case command(String)      // raw Bambu MQTT JSON (advanced / custom)
     case script(String)       // shell script content
 
-    func summary(_ t: (String, String) -> String) -> String {
+    func summary(_ t: (String, [Any]) -> String) -> String {
         switch self {
-        case .light(let on): on ? t("światło wł.", "light on") : t("światło wył.", "light off")
-        case .pause: t("pauza", "pause")
-        case .resume: t("wznów", "resume")
-        case .stop: t("stop", "stop")
-        case .notify: t("powiadomienie", "notification")
-        case .command: t("własna komenda", "custom command")
-        case .script: t("skrypt", "script")
+        case .light(let on): on ? t("light on", []) : t("light off", [])
+        case .pause: t("pause", [])
+        case .resume: t("resume", [])
+        case .stop: t("stop", [])
+        case .notify: t("notification", [])
+        case .command: t("custom command", [])
+        case .script: t("script", [])
         }
     }
 

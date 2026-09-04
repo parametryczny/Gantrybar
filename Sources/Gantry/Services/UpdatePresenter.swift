@@ -17,7 +17,7 @@ enum UpdatePresenter {
                 } else {
                     present(
                         title: settings.t("You have the latest version"),
-                        message: String(format: settings.t("Version %@ is up to date."), UpdateService.currentVersion),
+                        message: settings.t("Version {0} is up to date.", UpdateService.currentVersion),
                         from: window
                     )
                 }
@@ -34,9 +34,8 @@ enum UpdatePresenter {
     private static func presentUpdateAvailable(_ release: UpdateService.Release, from window: NSWindow?) {
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = String(format: settings.t("Update available: %@"), release.version)
-        alert.informativeText = String(format: settings.t("You have %@. Install %@? Gantry will download the update and restart."),
-                   UpdateService.currentVersion, release.version)
+        alert.messageText = settings.t("Update available: {0}", release.version)
+        alert.informativeText = settings.t("You have {0}. Install {1}? Gantry will download the update and restart.", UpdateService.currentVersion, release.version)
         alert.addButton(withTitle: settings.t("Install"))
         alert.addButton(withTitle: settings.t("Open page"))
         alert.addButton(withTitle: settings.t("Cancel"))

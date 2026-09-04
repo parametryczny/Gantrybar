@@ -241,6 +241,23 @@ final class AppSettings: ObservableObject {
         Localization.text(english, language: language)
     }
 
+    /// Same lookup, with positional placeholders filled in: `t("Layer {0} / {1}", current, total)`.
+    ///
+    /// The catalog uses `{0}`-style placeholders rather than printf specifiers because that is the one
+    /// syntax all three platforms can share: C# has string.Format and Python has str.format natively,
+    /// so a message needs exactly one catalog entry instead of one per platform. Values that need a
+    /// specific precision are formatted at the call site and passed as text.
+    func t(_ english: String, _ arguments: Any...) -> String { t(english, arguments: arguments) }
+
+    /// Array form, so a wrapper can forward its own variadic arguments without nesting them.
+    func t(_ english: String, arguments: [Any]) -> String {
+        var result = Localization.text(english, language: language)
+        for (index, argument) in arguments.enumerated() {
+            result = result.replacingOccurrences(of: "{\(index)}", with: String(describing: argument))
+        }
+        return result
+    }
+
     func text(_ polish: String, _ english: String) -> String {
         // Legacy form: the Polish literal is only correct for Polish, so any other language goes
         // through the catalog, which for English simply returns the key.

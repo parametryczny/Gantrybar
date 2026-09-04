@@ -557,7 +557,7 @@ final class SettingsWindowController: NSWindowController {
                           settings.t("Advanced")])
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.19"
-        footerVersion.stringValue = String(format: settings.t("Version %@"), version) + " • \(AccessCodeStore.modeName)"
+        footerVersion.stringValue = settings.t("Version {0}", version) + " • \(AccessCodeStore.modeName)"
         closeButton.title = settings.t("Done")
 
         refreshGeneral(settings, version: version)
@@ -583,8 +583,7 @@ final class SettingsWindowController: NSWindowController {
         notificationsGroupLabel.stringValue = settings.t("NOTIFICATIONS")
         notifyFinishedRow.titleLabel.stringValue = settings.t("Print finished")
         notifyFinishedRow.isOn = settings.notifyFinished
-        notifyFinishingSoonRow.titleLabel.stringValue = String(
-            format: settings.t("Finishing in %d minutes"), settings.finishingSoonMinutes)
+        notifyFinishingSoonRow.titleLabel.stringValue = settings.t("Finishing in {0} minutes", settings.finishingSoonMinutes)
         notifyFinishingSoonRow.isOn = settings.notifyFinishingSoon
         notifyErrorRow.titleLabel.stringValue = settings.t("Printer error")
         notifyErrorRow.isOn = settings.notifyError
@@ -611,7 +610,7 @@ final class SettingsWindowController: NSWindowController {
 
         aboutGroupLabel.stringValue = settings.t("ABOUT GANTRY")
         appRow.titleLabel.stringValue = "Gantry"
-        appRow.setSubtitle(String(format: settings.t("Version %@ • %@"), version, AccessCodeStore.modeName))
+        appRow.setSubtitle(settings.t("Version {0} • {1}", version, AccessCodeStore.modeName))
         githubRow.titleLabel.stringValue = "GitHub"
         githubButton.title = "@parametryczny"
         xRow.titleLabel.stringValue = "X"
@@ -977,9 +976,8 @@ final class SettingsWindowController: NSWindowController {
     private func presentUpdateAvailable(_ release: UpdateService.Release) {
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = String(format: settings.t("Update available: %@"), release.version)
-        alert.informativeText = String(format: settings.t("You have %@. Install %@? Gantry will download the update and restart."),
-                   UpdateService.currentVersion, release.version)
+        alert.messageText = settings.t("Update available: {0}", release.version)
+        alert.informativeText = settings.t("You have {0}. Install {1}? Gantry will download the update and restart.", UpdateService.currentVersion, release.version)
         alert.addButton(withTitle: settings.t("Install"))
         alert.addButton(withTitle: settings.t("Open page"))
         alert.addButton(withTitle: settings.t("Cancel"))
@@ -1105,10 +1103,10 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func syncPeerStatus(_ peer: SyncPeer, settings: AppSettings) -> String {
-        if let error = peer.lastError { return String(format: settings.t("Error: %@"), error) }
+        if let error = peer.lastError { return settings.t("Error: {0}", error) }
         guard let last = peer.lastSyncAt else { return settings.t("not synced yet") }
         let formatter = DateFormatter(); formatter.dateStyle = .none; formatter.timeStyle = .short
-        return String(format: settings.t("last: %@"), formatter.string(from: last))
+        return settings.t("last: {0}", formatter.string(from: last))
     }
 
     @objc private func syncRegenToken() {

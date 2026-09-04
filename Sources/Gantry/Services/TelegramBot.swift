@@ -157,7 +157,7 @@ final class TelegramBot {
         guard let argument, let seconds = parseDuration(argument) else {
             if let until = s.telegramMuteUntil {
                 let f = DateFormatter(); f.dateFormat = "HH:mm"
-                await send(text: String(format: s.t("🔕 Muted until %@. Turn off: /mute off"), f.string(from: until)), replyMarkup: commandKeyboard())
+                await send(text: s.t("🔕 Muted until {0}. Turn off: /mute off", f.string(from: until)), replyMarkup: commandKeyboard())
             } else {
                 await send(text: s.t("Give a duration, e.g. /mute 2h or /mute 30m. Turn off: /mute off"), replyMarkup: commandKeyboard())
             }
@@ -166,7 +166,7 @@ final class TelegramBot {
         let until = Date().addingTimeInterval(seconds)
         AppSettings.shared.telegramMuteUntil = until
         let f = DateFormatter(); f.dateFormat = "HH:mm"
-        await send(text: String(format: s.t("🔕 Alerts muted until %@."), f.string(from: until)), replyMarkup: commandKeyboard())
+        await send(text: s.t("🔕 Alerts muted until {0}.", f.string(from: until)), replyMarkup: commandKeyboard())
     }
 
     private func handleWatch(_ argument: String?) async {
@@ -182,7 +182,7 @@ final class TelegramBot {
         }
         watchTask?.cancel()
         watchTask = Task { [weak self] in await self?.watchLoop(interval: seconds) }
-        await send(text: String(format: s.t("📷 Watch: photos of printing machines every %@. Turn off: /watch off"), argument), replyMarkup: commandKeyboard())
+        await send(text: s.t("📷 Watch: photos of printing machines every {0}. Turn off: /watch off", argument), replyMarkup: commandKeyboard())
     }
 
     private func watchLoop(interval: TimeInterval) async {
@@ -222,7 +222,7 @@ final class TelegramBot {
             let serial = parts[1]
             let name = store?.printers.first { $0.serial == serial }?.name ?? serial
             await answer(cbID, "📷…")
-            await send(text: String(format: AppSettings.shared.t("📷 Grabbing a camera snapshot from %@…"), name), replyMarkup: commandKeyboard())
+            await send(text: AppSettings.shared.t("📷 Grabbing a camera snapshot from {0}…", name), replyMarkup: commandKeyboard())
             if let printer = store?.printers.first(where: { $0.serial == serial }), let store,
                let jpeg = await CameraSnapshot.capture(printer: printer, store: store) {
                 await sendPhoto(jpeg: jpeg, caption: "🖨 \(name)")
@@ -266,7 +266,7 @@ final class TelegramBot {
             // Stop cancels the print and is not reversible, so ask once before doing it.
             if let messageID {
                 await edit(messageID: messageID,
-                           text: String(format: AppSettings.shared.t("⏹ Cancel the print on %@? This cannot be undone."), name),
+                           text: AppSettings.shared.t("⏹ Cancel the print on {0}? This cannot be undone.", name),
                            replyMarkup: keyboard([[
                                (AppSettings.shared.t("Yes, cancel"), "a:stop:\(serial)"),
                                (AppSettings.shared.t("Back"), "p:\(serial)")]]))

@@ -104,28 +104,28 @@ public sealed class DetailView : UserControl
 
         // --- Recent prints / maintenance / statistics (same cards and order as macOS) ---
         _recentPrints = new StackPanel();
-        var showAll = new Button { Content = _pl ? "Pokaż wszystkie" : "Show all", Padding = new Thickness(9, 3, 9, 3), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        var showAll = new Button { Content = AppSettings.T("Show all"), Padding = new Thickness(9, 3, 9, 3), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
         showAll.Click += (_, _) => ShowHistory();
-        stack.Children.Add(Draggable("recent", Card(new StackPanel { Children = { SectionTitle(_pl ? "OSTATNIE WYDRUKI" : "RECENT PRINTS"), _recentPrints, showAll } })));
+        stack.Children.Add(Draggable("recent", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("RECENT PRINTS")), _recentPrints, showAll } })));
 
         _maintenance = new StackPanel();
-        var openMaintenance = new Button { Content = _pl ? "Otwórz konserwację…" : "Open maintenance…", Padding = new Thickness(9, 3, 9, 3), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
+        var openMaintenance = new Button { Content = AppSettings.T("Open maintenance…"), Padding = new Thickness(9, 3, 9, 3), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0) };
         openMaintenance.Click += (_, _) =>
         {
             if (_store.Printers.FirstOrDefault(value => value.Serial == _serial) is not { } value) return;
             var tel = _store.Telemetry.TryGetValue(_serial, out var current) ? current : new PrinterTelemetry();
             if (Window.GetWindow(this) is DashboardWindow dashboard) dashboard.ShowMaintenance(value, tel);
         };
-        stack.Children.Add(Draggable("maintenance", Card(new StackPanel { Children = { SectionTitle(_pl ? "KONSERWACJA" : "MAINTENANCE"), _maintenance, openMaintenance } })));
+        stack.Children.Add(Draggable("maintenance", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("MAINTENANCE")), _maintenance, openMaintenance } })));
 
         _statistics = new StackPanel { Orientation = Orientation.Horizontal };
-        stack.Children.Add(Draggable("stats", Card(new StackPanel { Children = { SectionTitle(_pl ? "STATYSTYKI" : "STATISTICS"), _statistics } })));
+        stack.Children.Add(Draggable("stats", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("STATISTICS")), _statistics } })));
 
         // --- Temperatures card (graph + readouts) ---
         _graph = new Canvas { Height = 110, Background = GTheme.Brush(GTheme.Surface) };
         _graph.SizeChanged += (_, _) => DrawGraph();
         _temps = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(_pl ? "TEMPERATURY" : "TEMPERATURES"), _graph, _temps } })));
+        stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("TEMPERATURES")), _graph, _temps } })));
 
         // --- Fans + speed card ---
         _fans = new StackPanel { Orientation = Orientation.Horizontal };
@@ -136,23 +136,23 @@ public sealed class DetailView : UserControl
         infoRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         infoRow.Children.Add(_speed);
         Grid.SetColumn(_diameter, 1); infoRow.Children.Add(_diameter);
-        stack.Children.Add(Draggable("fans", Card(new StackPanel { Children = { SectionTitle(_pl ? "WENTYLATORY I PRĘDKOŚĆ" : "FANS AND SPEED"), _fans, infoRow } })));
+        stack.Children.Add(Draggable("fans", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("FANS AND SPEED")), _fans, infoRow } })));
 
         // --- AMS / filaments card ---
         _ams = new StackPanel();
-        stack.Children.Add(Draggable("ams", Card(new StackPanel { Children = { SectionTitle(_pl ? "FILAMENTY / AMS" : "FILAMENTS / AMS"), _ams } })));
+        stack.Children.Add(Draggable("ams", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("FILAMENTS / AMS")), _ams } })));
 
         // --- Control + automations card (developer mode only; Bambu/Klipper) ---
         if (AppSettings.DeveloperMode && printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2 or PrinterKind.AnycubicKobraS1)
         {
-            var lightOn = new Button { Content = _pl ? "Światło wł." : "Light on", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
+            var lightOn = new Button { Content = AppSettings.T("Light on"), Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
             lightOn.Click += (_, _) => _store.SetChamberLight(true, _serial);
-            var lightOff = new Button { Content = _pl ? "Światło wył." : "Light off", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
+            var lightOff = new Button { Content = AppSettings.T("Light off"), Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0) };
             lightOff.Click += (_, _) => _store.SetChamberLight(false, _serial);
-            var autoBtn = new Button { Content = _pl ? "Automatyzacje…" : "Automations…", Padding = new Thickness(10, 4, 10, 4) };
+            var autoBtn = new Button { Content = AppSettings.T("Automations…"), Padding = new Thickness(10, 4, 10, 4) };
             autoBtn.Click += (_, _) => new AutomationsWindow(_store, _serial) { Owner = Window.GetWindow(this) }.Show();
             var controls = new StackPanel { Orientation = Orientation.Horizontal, Children = { lightOn, lightOff, autoBtn } };
-            stack.Children.Add(Draggable("control", Card(new StackPanel { Children = { SectionTitle(_pl ? "STEROWANIE I AUTOMATYZACJE" : "CONTROL AND AUTOMATIONS"), controls } })));
+            stack.Children.Add(Draggable("control", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("CONTROL AND AUTOMATIONS")), controls } })));
         }
 
         // --- Camera card (Bambu native RTSPS/RTSP/JPEG → ffmpeg decode, Klipper MJPEG snapshots) ---
@@ -172,7 +172,7 @@ public sealed class DetailView : UserControl
             container.Children.Add(_cameraStatus);
             container.Children.Add(_cameraBadge);
             var frame = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = container };
-            stack.Children.Add(Draggable("camera", Card(new StackPanel { Children = { SectionTitle(_pl ? "KAMERA" : "CAMERA"), frame } })));
+            stack.Children.Add(Draggable("camera", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("CAMERA")), frame } })));
             Loaded += (_, _) => StartCamera();
             Unloaded += (_, _) => StopCamera();
         }
@@ -180,7 +180,7 @@ public sealed class DetailView : UserControl
         // "Dostosuj" — hide/show modules (camera, AMS, temps, fans, control), like macOS.
         var customize = new Button
         {
-            Content = _pl ? "Dostosuj…" : "Customize…", Padding = new Thickness(12, 5, 12, 5),
+            Content = AppSettings.T("Customize…"), Padding = new Thickness(12, 5, 12, 5),
             Margin = new Thickness(0, 6, 0, 4), HorizontalAlignment = HorizontalAlignment.Left,
             FontSize = 12, Cursor = Cursors.Hand
         };
@@ -197,7 +197,7 @@ public sealed class DetailView : UserControl
                 menu.Items.Add(item);
             }
             menu.Items.Add(new Separator());
-            var reset = new MenuItem { Header = _pl ? "Przywróć domyślny układ" : "Reset layout" };
+            var reset = new MenuItem { Header = AppSettings.T("Reset layout") };
             reset.Click += (_, _) => ResetLayout();
             menu.Items.Add(reset);
             menu.PlacementTarget = (UIElement)s;
@@ -213,7 +213,7 @@ public sealed class DetailView : UserControl
         // instead of opening a separate window.
         var back = new Button
         {
-            Content = _pl ? "‹ Wróć" : "‹ Back", Padding = new Thickness(10, 4, 12, 5), FontSize = 12,
+            Content = AppSettings.T("‹ Back"), Padding = new Thickness(10, 4, 12, 5), FontSize = 12,
             Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Left,
             Background = System.Windows.Media.Brushes.Transparent, Foreground = White(), BorderThickness = new Thickness(0)
         };
@@ -241,7 +241,7 @@ public sealed class DetailView : UserControl
         {
             Text = "⠿", FontSize = 12, Foreground = Muted(), Opacity = 0.55, Cursor = Cursors.SizeAll,
             HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 11, 12, 0), ToolTip = _pl ? "Przeciągnij, aby zmienić kolejność" : "Drag to reorder"
+            Margin = new Thickness(0, 11, 12, 0), ToolTip = AppSettings.T("Drag to reorder")
         };
         grip.PreviewMouseLeftButtonDown += (_, e) => _cardDragStart = e.GetPosition(null);
         grip.MouseMove += (_, e) =>
@@ -312,14 +312,14 @@ public sealed class DetailView : UserControl
 
     private string ModuleTitle(string key) => key switch
     {
-        "camera" => _pl ? "Kamera" : "Camera",
-        "ams" => _pl ? "Filamenty / AMS" : "Filaments / AMS",
-        "temps" => _pl ? "Temperatury" : "Temperatures",
-        "fans" => _pl ? "Wentylatory" : "Fans",
-        "control" => _pl ? "Sterowanie" : "Control",
-        "recent" => _pl ? "Ostatnie wydruki" : "Recent prints",
-        "maintenance" => _pl ? "Konserwacja" : "Maintenance",
-        "stats" => _pl ? "Statystyki" : "Statistics",
+        "camera" => AppSettings.T("Camera"),
+        "ams" => AppSettings.T("Filaments / AMS"),
+        "temps" => AppSettings.T("Temperatures"),
+        "fans" => AppSettings.T("Fans"),
+        "control" => AppSettings.T("Control"),
+        "recent" => AppSettings.T("Recent prints"),
+        "maintenance" => AppSettings.T("Maintenance"),
+        "stats" => AppSettings.T("Statistics"),
         _ => key
     };
 
@@ -391,9 +391,9 @@ public sealed class DetailView : UserControl
         {
             _lastTempSig = tempSig;
             _temps.Children.Clear();
-            _temps.Children.Add(TempChip(_pl ? "Dysza" : "Nozzle", t.NozzleTemperature, t.NozzleTargetTemperature, NozzleBrush, printingT, errorT));
-            _temps.Children.Add(TempChip(_pl ? "Stół" : "Bed", t.BedTemperature, t.BedTargetTemperature, BedBrush, printingT, errorT));
-            _temps.Children.Add(TempChip(_pl ? "Komora" : "Chamber", t.ChamberTemperature, null, ChamberBrush, printingT, errorT));
+            _temps.Children.Add(TempChip(AppSettings.T("Nozzle"), t.NozzleTemperature, t.NozzleTargetTemperature, NozzleBrush, printingT, errorT));
+            _temps.Children.Add(TempChip(AppSettings.T("Bed"), t.BedTemperature, t.BedTargetTemperature, BedBrush, printingT, errorT));
+            _temps.Children.Add(TempChip(AppSettings.T("Chamber"), t.ChamberTemperature, null, ChamberBrush, printingT, errorT));
             DrawGraph();
         }
 
@@ -408,7 +408,7 @@ public sealed class DetailView : UserControl
             _fans.Children.Add(FanChip("Chamber", t.ChamberFanPercent));
         }
         string? speedText = t.SpeedLevel is { } lvl
-            ? (_pl ? "Prędkość: " : "Speed: ") + SpeedName(lvl) + (t.SpeedPercent is { } mag ? $" · {mag}%" : "")
+            ? (AppSettings.T("Speed: ")) + SpeedName(lvl) + (t.SpeedPercent is { } mag ? $" · {mag}%" : "")
             : t.SpeedPercent is { } sp ? (_pl ? $"Prędkość: {sp}%" : $"Speed: {sp}%") : null;
         _speed.Text = speedText ?? "";
         _speed.Visibility = speedText is null ? Visibility.Collapsed : Visibility.Visible;
@@ -437,7 +437,7 @@ public sealed class DetailView : UserControl
                 for (int i = 0; i < groups.Count; i += 2)
                     _ams.Children.Add(DashboardWindow.FilamentRow(groups.Skip(i).Take(2).ToList()));
             else
-                _ams.Children.Add(new TextBlock { Text = _pl ? "Brak modułów filamentu" : "No filament modules", FontSize = 11, Foreground = Muted() });
+                _ams.Children.Add(new TextBlock { Text = AppSettings.T("No filament modules"), FontSize = 11, Foreground = Muted() });
         }
     }
 
@@ -449,7 +449,7 @@ public sealed class DetailView : UserControl
         if (sig == _lastInsightSig) return;
         _lastInsightSig = sig;
         _recentPrints.Children.Clear();
-        if (snap.History.Count == 0) _recentPrints.Children.Add(InsightLine(_pl ? "Brak zapisanej historii." : "No recorded history."));
+        if (snap.History.Count == 0) _recentPrints.Children.Add(InsightLine(AppSettings.T("No recorded history.")));
         foreach (var entry in snap.History.Take(3))
         {
             string icon = entry.Result == PrinterInsights.PrintResult.Completed ? "✓" : entry.Result == PrinterInsights.PrintResult.Failed ? "!" : "×";
@@ -466,16 +466,16 @@ public sealed class DetailView : UserControl
         }
         _statistics.Children.Clear();
         string success = snap.SuccessPercent is { } percent ? $"{percent}%" : "—";
-        _statistics.Children.Add(InsightMetric(_pl ? "CZAS PRACY" : "PRINT TIME", $"{snap.TotalPrintHours:0.0} h"));
-        _statistics.Children.Add(InsightMetric(_pl ? "SKUTECZNOŚĆ" : "SUCCESS", success));
+        _statistics.Children.Add(InsightMetric(AppSettings.T("PRINT TIME"), $"{snap.TotalPrintHours:0.0} h"));
+        _statistics.Children.Add(InsightMetric(AppSettings.T("SUCCESS"), success));
         _statistics.Children.Add(InsightMetric("FILAMENT", $"{snap.ConsumedGrams:0} g"));
     }
 
     private void ShowHistory()
     {
         var rows = PrinterInsights.GetSnapshot(_serial, _pl).History.Select(value => $"{value.EndedAt:g} · {(string.IsNullOrWhiteSpace(value.Job) ? "—" : value.Job)}");
-        MessageBox.Show(Window.GetWindow(this), string.Join("\n", rows.DefaultIfEmpty(_pl ? "Brak historii." : "No history.")),
-            _pl ? "Pełna historia" : "Full history", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show(Window.GetWindow(this), string.Join("\n", rows.DefaultIfEmpty(AppSettings.T("No history."))),
+            AppSettings.T("Full history"), MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private static TextBlock InsightLine(string text, Brush? color = null) => new() { Text = text, FontSize = 11.5, FontWeight = FontWeights.Medium, Foreground = color ?? Muted(), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 2) };
@@ -495,7 +495,7 @@ public sealed class DetailView : UserControl
         var samples = _store.TemperatureHistory.TryGetValue(_serial, out var s) ? s : null;
         if (samples is null || samples.Count < 2)
         {
-            _graph.Children.Add(new TextBlock { Text = _pl ? "Zbieranie danych…" : "Collecting data…", FontSize = 11, Foreground = Muted() });
+            _graph.Children.Add(new TextBlock { Text = AppSettings.T("Collecting data…"), FontSize = 11, Foreground = Muted() });
             Canvas.SetLeft(_graph.Children[^1], w / 2 - 40); Canvas.SetTop(_graph.Children[^1], h / 2 - 8);
             return;
         }
@@ -541,12 +541,12 @@ public sealed class DetailView : UserControl
         if (printer is null || _cameraStatus is null) return;
         var over = PrinterOverridesStore.For(_serial).CameraHost;
         var host = string.IsNullOrEmpty(over) ? printer.Host : over!;
-        _cameraStatus.Text = _pl ? "Łączenie z kamerą…" : "Connecting to camera…";
+        _cameraStatus.Text = AppSettings.T("Connecting to camera…");
 
         if (_kind == PrinterKind.Bambu)
         {
             var code = AccessCodeStore.AccessCode(_serial);
-            if (string.IsNullOrEmpty(code)) { _cameraStatus.Text = _pl ? "Kamera niedostępna (brak kodu dostępu)" : "Camera unavailable (no access code)"; return; }
+            if (string.IsNullOrEmpty(code)) { _cameraStatus.Text = AppSettings.T("Camera unavailable (no access code)"); return; }
             // Native RTSPS/RTSP/JPEG client — we do the TLS ourselves (accepting the printer's self-signed
             // cert), so ffmpeg only decodes H.264 from a pipe and never trips over the certificate.
             var cam = new BambuCameraStream();
@@ -610,7 +610,7 @@ public sealed class DetailView : UserControl
     private async Task StartKlipperCameraAsync(string host)
     {
         _snapshotUrl = await DiscoverSnapshotUrlAsync(host);
-        if (_snapshotUrl is null) { if (_cameraStatus is not null) _cameraStatus.Text = _pl ? "Kamera niedostępna — sprawdź webcam w Moonraker" : "Camera unavailable — check the webcam in Moonraker"; return; }
+        if (_snapshotUrl is null) { if (_cameraStatus is not null) _cameraStatus.Text = AppSettings.T("Camera unavailable — check the webcam in Moonraker"); return; }
         _cameraTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _cameraTimer.Tick += async (_, _) => await PollSnapshotAsync();
         _cameraTimer.Start();
@@ -745,10 +745,10 @@ public sealed class DetailView : UserControl
 
     private string SpeedName(int level) => level switch
     {
-        1 => _pl ? "Cichy" : "Silent",
+        1 => AppSettings.T("Silent"),
         2 => "Standard",
         3 => "Sport",
-        4 => _pl ? "Wariat" : "Ludicrous",
+        4 => AppSettings.T("Ludicrous"),
         _ => "—"
     };
 

@@ -564,7 +564,7 @@ final class PrinterDashboardViewController: NSViewController {
     private func confirmRemove(_ printer: SavedPrinter) {
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = String(format: settings.t("Remove printer %@?"), printer.name)
+        alert.messageText = settings.t("Remove printer {0}?", printer.name)
         alert.informativeText = settings.t("This printer's saved access code and certificate pin will be removed.")
         alert.alertStyle = .warning
         alert.addButton(withTitle: settings.t("Remove"))
@@ -1436,7 +1436,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         if telemetry.state == .error {
             let errorDescription = HMSResolver.shared.description(for: telemetry.hmsCodes, serial: printer.serial, language: settings.language)
                 ?? (telemetry.errorCode != 0
-                    ? String(format: settings.t("Error code: 0x%llX"), telemetry.errorCode)
+                    ? settings.t("Error code: 0x{0}", telemetry.errorCode)
                     : settings.t("Printer reported an error"))
             jobLabel.stringValue = errorDescription
             jobLabel.toolTip = errorDescription

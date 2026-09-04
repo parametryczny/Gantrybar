@@ -32,7 +32,7 @@ public sealed class FleetStatsWindow : Window
     public FleetStatsWindow(PrinterStore store)
     {
         _store = store;
-        Title = AppSettings.Text("Statystyki floty", "Fleet statistics");
+        Title = AppSettings.T("Fleet statistics");
         Width = 470; Height = 560; MinWidth = 420; MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = GTheme.Brush(GTheme.Canvas);
@@ -48,7 +48,7 @@ public sealed class FleetStatsWindow : Window
 
         var export = new Button
         {
-            Content = AppSettings.Text("Eksportuj do pliku…", "Export to file…"),
+            Content = AppSettings.T("Export to file…"),
             Padding = new Thickness(12, 5, 12, 5),
         };
         export.Click += (_, _) => Export();
@@ -74,10 +74,10 @@ public sealed class FleetStatsWindow : Window
 
     private string PeriodLabel(int days) => days switch
     {
-        7 => AppSettings.Text("ostatnie 7 dni", "last 7 days"),
-        30 => AppSettings.Text("ostatnie 30 dni", "last 30 days"),
-        365 => AppSettings.Text("ostatni rok", "last year"),
-        _ => AppSettings.Text("cała historia", "all time"),
+        7 => AppSettings.T("last 7 days"),
+        30 => AppSettings.T("last 30 days"),
+        365 => AppSettings.T("last year"),
+        _ => AppSettings.T("all time"),
     };
 
     private List<Row> Rows()
@@ -113,23 +113,23 @@ public sealed class FleetStatsWindow : Window
 
         var lines = new List<string>
         {
-            $"{AppSettings.Text("Okres", "Period")}: {PeriodLabel(_periodDays)}",
-            $"{AppSettings.Text("Wydruki", "Prints")}: {prints} ({AppSettings.Text("nieudane", "failed")}: {failed})",
-            $"{AppSettings.Text("Skuteczność", "Success rate")}: {successText}",
-            $"{AppSettings.Text("Czas druku", "Print time")}: {hours.ToString("0.0", CultureInfo.InvariantCulture)} h",
+            $"{AppSettings.T("Period")}: {PeriodLabel(_periodDays)}",
+            $"{AppSettings.T("Prints")}: {prints} ({AppSettings.T("failed")}: {failed})",
+            $"{AppSettings.T("Success rate")}: {successText}",
+            $"{AppSettings.T("Print time")}: {hours.ToString("0.0", CultureInfo.InvariantCulture)} h",
         };
         if (grams > 0)
             lines.Add($"Filament: {(grams / 1000).ToString("0.00", CultureInfo.InvariantCulture)} kg");
 
-        _body.Children.Add(Caption(AppSettings.Text("PODSUMOWANIE", "SUMMARY")));
+        _body.Children.Add(Caption(AppSettings.T("SUMMARY")));
         _body.Children.Add(Card(lines, titleFirst: false));
-        _body.Children.Add(Caption(AppSettings.Text("WEDŁUG DRUKARKI", "BY PRINTER")));
+        _body.Children.Add(Caption(AppSettings.T("BY PRINTER")));
         if (rows.Count == 0)
-            _body.Children.Add(Card(new List<string> { AppSettings.Text("Brak drukarek.", "No printers.") }, false));
+            _body.Children.Add(Card(new List<string> { AppSettings.T("No printers.") }, false));
         foreach (var row in rows.OrderByDescending(item => item.Prints))
         {
             string mark = row.SuccessPercent is { } percent ? $"{percent}%" : "—";
-            string detail = $"{row.Prints} {AppSettings.Text("wydruków", "prints")} · " +
+            string detail = $"{row.Prints} {AppSettings.T("prints")} · " +
                             $"{row.Hours.ToString("0.0", CultureInfo.InvariantCulture)} h · {mark}";
             _body.Children.Add(Card(new List<string> { row.Name, detail }, titleFirst: true));
         }
@@ -174,21 +174,21 @@ public sealed class FleetStatsWindow : Window
     {
         string successText = success is { } value ? $"{value}%" : "—";
         var out_ = new StringBuilder();
-        out_.AppendLine($"Gantry {AppSettings.Text("statystyki floty", "fleet statistics")}");
-        out_.AppendLine($"{AppSettings.Text("Wygenerowano", "Generated")}: {DateTime.Now:yyyy-MM-dd HH:mm}");
-        out_.AppendLine($"{AppSettings.Text("Okres", "Period")}: {PeriodLabel(_periodDays)}");
+        out_.AppendLine($"Gantry {AppSettings.T("fleet statistics")}");
+        out_.AppendLine($"{AppSettings.T("Generated")}: {DateTime.Now:yyyy-MM-dd HH:mm}");
+        out_.AppendLine($"{AppSettings.T("Period")}: {PeriodLabel(_periodDays)}");
         out_.AppendLine();
-        out_.AppendLine($"{AppSettings.Text("Wydruki", "Prints")}: {prints}  ({AppSettings.Text("nieudane", "failed")}: {failed})");
-        out_.AppendLine($"{AppSettings.Text("Skuteczność", "Success rate")}: {successText}");
-        out_.AppendLine($"{AppSettings.Text("Czas druku", "Print time")}: {hours.ToString("0.0", CultureInfo.InvariantCulture)} h");
+        out_.AppendLine($"{AppSettings.T("Prints")}: {prints}  ({AppSettings.T("failed")}: {failed})");
+        out_.AppendLine($"{AppSettings.T("Success rate")}: {successText}");
+        out_.AppendLine($"{AppSettings.T("Print time")}: {hours.ToString("0.0", CultureInfo.InvariantCulture)} h");
         if (grams > 0)
             out_.AppendLine($"Filament: {(grams / 1000).ToString("0.00", CultureInfo.InvariantCulture)} kg");
         out_.AppendLine();
-        out_.AppendLine(AppSettings.Text("Według drukarki:", "By printer:"));
+        out_.AppendLine(AppSettings.T("By printer:"));
         foreach (var row in rows.OrderByDescending(item => item.Prints))
         {
             string mark = row.SuccessPercent is { } percent ? $"{percent}%" : "—";
-            out_.AppendLine($"  {row.Name}: {row.Prints} {AppSettings.Text("wydruków", "prints")}, " +
+            out_.AppendLine($"  {row.Name}: {row.Prints} {AppSettings.T("prints")}, " +
                             $"{row.Hours.ToString("0.0", CultureInfo.InvariantCulture)} h, {mark}");
         }
         return out_.ToString();
@@ -199,7 +199,7 @@ public sealed class FleetStatsWindow : Window
         var dialog = new SaveFileDialog
         {
             FileName = "gantry-statystyki.txt",
-            Filter = AppSettings.Text("Plik tekstowy|*.txt", "Text file|*.txt"),
+            Filter = AppSettings.T("Text file|*.txt"),
         };
         if (dialog.ShowDialog(this) != true) return;
         try { File.WriteAllText(dialog.FileName, _renderedText, Encoding.UTF8); }

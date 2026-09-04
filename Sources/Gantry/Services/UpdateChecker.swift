@@ -47,7 +47,7 @@ enum UpdateChecker {
         BambuDefaults.shared.set(release.version, forKey: notifiedKey)
         NotificationService.post(
             title: settings.t("Gantry update available"),
-            body: String(format: settings.t("Version %@ is available. Click to install."), release.version),
+            body: settings.t("Version {0} is available. Click to install.", release.version),
             userInfo: ["type": "update"])
     }
 
@@ -60,7 +60,7 @@ enum UpdateChecker {
         let settings = AppSettings.shared
         NotificationService.post(
             title: settings.t("Gantry updated"),
-            body: String(format: settings.t("Installed version %@. Signature verified — all good."), pending),
+            body: settings.t("Installed version {0}. Signature verified — all good.", pending),
             userInfo: ["type": "updated"])
     }
 }

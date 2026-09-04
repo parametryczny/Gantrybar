@@ -137,7 +137,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             button.image = GantryLogo.statusItemImage(height: 14)
             button.imagePosition = .imageOnly
             button.toolTip = store.activePrintCount > 0
-                ? String(format: AppSettings.shared.t("Gantry — printing: %d"), store.activePrintCount)
+                ? AppSettings.shared.t("Gantry — printing: {0}", store.activePrintCount)
                 : "Gantry"
         }
     }

@@ -43,7 +43,7 @@ public sealed class BarcodeScannerWindow : Window
     public BarcodeScannerWindow(Action<string> onCode)
     {
         _onCode = onCode;
-        Title = AppSettings.Text("Skanuj kod filamentu", "Scan filament code");
+        Title = AppSettings.T("Scan filament code");
         Width = 520; Height = 410;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
@@ -56,11 +56,10 @@ public sealed class BarcodeScannerWindow : Window
         var heading = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
         heading.Children.Add(new TextBlock
         {
-            Text = AppSettings.Text("Skanuj kod z etykiety szpuli", "Scan the code on the spool label"),
+            Text = AppSettings.T("Scan the code on the spool label"),
             FontSize = 17, FontWeight = FontWeights.SemiBold
         });
-        _status.Text = AppSettings.Text("Wypełnij kodem ramkę i przytrzymaj etykietę nieruchomo",
-                                        "Fill the frame with the code and hold the label still");
+        _status.Text = AppSettings.T("Fill the frame with the code and hold the label still");
         _status.Foreground = GTheme.Brush(GTheme.Secondary);
         heading.Children.Add(_status);
         DockPanel.SetDock(heading, Dock.Top); root.Children.Add(heading);
@@ -71,12 +70,12 @@ public sealed class BarcodeScannerWindow : Window
         bottom.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _manual.Background = GTheme.Brush(GTheme.Surface); _manual.Foreground = GTheme.Brush(GTheme.Text);
         _manual.CaretBrush = GTheme.Brush(GTheme.Text); _manual.BorderBrush = GTheme.Brush(GTheme.Line);
-        _manual.ToolTip = AppSettings.Text("Kod ręcznie", "Enter code manually");
+        _manual.ToolTip = AppSettings.T("Enter code manually");
         bottom.Children.Add(_manual);
-        var use = new Button { Content = AppSettings.Text("Użyj kodu", "Use code"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 5, 12, 5), IsDefault = true };
+        var use = new Button { Content = AppSettings.T("Use code"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 5, 12, 5), IsDefault = true };
         use.Click += (_, _) => Complete(_manual.Text);
         Grid.SetColumn(use, 1); bottom.Children.Add(use);
-        var cancel = new Button { Content = AppSettings.Text("Anuluj", "Cancel"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 5, 12, 5), IsCancel = true };
+        var cancel = new Button { Content = AppSettings.T("Cancel"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 5, 12, 5), IsCancel = true };
         cancel.Click += (_, _) => Close();
         Grid.SetColumn(cancel, 2); bottom.Children.Add(cancel);
         DockPanel.SetDock(bottom, Dock.Bottom); root.Children.Add(bottom);
@@ -114,16 +113,16 @@ public sealed class BarcodeScannerWindow : Window
             });
             var source = _capture.FrameSources.Values.FirstOrDefault(value =>
                 value.Info.SourceKind == MediaFrameSourceKind.Color);
-            if (source is null) throw new InvalidOperationException(AppSettings.Text("Nie znaleziono kamery.", "No camera found."));
+            if (source is null) throw new InvalidOperationException(AppSettings.T("No camera found."));
             _reader = await _capture.CreateFrameReaderAsync(source, MediaEncodingSubtypes.Bgra8);
             _reader.FrameArrived += FrameArrived;
             var started = await _reader.StartAsync();
             if (started != MediaFrameReaderStartStatus.Success)
-                throw new InvalidOperationException(AppSettings.Text("Nie można uruchomić kamery.", "Could not start the camera."));
+                throw new InvalidOperationException(AppSettings.T("Could not start the camera."));
         }
         catch (Exception ex)
         {
-            _status.Text = AppSettings.Text("Nie można uruchomić skanera: ", "Could not start scanner: ") + ex.Message;
+            _status.Text = AppSettings.T("Could not start scanner: ") + ex.Message;
             _manual.Focus();
         }
     }

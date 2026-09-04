@@ -76,6 +76,9 @@ final class SpoolAssignPopoverViewController: NSViewController {
     }
 
     private func t(_ english: String) -> String { AppSettings.shared.t(english) }
+    private func t(_ english: String, _ arguments: Any...) -> String {
+        AppSettings.shared.t(english, arguments: arguments)
+    }
 
     /// Names of saved printers, so a roll loaded elsewhere shows *where* right on its row (spec: see it
     /// at the filament, before selecting).
@@ -100,7 +103,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
     /// lower region scrolls as one, so a long inventory never squashes the list.
     private func showMain() {
         let header = pageHeader(title: slotTitle,
-                                subtitle: String(format: t("AMS: %@"), amsMaterial ?? t("unknown")),
+                                subtitle: t("AMS: {0}", amsMaterial ?? t("unknown")),
                                 back: nil)
 
         // 1. The roll currently in this slot + its per-roll actions. Weight and history live on the roll,
@@ -250,9 +253,8 @@ final class SpoolAssignPopoverViewController: NSViewController {
     /// fresh spool of the same product. Clears this roll's consumption history.
     private func confirmReset(_ spool: PhysicalSpool) {
         let alert = NSAlert()
-        alert.messageText = String(format: t("Reset roll %@?"), spool.id)
-        alert.informativeText = String(format: t("Sets a full %d g (a fresh roll of the same product). This roll's usage history is cleared."),
-                 Int(spool.nominalWeightGrams))
+        alert.messageText = t("Reset roll {0}?", spool.id)
+        alert.informativeText = t("Sets a full {0} g (a fresh roll of the same product). This roll's usage history is cleared.", Int(spool.nominalWeightGrams))
         alert.addButton(withTitle: t("Reset"))
         alert.addButton(withTitle: t("Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -326,7 +328,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
     private func assign(_ spool: PhysicalSpool) {
         if !spool.location.isStorage, !spool.location.sameSlot(as: location) {
             let alert = NSAlert()
-            alert.messageText = String(format: t("Spool %@ is elsewhere"), spool.id)
+            alert.messageText = t("Spool {0} is elsewhere", spool.id)
             alert.informativeText = t("Move it here? Its previous slot is freed.")
             alert.addButton(withTitle: t("Move here"))
             alert.addButton(withTitle: t("Cancel"))

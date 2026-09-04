@@ -66,9 +66,7 @@ public static class BambuStudioConfig
             .Where(kv => kv.Key.Length > 0 && kv.Value.Length > 0)
             .ToDictionary(kv => kv.Key, kv => kv.Value);
         if (codes.Count == 0)
-            throw new BambuStudioConfigException(AppSettings.Text(
-                "Bambu Studio nie ma zapisanych kodów drukarek. Połącz drukarkę lokalnie w Bambu Studio i spróbuj ponownie.",
-                "Bambu Studio has no stored printer codes. Connect the printer locally in Bambu Studio and try again."));
+            throw new BambuStudioConfigException(AppSettings.T("Bambu Studio has no stored printer codes. Connect the printer locally in Bambu Studio and try again."));
 
         var ips = Section(sections, "ip_address");
         foreach (var kv in Section(sections, "user_access_dev_ip"))
@@ -108,13 +106,9 @@ public static class BambuStudioConfig
         }
 
         if (!foundAny)
-            throw new BambuStudioConfigException(AppSettings.Text(
-                "Nie znaleziono konfiguracji Bambu Studio. Uruchom Bambu Studio przynajmniej raz i dodaj w nim drukarkę.",
-                "Bambu Studio configuration was not found. Run Bambu Studio at least once and add a printer there."));
+            throw new BambuStudioConfigException(AppSettings.T("Bambu Studio configuration was not found. Run Bambu Studio at least once and add a printer there."));
 
-        throw new BambuStudioConfigException(AppSettings.Text(
-            "Nie udało się odczytać konfiguracji Bambu Studio. Zamknij Bambu Studio i spróbuj ponownie.",
-            "Could not read the Bambu Studio configuration. Close Bambu Studio and try again."), lastError);
+        throw new BambuStudioConfigException(AppSettings.T("Could not read the Bambu Studio configuration. Close Bambu Studio and try again."), lastError);
     }
 
     private static IEnumerable<string> ConfigCandidates()

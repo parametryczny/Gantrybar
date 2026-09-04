@@ -274,8 +274,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         progressCheck.title = settings.t("Show this printer's progress in the menu bar")
 
         subnetTargetsLabel.stringValue = settings.t("Printer not listed? Extra scan targets (VPN):")
-        subnetTargetsHint.stringValue = String(format: settings.t("Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. Supports: a single address (best), an a-b range, CIDR /n. Large ranges are rejected (limit %d)."),
-                   SubnetTargets.maxHosts)
+        subnetTargetsHint.stringValue = settings.t("Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. Supports: a single address (best), an a-b range, CIDR /n. Large ranges are rejected (limit {0}).", SubnetTargets.maxHosts)
         if subnetTargetsField.currentEditor() == nil { subnetTargetsField.stringValue = settings.subnetScanTargets }
         validateSubnetField()
     }
@@ -304,8 +303,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         } else {
             subnetTargetsError.isHidden = false
             subnetTargetsError.stringValue = SubnetTargets.isTooLarge(text)
-                ? String(format: settings.t("Range too large (max %d) — use a narrower range or a single address."),
-                                SubnetTargets.maxHosts)
+                ? settings.t("Range too large (max {0}) — use a narrower range or a single address.", SubnetTargets.maxHosts)
                 : settings.t("Invalid entry — use an IP, an a-b range or CIDR /n.")
         }
     }
@@ -393,7 +391,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             let count = try store.importFromBambuStudio()
             let alert = NSAlert()
             alert.messageText = AppSettings.shared.t("Printers imported")
-            alert.informativeText = String(format: AppSettings.shared.t("Added or updated: %d. Gantry will use codes from the local Bambu Studio configuration."), count)
+            alert.informativeText = AppSettings.shared.t("Added or updated: {0}. Gantry will use codes from the local Bambu Studio configuration.", count)
             alert.addButton(withTitle: "OK")
             if let window {
                 alert.beginSheetModal(for: window) { [weak self] _ in self?.close() }
@@ -526,7 +524,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         progressCheck.state = MenuBarProgressPreference.isEnabled(printer.serial) ? .on : .off
         localize()
         applyKind()
-        window?.title = String(format: settings.t("Edit printer %@"), printer.name)
+        window?.title = settings.t("Edit printer {0}", printer.name)
         saveButton.title = settings.t("Save")
         nameField.stringValue = printer.name
         hostField.stringValue = printer.host
