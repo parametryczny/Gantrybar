@@ -1628,12 +1628,15 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     /// A compact signature of everything the filament dock draws (group data + assigned Spoolbase spool
     /// + the grams/filament settings), so the dock rebuilds only when something visible changed.
     private static func filamentSignature(_ groups: [FilamentGroup], serial: String, settings: AppSettings) -> String {
-        var parts: [String] = [settings.cardShowSpoolGrams ? "g1" : "g0", settings.cardShowFilaments ? "f1" : "f0"]
+        // The Spoolbase switch belongs in the signature: turning it off changes what every slot draws
+        // (assigned roll gone, no click target), so without it the dock would keep the stale views.
+        var parts: [String] = [settings.cardShowSpoolGrams ? "g1" : "g0", settings.cardShowFilaments ? "f1" : "f0",
+                               settings.spoolbaseEnabled ? "s1" : "s0"]
         for (gi, g) in groups.enumerated() {
             parts.append("\(g.displayName)/\(g.isExternal)/\(g.humidityPercent ?? -1)/\(g.temperatureCelsius.map { Int($0) } ?? -1)/\(g.declaredCapacity)")
             for (si, slot) in g.slots.enumerated() {
                 let loc = SpoolLocation(printerSerial: serial, feeder: g.isExternal ? .ext : .ams, amsIndex: gi, slot: si)
-                let sp = SpoolbaseShared.spools.spool(at: loc)
+                let sp = settings.spoolbaseEnabled ? SpoolbaseShared.spools.spool(at: loc) : nil
                 parts.append("\(slot.label),\(slot.material ?? ""),\(slot.colorHex ?? ""),\(slot.remainingPercent ?? -1),\(slot.isActive),\(slot.remainingWeightGrams.map { Int($0) } ?? -1),\(sp?.id ?? ""),\(sp.map { Int($0.remainingWeightGrams) } ?? -1)")
             }
         }
@@ -2564,11 +2567,15 @@ final class FilamentGroupView: NSView {
             let location = SpoolLocation(printerSerial: printerSerial.isEmpty ? nil : printerSerial,
                                          feeder: feeder, amsIndex: groupIndex, slot: slotIndex)
             let title = group.isExternal ? group.displayName : "\(Self.shortName(group.displayName)) \(slot.label)"
-            let tap: ((NSView) -> Void)? = (onSlotTapped == nil || printerSerial.isEmpty) ? nil : { anchor in
+            // With Spoolbase off the slot has no Spoolbase identity at all: no assigned roll is looked
+            // up (so the chip shows the raw AMS reading) and there is nothing to click. One lever, so
+            // the two can never drift apart into a tappable slot that assigns into a disabled feature.
+            let assignable = !printerSerial.isEmpty && settings.spoolbaseEnabled
+            let tap: ((NSView) -> Void)? = (onSlotTapped == nil || !assignable) ? nil : { anchor in
                 onSlotTapped?(location, title, slot.material, slot.colorHex, anchor)
             }
             return FilamentSlotView(slot: slot, isExternal: group.isExternal, showRemaining: showRemaining,
-                                    location: printerSerial.isEmpty ? nil : location, onTap: tap, isSingle: group.slots.count == 1)
+                                    location: assignable ? location : nil, onTap: tap, isSingle: group.slots.count == 1)
         }
         // Each slot fills its share of the module. A single spool's chip fills the column; its inner
         // swatch then takes a fixed fraction of that width (see FilamentSlotView), so a lone slot is a

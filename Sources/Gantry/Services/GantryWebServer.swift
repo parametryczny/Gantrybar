@@ -209,7 +209,9 @@ final class GantryWebServer {
                 for (si, slot) in group.slots.enumerated() {
                     let loc = SpoolLocation(printerSerial: printer.serial,
                                             feeder: group.isExternal ? .ext : .ams, amsIndex: gi, slot: si)
-                    let spool = SpoolbaseShared.spools.spool(at: loc)
+                    // The dashboard mirrors the card, so it must respect the same switch: with
+                    // Spoolbase off no assigned roll is consulted and the raw AMS reading is served.
+                    let spool = AppSettings.shared.spoolbaseEnabled ? SpoolbaseShared.spools.spool(at: loc) : nil
                     let def = spool.flatMap { s in SpoolbaseShared.filaments.filaments.first { $0.id == s.filamentDefinitionID } }
                     slots.append([
                         "label": slot.label,

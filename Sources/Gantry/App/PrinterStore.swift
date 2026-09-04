@@ -613,12 +613,15 @@ final class PrinterStore: ObservableObject {
             }
             telemetry[serial] = value
             // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment;
-            // surface a dismissible notice on the card so the change is not silent.
-            let detached = SpoolbaseShared.spools.detachAssignmentsReplacedByNFC(
-                printerSerial: serial, previous: previous?.filamentGroups ?? [], current: value.filamentGroups)
-            for item in detached {
-                let text = AppSettings.shared.t("{0} returned to storage (NFC tag detected in {1})", item.spoolID, item.slot)
-                spoolNotices[serial, default: []].append(text)
+            // surface a dismissible notice on the card so the change is not silent. Skipped entirely
+            // when Spoolbase is off: the switch stops the feature from touching stored rolls at all.
+            if AppSettings.shared.spoolbaseEnabled {
+                let detached = SpoolbaseShared.spools.detachAssignmentsReplacedByNFC(
+                    printerSerial: serial, previous: previous?.filamentGroups ?? [], current: value.filamentGroups)
+                for item in detached {
+                    let text = AppSettings.shared.t("{0} returned to storage (NFC tag detected in {1})", item.spoolID, item.slot)
+                    spoolNotices[serial, default: []].append(text)
+                }
             }
             recordTemperature(serial: serial, value: value)
             connectionMessages[serial] = nil

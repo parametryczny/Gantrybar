@@ -120,6 +120,10 @@ final class TelegramBot {
 
     private func sendSpools() async {
         let s = AppSettings.shared
+        guard s.spoolbaseEnabled else {
+            await send(text: s.t("Spoolbase is switched off in Settings."), replyMarkup: commandKeyboard())
+            return
+        }
         let spools = SpoolbaseShared.spools.spools
             .filter { $0.status != .archived && $0.status != .empty && $0.percent <= 20 }
             .sorted { $0.percent < $1.percent }

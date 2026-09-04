@@ -122,7 +122,9 @@ public sealed class GantryWebServer
                     {
                         var s = g.Slots[si];
                         var loc = SpoolLocation.At(p.Serial, g.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si);
-                        var sp = SpoolbaseShared.Spools.SpoolAt(loc);
+                        // The dashboard mirrors the card, so it respects the same switch: with Spoolbase
+                        // off no assigned roll is consulted and the raw AMS reading is served.
+                        var sp = AppSettings.SpoolbaseEnabled ? SpoolbaseShared.Spools.SpoolAt(loc) : null;
                         var def = sp != null ? SpoolbaseShared.Filaments.Filaments.FirstOrDefault(f => f.Id == sp.FilamentDefinitionId) : null;
                         slots.Add(new
                         {

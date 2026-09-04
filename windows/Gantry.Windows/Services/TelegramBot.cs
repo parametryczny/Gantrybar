@@ -221,6 +221,11 @@ public sealed class TelegramBot
 
     private async Task SendSpoolsAsync()
     {
+        if (!AppSettings.SpoolbaseEnabled)
+        {
+            await SendAsync(AppSettings.T("Spoolbase is switched off in Settings."), CommandKeyboard());
+            return;
+        }
         var lines = OnUi(() =>
         {
             var low = SpoolbaseShared.Spools.Spools

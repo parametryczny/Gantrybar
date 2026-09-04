@@ -1081,7 +1081,8 @@ public partial class DashboardWindow : Window
             bool hasGroups = groups.Count > 0;
             // Only rebuild the dock when the AMS data or an assigned spool actually changed (no flicker).
             var sig = new System.Text.StringBuilder();
-            sig.Append(AppSettings.CardShowSpoolGrams ? "g1" : "g0").Append('|');   // grams toggle changes the dock
+            sig.Append(AppSettings.CardShowSpoolGrams ? "g1" : "g0")
+               .Append(AppSettings.SpoolbaseEnabled ? "s1" : "s0").Append('|');   // both toggles change the dock
             for (int gi = 0; gi < groups.Count; gi++)
             {
                 var g = groups[gi];
@@ -1089,7 +1090,9 @@ public partial class DashboardWindow : Window
                 for (int si = 0; si < g.Slots.Count; si++)
                 {
                     var s = g.Slots[si];
-                    var sp = SpoolbaseShared.Spools.SpoolAt(SpoolLocation.At(Serial, g.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si));
+                    var sp = AppSettings.SpoolbaseEnabled
+                        ? SpoolbaseShared.Spools.SpoolAt(SpoolLocation.At(Serial, g.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, gi, si))
+                        : null;
                     sig.Append(s.Material).Append(s.ColorHex).Append(s.RemainingPercent).Append(s.IsActive)
                        .Append((int?)s.RemainingWeightGrams)
                        .Append(sp?.Id).Append((int?)sp?.RemainingWeightGrams).Append(';');
@@ -1393,7 +1396,10 @@ public partial class DashboardWindow : Window
         }
         inner.Children.Add(header);
 
-        SpoolLocation? SlotLoc(int si) => serial != null
+        // With Spoolbase off the slot has no Spoolbase identity at all: no assigned roll is looked up
+        // (so the chip shows the raw AMS reading) and there is nothing to click, because SlotChip keys
+        // both off this one location. Matches macOS and Linux.
+        SpoolLocation? SlotLoc(int si) => serial != null && AppSettings.SpoolbaseEnabled
             ? SpoolLocation.At(serial, group.IsExternal ? SpoolFeeder.Ext : SpoolFeeder.Ams, groupIndex, si)
             : null;
         string SlotTitle(FilamentSlot s) => group.IsExternal ? group.DisplayName : $"{ShortName(group.DisplayName)} {s.Label}";

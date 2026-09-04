@@ -329,6 +329,12 @@ class Gantry:
         if AppIndicator is None and not background:
             self.window.show_all()
 
+    def _spoolbase_active(self) -> bool:
+        """Spoolbase is both switched on and actually loaded. Every roll-touching side effect keys off
+        this, so turning the feature off in Settings leaves the stored rolls exactly as they were."""
+        return (getattr(self, "physical_spools", None) is not None
+                and bool(self.config.data.get("spoolbase_enabled", True)))
+
     def _initial_update_check(self) -> bool:
         if bool(self.config.data.get("auto_update_check", False)):
             self.check_updates_background()
@@ -951,7 +957,8 @@ class Gantry:
             if getattr(self, "automations", None) is not None:
                 self.automations.evaluate(serial, previous, current)
         # Inserting an RFID/NFC roll supersedes a stale manual Spoolbase assignment in that slot.
-        if event == "telemetry" and getattr(self, "physical_spools", None) is not None:
+        # Skipped entirely when Spoolbase is off: the switch stops the feature from touching rolls.
+        if event == "telemetry" and self._spoolbase_active():
             for spool_id, slot_label in self.physical_spools.detach_assignments_replaced_by_nfc(
                     serial, previous.filament_groups, current.filament_groups):
                 name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
@@ -1004,7 +1011,9 @@ class Gantry:
                 self.notify(printer_name, body)
                 from . import telegram
                 telegram.notify(self, printer_name, body, "")
-            if event == "telemetry" and getattr(self, "physical_spools", None) is not None:
+            # Nothing is subtracted while Spoolbase is off, and nothing is remembered as subtracted
+            # either: switching it back on resumes from the grams the rolls had when it went off.
+            if event == "telemetry" and self._spoolbase_active():
                 from .consumption import on_finish
                 on_finish(self, serial, previous, current)
         previous_remaining = {slot.slot_id: slot.remaining for slot in previous.ams_slots}

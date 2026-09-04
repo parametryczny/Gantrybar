@@ -38,7 +38,12 @@ enum FilamentConsumption {
     }
 
     /// Called on every telemetry update. Acts only on the transition into `.finished`.
+    ///
+    /// With Spoolbase switched off nothing is subtracted, and nothing is remembered as subtracted
+    /// either: prints finished while the feature was off simply never happened as far as the rolls are
+    /// concerned. Switching it back on resumes from the grams the rolls had when it was switched off.
     static func onUpdate(printer: SavedPrinter, previous: PrinterTelemetry?, current: PrinterTelemetry) {
+        guard AppSettings.shared.spoolbaseEnabled else { return }
         guard previous?.state != .finished, current.state == .finished else { return }
         switch printer.kind {
         case .klipper: consumeKlipper(printer: printer, telemetry: current)

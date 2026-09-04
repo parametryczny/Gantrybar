@@ -35,8 +35,12 @@ public static class FilamentConsumption
     private static string JobId(string serial, PrinterTelemetry t) =>
         $"{serial}|{t.JobName ?? "?"}|{DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 3600}";
 
+    /// <summary>With Spoolbase switched off nothing is subtracted, and nothing is remembered as
+    /// subtracted either: prints finished while the feature was off never happened as far as the rolls
+    /// are concerned. Switching it back on resumes from the grams the rolls had when it went off.</summary>
     public static void OnUpdate(SavedPrinter printer, PrinterTelemetry? previous, PrinterTelemetry current)
     {
+        if (!AppSettings.SpoolbaseEnabled) return;
         if (previous?.State == PrinterState.Finished || current.State != PrinterState.Finished) return;
         switch (printer.Kind)
         {

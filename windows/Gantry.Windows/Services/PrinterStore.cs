@@ -536,12 +536,14 @@ public sealed class PrinterStore
                     _dismissedJobs.Remove(serial);
                 Telemetry[serial] = value;
                 // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment;
-                // surface a dismissible notice on the card so the change is not silent.
-                foreach (var (spoolId, slot) in SpoolbaseShared.Spools.DetachAssignmentsReplacedByNfc(serial, previous?.FilamentGroups ?? new(), value.FilamentGroups))
-                {
-                    if (!SpoolNotices.TryGetValue(serial, out var list)) SpoolNotices[serial] = list = new();
-                    list.Add(string.Format(AppSettings.T("{0} returned to storage (NFC tag detected in {1})"), spoolId, slot));
-                }
+                // surface a dismissible notice on the card so the change is not silent. Skipped entirely
+                // when Spoolbase is off: the switch stops the feature from touching stored rolls at all.
+                if (AppSettings.SpoolbaseEnabled)
+                    foreach (var (spoolId, slot) in SpoolbaseShared.Spools.DetachAssignmentsReplacedByNfc(serial, previous?.FilamentGroups ?? new(), value.FilamentGroups))
+                    {
+                        if (!SpoolNotices.TryGetValue(serial, out var list)) SpoolNotices[serial] = list = new();
+                        list.Add(string.Format(AppSettings.T("{0} returned to storage (NFC tag detected in {1})"), spoolId, slot));
+                    }
                 RecordTemperature(serial, value);
                 if (Printers.FirstOrDefault(p => p.Serial == serial) is { } observedPrinter)
                     PrinterInsights.Observe(observedPrinter, previous, value);

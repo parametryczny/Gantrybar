@@ -4,6 +4,10 @@ Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są op
 
 ## Niewydane
 
+### Zmienione
+
+- **przełącznik Spoolbase gasi teraz całą funkcję**, a nie tylko pozycję w menu. Przy wyłączonym Spoolbase kliknięcie slotu AMS nie otwiera okna przypisania, karta pokazuje surowe odczyty z AMS zamiast danych przypisanej rolki, po skończonym wydruku nic nie jest odejmowane, a tag NFC nie odpina przypisań. Rolki zostają nietknięte, więc ponowne włączenie wraca do stanu sprzed wyłączenia. Dotąd macOS i Windows ignorowały ten przełącznik poza kartą, a Linux blokował sam klik.
+
 ### Usunięte
 
 - **synchronizacja między komputerami** została w całości wycofana z macOS, Windows i GNU/Linux. Aplikacja nie wysyła już niczego do innych komputerów, nie przyjmuje zapisów przez sieć i nie przechowuje tokenu parowania ani listy sparowanych maszyn. Podgląd floty w przeglądarce zostaje i pozostaje tylko do odczytu.

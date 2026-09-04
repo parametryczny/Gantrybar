@@ -513,9 +513,12 @@ i18n.t("☕  Support the project"))
         language_changed = before.get("language") != self.app.config.data.get("language")
         appearance_changed = any(before.get(key) != self.app.config.data.get(key)
                                  for key in ("theme", "panel_transparency"))
+        # spoolbase_enabled belongs here too: it decides whether a slot shows its assigned roll and
+        # whether the slot is clickable at all, so the cards have to be rebuilt when it flips.
         card_changed = appearance_changed or any(before.get(key) != self.app.config.data.get(key)
                                                   for key in (*self.card_options.keys(),
-                                                              "card_show_spool_grams", "monochrome"))
+                                                              "card_show_spool_grams", "monochrome",
+                                                              "spoolbase_enabled"))
         menu_changed = language_changed or before.get("spoolbase_enabled") != self.app.config.data.get("spoolbase_enabled")
         if language_changed:
             self.app.language = str(self.app.config.data.get("language", "pl"))

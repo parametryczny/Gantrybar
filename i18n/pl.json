@@ -645,6 +645,7 @@
   "Spool {0} is elsewhere": "Rolka {0} jest w innym miejscu",
   "Spool {0} is elsewhere. Move it here?": "Rolka {0} jest w innym miejscu. Przenieść tutaj?",
   "Spoolbase": "Spoolbase",
+  "Spoolbase is switched off in Settings.": "Spoolbase jest wyłączony w ustawieniach.",
   "Spoolbase — filament stock": "Spoolbase — magazyn filamentów",
   "Spools": "Liczba szpul",
   "Sport": "Sport",
