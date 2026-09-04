@@ -38,6 +38,23 @@ enum Localization {
     /// Entry count for a language, used by the self-test; never needed at runtime.
     static func loadedCount(for code: String) -> Int { table(for: code).count }
 
+    /// Renders one `{0}` argument. A placeholder carries no precision, so a raw Double would print
+    /// every digit it has ("78.52096950885323 h"). One decimal, with a bare integer when there is no
+    /// fraction, is the sane default; a call site needing other precision formats the value itself
+    /// and passes the resulting text.
+    static func describe(_ value: Any) -> String {
+        switch value {
+        case let double as Double: trimmed(double)
+        case let float as Float: trimmed(Double(float))
+        case let cg as CGFloat: trimmed(Double(cg))
+        default: String(describing: value)
+        }
+    }
+
+    private static func trimmed(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value.rounded())) : String(format: "%.1f", value)
+    }
+
     // MARK: Loading
 
     private static let lock = NSLock()

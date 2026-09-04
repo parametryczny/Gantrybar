@@ -178,9 +178,9 @@ final class FleetStatsViewController: NSViewController {
         lines.append(s.t("Period: {0}", periodLabel()))
         lines.append(s.t("Prints: {0} (failed: {1})", prints, failed))
         lines.append(s.t("Success rate: {0}", success.map { "\($0)%" } ?? "—"))
-        lines.append(s.t("Print time: {0} h", hours))
+        lines.append(s.t("Print time: {0} h", String(format: "%.1f", hours)))
         if grams > 0 {
-            lines.append(s.t("Filament: {0} kg", grams / 1000))
+            lines.append(s.t("Filament: {0} kg", String(format: "%.2f", grams / 1000)))
         }
 
         body.addArrangedSubview(label(s.t("SUMMARY"), 10, .bold, GantryTheme.muted))
@@ -193,7 +193,8 @@ final class FleetStatsViewController: NSViewController {
             body.addArrangedSubview(label(s.t("No printers."), 12, .regular, GantryTheme.secondary))
         }
         for row in all.sorted(by: { $0.prints > $1.prints }) {
-            let detail = s.t("{0} prints · {1} h · {2}", row.prints, row.hours, row.successPercent.map { "\($0)%" } ?? "—")
+            let detail = s.t("{0} prints · {1} h · {2}", row.prints, String(format: "%.1f", row.hours),
+                             row.successPercent.map { "\($0)%" } ?? "—")
             let box = card([row.name, detail], titleFirst: true)
             body.addArrangedSubview(box)
             box.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true

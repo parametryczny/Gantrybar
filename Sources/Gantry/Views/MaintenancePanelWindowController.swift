@@ -103,7 +103,7 @@ final class MaintenancePanelViewController: NSViewController {
         header.spacing = 8
         body.addArrangedSubview(header)
         header.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
-        let summary = label(s.t("{0} print h · nozzle {1}", snapshot.totalPrintHours,
+        let summary = label(s.t("{0} print h · nozzle {1}", String(format: "%.1f", snapshot.totalPrintHours),
                                    telemetry.nozzleDiameter.map { String(format: "%.1f mm", $0) } ?? "—"),
                             12, .regular, GantryTheme.secondary)
         body.addArrangedSubview(summary)
@@ -243,13 +243,13 @@ final class MaintenancePanelViewController: NSViewController {
         let title = label("\(icon)  \(task.title)", 11, .semibold)
         let timing: String
         if task.isDue {
-            timing = s.t("Overdue by {0} h", task.overdueHours)
+            timing = s.t("Overdue by {0} h", String(format: "%.0f", task.overdueHours))
         } else if let until = task.snoozedUntil, until > Date() {
             // Day + month only: the full date pushed the task title into an ellipsis in a two-column card.
             let day = until.formatted(.dateTime.day().month(.abbreviated))
             timing = s.t("Snoozed until {0}", day)
         } else {
-            timing = s.t("In {0} print h", task.remainingHours)
+            timing = s.t("In {0} print h", String(format: "%.0f", task.remainingHours))
         }
         let timingLabel = label(timing.replacingOccurrences(of: " druku", with: ""), 10, .regular, GantryTheme.secondary)
         timingLabel.setContentHuggingPriority(.required, for: .horizontal)

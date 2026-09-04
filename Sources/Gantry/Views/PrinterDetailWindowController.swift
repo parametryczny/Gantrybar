@@ -672,8 +672,8 @@ final class PrinterDetailViewController: NSViewController {
         }.prefix(2))
         for task in shown {
             let timing = task.isDue
-                ? settings.t("overdue by {0} h", task.overdueHours)
-                : settings.t("in {0} print h", task.remainingHours)
+                ? settings.t("overdue by {0} h", String(format: "%.0f", task.overdueHours))
+                : settings.t("in {0} print h", String(format: "%.0f", task.remainingHours))
             maintenanceStack.addArrangedSubview(line("\(task.isUrgent ? "!" : task.isDue ? "⚠" : "○")  \(task.title) · \(timing)",
                 color: task.isUrgent ? .systemRed : task.isDue ? .systemYellow : GantryTheme.secondary,
                 weight: task.isDue ? .semibold : .regular))

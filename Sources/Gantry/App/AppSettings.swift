@@ -258,10 +258,11 @@ final class AppSettings: ObservableObject {
     func t(_ english: String, arguments: [Any]) -> String {
         var result = Localization.text(english, language: language)
         for (index, argument) in arguments.enumerated() {
-            result = result.replacingOccurrences(of: "{\(index)}", with: String(describing: argument))
+            result = result.replacingOccurrences(of: "{\(index)}", with: Localization.describe(argument))
         }
         return result
     }
+
 
     func stateLabel(_ state: PrinterState) -> String {
         switch state {

@@ -149,6 +149,12 @@ enum ProtocolSelfTest {
         if Localization.text("Launch at login", language: "en") != "Launch at login" {
             failures.append("English did not pass through")
         }
+        // A raw Double in a placeholder printed all 15 digits, so maintenance read "za
+        // 78.52096950885323 h druku". One decimal, and no ".0" tail on whole numbers.
+        if Localization.describe(78.52096950885323) != "78.5" { failures.append("double not rounded in placeholder") }
+        if Localization.describe(180.0) != "180" { failures.append("whole number kept a decimal tail") }
+        if Localization.describe(42) != "42" { failures.append("integer argument was reformatted") }
+
         // Every discovered language must carry a display name; the list drives the Settings popup.
         let languages = Localization.available()
         if !languages.contains(where: { $0.code == "en" }) { failures.append("English missing from language list") }
