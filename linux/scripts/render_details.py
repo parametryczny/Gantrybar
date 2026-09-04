@@ -16,15 +16,18 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
 from gantry import app as gapp  # noqa: E402
+from gantry import i18n
 from gantry.details import DetailWindow  # noqa: E402
 from gantry.core import (  # noqa: E402
     FilamentGroup, FilamentSlot, NozzleTelemetry, Printer, PrinterKind, PrinterState, Telemetry,
 )
 
 
+i18n.set_language("pl")
+
+
 class StubApp:
     language = "pl"
-    text = gapp.TEXT["pl"]
     window = None
 
     class _Cfg:

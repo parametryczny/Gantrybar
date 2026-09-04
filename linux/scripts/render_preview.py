@@ -15,6 +15,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
 from gantry import app as gapp  # noqa: E402
+from gantry import i18n
 from gantry.core import (  # noqa: E402
     FilamentGroup,
     FilamentSlot,
@@ -57,9 +58,11 @@ class _StubInsights:
                 "consumedGrams": 0.0, "totalPrintHours": 0.0}
 
 
+i18n.set_language("pl")
+
+
 class StubApp:
     language = "pl"
-    text = gapp.TEXT["pl"]
     config = _StubConfig()
     physical_spools = None
     filament_store = None

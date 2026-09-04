@@ -13,6 +13,7 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
 from gantry import app as gapp  # noqa: E402
+from gantry import i18n
 from gantry.spoolbase import Filament, SpoolbaseWindow  # noqa: E402
 
 
@@ -24,9 +25,11 @@ class StubConfig:
     data = {"spoolbase_enabled": True, "stock_red_max": 1, "stock_blue_max": 5}
 
 
+i18n.set_language("pl")
+
+
 class StubApp:
     language = "pl"
-    text = gapp.TEXT["pl"]
     window = StubWindow()
     config = StubConfig()
 
