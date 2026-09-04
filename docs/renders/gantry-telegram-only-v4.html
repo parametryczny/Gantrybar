@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=1448,height=1086,initial-scale=1">
+<title>Gantry × Telegram — Telegram only</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:1448px;height:1086px;overflow:hidden;background:#eeeae2;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;color:#f3f3f0}.stage{position:relative;width:1448px;height:1086px;background:#eeeae2}.panel{position:absolute;overflow:hidden}.dark{background:radial-gradient(circle at 75% 0,#262a2d 0,#17191b 38%,#101213 82%)}.cream{background:radial-gradient(circle at 51% 45%,#f4f0e8 0,#e9e4db 58%,#ddd7cd 100%);color:#181512}.brand{height:auto}.headline{font-weight:470;letter-spacing:-1.7px;line-height:.91;font-size:42px}.eyebrow{font:650 7px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1.45px;color:#858b8e}.copy{font-size:8px;line-height:1.45;color:#92989b}.tg{border-radius:50%;background:#2aabee;display:grid;place-items:center;box-shadow:0 0 25px #2aabee33}.tg svg{width:55%;height:55%}.phone{position:absolute;overflow:hidden;background:#070809;border:1px solid #4a4e51;box-shadow:0 24px 65px #000b}.phone img{width:100%;height:100%;object-fit:cover;display:block}.warm:after{content:"";position:absolute;inset:0;border-radius:inherit;border-top:1.5px solid #ff9b5d;border-right:1.5px solid #ff7543;box-shadow:inset -2px 0 10px #ff6c4452,0 0 18px #ff6c443d;pointer-events:none}.orange{color:#ff6b43}.orange-line{height:1px;background:#ff6b43;box-shadow:0 0 10px #ff6b43}.pill{border:1px solid #454a4d;border-radius:999px;padding:7px 11px;font:650 7px ui-monospace,SFMono-Regular,Menlo,monospace;color:#d5d8d8;background:#1b1e20}
+
+/* two editorial frames, each featuring a different real Telegram screen */
+.control{left:0;top:0;width:530px;height:350px}.control-copy{position:absolute;z-index:6;left:35px;top:31px;width:235px}.control-copy .brand{width:87px;margin-bottom:38px}.control-copy .headline{font-size:34px}.control-copy .copy{width:168px;margin-top:15px}.control-phone{left:281px;top:-72px;width:224px;height:493px;border-radius:29px;transform:rotate(-5deg);z-index:3}.control:after{content:"";position:absolute;left:242px;top:0;width:288px;height:350px;background:linear-gradient(90deg,#111314 0,transparent 32%);pointer-events:none;z-index:4}
+
+.commands{left:544px;top:0;width:904px;height:350px}.commands-copy{position:absolute;left:37px;top:31px;width:375px;z-index:5}.commands-copy .headline{font-size:37px;margin-top:12px}.commands-copy .copy{width:260px;margin-top:16px}.command-flow{display:flex;align-items:center;gap:8px;margin-top:29px}.command-flow i{width:35px;border-top:1px dashed #666c6f}.command-flow b{color:#ff6b43;font-size:12px}.command-note{margin-top:18px;font:600 6px ui-monospace,SFMono-Regular,Menlo,monospace;color:#797f82;letter-spacing:.5px}.commands-phone{left:594px;top:21px;width:188px;height:413px;border-radius:25px;z-index:4}.commands-glow{position:absolute;right:-40px;bottom:-75px;width:380px;height:260px;background:radial-gradient(circle,#ff69452c 0,transparent 70%)}
+
+/* one generous hero, with the third real Telegram state */
+.hero{left:0;top:364px;width:1448px;height:414px}.hero-copy{position:absolute;z-index:6;left:55px;top:42px;width:400px}.hero-copy .brand{width:99px;margin-bottom:48px}.hero-copy .headline{font-size:46px}.hero-copy .copy{width:265px;color:#6f6962;margin-top:18px}.hero-copy .cta{display:flex;gap:8px;margin-top:27px}.hero-copy .cta span{font-size:7px;padding:8px 13px;border-radius:2px;border:1px solid #aaa49b}.hero-copy .cta .on{background:#171717;color:#f1eee8;border-color:#171717}.hand{position:absolute;z-index:2;left:376px;top:-91px;width:790px;height:auto}.hero-screen{left:733px;top:20px;width:174px;height:347px;border-radius:28px;z-index:5;transform:rotate(-.3deg)}.hero-notes{position:absolute;z-index:6;left:1092px;top:72px;width:295px}.hero-notes .eyebrow{color:#77716a}.hero-notes h3{font-size:22px;line-height:1.02;margin:18px 0 12px;color:#211d19}.hero-notes p{font-size:9px;line-height:1.5;color:#716b64;width:240px}.facts{margin-top:30px;width:270px}.fact{display:flex;align-items:center;height:42px;border-top:1px solid #bbb5ac}.fact b{font:650 8px ui-monospace,SFMono-Regular,Menlo,monospace;color:#28241f}.fact span{margin-left:auto;font-size:7px;color:#77716a}.hero-notes .orange-line{margin-top:21px;width:86px}
+
+/* Telegram notifications only — no desktop settings */
+.alerts{left:0;top:792px;width:1448px;height:294px}.alerts-head{position:absolute;left:42px;top:35px;width:260px}.alerts-head .brand{width:82px;margin-bottom:31px}.alerts-head .headline{font-size:31px}.alerts-head .copy{margin-top:14px;width:190px}.message-row{position:absolute;left:335px;top:48px;display:flex;gap:15px}.message{width:330px;height:197px;border:1px solid #44494c;border-radius:5px;background:linear-gradient(145deg,#24282a,#171a1c);padding:16px 17px;box-shadow:0 16px 38px #0008}.message .top{display:flex;align-items:center;gap:10px;margin-bottom:15px}.message .tg{width:29px;height:29px;flex:none}.message .top b{display:block;font-size:9px}.message .top small{display:block;font-size:5px;color:#888e91;margin-top:2px}.message h4{font-size:12px;margin:0 0 9px}.message p{font-size:8px;line-height:1.52;color:#b3b8ba;margin:0}.message .time{position:absolute;margin-top:13px;font-size:6px;color:#747a7d}.message.alert{border-color:#714039;background:linear-gradient(145deg,#2d211f,#191a1b)}.message.alert h4{color:#ff7654}.message.done{border-color:#3d5546}.message.done h4{color:#70dc91}.message.maint{border-color:#665a36}.message.maint h4{color:#e2bd56}.platforms{position:absolute;right:36px;bottom:22px;font-size:6px;color:#71777a;letter-spacing:.7px}
+/* The photograph already contains the handset. Composite only screen content. */
+.hand{top:-65px}
+.hero-screen{position:absolute;overflow:hidden;left:759px;top:0;width:169px;height:366px;border:0;border-radius:18px;background:#08090a;box-shadow:none;z-index:5;transform:none}
+.hero-screen img{display:block;width:100%;height:100%;object-fit:cover}
+.hero-screen:after{content:none}
+</style>
+</head>
+<body><main class="stage">
+  <section class="panel dark control">
+    <div class="control-copy"><img class="brand" src="gantry-telegram-real-assets/gantry-white.png"><div class="headline">YOUR PRINTER.<br>RIGHT HERE.</div><div class="copy">Live temperatures, progress, camera and safe print controls inside the Telegram conversation.</div></div>
+    <div class="phone warm control-phone"><img src="gantry-telegram-real-assets/telegram-status-camera.jpeg"></div>
+  </section>
+
+  <section class="panel dark commands">
+    <div class="commands-copy"><div class="eyebrow">GANTRYAPP / TELEGRAM BOT</div><div class="headline">ASK ONCE.<br>GET THE WHOLE FLEET.</div><div class="copy">The bot answers in native Telegram messages. Commands remain visible under the input field — no syntax to remember.</div><div class="command-flow"><span class="pill">/status</span><i></i><span class="pill">/spools</span><i></i><span class="pill">/history</span><b>›</b></div><div class="command-note">7 COMMANDS · 6 CONTROLS · CAMERA FRAMES</div></div>
+    <div class="commands-glow"></div><div class="phone warm commands-phone"><img src="gantry-telegram-real-assets/telegram-history.jpeg"></div>
+  </section>
+
+  <section class="panel cream hero">
+    <div class="hero-copy"><img class="brand" src="gantry-telegram-real-assets/gantry-black.png"><div class="headline">ALL YOUR PRINTERS.<br>IN TELEGRAM.</div><div class="copy">Check the fleet, filament and recent prints wherever you are. Gantry keeps the local connection; Telegram carries the useful answer.</div><div class="cta"><span class="on">Open GantryApp bot</span><span>See commands</span></div></div>
+    <img class="hand" src="gantry-telegram-real-assets/hand-phone.png"><div class="hero-screen"><img src="gantry-telegram-real-assets/telegram-fleet.jpeg"></div>
+    <div class="hero-notes"><div class="eyebrow">ONE CONVERSATION. THREE VIEWS.</div><h3>Fleet, spools<br>and print history.</h3><p>Every screen below comes from the real GantryApp Telegram bot — with the same messages and controls used today.</p><div class="facts"><div class="fact"><b>/all</b><span>fleet status</span></div><div class="fact"><b>/spools</b><span>filament check</span></div><div class="fact"><b>/watch 10m</b><span>camera monitoring</span></div></div><div class="orange-line"></div></div>
+  </section>
+
+  <section class="panel dark alerts">
+    <div class="alerts-head"><img class="brand" src="gantry-telegram-real-assets/gantry-white.png"><div class="headline">THE BOT<br>SPEAKS FIRST.</div><div class="copy">Important changes arrive as Telegram notifications — even when Gantry is closed.</div></div>
+    <div class="message-row">
+      <article class="message done"><div class="top"><div class="tg"><svg viewBox="0 0 64 64"><path d="M8 31 55 12 42 53 29 40 21 47 23 36 48 19 18 33Z" fill="white"/></svg></div><div><b>GantryApp</b><small>bot · now</small></div></div><h4>✓ P2S — Druk zakończony</h4><p>zero clearance dewalt 7492<br>Czas druku 2 h 14 min</p><div class="time">16:28 · delivered</div></article>
+      <article class="message alert"><div class="top"><div class="tg"><svg viewBox="0 0 64 64"><path d="M8 31 55 12 42 53 29 40 21 47 23 36 48 19 18 33Z" fill="white"/></svg></div><div><b>GantryApp</b><small>bot · now</small></div></div><h4>! X1 — Druk wstrzymany</h4><p>Wykryto problem z filamentem.<br>Sprawdź slot AMS A3.</p><div class="time">16:31 · requires attention</div></article>
+      <article class="message maint"><div class="top"><div class="tg"><svg viewBox="0 0 64 64"><path d="M8 31 55 12 42 53 29 40 21 47 23 36 48 19 18 33Z" fill="white"/></svg></div><div><b>GantryApp</b><small>bot · now</small></div></div><h4>⌕ X2D — Konserwacja</h4><p>Smarowanie osi przekroczone<br>o 23 godziny pracy.</p><div class="time">16:34 · reminder</div></article>
+    </div><div class="platforms">TELEGRAM · macOS · WINDOWS · LINUX</div>
+  </section>
+</main></body></html>

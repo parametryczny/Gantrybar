@@ -165,6 +165,9 @@ private final class AutomationRowView: NSView {
     private let onRun: (PrinterAutomation) -> Void
 
     private let enabledCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    /// One-line "trigger → action" digest, so the list is readable without opening every rule.
+    /// Linux has shown this for a while; macOS carried the summary helpers but never displayed them.
+    private let summaryLabel = NSTextField(labelWithString: "")
     private let nameField = NSTextField()
     private let triggerPopup = NSPopUpButton()
     private let triggerValueContainer = NSView()
@@ -250,7 +253,11 @@ private final class AutomationRowView: NSView {
         actionRow.alignment = .centerY
         actionRow.spacing = 6
 
-        let stack = NSStackView(views: [topRow, triggerRow, actionRow, actionValueContainer])
+        summaryLabel.font = .systemFont(ofSize: 11)
+        summaryLabel.textColor = .secondaryLabelColor
+        summaryLabel.lineBreakMode = .byTruncatingTail
+
+        let stack = NSStackView(views: [topRow, summaryLabel, triggerRow, actionRow, actionValueContainer])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -268,6 +275,19 @@ private final class AutomationRowView: NSView {
         syncTriggerSelection()
         syncActionSelection()
         syncRunButton()
+        syncSummary()
+    }
+
+    /// "at layer 150 → pause". The enum summaries take the lookup as a closure, so the row decides
+    /// how placeholders are filled.
+    private func syncSummary() {
+        let trigger = automation.trigger.summary { key, arguments in
+            AppSettings.shared.t(key, arguments: arguments)
+        }
+        let action = automation.action.summary { key, arguments in
+            AppSettings.shared.t(key, arguments: arguments)
+        }
+        summaryLabel.stringValue = "\(trigger)  →  \(action)"
     }
 
     // MARK: Trigger
@@ -435,6 +455,7 @@ private final class AutomationRowView: NSView {
         automation.name = nameField.stringValue.isEmpty ? t("Automation") : nameField.stringValue
         automation.trigger = currentTrigger()
         automation.action = currentAction()
+        syncSummary()
         onChange(automation)
     }
 

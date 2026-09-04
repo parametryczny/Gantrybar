@@ -15,7 +15,21 @@ enum AutomationTrigger: Codable, Equatable, Sendable {
         case .manual: t("manually", [])
         case .atLayer(let n): t("at layer {0}", [n])
         case .atProgress(let p): t("at {0}%", [p])
-        case .onState(let s): t("on state: {0}", [s])
+        // The stored value is PrinterState.rawValue ("printing"); show the state's own name instead,
+        // looked up through the same catalog rather than printed raw.
+        case .onState(let raw): t("on state: {0}", [t(Self.stateName(raw), [])])
+        }
+    }
+
+    private static func stateName(_ raw: String) -> String {
+        switch PrinterState(rawValue: raw) {
+        case .idle: "Ready"
+        case .printing: "Printing"
+        case .paused: "Paused"
+        case .finished: "Finished"
+        case .error: "Error"
+        case .offline: "Offline"
+        case nil: raw
         }
     }
 }

@@ -1201,30 +1201,62 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         ])
 
         // Disconnect scrim on top of everything (click-through, so ⋯/details still work).
+        // Frosted glass, not a flat grey wash: the same material the panel itself uses, so an offline
+        // card reads as the rest of the app rather than as a bug. The message sits in its own small
+        // panel, because loose text floating on a dimmed card looked unfinished.
         disconnectOverlay.wantsLayer = true
-        disconnectOverlay.layer?.backgroundColor = GantryTheme.canvas.withAlphaComponent(0.66).cgColor
         disconnectOverlay.layer?.cornerRadius = GantryTheme.cardRadius
+        disconnectOverlay.layer?.masksToBounds = true
         disconnectOverlay.isHidden = true
+        let frost = NSVisualEffectView()
+        frost.material = .hudWindow
+        frost.blendingMode = .withinWindow
+        frost.state = .active
+        frost.translatesAutoresizingMaskIntoConstraints = false
+        disconnectOverlay.addSubview(frost)
+
         let offIcon = NSImageView(image: NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: nil) ?? NSImage())
-        offIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        offIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
         offIcon.contentTintColor = GantryTheme.secondary
         disconnectLabel.font = .systemFont(ofSize: 11, weight: .medium)
         disconnectLabel.textColor = GantryTheme.secondary
         disconnectLabel.alignment = .center
         disconnectLabel.lineBreakMode = .byWordWrapping
         disconnectLabel.maximumNumberOfLines = 3
-        let offStack = NSStackView(views: [offIcon, disconnectLabel])
-        offStack.orientation = .vertical
-        offStack.alignment = .centerX
-        offStack.spacing = 6
+        let offContent = NSStackView(views: [offIcon, disconnectLabel])
+        offContent.orientation = .vertical
+        offContent.alignment = .centerX
+        offContent.spacing = 6
+        offContent.translatesAutoresizingMaskIntoConstraints = false
+
+        let offStack = NSView()
+        offStack.wantsLayer = true
+        offStack.layer?.cornerRadius = 12
+        offStack.layer?.backgroundColor = GantryTheme.card.withAlphaComponent(0.72).cgColor
+        offStack.layer?.borderWidth = 1
+        offStack.layer?.borderColor = GantryTheme.line.cgColor
         offStack.translatesAutoresizingMaskIntoConstraints = false
+        offStack.addSubview(offContent)
         disconnectOverlay.addSubview(offStack)
+        NSLayoutConstraint.activate([
+            frost.leadingAnchor.constraint(equalTo: disconnectOverlay.leadingAnchor),
+            frost.trailingAnchor.constraint(equalTo: disconnectOverlay.trailingAnchor),
+            frost.topAnchor.constraint(equalTo: disconnectOverlay.topAnchor),
+            frost.bottomAnchor.constraint(equalTo: disconnectOverlay.bottomAnchor),
+            offContent.leadingAnchor.constraint(equalTo: offStack.leadingAnchor, constant: 14),
+            offContent.trailingAnchor.constraint(equalTo: offStack.trailingAnchor, constant: -14),
+            offContent.topAnchor.constraint(equalTo: offStack.topAnchor, constant: 12),
+            offContent.bottomAnchor.constraint(equalTo: offStack.bottomAnchor, constant: -12)
+        ])
         disconnectOverlay.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(disconnectOverlay)
         NSLayoutConstraint.activate([
             disconnectOverlay.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             disconnectOverlay.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            disconnectOverlay.topAnchor.constraint(equalTo: content.topAnchor),
+            // Starts BELOW the header on purpose. Covering the whole card hid the name, the details
+            // chip and the ⋯ menu behind a dim, so an unreachable printer could not be edited or
+            // removed without first getting it back online — exactly when you need those actions.
+            disconnectOverlay.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
             disconnectOverlay.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             offStack.centerXAnchor.constraint(equalTo: disconnectOverlay.centerXAnchor),
             offStack.centerYAnchor.constraint(equalTo: disconnectOverlay.centerYAnchor),
