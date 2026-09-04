@@ -14,6 +14,7 @@ import threading
 import uuid
 from typing import Any
 
+from . import i18n
 from .core import PrinterKind, PrinterState, Telemetry
 
 # Bambu MQTT command payloads (same as macOS).
@@ -44,7 +45,7 @@ def trigger_summary(rule: dict[str, Any], pl: bool) -> str:
         return f"po {value}%" if pl else f"at {value}%"
     if kind == "on_state":
         return f"gdy stan: {value}" if pl else f"on state: {value}"
-    return "ręcznie" if pl else "manually"
+    returni18n.t("manually")
 
 
 def action_summary(rule: dict[str, Any], pl: bool) -> str:

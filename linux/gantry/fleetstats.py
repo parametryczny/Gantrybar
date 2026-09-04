@@ -14,12 +14,14 @@ from typing import Any
 
 from gi.repository import Gtk  # type: ignore
 
+from . import i18n
+
 PERIODS = (7, 30, 365, 0)   # 0 = all time
 
 
 class FleetStatsDialog(Gtk.Dialog):
     def __init__(self, app: Any) -> None:
-        super().__init__(title="Statystyki floty" if app.language == "pl" else "Fleet statistics",
+        super().__init__(title=i18n.t("Fleet statistics"),
                          transient_for=app.window, modal=True)
         self.app = app
         self.pl = app.language == "pl"
@@ -28,8 +30,8 @@ class FleetStatsDialog(Gtk.Dialog):
         self.set_default_size(470, 560)
         self.set_size_request(420, 420)
 
-        self.add_button("Gotowe" if self.pl else "Done", Gtk.ResponseType.OK)
-        export = self.add_button("Eksportuj do pliku…" if self.pl else "Export to file…",
+        self.add_button(i18n.t("Done"), Gtk.ResponseType.OK)
+        export = self.add_button(i18n.t("Export to file…"),
                                  Gtk.ResponseType.APPLY)
         export.connect("clicked", self._export)
 
@@ -57,12 +59,12 @@ class FleetStatsDialog(Gtk.Dialog):
 
     def _period_label(self, days: int) -> str:
         if days == 7:
-            return "ostatnie 7 dni" if self.pl else "last 7 days"
+            returni18n.t("last 7 days")
         if days == 30:
-            return "ostatnie 30 dni" if self.pl else "last 30 days"
+            returni18n.t("last 30 days")
         if days == 365:
-            return "ostatni rok" if self.pl else "last year"
-        return "cała historia" if self.pl else "all time"
+            returni18n.t("last year")
+        returni18n.t("all time")
 
     def _period_changed(self, combo: Gtk.ComboBoxText) -> None:
         self.period_days = int(combo.get_active_id() or "30")
@@ -126,11 +128,11 @@ class FleetStatsDialog(Gtk.Dialog):
         if grams > 0:
             lines.append(f"Filament: {grams / 1000:.2f} kg")
 
-        self.body.pack_start(self._caption("PODSUMOWANIE" if self.pl else "SUMMARY"), False, False, 0)
+        self.body.pack_start(self._caption(i18n.t("SUMMARY")), False, False, 0)
         self.body.pack_start(self._card(lines), False, False, 0)
-        self.body.pack_start(self._caption("WEDŁUG DRUKARKI" if self.pl else "BY PRINTER"), False, False, 0)
+        self.body.pack_start(self._caption(i18n.t("BY PRINTER")), False, False, 0)
         if not rows:
-            self.body.pack_start(self._card(["Brak drukarek." if self.pl else "No printers."]),
+            self.body.pack_start(self._card([i18n.t("No printers.")]),
                                  False, False, 0)
         for row in sorted(rows, key=lambda item: item["prints"], reverse=True):
             row_success = self._success(row["prints"], row["failed"])
@@ -174,7 +176,7 @@ class FleetStatsDialog(Gtk.Dialog):
         if grams > 0:
             out.append(f"Filament: {grams / 1000:.2f} kg")
         out.append("")
-        out.append("Według drukarki:" if self.pl else "By printer:")
+        out.append(i18n.t("By printer:"))
         for row in sorted(rows, key=lambda item: item["prints"], reverse=True):
             row_success = self._success(row["prints"], row["failed"])
             mark = f"{row_success}%" if row_success is not None else "—"
@@ -184,10 +186,10 @@ class FleetStatsDialog(Gtk.Dialog):
 
     def _export(self, *_args: object) -> None:
         chooser = Gtk.FileChooserDialog(
-            title="Eksportuj statystyki" if self.pl else "Export statistics",
+            title=i18n.t("Export statistics"),
             transient_for=self, action=Gtk.FileChooserAction.SAVE)
-        chooser.add_buttons("Anuluj" if self.pl else "Cancel", Gtk.ResponseType.CANCEL,
-                            "Zapisz" if self.pl else "Save", Gtk.ResponseType.ACCEPT)
+        chooser.add_buttons(i18n.t("Cancel"), Gtk.ResponseType.CANCEL,
+i18n.t("Save"), Gtk.ResponseType.ACCEPT)
         chooser.set_current_name("gantry-statystyki.txt")
         chooser.set_do_overwrite_confirmation(True)
         if chooser.run() == Gtk.ResponseType.ACCEPT:

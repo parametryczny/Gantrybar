@@ -22,6 +22,8 @@ import cairo
 
 from gi.repository import Gdk, GLib, Gtk, PangoCairo  # type: ignore
 
+from . import i18n
+
 RING = 14.0
 RING_STROKE = 2.0
 COLLAPSED_WIDTH = 22.0
@@ -123,12 +125,12 @@ class EdgeDock:
                 return f"{entry['progress']}% · {minutes // 60}:{minutes % 60:02d}"
             return f"{entry['progress']}%"
         if state == "finished":
-            return "gotowe" if pl else "done"
+            returni18n.t("done")
         if state == "idle":
-            return "bezcz." if pl else "idle"
+            returni18n.t("idle")
         if state == "error":
-            return "błąd" if pl else "error"
-        return "brak" if pl else "offline"
+            returni18n.t("error")
+        returni18n.t("offline")
 
     # ------------------------------------------------------------ geometry
 

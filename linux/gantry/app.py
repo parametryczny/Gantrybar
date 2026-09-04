@@ -19,6 +19,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
+gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 try:
@@ -133,7 +134,7 @@ class PrinterDialog(Gtk.Dialog):
         box.pack_start(self.kind, False, False, 0)
         self.elegoo_model_row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.elegoo_model_row.pack_start(Gtk.Label(
-            label="Model Elegoo" if app.language == "pl" else "Elegoo model", xalign=0), False, False, 0)
+            label=i18n.t("Elegoo model"), xalign=0), False, False, 0)
         self.elegoo_model = Gtk.ComboBoxText()
         self.elegoo_model.append(PrinterKind.ELEGOO_CC1.value, "Centauri Carbon")
         self.elegoo_model.append(PrinterKind.ELEGOO_CC2.value, "Centauri Carbon 2")
@@ -142,7 +143,7 @@ class PrinterDialog(Gtk.Dialog):
         self.elegoo_model.connect("changed", lambda _combo: self._apply_kind())
         self.elegoo_model_row.pack_start(self.elegoo_model, False, False, 0)
         box.pack_start(self.elegoo_model_row, False, False, 0)
-        csv_button = Gtk.Button(label="Importuj wiele drukarek z CSV" if app.language == "pl" else "Import multiple printers from CSV")
+        csv_button = Gtk.Button(label=i18n.t("Import multiple printers from CSV"))
         csv_button.connect("clicked", lambda _button: app.import_csv_on_screen(self))
         box.pack_start(csv_button, False, False, 0)
 
@@ -196,8 +197,7 @@ class PrinterDialog(Gtk.Dialog):
         self.info = Gtk.Label(xalign=0, wrap=True); self.info.get_style_context().add_class("meta")
         box.pack_start(self.info, False, False, 0)
         self.progress_check = Gtk.CheckButton(
-            label=("Pokaż postęp tej drukarki na panelu systemowym" if app.language == "pl"
-                   else "Show this printer's progress in the system panel"))
+            label=(i18n.t("Show this printer's progress in the system panel")))
         self.progress_check.set_no_show_all(True)
         self.progress_check.set_active(bool(printer and app.config.is_progress_pinned(printer.serial)))
         self.progress_check.set_visible(printer is not None)
@@ -237,48 +237,22 @@ class PrinterDialog(Gtk.Dialog):
             self.fields["port"].set_text(str(defaults[kind]))
         if kind == PrinterKind.BAMBU:
             self.code_label.set_text(self.app.text["code"].split(" /")[0])
-            self.info.set_text(
-                "MQTT/TLS • port 8883. Dodatkowy adres VPN wpisz wyżej i przeskanuj ponownie."
-                if self.app.language == "pl" else
-                "MQTT/TLS • port 8883. Enter an additional VPN address above and scan again.")
+            self.info.set_text(i18n.t("MQTT/TLS • port 8883. Enter an additional VPN address above and scan again."))
         elif kind == PrinterKind.KLIPPER:
             self.code_label.set_text(self.app.text["api_optional"])
-            self.info.set_text(
-                "Moonraker • port 7125. Happy Hare MMU i Creality CFS są wykrywane automatycznie."
-                if self.app.language == "pl" else
-                "Moonraker • port 7125. Happy Hare MMU and Creality CFS are detected automatically.")
+            self.info.set_text(i18n.t("Moonraker • port 7125. Happy Hare MMU and Creality CFS are detected automatically."))
         elif kind == PrinterKind.PRUSA:
-            self.code_label.set_text("Klucz API PrusaLink" if self.app.language == "pl" else "PrusaLink API key")
-            self.info.set_text(
-                "PrusaLink • port 80 • połączenie lokalne, bez konta Prusy."
-                if self.app.language == "pl" else
-                "PrusaLink • port 80 • local connection, no Prusa account required.")
+            self.code_label.set_text(i18n.t("PrusaLink API key"))
+            self.info.set_text(i18n.t("PrusaLink • port 80 • local connection, no Prusa account required."))
         elif kind == PrinterKind.SNAPMAKER:
-            self.info.set_text(
-                "Snapmaker 2.0 / Artisan • HTTP, port 8080. Po dodaniu NA EKRANIE DRUKARKI pojawi się "
-                "prośba o zgodę — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym "
-                "wyłączeniu drukarki."
-                if self.app.language == "pl" else
-                "Snapmaker 2.0 / Artisan • HTTP, port 8080. After adding, the PRINTER SCREEN shows a "
-                "permission request — tap “Allow” to authorize. Re-authorize after each power cycle.")
+            self.info.set_text(i18n.t("Snapmaker 2.0 / Artisan • HTTP, port 8080. After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle."))
         elif kind == PrinterKind.ELEGOO_CC1:
-            self.info.set_text(
-                "Elegoo Centauri Carbon • SDCP WebSocket, port 3030 • bez kodu dostępu. Kamera: port 3031."
-                if self.app.language == "pl" else
-                "Elegoo Centauri Carbon • SDCP WebSocket, port 3030 • no access code. Camera: port 3031.")
+            self.info.set_text(i18n.t("Elegoo Centauri Carbon • SDCP WebSocket, port 3030 • no access code. Camera: port 3031."))
         elif kind == PrinterKind.ELEGOO_CC2:
-            self.code_label.set_text("Kod dostępu Elegoo" if self.app.language == "pl" else "Elegoo access code")
-            self.info.set_text(
-                "Elegoo Centauri Carbon 2 • MQTT LAN, port 1883. Włącz tryb LAN-only w drukarce. Kamera: MJPEG 8080."
-                if self.app.language == "pl" else
-                "Elegoo Centauri Carbon 2 • MQTT LAN, port 1883. Enable LAN-only mode on the printer. Camera: MJPEG 8080.")
+            self.code_label.set_text(i18n.t("Elegoo access code"))
+            self.info.set_text(i18n.t("Elegoo Centauri Carbon 2 • MQTT LAN, port 1883. Enable LAN-only mode on the printer. Camera: MJPEG 8080."))
         else:
-            self.info.set_text(
-                "Anycubic Kobra S1 • wpisz adres IP i włącz tryb LAN w drukarce. Gantry automatycznie pobierze "
-                "identyfikatory i dane MQTT (bootstrap 18910). Kamera: FLV 18088."
-                if self.app.language == "pl" else
-                "Anycubic Kobra S1 • enter its IP address and enable LAN mode on the printer. Gantry obtains "
-                "the MQTT identifiers and credentials automatically (bootstrap 18910). Camera: FLV 18088.")
+            self.info.set_text(i18n.t("Anycubic Kobra S1 • enter its IP address and enable LAN mode on the printer. Gantry obtains the MQTT identifiers and credentials automatically (bootstrap 18910). Camera: FLV 18088."))
 
     def start_scan(self) -> None:
         if self.selected_kind not in {PrinterKind.BAMBU, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}: return
@@ -526,32 +500,32 @@ class Gantry:
         if getattr(self, "indicator", None) is not None:
             self.indicator.set_status(AppIndicator.IndicatorStatus.PASSIVE)
         menu = Gtk.Menu()
-        panel_label = "Panel Gantry" if self.language == "pl" else "Gantry panel"
+        panel_label =i18n.t("Gantry panel")
         item = Gtk.MenuItem(label=panel_label); item.connect("activate", lambda *_: self.toggle_panel()); menu.append(item)
         if bool(self.config.data.get("spoolbase_enabled", True)):
-            spoolbase_label = "Spoolbase — magazyn filamentów" if self.language == "pl" else "Spoolbase — filament stock"
+            spoolbase_label =i18n.t("Spoolbase — filament stock")
             item = Gtk.MenuItem(label=spoolbase_label); item.connect("activate", lambda *_: self.toggle_spoolbase()); menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
 
         for label, callback in ((self.text["scan"], lambda *_: self.scan_and_import()),
                                 (self.text["add"], lambda *_: self.open_printer_dialog())):
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
-        reconnect = Gtk.MenuItem(label="Połącz ponownie (wszystkie)" if self.language == "pl" else "Reconnect (all)")
+        reconnect = Gtk.MenuItem(label=i18n.t("Reconnect (all)"))
         reconnect.connect("activate", lambda *_: self.reconnect_all()); menu.append(reconnect)
-        diagnostics = Gtk.MenuItem(label="Centrum diagnostyczne…" if self.language == "pl" else "Diagnostic Center…")
+        diagnostics = Gtk.MenuItem(label=i18n.t("Diagnostic Center…"))
         diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
-        stats = Gtk.MenuItem(label="Statystyki floty…" if self.language == "pl" else "Fleet statistics…")
+        stats = Gtk.MenuItem(label=i18n.t("Fleet statistics…"))
         stats.connect("activate", lambda *_: self.open_fleet_stats()); menu.append(stats)
         menu.append(Gtk.SeparatorMenuItem())
 
-        language = Gtk.MenuItem(label="Język: PL" if self.language == "pl" else "Language: EN")
+        language = Gtk.MenuItem(label=i18n.t("Language: EN"))
         language.connect("activate", lambda *_: self._toggle_language()); menu.append(language)
         quiet = Gtk.CheckMenuItem(label=self.text["quiet"]); quiet.set_active(bool(self.config.data.get("quiet_hours_enabled", True)))
         quiet.connect("toggled", lambda item: self._toggle_quiet(item.get_active())); menu.append(quiet)
-        updates = Gtk.MenuItem(label=("Sprawdź aktualizacje…" if self.language == "pl" else "Check for updates…"))
+        updates = Gtk.MenuItem(label=(i18n.t("Check for updates…")))
         updates.connect("activate", lambda *_: self.check_updates_background()); menu.append(updates)
         settings = Gtk.MenuItem(label=self.text["settings"]); settings.connect("activate", lambda *_: self.open_settings()); menu.append(settings)
-        legend = Gtk.MenuItem(label="Legenda kolorów" if self.language == "pl" else "Color legend")
+        legend = Gtk.MenuItem(label=i18n.t("Color legend"))
         legend_menu = Gtk.Menu()
         for label in (("Niebieski — drukowanie (świeże dane)", "Blue — printing (live data)"),
                       ("Zielony — gotowe / zakończone", "Green — ready / finished"),
@@ -560,16 +534,16 @@ class Gantry:
                       ("Szary — offline / brak / informacja neutralna", "Gray — offline / none / neutral")):
             item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
         legend_menu.append(Gtk.SeparatorMenuItem())
-        slot_header = Gtk.MenuItem(label="Sloty filamentu:" if self.language == "pl" else "Filament slots:")
+        slot_header = Gtk.MenuItem(label=i18n.t("Filament slots:"))
         slot_header.set_sensitive(False); legend_menu.append(slot_header)
         for label in (("Biały pierścień — aktywny slot", "White ring — active slot"),):
             item = Gtk.MenuItem(label=label[0 if self.language == "pl" else 1]); item.set_sensitive(False); legend_menu.append(item)
         legend.set_submenu(legend_menu); menu.append(legend)
-        support = Gtk.MenuItem(label="Wesprzyj projekt ☕" if self.language == "pl" else "Support the project ☕")
+        support = Gtk.MenuItem(label=i18n.t("Support the project ☕"))
         support.connect("activate", lambda *_: Gtk.show_uri_on_window(
             None, "https://buycoffee.to/parametryczny", Gdk.CURRENT_TIME)); menu.append(support)
         menu.append(Gtk.SeparatorMenuItem())
-        quit_item = Gtk.MenuItem(label=("Zakończ Gantry" if self.language == "pl" else "Quit Gantry"))
+        quit_item = Gtk.MenuItem(label=(i18n.t("Quit Gantry")))
         quit_item.connect("activate", lambda *_: self.quit()); menu.append(quit_item)
         menu.show_all()
         if AppIndicator:
@@ -581,7 +555,7 @@ class Gantry:
         self._refresh_progress_indicators()
 
     def _toggle_language(self) -> None:
-        self.language = "en" if self.language == "pl" else "pl"
+        self.language =i18n.t("pl")
         i18n.set_language(self.language)
         self.config.data["language"] = self.language
         self.config.save(); self.text = TEXT.get(self.language, TEXT["pl"])
@@ -620,7 +594,7 @@ class Gantry:
                     "gantry-progress-" + "".join(char if char.isalnum() else "-" for char in serial),
                     icon, AppIndicator.IndicatorCategory.APPLICATION_STATUS)
                 popup = Gtk.Menu()
-                details = Gtk.MenuItem(label="Szczegóły" if self.language == "pl" else "Details")
+                details = Gtk.MenuItem(label=i18n.t("Details"))
                 details.connect("activate", lambda *_, value=serial: self.open_details(value))
                 popup.append(details); popup.show_all(); indicator.set_menu(popup)
                 indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
@@ -726,10 +700,10 @@ class Gantry:
                     f"Automation \"{rule.get('name')}\" wants to run {what}:\n\n{preview}\n\nAllow and remember?")
             dialog = Gtk.MessageDialog(transient_for=self.window, modal=True,
                                        message_type=Gtk.MessageType.WARNING, buttons=Gtk.ButtonsType.NONE,
-                                       text=("Potwierdź automatyzację" if pl else "Confirm automation"))
+                                       text=(i18n.t("Confirm automation")))
             dialog.format_secondary_text(body)
-            dialog.add_button("Odmów" if pl else "Deny", Gtk.ResponseType.CANCEL)
-            dialog.add_button("Zezwól" if pl else "Allow", Gtk.ResponseType.OK)
+            dialog.add_button(i18n.t("Deny"), Gtk.ResponseType.CANCEL)
+            dialog.add_button(i18n.t("Allow"), Gtk.ResponseType.OK)
             approved = dialog.run() == Gtk.ResponseType.OK
             dialog.destroy()
             result["ok"] = approved
@@ -962,11 +936,9 @@ class Gantry:
             transient_for=parent or self.window, modal=True, message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.NONE,
             text=(f"Usunąć drukarkę {printer.name}?" if pl else f"Remove printer {printer.name}?"))
-        dialog.format_secondary_text(
-            "Zapisany kod dostępu i pin certyfikatu tej drukarki zostaną usunięte."
-            if pl else "This printer's saved access code and certificate pin will be removed.")
-        dialog.add_button("Anuluj" if pl else "Cancel", Gtk.ResponseType.CANCEL)
-        dialog.add_button("Usuń" if pl else "Remove", Gtk.ResponseType.OK)
+        dialog.format_secondary_text(i18n.t("This printer's saved access code and certificate pin will be removed."))
+        dialog.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+        dialog.add_button(i18n.t("Remove"), Gtk.ResponseType.OK)
         result = dialog.run() == Gtk.ResponseType.OK
         dialog.destroy()
         if result: self.remove_printer(printer)
@@ -1037,7 +1009,7 @@ class Gantry:
             self.telemetry[serial] = value; self.connection_reasons.pop(serial, None)
         elif event == "disconnected":
             self.telemetry[serial] = Telemetry(state=PrinterState.OFFLINE)
-            self.connection_reasons[serial] = str(value or ("Rozłączono" if self.language == "pl" else "Disconnected"))
+            self.connection_reasons[serial] = str(value or (i18n.t("Disconnected")))
         current = self.telemetry[serial]
         if event == "telemetry":
             self._record_temperature(serial, current)
@@ -1078,8 +1050,7 @@ class Gantry:
         if current.state == PrinterState.PRINTING and 0 < remaining <= threshold:
             if self.config.data.get("notify_finishing_soon", False) and serial not in warned:
                 warned.add(serial)
-                body = current.job_name or ("Wydruk dobiega końca." if self.language == "pl"
-                                            else "The print is nearly done.")
+                body = current.job_name or (i18n.t("The print is nearly done."))
                 title = (f"Koniec za ~{remaining} min" if self.language == "pl"
                          else f"Finishing in ~{remaining} min")
                 self.notify(printer_name, f"{title}: {body}")
@@ -1117,7 +1088,7 @@ class Gantry:
         humidity_high = current.ams_humidity is not None and current.ams_humidity >= 4
         humidity_was_high = previous.ams_humidity is not None and previous.ams_humidity >= 4
         if humidity_high and not humidity_was_high and self.config.data.get("notify_humidity"):
-            body = "Wysoka wilgotność AMS" if self.language == "pl" else "High AMS humidity"
+            body =i18n.t("High AMS humidity")
             self.notify(printer_name, body)
             from . import telegram
             telegram.notify(self, printer_name, body, "")
@@ -1175,7 +1146,7 @@ class Gantry:
 
     def _import_csv_on_screen(self, parent: Gtk.Window | Gtk.Dialog | None = None) -> None:
         chooser = Gtk.FileChooserDialog(
-            title="Importuj drukarki z CSV" if self.language == "pl" else "Import printers from CSV",
+            title=i18n.t("Import printers from CSV"),
             transient_for=parent or self.window, action=Gtk.FileChooserAction.OPEN,
         )
         chooser.add_buttons(self.text["cancel"], Gtk.ResponseType.CANCEL, "Importuj", Gtk.ResponseType.OK)

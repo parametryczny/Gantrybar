@@ -124,7 +124,7 @@ internal sealed class SpoolAssignPanel
     private void ShowMain()
     {
         var stack = Column();
-        stack.Children.Add(Header(_title, T($"AMS: {_material ?? "nieznany"}", $"AMS: {_material ?? "unknown"}"), null));
+        stack.Children.Add(Header(_title, string.Format(T("AMS: {0}"), _material ?? T("unknown")), null));
 
         // 1. Assigned roll + per-roll actions. Weight and history live on the roll, not the slot, so
         // unassigning only moves it to storage (its grams are kept).
@@ -219,8 +219,8 @@ internal sealed class SpoolAssignPanel
     private void ConfirmReset(PhysicalSpool spool)
     {
         var res = MessageBox.Show(
-            T($"Wyzerować rolkę {spool.Id}? Ustawia pełny stan {(int)spool.NominalWeightGrams} g i czyści historię zużycia tej rolki.",
-              $"Reset roll {spool.Id}? Sets a full {(int)spool.NominalWeightGrams} g and clears this roll's usage history."),
+            string.Format(T("Reset roll {0}? Sets a full {1} g and clears this roll's usage history."),
+                          spool.Id, (int)spool.NominalWeightGrams),
             "Gantry", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (res != MessageBoxResult.Yes) return;
         _spools.ResetToFull(spool.Id);
@@ -283,8 +283,7 @@ internal sealed class SpoolAssignPanel
     {
         if (!spool.Location.IsStorage && !spool.Location.SameSlot(_loc))
         {
-            var res = MessageBox.Show(T($"Rolka {spool.Id} jest w innym miejscu. Przenieść tutaj?",
-                                        $"Spool {spool.Id} is elsewhere. Move it here?"),
+            var res = MessageBox.Show(string.Format(T("Spool {0} is elsewhere. Move it here?"), spool.Id),
                 "Gantry", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (res != MessageBoxResult.Yes) return;
         }

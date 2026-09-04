@@ -12,6 +12,7 @@ from typing import Any
 
 from gi.repository import Gdk, GLib, Gtk  # type: ignore  # noqa: E402
 
+from . import i18n
 from .core import PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
 
 def _filament_signature(groups: Any, *extra: Any) -> tuple:
@@ -259,31 +260,31 @@ class DetailWindow(Gtk.Window):
             left = next((n for n in nozzles if n.position == "left"), nozzles[0])
             right = next((n for n in nozzles if n.position == "right"), None)
             rc, rt = (right.current, right.target) if right else (None, None)
-            self.temps.pack_start(self._tile("Dysza P" if pl else "Nozzle R", fmt(rc, rt), rc, rt), True, True, 0)
-            self.temps.pack_start(self._tile("Dysza L" if pl else "Nozzle L", fmt(left.current, left.target),
+            self.temps.pack_start(self._tile(i18n.t("Nozzle R"), fmt(rc, rt), rc, rt), True, True, 0)
+            self.temps.pack_start(self._tile(i18n.t("Nozzle L"), fmt(left.current, left.target),
                                              left.current, left.target), True, True, 0)
         else:
             cur = nozzles[0].current if nozzles else tel.nozzle
             tgt = nozzles[0].target if nozzles else tel.nozzle_target
-            self.temps.pack_start(self._tile("Dysza" if pl else "Nozzle", fmt(cur, tgt), cur, tgt), True, True, 0)
-        self.temps.pack_start(self._tile("Stół" if pl else "Bed", fmt(tel.bed, tel.bed_target),
+            self.temps.pack_start(self._tile(i18n.t("Nozzle"), fmt(cur, tgt), cur, tgt), True, True, 0)
+        self.temps.pack_start(self._tile(i18n.t("Bed"), fmt(tel.bed, tel.bed_target),
                                          tel.bed, tel.bed_target), True, True, 0)
-        self.temps.pack_start(self._tile("Komora" if pl else "Chamber", fmt(tel.chamber, None),
+        self.temps.pack_start(self._tile(i18n.t("Chamber"), fmt(tel.chamber, None),
                                          tel.chamber, None), True, True, 0)
 
     def _fill_hardware(self, tel: Telemetry, pl: bool) -> None:
         for child in self.hw.get_children():
             self.hw.remove(child)
         fan = lambda v: "—" if v is None else f"{v}%"
-        self.hw.pack_start(self._tile("Went. części" if pl else "Part fan", fan(tel.part_fan), strong=True), True, True, 0)
-        self.hw.pack_start(self._tile("Went. aux" if pl else "Aux fan", fan(tel.aux_fan), strong=True), True, True, 0)
-        self.hw.pack_start(self._tile("Went. komory" if pl else "Chamber fan", fan(tel.chamber_fan), strong=True), True, True, 0)
+        self.hw.pack_start(self._tile(i18n.t("Part fan"), fan(tel.part_fan), strong=True), True, True, 0)
+        self.hw.pack_start(self._tile(i18n.t("Aux fan"), fan(tel.aux_fan), strong=True), True, True, 0)
+        self.hw.pack_start(self._tile(i18n.t("Chamber fan"), fan(tel.chamber_fan), strong=True), True, True, 0)
         if tel.speed_level or tel.speed_percent is not None:
             name = _SPEED_NAMES.get(tel.speed_level or 0, ("", ""))[0 if pl else 1]
             pct = f"{tel.speed_percent}%" if tel.speed_percent is not None else ""
-            self.hw.pack_start(self._tile("Prędkość" if pl else "Speed", (f"{name} {pct}").strip() or "—", strong=True), True, True, 0)
+            self.hw.pack_start(self._tile(i18n.t("Speed"), (f"{name} {pct}").strip() or "—", strong=True), True, True, 0)
         if tel.nozzle_diameter:
-            self.hw.pack_start(self._tile("Dysza mm" if pl else "Nozzle mm", f"{tel.nozzle_diameter:.1f}", strong=True), True, True, 0)
+            self.hw.pack_start(self._tile(i18n.t("Nozzle mm"), f"{tel.nozzle_diameter:.1f}", strong=True), True, True, 0)
 
     def _fill_filaments(self, tel: Telemetry, pl: bool) -> None:
         monochrome = bool(self.app.config.data.get("monochrome", False))
@@ -369,9 +370,9 @@ class PhaseStepper(Gtk.Box):
     def __init__(self, pl: bool) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         self.labels = Gtk.Box()
-        self.prep = Gtk.Label(label="Przygotowanie" if pl else "Prep", xalign=0)
-        self.printing = Gtk.Label(label="Drukowanie" if pl else "Printing", xalign=0.5)
-        self.done = Gtk.Label(label="Zakończono" if pl else "Finished", xalign=1)
+        self.prep = Gtk.Label(label=i18n.t("Prep"), xalign=0)
+        self.printing = Gtk.Label(label=i18n.t("Printing"), xalign=0.5)
+        self.done = Gtk.Label(label=i18n.t("Finished"), xalign=1)
         for label in (self.prep, self.printing, self.done):
             label.get_style_context().add_class("slot-id")
             self.labels.pack_start(label, True, True, 0)
@@ -412,7 +413,7 @@ class DetailPanel(Gtk.Box):
         self._camera_started = False
 
         header = Gtk.Box(spacing=7)
-        back = Gtk.Button(label="‹ Wróć" if app.language == "pl" else "‹ Back")
+        back = Gtk.Button(label=i18n.t("‹ Back"))
         back.set_relief(Gtk.ReliefStyle.NONE); back.get_style_context().add_class("cardmenu")
         back.connect("clicked", lambda *_: on_back())
         self.state_dot = Gtk.Label(label="")
@@ -458,7 +459,7 @@ class DetailPanel(Gtk.Box):
         self.camera_access_code = access_code
         self.camera = CameraView(app, serial, access_code)
         self.camera_body.pack_start(self.camera, False, False, 0)
-        advanced = Gtk.Button(label="Zaawansowane…" if app.language == "pl" else "Advanced…")
+        advanced = Gtk.Button(label=i18n.t("Advanced…"))
         advanced.set_halign(Gtk.Align.END)
         advanced.connect("clicked", lambda *_: app.open_advanced(serial))
         self.camera_body.pack_start(advanced, False, False, 0)
@@ -471,14 +472,14 @@ class DetailPanel(Gtk.Box):
         recent, recent_body = self._card("recent", self._title("recent"))
         self.recent = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         recent_body.pack_start(self.recent, False, False, 0)
-        all_prints = Gtk.Button(label="Pokaż wszystkie" if app.language == "pl" else "Show all")
+        all_prints = Gtk.Button(label=i18n.t("Show all"))
         all_prints.set_halign(Gtk.Align.START); all_prints.connect("clicked", self._show_history)
         recent_body.pack_start(all_prints, False, False, 0)
 
         maintenance, maintenance_body = self._card("maintenance", self._title("maintenance"))
         self.maintenance = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         maintenance_body.pack_start(self.maintenance, False, False, 0)
-        open_maintenance = Gtk.Button(label="Otwórz konserwację…" if app.language == "pl" else "Open maintenance…")
+        open_maintenance = Gtk.Button(label=i18n.t("Open maintenance…"))
         open_maintenance.set_halign(Gtk.Align.START); open_maintenance.connect("clicked", self._open_maintenance)
         maintenance_body.pack_start(open_maintenance, False, False, 0)
 
@@ -497,9 +498,9 @@ class DetailPanel(Gtk.Box):
 
         control, control_body = self._card("control", self._title("control"))
         controls = Gtk.Box(spacing=6, homogeneous=True)
-        light_on = Gtk.Button(label="Światło wł." if app.language == "pl" else "Light on")
-        light_off = Gtk.Button(label="Światło wył." if app.language == "pl" else "Light off")
-        autos = Gtk.Button(label="Automatyzacje…" if app.language == "pl" else "Automations…")
+        light_on = Gtk.Button(label=i18n.t("Light on"))
+        light_off = Gtk.Button(label=i18n.t("Light off"))
+        autos = Gtk.Button(label=i18n.t("Automations…"))
         light_on.connect("clicked", lambda *_: app.set_chamber_light(serial, True))
         light_off.connect("clicked", lambda *_: app.set_chamber_light(serial, False))
         autos.connect("clicked", lambda *_: app.open_automations(serial))
@@ -516,7 +517,7 @@ class DetailPanel(Gtk.Box):
         if supports_camera and app.config.data.get("developer_mode", False): self.cards["control"] = control
         for card_id, card in self.cards.items(): self._make_draggable(card, card_id)
 
-        self.customize = Gtk.Button(label="Dostosuj" if app.language == "pl" else "Customize")
+        self.customize = Gtk.Button(label=i18n.t("Customize"))
         self.customize.set_relief(Gtk.ReliefStyle.NONE); self.customize.get_style_context().add_class("cardmenu")
         self.customize.connect("clicked", self._customize)
         self._layout_cards()
@@ -564,7 +565,7 @@ class DetailPanel(Gtk.Box):
             item.connect("toggled", lambda value, key=card_id: self._toggle_module(key, value.get_active()))
             menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
-        reset = Gtk.MenuItem(label="Przywróć domyślny układ" if self.app.language == "pl" else "Restore default layout")
+        reset = Gtk.MenuItem(label=i18n.t("Restore default layout"))
         reset.connect("activate", lambda *_: self._reset_layout()); menu.append(reset)
         menu.show_all()
         window = getattr(self.app, "window", None)
@@ -659,7 +660,7 @@ class DetailPanel(Gtk.Box):
         self._clear(self.recent)
         recent = snap["history"][:3]
         if not recent:
-            self.recent.pack_start(self._line("Brak zapisanej historii." if pl else "No recorded history."), False, False, 0)
+            self.recent.pack_start(self._line(i18n.t("No recorded history.")), False, False, 0)
         for entry in recent:
             icon = "✓" if entry.get("result") == "completed" else "!" if entry.get("result") == "failed" else "×"
             minutes = int(float(entry.get("durationSeconds", 0)) / 60)
@@ -673,8 +674,8 @@ class DetailPanel(Gtk.Box):
             self.maintenance.pack_start(self._line(f"{'!' if task.urgent else '⚠' if task.due else '○'}  {task.title} · {timing}"), False, False, 0)
         self._clear(self.stats)
         success = "—" if snap["success"] is None else f"{snap['success']}%"
-        for title, value in ((("Czas druku" if pl else "Print time"), f"{snap['total_hours']:.1f} h"),
-                             (("Skuteczność" if pl else "Success"), success),
+        for title, value in (((i18n.t("Print time")), f"{snap['total_hours']:.1f} h"),
+                             ((i18n.t("Success")), success),
                              (("Filament"), f"{snap['consumed_grams']:.0f} g")):
             self.stats.pack_start(self._metric(title, value), True, True, 0)
 
@@ -690,9 +691,9 @@ class DetailPanel(Gtk.Box):
                 for item in snap["history"]]
         dialog = Gtk.MessageDialog(transient_for=self.get_toplevel(), modal=True,
                                    message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK,
-                                   text="Pełna historia" if self.app.language == "pl" else "Full history")
+                                   text=i18n.t("Full history"))
         dialog.format_secondary_text("\n".join(rows[:100]) if rows else
-                                     ("Brak historii." if self.app.language == "pl" else "No history."))
+                                     (i18n.t("No history.")))
         dialog.run(); dialog.destroy()
 
     @staticmethod
@@ -708,13 +709,13 @@ class DetailPanel(Gtk.Box):
         if dual:
             left = next((n for n in nozzles if n.position == "left"), nozzles[0])
             right = next((n for n in nozzles if n.position == "right"), None)
-            values.extend([("L", left.current, left.target), ("P" if pl else "R", right.current if right else None, right.target if right else None)])
+            values.extend([("L", left.current, left.target), (i18n.t("R"), right.current if right else None, right.target if right else None)])
         else:
             nozzle = nozzles[0] if nozzles else None
-            values.append(("Dysza" if pl else "Nozzle", nozzle.current if nozzle else tel.nozzle,
+            values.append((i18n.t("Nozzle"), nozzle.current if nozzle else tel.nozzle,
                            nozzle.target if nozzle else tel.nozzle_target))
-        values.append(("Stół" if pl else "Bed", tel.bed, tel.bed_target))
-        if tel.chamber is not None: values.append(("Komora" if pl else "Chamber", tel.chamber, None))
+        values.append((i18n.t("Bed"), tel.bed, tel.bed_target))
+        if tel.chamber is not None: values.append((i18n.t("Chamber"), tel.chamber, None))
         for name, current, target in values:
             self.temps.pack_start(self._metric(name, self._temp(current, target)), True, True, 0)
 
@@ -727,9 +728,9 @@ class DetailPanel(Gtk.Box):
         if tel.speed_level or tel.speed_percent is not None:
             speed = _SPEED_NAMES.get(tel.speed_level or 0, ("—", "—"))[0 if pl else 1]
             if tel.speed_percent is not None: speed += f" · {tel.speed_percent}%"
-            self.hardware.pack_start(self._metric("Prędkość" if pl else "Speed", speed), False, False, 0)
+            self.hardware.pack_start(self._metric(i18n.t("Speed"), speed), False, False, 0)
         if tel.nozzle_diameter:
-            self.hardware.pack_start(self._metric("Średnica dyszy" if pl else "Nozzle diameter", f"⌀ {tel.nozzle_diameter:.1f} mm"), False, False, 0)
+            self.hardware.pack_start(self._metric(i18n.t("Nozzle diameter"), f"⌀ {tel.nozzle_diameter:.1f} mm"), False, False, 0)
 
     def _fill_filaments(self, tel: Telemetry) -> None:
         signature = _filament_signature(tel.filament_groups)

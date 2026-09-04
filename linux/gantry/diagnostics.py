@@ -14,6 +14,7 @@ from typing import Any
 
 from gi.repository import GLib, Gtk  # type: ignore
 
+from . import i18n
 from .core import PrinterState
 
 # Hard ceiling per printer, so one unreachable host cannot stall the whole run.
@@ -23,22 +24,21 @@ PER_PRINTER_LIMIT = 3
 class DiagnosticsDialog(Gtk.Dialog):
     def __init__(self, app: Any) -> None:
         pl = app.language == "pl"
-        super().__init__(title="Centrum diagnostyczne" if pl else "Diagnostic Center",
+        super().__init__(title=i18n.t("Diagnostic Center"),
                          transient_for=app.window, modal=False)
         self.app, self.pl = app, pl
         self._alive = True
         self.set_default_size(500, 520)
-        self.add_button("Zamknij" if pl else "Close", Gtk.ResponseType.CLOSE)
+        self.add_button(i18n.t("Close"), Gtk.ResponseType.CLOSE)
         self.connect("response", lambda dialog, _response: dialog.destroy())
         self.connect("destroy", self._on_destroy)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         root.get_style_context().add_class("settings-root")
-        self.status = Gtk.Label(label="Sprawdź łączność wszystkich drukarek." if pl
-                                else "Check connectivity for every printer.", xalign=0, wrap=True)
+        self.status = Gtk.Label(label=i18n.t("Check connectivity for every printer."), xalign=0, wrap=True)
         self.status.get_style_context().add_class("settings-hint")
         self.progress = Gtk.ProgressBar()
         self.progress.set_no_show_all(True)
-        self.run_button = Gtk.Button(label="Uruchom wszystkie testy" if pl else "Run all tests")
+        self.run_button = Gtk.Button(label=i18n.t("Run all tests"))
         self.run_button.connect("clicked", lambda _button: self._run())
         self.results = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         scroll = Gtk.ScrolledWindow()
@@ -66,10 +66,10 @@ class DiagnosticsDialog(Gtk.Dialog):
             self.results.remove(child)
         printers = list(self.app.printers)
         if not printers:
-            self.results.pack_start(Gtk.Label(label="Brak drukarek." if self.pl else "No printers.",
+            self.results.pack_start(Gtk.Label(label=i18n.t("No printers."),
                                               xalign=0), False, False, 0)
             self.results.show_all()
-            self.status.set_text("Testy zakończone." if self.pl else "Tests complete.")
+            self.status.set_text(i18n.t("Tests complete."))
             self.run_button.set_sensitive(True)
             return
         self.progress.set_fraction(0)
@@ -109,22 +109,22 @@ class DiagnosticsDialog(Gtk.Dialog):
         if latency is None:
             quality = "—"
         elif latency < 50:
-            quality = "bardzo dobra" if self.pl else "excellent"
+            quality =i18n.t("excellent")
         elif latency < 150:
-            quality = "dobra" if self.pl else "good"
+            quality =i18n.t("good")
         elif latency < 400:
-            quality = "słaba" if self.pl else "poor"
+            quality =i18n.t("poor")
         else:
-            quality = "bardzo słaba" if self.pl else "very poor"
+            quality =i18n.t("very poor")
         tel = self.app.telemetry.get(printer.serial)
         connected = bool(tel and tel.state != PrinterState.OFFLINE)
         reason = self.app.connection_reasons.get(printer.serial, "—")
         lines = [
-            f"{'✓' if ok else '×'}  " + ("Sieć" if self.pl else "Network")
+            f"{'✓' if ok else '×'}  " + (i18n.t("Network"))
             + (f" · {latency:.0f} ms · {quality}" if latency is not None else f" · {error}"),
             f"{'✓' if connected else '×'}  "
-            + ("Połączenie z drukarką" if self.pl else "Printer connection") + " · "
-            + (("telemetria aktywna" if self.pl else "telemetry active") if connected else reason),
+            + (i18n.t("Printer connection")) + " · "
+            + ((i18n.t("telemetry active")) if connected else reason),
         ]
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         card.get_style_context().add_class("settings-card")

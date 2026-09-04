@@ -10,6 +10,7 @@ from typing import Any
 
 from gi.repository import Gtk, GLib  # type: ignore  # noqa: E402
 
+from . import i18n
 from .physicalspool import location_for
 
 
@@ -74,7 +75,7 @@ def _confirm(parent: Gtk.Window, title: str, detail: str) -> bool:
 
 def _correct_weight(parent: Gtk.Window, app: Any, store: Any, spool: dict[str, Any]) -> bool:
     pl = _pl(app)
-    sheet = Gtk.Dialog(title="Skoryguj wagę" if pl else "Correct weight", transient_for=parent, modal=True)
+    sheet = Gtk.Dialog(title=i18n.t("Correct weight"), transient_for=parent, modal=True)
     sheet.set_default_size(330, -1)
     box = sheet.get_content_area()
     box.set_spacing(7); box.set_border_width(12)
@@ -85,9 +86,9 @@ def _correct_weight(parent: Gtk.Window, app: Any, store: Any, spool: dict[str, A
         "tare": str(int(float(spool.get("tareGrams", 0) or 0))) if spool.get("tareGrams") is not None else "",
     }
     labels = {
-        "net": "Netto (g)" if pl else "Net (g)",
-        "gross": "Brutto (g)" if pl else "Gross (g)",
-        "tare": "Tara pustej szpuli (g)" if pl else "Empty-spool tare (g)",
+        "net":i18n.t("Net (g)"),
+        "gross":i18n.t("Gross (g)"),
+        "tare":i18n.t("Empty-spool tare (g)"),
     }
     for key in ("net", "gross", "tare"):
         row = Gtk.Box(spacing=8)
@@ -97,13 +98,12 @@ def _correct_weight(parent: Gtk.Window, app: Any, store: Any, spool: dict[str, A
         row.pack_start(entry, False, False, 0)
         box.pack_start(row, False, False, 0)
     hint = Gtk.Label(
-        label=("Wpisz netto albo brutto i tarę — tara zostanie odjęta."
-               if pl else "Enter net, or gross and tare — tare will be subtracted."),
+        label=(i18n.t("Enter net, or gross and tare — tare will be subtracted.")),
         xalign=0, wrap=True)
     hint.get_style_context().add_class("subtitle")
     box.pack_start(hint, False, False, 0)
-    sheet.add_button("Anuluj" if pl else "Cancel", Gtk.ResponseType.CANCEL)
-    sheet.add_button("Zapisz" if pl else "Save", Gtk.ResponseType.OK)
+    sheet.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+    sheet.add_button(i18n.t("Save"), Gtk.ResponseType.OK)
     sheet.show_all()
     saved = False
     if sheet.run() == Gtk.ResponseType.OK:
@@ -131,7 +131,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
     printer_name = next((p.name for p in app.printers if p.serial == serial), serial)
     slot_label = group.display_name if getattr(group, "external", False) else f"{group.display_name} {slot.label}"
 
-    dialog = Gtk.Dialog(title=("Przypisz rolkę" if pl else "Assign roll"),
+    dialog = Gtk.Dialog(title=(i18n.t("Assign roll")),
                         transient_for=getattr(app, "window", None), modal=True)
     dialog.set_default_size(360, -1)
     content = dialog.get_content_area()
@@ -153,12 +153,12 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         content.pack_start(info, False, False, 0)
 
         grams_row = Gtk.Box(spacing=8)
-        grams_row.pack_start(Gtk.Label(label=("Pozostało (g):" if pl else "Remaining (g):"), xalign=0), False, False, 0)
+        grams_row.pack_start(Gtk.Label(label=(i18n.t("Remaining (g):")), xalign=0), False, False, 0)
         nominal = float(assigned.get("nominalWeightGrams", 1000) or 1000)
         spin = Gtk.SpinButton.new_with_range(0, max(nominal, 1), 5)
         spin.set_value(float(assigned.get("remainingWeightGrams", 0) or 0))
         grams_row.pack_start(spin, True, True, 0)
-        save = Gtk.Button(label=("Zapisz" if pl else "Save"))
+        save = Gtk.Button(label=(i18n.t("Save")))
         grams_row.pack_start(save, False, False, 0)
         content.pack_start(grams_row, False, False, 0)
 
@@ -168,9 +168,9 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         content.pack_start(pct, False, False, 0)
 
         actions = Gtk.Box(spacing=6)
-        weigh = Gtk.Button(label=("Skoryguj" if pl else "Weigh"))
-        reset = Gtk.Button(label=("Zeruj" if pl else "Reset"))
-        detach = Gtk.Button(label=("Odepnij" if pl else "Unassign"))
+        weigh = Gtk.Button(label=(i18n.t("Weigh")))
+        reset = Gtk.Button(label=(i18n.t("Reset")))
+        detach = Gtk.Button(label=(i18n.t("Unassign")))
         for button in (weigh, reset, detach):
             actions.pack_start(button, True, True, 0)
         content.pack_start(actions, False, False, 0)
@@ -195,7 +195,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
 
         def do_reset(_b: Gtk.Button) -> None:
             if not _confirm(
-                    dialog, "Wyzerować rolkę?" if pl else "Reset roll?",
+                    dialog,i18n.t("Reset roll?"),
                     (f"{assigned.get('id')} · ustaw pełny stan {int(nominal)} g."
                      if pl else f"{assigned.get('id')} · set a full {int(nominal)} g.")):
                 return
@@ -212,11 +212,11 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
 
     # --- assign a new / existing roll ----------------------------------------
     picker_label = Gtk.Label(xalign=0)
-    picker_label.set_text(("Przypisz rolkę:" if pl else "Assign a roll:"))
+    picker_label.set_text((i18n.t("Assign a roll:")))
     content.pack_start(picker_label, False, False, 0)
 
     combo = Gtk.ComboBoxText()
-    combo.append("__new__", ("Nowa rolka" if pl else "New roll"))
+    combo.append("__new__", (i18n.t("New roll")))
     # Existing rolls that are in storage (or elsewhere) can be moved into this slot.
     available = [spool for spool in store.spools
                  if spool is not assigned and spool.get("status") != "archived"]
@@ -241,12 +241,12 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
     content.pack_start(combo, False, False, 0)
 
     delete_row = Gtk.Box()
-    delete_selected = Gtk.Button(label=("Usuń wybraną rolkę" if pl else "Delete selected roll"))
+    delete_selected = Gtk.Button(label=(i18n.t("Delete selected roll")))
     delete_row.pack_end(delete_selected, False, False, 0)
     content.pack_start(delete_row, False, False, 0)
 
     nom_row = Gtk.Box(spacing=8)
-    nom_row.pack_start(Gtk.Label(label=("Nominał (g):" if pl else "Nominal (g):"), xalign=0), False, False, 0)
+    nom_row.pack_start(Gtk.Label(label=(i18n.t("Nominal (g):")), xalign=0), False, False, 0)
     nominal_spin = Gtk.SpinButton.new_with_range(100, 5000, 50)
     nominal_spin.set_value(1000)
     nom_row.pack_start(nominal_spin, True, True, 0)
@@ -259,15 +259,15 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         presets.pack_start(button, True, True, 0)
     content.pack_start(presets, False, False, 0)
 
-    dialog.add_button(("Anuluj" if pl else "Cancel"), Gtk.ResponseType.CANCEL)
-    dialog.add_button(("Przypisz" if pl else "Assign"), Gtk.ResponseType.OK)
+    dialog.add_button((i18n.t("Cancel")), Gtk.ResponseType.CANCEL)
+    dialog.add_button((i18n.t("Assign")), Gtk.ResponseType.OK)
 
     def delete_choice(_button: Gtk.Button) -> None:
         choice = combo.get_active_id() or ""
         if not choice.startswith("spool:"):
             return
         spool_id = choice.split(":", 1)[1]
-        if not _confirm(dialog, "Usunąć rolkę?" if pl else "Delete roll?", spool_id):
+        if not _confirm(dialog,i18n.t("Delete roll?"), spool_id):
             return
         store.delete(spool_id)
         dialog.destroy()
@@ -284,7 +284,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
                     old_location = spool.get("location") or {}
                     if old_location.get("printerSerial") is not None:
                         if not _confirm(
-                                dialog, "Przenieść rolkę?" if pl else "Move roll?",
+                                dialog,i18n.t("Move roll?"),
                                 (f"{spool.get('id')} jest teraz: {_location_label(app, old_location)}"
                                  if pl else f"{spool.get('id')} is currently at {_location_label(app, old_location)}")):
                             return

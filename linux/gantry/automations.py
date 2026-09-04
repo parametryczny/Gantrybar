@@ -8,6 +8,7 @@ from typing import Any
 
 from gi.repository import Gtk  # type: ignore  # noqa: E402
 
+from . import i18n
 from .automation import (ACTIONS, AutomationStore, TRIGGERS, action_summary, new_rule,
                          trigger_summary)
 from .core import PrinterState
@@ -26,7 +27,7 @@ class AutomationsWindow(Gtk.Window):
         printer = next((p for p in app.printers if p.serial == serial), None)
         name = printer.name if printer else serial
 
-        self.set_title(("Automatyzacje" if pl else "Automations") + f" · {name}")
+        self.set_title((i18n.t("Automations")) + f" · {name}")
         self.set_default_size(520, 480)
         self.set_transient_for(app.window)
         self.set_position(Gtk.WindowPosition.CENTER)
@@ -39,18 +40,14 @@ class AutomationsWindow(Gtk.Window):
         title = Gtk.Label(xalign=0)
         title.set_markup(f"<b>{'Automatyzacje' if pl else 'Automations'}</b>  ·  {name}")
         head.pack_start(title, True, True, 0)
-        add = Gtk.Button(label="＋ " + ("Nowa reguła" if pl else "New rule"))
+        add = Gtk.Button(label="＋ " + (i18n.t("New rule")))
         add.connect("clicked", lambda _b: self._edit(None))
         head.pack_start(add, False, False, 0)
         root.pack_start(head, False, False, 0)
 
         note = Gtk.Label(xalign=0, wrap=True)
         note.get_style_context().add_class("subtitle")
-        note.set_text(("Reguły odpalają się raz na wydruk, gdy warunek staje się prawdą. Akcje „komenda” i "
-                       "„skrypt” wymagają włączenia w Ustawieniach i jednorazowej zgody."
-                       if pl else
-                       "Rules fire once per print when the condition first becomes true. The command and "
-                       "script actions require enabling in Settings and a one-time approval."))
+        note.set_text((i18n.t("Rules fire once per print when the condition first becomes true. The command and script actions require enabling in Settings and a one-time approval.")))
         root.pack_start(note, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
@@ -69,8 +66,7 @@ class AutomationsWindow(Gtk.Window):
         pl = self._pl()
         rules = self.store.for_printer(self.serial)
         if not rules:
-            empty = Gtk.Label(label=("Brak reguł. Dodaj pierwszą przyciskiem „Nowa”." if pl
-                                     else "No rules yet. Add one with \"New\"."), xalign=0)
+            empty = Gtk.Label(label=(i18n.t("No rules yet. Add one with \"New\".")), xalign=0)
             empty.get_style_context().add_class("subtitle")
             self.list.pack_start(empty, False, False, 4)
         for rule in rules:
@@ -101,10 +97,10 @@ class AutomationsWindow(Gtk.Window):
         texts.pack_start(sub, False, False, 0)
         box.pack_start(texts, True, True, 0)
 
-        run = Gtk.Button(label=("Uruchom" if pl else "Run"))
+        run = Gtk.Button(label=(i18n.t("Run")))
         run.connect("clicked", lambda _b: self.app.automations.run(self.serial, rule))
         box.pack_start(run, False, False, 0)
-        edit = Gtk.Button(label=("Edytuj" if pl else "Edit"))
+        edit = Gtk.Button(label=(i18n.t("Edit")))
         edit.connect("clicked", lambda _b: self._edit(rule))
         box.pack_start(edit, False, False, 0)
         delete = Gtk.Button(label="🗑")
@@ -124,8 +120,8 @@ class AutomationsWindow(Gtk.Window):
     def _edit(self, rule: dict[str, Any] | None) -> None:
         pl = self._pl()
         editing = rule is not None
-        rule = dict(rule) if rule else new_rule("Nowa reguła" if pl else "New rule")
-        dialog = Gtk.Dialog(title=("Reguła" if pl else "Rule"), transient_for=self, modal=True)
+        rule = dict(rule) if rule else new_rule(i18n.t("New rule"))
+        dialog = Gtk.Dialog(title=(i18n.t("Rule")), transient_for=self, modal=True)
         dialog.set_default_size(420, -1)
         content = dialog.get_content_area()
         content.set_spacing(8)
@@ -141,35 +137,35 @@ class AutomationsWindow(Gtk.Window):
 
         name_entry = Gtk.Entry()
         name_entry.set_text(rule.get("name", ""))
-        labeled("Nazwa" if pl else "Name", name_entry)
+        labeled(i18n.t("Name"), name_entry)
 
         trigger_combo = Gtk.ComboBoxText()
         for key in TRIGGERS:
             trigger_combo.append(key, trigger_summary({"trigger": {"type": key, "value": "N"}}, pl).replace("N", "…"))
         trigger_combo.set_active_id(rule.get("trigger", {}).get("type", "manual"))
-        labeled("Wyzwalacz" if pl else "Trigger", trigger_combo)
+        labeled(i18n.t("Trigger"), trigger_combo)
 
         value_spin = Gtk.SpinButton.new_with_range(1, 100000, 1)
         tv = rule.get("trigger", {}).get("value")
         value_spin.set_value(float(tv) if isinstance(tv, (int, float, str)) and str(tv).isdigit() else 1)
-        labeled("Wartość" if pl else "Value", value_spin)
+        labeled(i18n.t("Value"), value_spin)
 
         state_combo = Gtk.ComboBoxText()
         for state in _STATE_CHOICES:
             state_combo.append(state, state)
         state_combo.set_active_id(rule.get("trigger", {}).get("value") if rule.get("trigger", {}).get("type") == "on_state" else PrinterState.FINISHED.value)
-        labeled("Stan" if pl else "State", state_combo)
+        labeled(i18n.t("State"), state_combo)
 
         action_combo = Gtk.ComboBoxText()
         for key in ACTIONS:
             action_combo.append(key, action_summary({"action": {"type": key}}, pl))
         action_combo.set_active_id(rule.get("action", {}).get("type", "light_off"))
-        labeled("Akcja" if pl else "Action", action_combo)
+        labeled(i18n.t("Action"), action_combo)
 
         text_entry = Gtk.Entry()
         text_entry.set_text(rule.get("action", {}).get("text", ""))
-        text_entry.set_placeholder_text("tekst / komenda / skrypt" if pl else "text / command / script")
-        labeled("Treść" if pl else "Text", text_entry)
+        text_entry.set_placeholder_text(i18n.t("text / command / script"))
+        labeled(i18n.t("Text"), text_entry)
 
         def sync_visibility(*_a: Any) -> None:
             tk = trigger_combo.get_active_id()
@@ -180,8 +176,8 @@ class AutomationsWindow(Gtk.Window):
         trigger_combo.connect("changed", sync_visibility)
         action_combo.connect("changed", sync_visibility)
 
-        dialog.add_button("Anuluj" if pl else "Cancel", Gtk.ResponseType.CANCEL)
-        dialog.add_button("Zapisz" if pl else "Save", Gtk.ResponseType.OK)
+        dialog.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+        dialog.add_button(i18n.t("Save"), Gtk.ResponseType.OK)
         dialog.show_all()
         sync_visibility()
 
@@ -192,7 +188,7 @@ class AutomationsWindow(Gtk.Window):
                 value = int(value_spin.get_value())
             elif tk == "on_state":
                 value = state_combo.get_active_id()
-            rule["name"] = name_entry.get_text().strip() or ("Reguła" if pl else "Rule")
+            rule["name"] = name_entry.get_text().strip() or (i18n.t("Rule"))
             rule["trigger"] = {"type": tk, "value": value}
             rule["action"] = {"type": action_combo.get_active_id() or "light_off", "text": text_entry.get_text()}
             self.store.upsert(self.serial, rule)

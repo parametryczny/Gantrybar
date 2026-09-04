@@ -19,6 +19,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
+from . import i18n
 from .core import Printer, PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
 from .desktop import installed_slicers, open_desktop_app
 
@@ -346,13 +347,13 @@ class PrinterCard(Gtk.Frame):
                       PrinterKind.ANYCUBIC_KOBRA_S1: "MQTT LAN"}[printer.kind]
         self.connection = Gtk.Label(label=connection)
         self.connection.get_style_context().add_class("connection")
-        details = self._button("⌁", "Szczegóły" if app.language == "pl" else "Details")
+        details = self._button("⌁",i18n.t("Details"))
         details.connect("clicked", lambda *_: app.open_details(printer.serial))
-        self.printer_alert = self._button("", "Uwaga drukarki" if app.language == "pl" else "Printer alert")
+        self.printer_alert = self._button("",i18n.t("Printer alert"))
         self.printer_alert.set_no_show_all(True)
         self.printer_alert.get_style_context().add_class("printer-alert")
         self.printer_alert.connect("clicked", self._open_maintenance)
-        self.maintenance = self._button("", "Konserwacja" if app.language == "pl" else "Maintenance")
+        self.maintenance = self._button("",i18n.t("Maintenance"))
         self.maintenance.set_no_show_all(True)
         self.maintenance.connect("clicked", self._open_maintenance)
         grip = Gtk.Label(label="⠿")
@@ -424,8 +425,8 @@ class PrinterCard(Gtk.Frame):
         pl = self.app.language == "pl"
         menu = Gtk.Menu()
         entries: list[tuple[str, Any]] = [
-            (("Szczegóły" if pl else "Details"), lambda *_: self.app.open_details(self.printer.serial)),
-            (("Połącz ponownie" if pl else "Reconnect"), lambda *_: self.app.reconnect_printer(self.printer.serial)),
+            ((i18n.t("Details")), lambda *_: self.app.open_details(self.printer.serial)),
+            ((i18n.t("Reconnect")), lambda *_: self.app.reconnect_printer(self.printer.serial)),
         ]
         for label, callback in entries:
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
@@ -433,22 +434,22 @@ class PrinterCard(Gtk.Frame):
         if self.printer.kind == PrinterKind.BAMBU:
             bambu = next((slicer for slicer in slicers if slicer.name == "Bambu Studio"), None)
             if bambu is not None:
-                item = Gtk.MenuItem(label="Kamera w Bambu Studio" if pl else "Camera in Bambu Studio")
+                item = Gtk.MenuItem(label=i18n.t("Camera in Bambu Studio"))
                 item.connect("activate", lambda *_, value=bambu: open_desktop_app(value)); menu.append(item)
         if slicers:
-            slicer_item = Gtk.MenuItem(label="Otwórz slicer" if pl else "Open slicer")
+            slicer_item = Gtk.MenuItem(label=i18n.t("Open slicer"))
             slicer_menu = Gtk.Menu()
             for slicer in slicers:
                 item = Gtk.MenuItem(label=slicer.name)
                 item.connect("activate", lambda *_, value=slicer: open_desktop_app(value))
                 slicer_menu.append(item)
             slicer_item.set_submenu(slicer_menu); menu.append(slicer_item)
-        clipboard_item = Gtk.MenuItem(label="Kopiuj adres IP" if pl else "Copy IP address")
+        clipboard_item = Gtk.MenuItem(label=i18n.t("Copy IP address"))
         clipboard_item.connect("activate", lambda *_: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(self.printer.host, -1))
         menu.append(clipboard_item)
         for label, callback in [
-            (("Edytuj drukarkę" if pl else "Edit printer"), lambda *_: self.app.open_printer_dialog(self.printer)),
-            (("Usuń drukarkę" if pl else "Remove printer"), lambda *_: self.app.confirm_remove_printer(self.printer)),
+            ((i18n.t("Edit printer")), lambda *_: self.app.open_printer_dialog(self.printer)),
+            ((i18n.t("Remove printer")), lambda *_: self.app.confirm_remove_printer(self.printer)),
         ]:
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
         menu.show_all()
@@ -522,7 +523,7 @@ class PrinterCard(Gtk.Frame):
         self.status.set_text(state)
         active = telemetry.state in {PrinterState.PRINTING, PrinterState.PAUSED}
         self.job.set_text(telemetry.job_name if active and telemetry.job_name else
-                          ("BRAK AKTYWNEGO ZADANIA" if self.app.language == "pl" else "NO ACTIVE JOB"))
+                          (i18n.t("NO ACTIVE JOB")))
         self.percent.set_text(f"{telemetry.progress}%")
         self.progress.set_value(telemetry.progress)
         if telemetry.remaining_minutes:
@@ -553,7 +554,7 @@ class PrinterCard(Gtk.Frame):
         ctx = self.get_style_context()
         if offline: ctx.add_class("offline")
         else: ctx.remove_class("offline")
-        self.offline_label.set_text(reason or ("Łączenie…" if self.app.language == "pl" else "Connecting…"))
+        self.offline_label.set_text(reason or (i18n.t("Connecting…")))
         self.offline_overlay.set_no_show_all(not offline); self.offline_overlay.set_visible(offline)
 
     def _fill_temperatures(self, telemetry: Telemetry) -> None:
@@ -589,17 +590,17 @@ class PrinterCard(Gtk.Frame):
         if dual:
             left = next((n for n in nozzles if n.position == "left"), nozzles[0])
             right = next((n for n in nozzles if n.position == "right"), None)
-            self.temps.pack_start(zone("Dysze L" if pl else "Nozzles L", left.current, left.target), True, True, 0)
-            self.temps.pack_start(zone("P" if pl else "R", right.current if right else None,
+            self.temps.pack_start(zone(i18n.t("Nozzles L"), left.current, left.target), True, True, 0)
+            self.temps.pack_start(zone(i18n.t("R"), right.current if right else None,
                                        right.target if right else None), True, True, 0)
         else:
             nozzle = nozzles[0] if nozzles else None
-            self.temps.pack_start(zone("Dysza" if pl else "Nozzle",
+            self.temps.pack_start(zone(i18n.t("Nozzle"),
                                        nozzle.current if nozzle else telemetry.nozzle,
                                        nozzle.target if nozzle else telemetry.nozzle_target), True, True, 0)
-        self.temps.pack_start(zone("Stół" if pl else "Bed", telemetry.bed, telemetry.bed_target), True, True, 0)
+        self.temps.pack_start(zone(i18n.t("Bed"), telemetry.bed, telemetry.bed_target), True, True, 0)
         if telemetry.chamber is not None:
-            self.temps.pack_start(zone("Komora" if pl else "Chamber", telemetry.chamber, None), True, True, 0)
+            self.temps.pack_start(zone(i18n.t("Chamber"), telemetry.chamber, None), True, True, 0)
         self.temps.show_all()
 
     def _fill_filaments(self, telemetry: Telemetry) -> None:
@@ -890,8 +891,7 @@ class Dashboard(Gtk.Window):
         self.grid = Gtk.Grid(column_spacing=CARD_GAP, row_spacing=CARD_ROW_GAP, margin=0)
         self.scroll.add(self.grid)
         root.pack_start(self.scroll, True, True, 0)
-        footer = Gtk.Label(label=("Drukuj spokojnie — wszystko pod kontrolą" if self.app.language == "pl"
-                                  else "Print in peace — everything under control"))
+        footer = Gtk.Label(label=(i18n.t("Print in peace — everything under control")))
         footer.get_style_context().add_class("footer")
         root.pack_start(footer, False, False, 0)
         return root

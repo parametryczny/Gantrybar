@@ -21,7 +21,7 @@ class SettingsDialog(Gtk.Dialog):
         self.pl = app.language == "pl"
         self._ready = False
         self._original_transparency = str(app.config.data.get("panel_transparency", "low"))
-        self.add_button("Gotowe" if self.pl else "Done", Gtk.ResponseType.OK)
+        self.add_button(i18n.t("Done"), Gtk.ResponseType.OK)
         self.set_default_size(640, 720)
         self.set_size_request(600, 520)
         self.set_resizable(True)
@@ -43,12 +43,12 @@ class SettingsDialog(Gtk.Dialog):
 
         self.stack.add_titled(self._page([self._basics(), self._notifications(),
                                           self._updates(), self._about()]),
-                              "general", "Ogólne" if self.pl else "General")
+                              "general",i18n.t("General"))
         self.stack.add_titled(self._page([self._appearance(), self._cards(), self._dock()]),
-                              "appearance", "Wygląd" if self.pl else "Appearance")
+                              "appearance",i18n.t("Appearance"))
         self.stack.add_titled(self._page([self._developer(), self._telegram(),
                                           self._web(), self._sync()]),
-                              "advanced", "Zaawansowane" if self.pl else "Advanced")
+                              "advanced",i18n.t("Advanced"))
         self.show_all()
         self.release_link.hide()
         self._connect_live_updates()
@@ -67,7 +67,7 @@ class SettingsDialog(Gtk.Dialog):
     def _header(self) -> Gtk.Widget:
         header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         header.get_style_context().add_class("settings-header")
-        title = Gtk.Label(label="Ustawienia" if self.pl else "Settings", xalign=0)
+        title = Gtk.Label(label=i18n.t("Settings"), xalign=0)
         title.get_style_context().add_class("settings-title")
         author = Gtk.Label(label="Gantry · @_parametryczny", xalign=0)
         author.get_style_context().add_class("settings-author")
@@ -89,23 +89,23 @@ class SettingsDialog(Gtk.Dialog):
         self.theme.append("dark", self.app.text["dark"])
         self.theme.set_active_id(str(self.app.config.data.get("theme", "dark")))
         self.transparency = Gtk.ComboBoxText()
-        self.transparency.append("low", "Niska" if self.pl else "Low")
-        self.transparency.append("medium", "Średnia" if self.pl else "Medium")
-        self.transparency.append("high", "Wysoka" if self.pl else "High")
+        self.transparency.append("low",i18n.t("Low"))
+        self.transparency.append("medium",i18n.t("Medium"))
+        self.transparency.append("high",i18n.t("High"))
         self.transparency.set_active_id(self._original_transparency)
         self.transparency.connect("changed", self._preview_transparency)
 
         form = Gtk.Grid(column_spacing=14, row_spacing=10)
         # Language lives in Basics on macOS and Windows, so it is not listed here.
-        rows = (("Wygląd" if self.pl else "Appearance", self.theme),
-                ("Przezroczystość" if self.pl else "Transparency", self.transparency))
+        rows = ((i18n.t("Appearance"), self.theme),
+                (i18n.t("Transparency"), self.transparency))
         for row, (text, widget) in enumerate(rows):
             label = Gtk.Label(label=text, xalign=1)
             label.get_style_context().add_class("settings-label")
             widget.set_hexpand(True)
             form.attach(label, 0, row, 1, 1)
             form.attach(widget, 1, row, 1, 1)
-        return self._section("WYGLĄD" if self.pl else "APPEARANCE", [form])
+        return self._section(i18n.t("APPEARANCE"), [form])
 
     def _preview_transparency(self, combo: Gtk.ComboBoxText) -> None:
         self.app.preview_panel_transparency(combo.get_active_id() or "low")
@@ -127,23 +127,19 @@ class SettingsDialog(Gtk.Dialog):
             self.language.append(code, name)
         self.language.set_active_id(self.app.language)
         language_row = Gtk.Box(spacing=10)
-        language_row.pack_start(Gtk.Label(label="Język" if self.pl else "Language", xalign=0), False, False, 0)
+        language_row.pack_start(Gtk.Label(label=i18n.t("Language"), xalign=0), False, False, 0)
         language_row.pack_end(self.language, False, False, 0)
         self.autostart = self._check(self.app.text["autostart"], autostart_enabled())
         self.spoolbase = self._check(
-            "Spoolbase — magazyn filamentów" if self.pl else "Spoolbase — filament stock",
+i18n.t("Spoolbase — filament stock"),
             bool(self.app.config.data.get("spoolbase_enabled", True)))
-        return self._section("PODSTAWY" if self.pl else "BASICS",
+        return self._section(i18n.t("BASICS"),
                              [language_row, self.autostart, self.spoolbase])
 
     def _developer(self) -> Gtk.Widget:
-        self.developer = self._check(
-            "Tryb deweloperski (sterowanie + automatyzacje)" if self.pl
-            else "Developer mode (control + automations)",
+        self.developer = self._check(i18n.t("Developer mode (control + automations)"),
             bool(self.app.config.data.get("developer_mode", False)))
-        self.allow_scripts = self._check(
-            "Zezwól automatyzacjom na skrypty i własne komendy" if self.pl
-            else "Allow automations to run scripts and custom commands",
+        self.allow_scripts = self._check(i18n.t("Allow automations to run scripts and custom commands"),
             bool(self.app.config.data.get("allow_script_actions", False)))
         hint = Gtk.Label(
             label=("Wyłączone domyślnie ze względów bezpieczeństwa. Każda reguła nadal pyta o zgodę "
@@ -152,35 +148,35 @@ class SettingsDialog(Gtk.Dialog):
             xalign=0, wrap=True)
         hint.set_margin_start(24)
         hint.get_style_context().add_class("settings-hint")
-        return self._section("TRYB DEWELOPERSKI" if self.pl else "DEVELOPER",
+        return self._section(i18n.t("DEVELOPER"),
                              [self.developer, self.allow_scripts, hint])
 
     def _dock(self) -> Gtk.Widget:
         """Edge dock: enable, which edge, and which printers appear on the strip."""
         self.dock_enabled = self._check(
-            "Pokazuj pasek na wierzchu" if self.pl else "Show the strip on top",
+i18n.t("Show the strip on top"),
             bool(self.app.config.data.get("edge-dock-enabled", False)))
         self.dock_edge = Gtk.ComboBoxText()
-        self.dock_edge.append("left", "Lewa" if self.pl else "Left")
-        self.dock_edge.append("right", "Prawa" if self.pl else "Right")
+        self.dock_edge.append("left",i18n.t("Left"))
+        self.dock_edge.append("right",i18n.t("Right"))
         edge = str(self.app.config.data.get("edge-dock-edge", "right"))
         self.dock_edge.set_active_id("left" if edge == "left" else "right")
         edge_row = Gtk.Box(spacing=10)
-        edge_row.pack_start(Gtk.Label(label="Krawędź" if self.pl else "Edge", xalign=0), False, False, 0)
+        edge_row.pack_start(Gtk.Label(label=i18n.t("Edge"), xalign=0), False, False, 0)
         edge_row.pack_end(self.dock_edge, False, False, 0)
         self.dock_only_printing = self._check(
-            "Tylko drukujące" if self.pl else "Only printing",
+i18n.t("Only printing"),
             bool(self.app.config.data.get("edge-dock-only-printing", False)))
 
         # Stored as an exclusion list, so a newly added printer shows up by itself.
         hidden = set(str(self.app.config.data.get("edge-dock-hidden", "")).split("\n")) - {""}
-        caption = Gtk.Label(label="KTÓRE DRUKARKI" if self.pl else "WHICH PRINTERS", xalign=0)
+        caption = Gtk.Label(label=i18n.t("WHICH PRINTERS"), xalign=0)
         caption.get_style_context().add_class("settings-section")
         self.dock_printers: dict[str, Gtk.CheckButton] = {}
         widgets: list[Gtk.Widget] = [self.dock_enabled, edge_row, self.dock_only_printing, caption]
         printers = list(getattr(self.app, "printers", []))
         if not printers:
-            empty = Gtk.Label(label="Brak drukarek" if self.pl else "No printers", xalign=0)
+            empty = Gtk.Label(label=i18n.t("No printers"), xalign=0)
             empty.get_style_context().add_class("settings-hint")
             widgets.append(empty)
         for printer in printers:
@@ -188,14 +184,11 @@ class SettingsDialog(Gtk.Dialog):
             self.dock_printers[printer.serial] = check
             widgets.append(check)
         hint = Gtk.Label(
-            label=("Wąski pasek przyklejony do krawędzi ekranu, zawsze na wierzchu. Najechanie "
-                   "rozsuwa go do nazw, klik otwiera szczegóły." if self.pl else
-                   "A narrow strip pinned to the screen edge, always on top. Hovering expands it to "
-                   "names, clicking opens details."),
+            label=(i18n.t("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.")),
             xalign=0, wrap=True)
         hint.get_style_context().add_class("settings-hint")
         widgets.append(hint)
-        return self._section("PASEK KRAWĘDZIOWY" if self.pl else "EDGE DOCK", widgets)
+        return self._section(i18n.t("EDGE DOCK"), widgets)
 
     def _cards(self) -> Gtk.Widget:
         self.card_options: dict[str, Gtk.CheckButton] = {}
@@ -210,18 +203,14 @@ class SettingsDialog(Gtk.Dialog):
                                 bool(self.app.config.data.get(key, True)))
             self.card_options[key] = check
             widgets.append(check)
-        self.spool_grams = self._check(
-            "Gramy na rolce (AMS NFC / Spoolbase)" if self.pl
-            else "Grams on spool (AMS NFC / Spoolbase)",
+        self.spool_grams = self._check(i18n.t("Grams on spool (AMS NFC / Spoolbase)"),
             bool(self.app.config.data.get("card_show_spool_grams", False)))
         self.monochrome = self._check(
-            "Kolorystyka monochromatyczna" if self.pl else "Monochrome colours",
+i18n.t("Monochrome colours"),
             bool(self.app.config.data.get("monochrome", False)))
-        self.monochrome.set_tooltip_text(
-            "Temperatury na szaro, kolory AMS wyciszone" if self.pl
-            else "Grey temperatures, calmer AMS colours")
+        self.monochrome.set_tooltip_text(i18n.t("Grey temperatures, calmer AMS colours"))
         widgets.extend((self.spool_grams, self.monochrome))
-        return self._section("KARTY DRUKAREK" if self.pl else "PRINTER CARDS", widgets)
+        return self._section(i18n.t("PRINTER CARDS"), widgets)
 
     def _notifications(self) -> Gtk.Widget:
         self.notices: dict[str, Gtk.CheckButton] = {}
@@ -238,7 +227,7 @@ class SettingsDialog(Gtk.Dialog):
         separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         separator.get_style_context().add_class("section-rule")
         self.quiet = self._check(
-            "Godziny ciszy (bez powiadomień)" if self.pl else "Quiet hours (no notifications)",
+i18n.t("Quiet hours (no notifications)"),
             bool(self.app.config.data.get("quiet_hours_enabled", True)))
         quiet_row = Gtk.Box(spacing=7)
         quiet_row.set_margin_start(24)
@@ -246,21 +235,19 @@ class SettingsDialog(Gtk.Dialog):
         self.quiet_end = Gtk.Entry(text=str(self.app.config.data.get("quiet_hours_end", "07:00")))
         self.quiet_start.set_width_chars(5)
         self.quiet_end.set_width_chars(5)
-        quiet_row.pack_start(Gtk.Label(label="od" if self.pl else "from"), False, False, 0)
+        quiet_row.pack_start(Gtk.Label(label=i18n.t("from")), False, False, 0)
         quiet_row.pack_start(self.quiet_start, False, False, 0)
-        quiet_row.pack_start(Gtk.Label(label="do" if self.pl else "to"), False, False, 0)
+        quiet_row.pack_start(Gtk.Label(label=i18n.t("to")), False, False, 0)
         quiet_row.pack_start(self.quiet_end, False, False, 0)
         self.quiet.connect("toggled", lambda check: quiet_row.set_sensitive(check.get_active()))
         quiet_row.set_sensitive(self.quiet.get_active())
         widgets.extend((separator, self.quiet, quiet_row))
-        return self._section("POWIADOMIENIA" if self.pl else "NOTIFICATIONS", widgets)
+        return self._section(i18n.t("NOTIFICATIONS"), widgets)
 
     def _web(self) -> Gtk.Widget:
         """Read-only LAN dashboard. Until now the server started from the config key with no visible
         switch anywhere on Linux, which meant a listening socket the user could not turn off."""
-        self.web_enabled = self._check(
-            "Serwer podglądu (sieć lokalna, tylko odczyt)" if self.pl
-            else "Preview server (local network, read only)",
+        self.web_enabled = self._check(i18n.t("Preview server (local network, read only)"),
             bool(self.app.config.data.get("web_dashboard_enabled", True)))
         from .webserver import PORT, local_ipv4
         address = local_ipv4()
@@ -270,12 +257,10 @@ class SettingsDialog(Gtk.Dialog):
             xalign=0, selectable=True)
         self.web_address.get_style_context().add_class("settings-version")
         hint = Gtk.Label(
-            label=("Otwórz na telefonie w tej samej sieci Wi-Fi. Tylko podgląd, bez sterowania."
-                   if self.pl else
-                   "Open on a phone on the same Wi-Fi. View only, no control."),
+            label=(i18n.t("Open on a phone on the same Wi-Fi. View only, no control.")),
             xalign=0, wrap=True)
         hint.get_style_context().add_class("settings-hint")
-        return self._section("PODGLĄD W PRZEGLĄDARCE" if self.pl else "WEB DASHBOARD",
+        return self._section(i18n.t("WEB DASHBOARD"),
                              [self.web_enabled, self.web_address, hint])
 
     def _sync(self) -> Gtk.Widget:
@@ -286,28 +271,25 @@ class SettingsDialog(Gtk.Dialog):
         address = local_ipv4()
 
         token_caption = Gtk.Label(
-            label=("Wspólny token (skopiuj na drugi komputer)" if self.pl
-                   else "Shared token (copy to the other computer)"), xalign=0)
+            label=(i18n.t("Shared token (copy to the other computer)")), xalign=0)
         token_caption.get_style_context().add_class("settings-hint")
         token_value = Gtk.Label(label=token, xalign=0, selectable=True)
         token_value.get_style_context().add_class("settings-version")
-        regen = Gtk.Button(label="Nowy" if self.pl else "New")
+        regen = Gtk.Button(label=i18n.t("New"))
         regen.connect("clicked", self._sync_regenerate)
         token_row = Gtk.Box(spacing=8)
         token_row.pack_start(token_value, True, True, 0)
         token_row.pack_end(regen, False, False, 0)
 
         address_caption = Gtk.Label(
-            label="Adres tego komputera" if self.pl else "This computer's address", xalign=0)
+            label=i18n.t("This computer's address"), xalign=0)
         address_caption.get_style_context().add_class("settings-hint")
         address_value = Gtk.Label(label=f"{address}:{PORT}" if address else "—", xalign=0, selectable=True)
         address_value.get_style_context().add_class("settings-version")
 
         self.sync_peer_entry = Gtk.Entry()
-        self.sync_peer_entry.set_placeholder_text(
-            "adres drugiego komputera, np. gantry.local" if self.pl
-            else "other computer address, e.g. gantry.local")
-        add_peer = Gtk.Button(label="Dodaj" if self.pl else "Add")
+        self.sync_peer_entry.set_placeholder_text(i18n.t("other computer address, e.g. gantry.local"))
+        add_peer = Gtk.Button(label=i18n.t("Add"))
         add_peer.connect("clicked", self._sync_add_peer)
         peer_row = Gtk.Box(spacing=8)
         peer_row.pack_start(self.sync_peer_entry, True, True, 0)
@@ -315,8 +297,8 @@ class SettingsDialog(Gtk.Dialog):
 
         self.sync_token_entry = Gtk.Entry()
         self.sync_token_entry.set_placeholder_text(
-            "wklej token z drugiego komputera" if self.pl else "paste token from the other computer")
-        set_token = Gtk.Button(label="Ustaw token" if self.pl else "Set token")
+i18n.t("paste token from the other computer"))
+        set_token = Gtk.Button(label=i18n.t("Set token"))
         set_token.connect("clicked", self._sync_set_token)
         set_row = Gtk.Box(spacing=8)
         set_row.pack_start(self.sync_token_entry, True, True, 0)
@@ -325,18 +307,15 @@ class SettingsDialog(Gtk.Dialog):
         self.sync_peers_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self._rebuild_sync_peers()
 
-        sync_now = Gtk.Button(label="Synchronizuj teraz" if self.pl else "Sync now")
+        sync_now = Gtk.Button(label=i18n.t("Sync now"))
         sync_now.set_halign(Gtk.Align.START)
         sync_now.connect("clicked", lambda *_: sync.sync_now() if sync is not None else None)
 
         hint = Gtk.Label(
-            label=("Na drugim komputerze wklej powyższy token, potem dodaj adres tego komputera. "
-                   "Tylko sieć lokalna. Kody dostępu do drukarek nie są przesyłane." if self.pl else
-                   "On the other computer paste this token, then add this computer's address. "
-                   "Local network only. Printer access codes are never sent."),
+            label=(i18n.t("On the other computer paste this token, then add this computer's address. Local network only. Printer access codes are never sent.")),
             xalign=0, wrap=True)
         hint.get_style_context().add_class("settings-hint")
-        return self._section("SYNCHRONIZACJA MIĘDZY KOMPUTERAMI" if self.pl else "SYNC BETWEEN COMPUTERS",
+        return self._section(i18n.t("SYNC BETWEEN COMPUTERS"),
                              [token_caption, token_row, address_caption, address_value,
                               peer_row, set_row, self.sync_peers_box, sync_now, hint])
 
@@ -346,7 +325,7 @@ class SettingsDialog(Gtk.Dialog):
         sync = getattr(self.app, "sync_service", None)
         peers = sync.peers() if sync is not None else []
         if not peers:
-            empty = Gtk.Label(label="Brak sparowanych komputerów." if self.pl else "No paired computers.",
+            empty = Gtk.Label(label=i18n.t("No paired computers."),
                               xalign=0)
             empty.get_style_context().add_class("settings-hint")
             self.sync_peers_box.pack_start(empty, False, False, 0)
@@ -361,7 +340,7 @@ class SettingsDialog(Gtk.Dialog):
             elif last:
                 status = (f"ostatnio: {str(last)[11:16]}" if self.pl else f"last: {str(last)[11:16]}")
             else:
-                status = ("jeszcze nie zsynchronizowano" if self.pl else "not synced yet")
+                status = (i18n.t("not synced yet"))
             name = Gtk.Label(label=address, xalign=0)
             name.get_style_context().add_class("settings-version")
             note = Gtk.Label(label=status, xalign=0)
@@ -369,7 +348,7 @@ class SettingsDialog(Gtk.Dialog):
             info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
             info.pack_start(name, False, False, 0)
             info.pack_start(note, False, False, 0)
-            remove = Gtk.Button(label="Usuń" if self.pl else "Remove")
+            remove = Gtk.Button(label=i18n.t("Remove"))
             remove.connect("clicked", self._sync_remove_peer, address)
             row = Gtk.Box(spacing=8)
             row.pack_start(info, True, True, 0)
@@ -406,9 +385,7 @@ class SettingsDialog(Gtk.Dialog):
             self._rebuild_sync_peers()
 
     def _telegram(self) -> Gtk.Widget:
-        self.telegram_enabled = self._check(
-            "Wysyłaj powiadomienia i sterowanie przez Telegram" if self.pl
-            else "Send notifications and control over Telegram",
+        self.telegram_enabled = self._check(i18n.t("Send notifications and control over Telegram"),
             bool(self.app.config.data.get("telegram-enabled", False)))
         form = Gtk.Grid(column_spacing=14, row_spacing=10)
         self.telegram_token = Gtk.Entry(text=str(self.app.config.data.get("telegram-bot-token", "")))
@@ -417,7 +394,7 @@ class SettingsDialog(Gtk.Dialog):
         self.telegram_chat = Gtk.Entry(text=str(self.app.config.data.get("telegram-chat-id", "")))
         self.telegram_chat.set_placeholder_text("np. 8849748842")
         self.telegram_chat.set_hexpand(True)
-        rows = (("Token bota" if self.pl else "Bot token", self.telegram_token),
+        rows = ((i18n.t("Bot token"), self.telegram_token),
                 ("Chat ID", self.telegram_chat))
         for row, (text, widget) in enumerate(rows):
             label = Gtk.Label(label=text, xalign=1)
@@ -425,17 +402,14 @@ class SettingsDialog(Gtk.Dialog):
             form.attach(label, 0, row, 1, 1)
             form.attach(widget, 1, row, 1, 1)
         test_row = Gtk.Box(spacing=10)
-        self.telegram_test = Gtk.Button(label="Wyślij test" if self.pl else "Send test")
+        self.telegram_test = Gtk.Button(label=i18n.t("Send test"))
         self.telegram_test.connect("clicked", self._telegram_test)
         self.telegram_status = Gtk.Label(label="", xalign=0, wrap=True)
         self.telegram_status.get_style_context().add_class("settings-hint")
         test_row.pack_start(self.telegram_test, False, False, 0)
         test_row.pack_start(self.telegram_status, True, True, 0)
         hint = Gtk.Label(
-            label=("Utwórz własnego bota u @BotFather, wklej token i swój chat ID (z @userinfobot). "
-                   "Token zostaje tylko na tym komputerze. Instrukcja: docs/telegram-setup.md" if self.pl else
-                   "Create your own bot with @BotFather, paste the token and your chat ID (from @userinfobot). "
-                   "The token stays only on this computer. Guide: docs/telegram-setup.md"),
+            label=(i18n.t("Create your own bot with @BotFather, paste the token and your chat ID (from @userinfobot). The token stays only on this computer. Guide: docs/telegram-setup.md")),
             xalign=0, wrap=True)
         hint.get_style_context().add_class("settings-hint")
         return self._section("TELEGRAM", [self.telegram_enabled, form, test_row, hint])
@@ -446,16 +420,15 @@ class SettingsDialog(Gtk.Dialog):
         chat = self.telegram_chat.get_text().strip()
         if not token or not chat:
             self.telegram_status.set_text(
-                "Podaj token i chat ID." if self.pl else "Enter a token and chat ID.")
+i18n.t("Enter a token and chat ID."))
             return
         self.telegram_test.set_sensitive(False)
-        self.telegram_status.set_text("Wysyłanie…" if self.pl else "Sending…")
+        self.telegram_status.set_text(i18n.t("Sending…"))
 
         def work() -> None:
             from .telegram import send_test
-            ok = send_test(token, chat,
-                           "Test" if self.pl else "Test",
-                           "Połączenie działa." if self.pl else "Connection works.")
+            ok = send_test(token, chat,i18n.t("Test"),
+i18n.t("Connection works."))
             GLib.idle_add(self._telegram_test_done, ok)
 
         threading.Thread(target=work, daemon=True).start()
@@ -463,8 +436,8 @@ class SettingsDialog(Gtk.Dialog):
     def _telegram_test_done(self, ok: bool) -> bool:
         self.telegram_test.set_sensitive(True)
         self.telegram_status.set_text(
-            ("Wysłano — sprawdź Telegram." if self.pl else "Sent — check Telegram.") if ok
-            else ("Nie udało się. Sprawdź token i chat ID." if self.pl else "Failed. Check token and chat ID."))
+            (i18n.t("Sent — check Telegram.")) if ok
+            else (i18n.t("Failed. Check token and chat ID.")))
         return False
 
     def _updates(self) -> Gtk.Widget:
@@ -474,31 +447,28 @@ class SettingsDialog(Gtk.Dialog):
             xalign=0, wrap=True)
         self.update_status.get_style_context().add_class("settings-hint")
         self.update_button = Gtk.Button(
-            label="Sprawdź aktualizacje" if self.pl else "Check for updates")
+            label=i18n.t("Check for updates"))
         self.update_button.connect("clicked", self._check_updates)
         row.pack_start(self.update_status, True, True, 0)
         row.pack_start(self.update_button, False, False, 0)
         self.release_link = Gtk.LinkButton.new_with_label(
             "https://github.com/parametryczny/gantrybar/releases",
-            "Otwórz wydanie" if self.pl else "Open release")
+i18n.t("Open release"))
         self.release_link.set_halign(Gtk.Align.START)
         self.release_link.set_no_show_all(True)
         self.install_update = Gtk.Button(
-            label="Pobierz i otwórz instalator" if self.pl else "Download and open installer")
+            label=i18n.t("Download and open installer"))
         self.install_update.set_halign(Gtk.Align.START)
         self.install_update.set_no_show_all(True)
         self.install_update.connect("clicked", self._install_update)
         self._available_release: object | None = None
-        self.auto_update = self._check(
-            "Automatycznie sprawdzaj dostępność aktualizacji" if self.pl
-            else "Automatically check for updates",
+        self.auto_update = self._check(i18n.t("Automatically check for updates"),
             bool(self.app.config.data.get("auto_update_check", False)))
         hint = Gtk.Label(
-            label=("Instalację pakietu .deb zatwierdza systemowy menedżer pakietów." if self.pl
-                   else "The system package manager confirms installation of the .deb package."),
+            label=(i18n.t("The system package manager confirms installation of the .deb package.")),
             xalign=0, wrap=True)
         hint.get_style_context().add_class("settings-hint")
-        return self._section("AKTUALIZACJE" if self.pl else "UPDATES",
+        return self._section(i18n.t("UPDATES"),
                              [row, self.release_link, self.install_update, self.auto_update, hint])
 
     def _about(self) -> Gtk.Widget:
@@ -508,13 +478,11 @@ class SettingsDialog(Gtk.Dialog):
         version.get_style_context().add_class("settings-version")
         support = Gtk.LinkButton.new_with_label(
             "https://buycoffee.to/parametryczny",
-            "☕  Wesprzyj projekt" if self.pl else "☕  Support the project")
+i18n.t("☕  Support the project"))
         support.get_style_context().add_class("settings-support")
         support.set_halign(Gtk.Align.CENTER)
         note = Gtk.Label(
-            label=("Wirtualna kawa daje mi kofeinowego kopa do pracy nad kolejnymi wersjami Gantry. 🚀"
-                   if self.pl else
-                   "A virtual coffee gives me a caffeine kick to keep improving Gantry. 🚀"),
+            label=(i18n.t("A virtual coffee gives me a caffeine kick to keep improving Gantry. 🚀")),
             xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER)
         note.get_style_context().add_class("settings-hint")
         wrapper.pack_start(version, False, False, 0)
@@ -541,7 +509,7 @@ class SettingsDialog(Gtk.Dialog):
 
     def _check_updates(self, *_args: object) -> None:
         self.update_button.set_sensitive(False)
-        self.update_status.set_text("Sprawdzam…" if self.pl else "Checking…")
+        self.update_status.set_text(i18n.t("Checking…"))
         self.release_link.hide()
         self.install_update.hide()
 
@@ -559,9 +527,7 @@ class SettingsDialog(Gtk.Dialog):
         from .updater import is_newer
         self.update_button.set_sensitive(True)
         if error or release is None:
-            self.update_status.set_text(
-                "Nie udało się sprawdzić aktualizacji." if self.pl else
-                "Could not check for updates.")
+            self.update_status.set_text(i18n.t("Could not check for updates."))
             return False
         if is_newer(release.version, __version__):
             self._available_release = release
@@ -583,7 +549,7 @@ class SettingsDialog(Gtk.Dialog):
         if release is None:
             return
         self.install_update.set_sensitive(False)
-        self.update_status.set_text("Pobieram pakiet…" if self.pl else "Downloading package…")
+        self.update_status.set_text(i18n.t("Downloading package…"))
 
         def work() -> None:
             try:
@@ -598,11 +564,9 @@ class SettingsDialog(Gtk.Dialog):
     def _download_done(self, path: object | None, error: str | None) -> bool:
         self.install_update.set_sensitive(True)
         if error or path is None:
-            self.update_status.set_text("Nie udało się pobrać pakietu." if self.pl else "Could not download package.")
+            self.update_status.set_text(i18n.t("Could not download package."))
             return False
-        self.update_status.set_text(
-            "Pakiet pobrany — potwierdź instalację w systemie."
-            if self.pl else "Package downloaded — confirm installation in the system dialog.")
+        self.update_status.set_text(i18n.t("Package downloaded — confirm installation in the system dialog."))
         try:
             subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError:

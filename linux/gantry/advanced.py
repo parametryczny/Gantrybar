@@ -5,6 +5,7 @@ from typing import Any
 
 from gi.repository import Gtk  # type: ignore
 
+from . import i18n
 from .core import PrinterKind
 from .overrides import FIELDS, overrides_for, set_overrides
 
@@ -23,28 +24,21 @@ class AdvancedDialog(Gtk.Dialog):
         values = overrides_for(app.config, serial)
         self.fields: dict[str, Gtk.Entry] = {}
         root = self.get_content_area(); root.set_spacing(8); root.set_border_width(14)
-        self._heading(root, "IP / host kamery (opcjonalnie)" if self.pl else "Camera IP / host (optional)")
-        self._hint(root, "Użyj, gdy kamera jest pod innym adresem niż drukarka."
-                   if self.pl else "Use when the camera is reachable at a different address than the printer.")
+        self._heading(root, i18n.t("Camera IP / host (optional)"))
+        self._hint(root, i18n.t("Use when the camera is reachable at a different address than the printer."))
         self._field(root, "cameraHost", "", values)
-        self._heading(root, "Własne komendy światła" if self.pl else "Custom light commands")
-        self._hint(root, ("Klipper: linia G-code. Puste pola zachowują SET_PIN PIN=caselight."
-                          if self._klipper and self.pl else
-                          "Klipper: a G-code line. Empty fields keep SET_PIN PIN=caselight."
-                          if self._klipper else
-                          "Bambu: surowy JSON MQTT. Puste pola zachowują komendę domyślną."
-                          if self.pl else "Bambu: raw MQTT JSON. Empty fields keep the default command."))
-        self._field(root, "ledOn", "Wł.:" if self.pl else "On:", values)
-        self._field(root, "ledOff", "Wył.:" if self.pl else "Off:", values)
+        self._heading(root, i18n.t("Custom light commands"))
+        self._hint(root, i18n.t("Klipper: a G-code line. Empty fields keep SET_PIN PIN=caselight.")
+                   if self._klipper
+                   else i18n.t("Bambu: raw MQTT JSON. Empty fields keep the default command."))
+        self._field(root, "ledOn", i18n.t("On:"), values)
+        self._field(root, "ledOff", i18n.t("Off:"), values)
         if self._klipper:
-            self._heading(root, "Nazwy obiektów Klipper" if self.pl else "Klipper object names")
-            self._hint(root, "Puste = extruder / heater_bed / automatyczna komora / fan."
-                       if self.pl else "Empty = extruder / heater_bed / automatic chamber / fan.")
-            for key, polish, english in (("nozzleObject", "Dysza:", "Nozzle:"),
-                                         ("bedObject", "Stół:", "Bed:"),
-                                         ("chamberObject", "Komora:", "Chamber:"),
-                                         ("fanObject", "Wentylator:", "Fan:")):
-                self._field(root, key, polish if self.pl else english, values)
+            self._heading(root, i18n.t("Klipper object names"))
+            self._hint(root, i18n.t("Empty = extruder / heater_bed / automatic chamber / fan."))
+            for key, english in (("nozzleObject", "Nozzle:"), ("bedObject", "Bed:"),
+                                 ("chamberObject", "Chamber:"), ("fanObject", "Fan:")):
+                self._field(root, key, i18n.t(english), values)
         self.show_all()
 
     @property

@@ -23,6 +23,7 @@ try:
 except (ImportError, ValueError):
     Gst = None  # type: ignore[assignment]
 
+from . import i18n
 from .filamentstore import Filament, FilamentStore, TYPES, load_catalog, normalized_hex, save_catalog
 
 
@@ -473,7 +474,7 @@ class BarcodeScannerDialog(Gtk.Dialog):
     """Webcam barcode reader using GStreamer's zbar element, with an in-window live preview."""
 
     def __init__(self, parent: Gtk.Window, on_code: Any, pl: bool) -> None:
-        super().__init__(title="Skanuj kod filamentu" if pl else "Scan filament code",
+        super().__init__(title=i18n.t("Scan filament code"),
                          transient_for=parent, modal=True)
         self.on_code = on_code
         self.pl = pl
@@ -484,11 +485,10 @@ class BarcodeScannerDialog(Gtk.Dialog):
         content.set_spacing(8)
         content.set_margin_top(12); content.set_margin_bottom(8)
         content.set_margin_start(14); content.set_margin_end(14)
-        title = Gtk.Label(label=("Skanuj kod z etykiety szpuli" if pl else "Scan the code on the spool label"), xalign=0)
+        title = Gtk.Label(label=(i18n.t("Scan the code on the spool label")), xalign=0)
         title.get_style_context().add_class("title")
         content.pack_start(title, False, False, 0)
-        self.status = Gtk.Label(label=("Wypełnij kodem ramkę i przytrzymaj etykietę nieruchomo"
-                                       if pl else "Fill the frame with the code and hold the label still"), xalign=0)
+        self.status = Gtk.Label(label=(i18n.t("Fill the frame with the code and hold the label still")), xalign=0)
         self.status.get_style_context().add_class("subtitle")
         content.pack_start(self.status, False, False, 0)
         frame = Gtk.Overlay()
@@ -502,18 +502,17 @@ class BarcodeScannerDialog(Gtk.Dialog):
         guide.set_shadow_type(Gtk.ShadowType.IN)
         frame.add_overlay(guide)
         content.pack_start(frame, True, True, 0)
-        self.add_button("Anuluj" if pl else "Cancel", Gtk.ResponseType.CANCEL)
+        self.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
         self.connect("destroy", self._stop)
         self.show_all()
         GLib.idle_add(self._start)
 
     def _start(self) -> bool:
         if Gst is None:
-            self._error("Brak obsługi GStreamer." if self.pl else "GStreamer support is unavailable.")
+            self._error(i18n.t("GStreamer support is unavailable."))
             return False
         if Gst.ElementFactory.find("zbar") is None:
-            self._error(("Brak dekodera kodów. Zainstaluj pakiet gstreamer1.0-plugins-bad."
-                         if self.pl else "Barcode decoder missing. Install gstreamer1.0-plugins-bad."))
+            self._error((i18n.t("Barcode decoder missing. Install gstreamer1.0-plugins-bad.")))
             return False
         try:
             self.pipeline = Gst.parse_launch(
@@ -525,7 +524,7 @@ class BarcodeScannerDialog(Gtk.Dialog):
             sink.connect("new-sample", self._new_sample)
             bus = self.pipeline.get_bus(); bus.add_signal_watch(); bus.connect("message", self._message)
             if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-                self._error("Nie można uruchomić kamery." if self.pl else "Could not start the camera.")
+                self._error(i18n.t("Could not start the camera."))
         except Exception as exc:
             self._error(str(exc))
         return False
@@ -558,7 +557,7 @@ class BarcodeScannerDialog(Gtk.Dialog):
             self._error(str(error))
 
     def _error(self, message: str) -> None:
-        self.status.set_text(("Nie można uruchomić skanera: " if self.pl else "Could not start scanner: ") + message)
+        self.status.set_text((i18n.t("Could not start scanner: ")) + message)
 
     def _stop(self, *_args: Any) -> None:
         if self.pipeline is not None and Gst is not None:
@@ -571,7 +570,7 @@ class CatalogDialog(Gtk.Dialog):
 
     def __init__(self, parent: SpoolbaseWindow, store: FilamentStore) -> None:
         pl = parent._pl
-        super().__init__(title="Dodaj filament" if pl else "Add filament",
+        super().__init__(title=i18n.t("Add filament"),
                          transient_for=parent, modal=True)
         self.store = store
         self.parent_window = parent
@@ -584,22 +583,22 @@ class CatalogDialog(Gtk.Dialog):
         content.set_margin_start(12); content.set_margin_end(12)
 
         self.search = Gtk.SearchEntry()
-        self.search.set_placeholder_text("Szukaj…" if pl else "Search…")
+        self.search.set_placeholder_text(i18n.t("Search…"))
         self.search.connect("search-changed", lambda _e: self.filter.refilter())
         search_row = Gtk.Box(spacing=8)
         search_row.pack_start(self.search, True, True, 0)
-        scan = Gtk.Button(label="▣  Skanuj kod…" if pl else "▣  Scan code…")
+        scan = Gtk.Button(label=i18n.t("▣  Scan code…"))
         scan.connect("clicked", self._scan_code)
         search_row.pack_start(scan, False, False, 0)
         content.pack_start(search_row, False, False, 0)
 
         options = Gtk.Box(spacing=8)
-        options.pack_start(Gtk.Label(label="Liczba szpul" if pl else "Spools"), False, False, 0)
+        options.pack_start(Gtk.Label(label=i18n.t("Spools")), False, False, 0)
         self.quantity = Gtk.SpinButton.new_with_range(1, 999, 1)
         self.quantity.set_value(1)
         self.quantity.set_width_chars(4)
         options.pack_start(self.quantity, False, False, 0)
-        options.pack_start(Gtk.Label(label="Waga (g)" if pl else "Weight (g)"), False, False, 0)
+        options.pack_start(Gtk.Label(label=i18n.t("Weight (g)")), False, False, 0)
         self.weight = Gtk.SpinButton.new_with_range(100, 5000, 50)
         self.weight.set_value(1000)
         self.weight.set_width_chars(6)
@@ -637,7 +636,7 @@ class CatalogDialog(Gtk.Dialog):
         scroll.add(tree)
         content.pack_start(scroll, True, True, 0)
 
-        self.add_button("Dodaj ręcznie…" if pl else "Add manually…", 100)
+        self.add_button(i18n.t("Add manually…"), 100)
         self.add_button(parent.app.text.get("cancel", "Anuluj"), Gtk.ResponseType.CANCEL)
         add_btn = self.add_button(parent.app.text.get("add", "Dodaj"), Gtk.ResponseType.OK)
         add_btn.get_style_context().add_class("suggested-action")
@@ -736,8 +735,8 @@ class EditorDialog(Gtk.Dialog):
         pl = parent._pl
         is_new = item is None
         super().__init__(
-            title=("Nowy filament" if pl else "New filament") if is_new
-            else ("Edytuj filament" if pl else "Edit filament"),
+            title=(i18n.t("New filament")) if is_new
+            else (i18n.t("Edit filament")),
             transient_for=parent, modal=True)
         self.store = store
         self.parent_window = parent
@@ -751,30 +750,30 @@ class EditorDialog(Gtk.Dialog):
         content.set_margin_start(14); content.set_margin_end(14)
 
         base = item or Filament(brand="", name="", type="PLA",
-                                 colorName="Nowy" if pl else "New", colorHex="8E8E93",
+                                 colorName=i18n.t("New"), colorHex="8E8E93",
                                  manufacturerCode=prefilled_code or "")
-        self.brand = self._field(content, "Marka" if pl else "Brand", base.brand)
-        self.name = self._field(content, "Nazwa" if pl else "Name", base.name)
+        self.brand = self._field(content,i18n.t("Brand"), base.brand)
+        self.name = self._field(content,i18n.t("Name"), base.name)
 
-        content.pack_start(self._label("Typ" if pl else "Type"), False, False, 0)
+        content.pack_start(self._label(i18n.t("Type")), False, False, 0)
         self.type = Gtk.ComboBoxText()
         for t in TYPES:
             self.type.append(t, t)
         self.type.set_active_id(base.type if base.type in TYPES else "PLA")
         content.pack_start(self.type, False, False, 0)
 
-        self.color_name = self._field(content, "Kolor" if pl else "Colour", base.colorName)
+        self.color_name = self._field(content,i18n.t("Colour"), base.colorName)
         self.color_hex = self._field(content, "Hex", base.colorHex)
-        self.code = self._field(content, "Kod producenta" if pl else "Manufacturer code", base.manufacturerCode)
+        self.code = self._field(content,i18n.t("Manufacturer code"), base.manufacturerCode)
 
-        content.pack_start(self._label("Liczba szpul" if pl else "Spool count"), False, False, 0)
+        content.pack_start(self._label(i18n.t("Spool count")), False, False, 0)
         self.count = Gtk.SpinButton.new_with_range(0, 9999, 1)
         self.count.set_value(base.spoolCount)
         content.pack_start(self.count, False, False, 0)
 
         self.weight: Gtk.SpinButton | None = None
         if is_new:
-            content.pack_start(self._label("Waga pełnej szpuli (g)" if pl else "Full spool weight (g)"),
+            content.pack_start(self._label(i18n.t("Full spool weight (g)")),
                                False, False, 0)
             self.weight = Gtk.SpinButton.new_with_range(100, 5000, 50)
             self.weight.set_value(1000)

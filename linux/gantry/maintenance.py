@@ -4,6 +4,8 @@ from typing import Any
 
 from gi.repository import Gtk, Pango  # type: ignore
 
+from . import i18n
+
 
 def _duration(seconds: float) -> str:
     minutes = int(seconds / 60)
@@ -35,10 +37,10 @@ class MaintenancePanel(Gtk.Frame):
         title = Gtk.Label(label=(f"Konserwacja · {self.printer.name}" if self.pl
                                  else f"Maintenance · {self.printer.name}"), xalign=0)
         title.get_style_context().add_class("maintenance-title")
-        instructions = Gtk.Button(label="Instrukcje" if self.pl else "Instructions")
+        instructions = Gtk.Button(label=i18n.t("Instructions"))
         instructions.connect("clicked", self._instructions)
         close = Gtk.Button(label="×"); close.set_relief(Gtk.ReliefStyle.NONE)
-        close.set_tooltip_text("Zamknij" if self.pl else "Close")
+        close.set_tooltip_text(i18n.t("Close"))
         close.connect("clicked", lambda *_: self.close())
         header.pack_start(title, True, True, 0); header.pack_start(instructions, False, False, 0); header.pack_start(close, False, False, 0)
         self.body.pack_start(header, False, False, 0)
@@ -49,7 +51,7 @@ class MaintenancePanel(Gtk.Frame):
 
         alerts = self._alerts()
         if alerts:
-            self.body.pack_start(self._section("UWAGI DRUKARKI" if self.pl else "PRINTER ALERTS"), False, False, 4)
+            self.body.pack_start(self._section(i18n.t("PRINTER ALERTS")), False, False, 4)
             self.body.pack_start(self._alert_list(alerts), False, False, 0)
 
         tasks = Gtk.Grid(column_homogeneous=True, column_spacing=7, row_spacing=7)
@@ -61,13 +63,13 @@ class MaintenancePanel(Gtk.Frame):
 
         history = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         history.get_style_context().add_class("maintenance-footer-card")
-        history.pack_start(self._section("OSTATNIE WYDRUKI" if self.pl else "RECENT PRINTS"), False, False, 0)
+        history.pack_start(self._section(i18n.t("RECENT PRINTS")), False, False, 0)
         recent = snap["history"][:3]
         if not recent:
-            history.pack_start(self._label("Brak zapisanej historii." if self.pl else "No recorded history."), False, False, 0)
+            history.pack_start(self._label(i18n.t("No recorded history.")), False, False, 0)
         for entry in recent:
             icon = "✓" if entry.get("result") == "completed" else "!" if entry.get("result") == "failed" else "×"
-            name = str(entry.get("job") or ("Bez nazwy" if self.pl else "Untitled"))
+            name = str(entry.get("job") or (i18n.t("Untitled")))
             row = Gtk.Label(label=f"{icon}  {name} · {_duration(float(entry.get('durationSeconds', 0)))}",
                             xalign=0, ellipsize=Pango.EllipsizeMode.END)
             row.get_style_context().add_class("maintenance-history")
@@ -75,10 +77,10 @@ class MaintenancePanel(Gtk.Frame):
         success = "—" if snap["success"] is None else f"{snap['success']}%"
         stats = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         stats.get_style_context().add_class("maintenance-footer-card")
-        stats.pack_start(self._section("STATYSTYKI" if self.pl else "STATISTICS"), False, False, 0)
+        stats.pack_start(self._section(i18n.t("STATISTICS")), False, False, 0)
         metrics = Gtk.Box(spacing=4, homogeneous=True)
-        metrics.pack_start(self._metric(str(snap["completed"]), "zakończone" if self.pl else "completed"), True, True, 0)
-        metrics.pack_start(self._metric(success, "skuteczność" if self.pl else "success"), True, True, 0)
+        metrics.pack_start(self._metric(str(snap["completed"]),i18n.t("completed")), True, True, 0)
+        metrics.pack_start(self._metric(success,i18n.t("success")), True, True, 0)
         metrics.pack_start(self._metric(f"{snap['consumed_grams']:.0f} g", "filament"), True, True, 0)
         stats.pack_start(metrics, True, True, 0)
         footer = Gtk.Grid(column_homogeneous=True, column_spacing=7)
@@ -96,7 +98,7 @@ class MaintenancePanel(Gtk.Frame):
             return [(f"Kod błędu: 0x{self.telemetry.error_code:X}" if self.pl else f"Error code: 0x{self.telemetry.error_code:X}", None)]
         from .core import PrinterState
         if self.telemetry.state == PrinterState.ERROR:
-            return [("Drukarka zgłosiła błąd" if self.pl else "Printer reported an error", None)]
+            return [(i18n.t("Printer reported an error"), None)]
         return []
 
     def _alert(self, message: str, code: str | None) -> Gtk.Widget:
@@ -134,10 +136,10 @@ class MaintenancePanel(Gtk.Frame):
         timing_label = Gtk.Label(label=timing, xalign=1)
         timing_label.get_style_context().add_class("maintenance-task-time")
         heading.pack_start(task_title, True, True, 0); heading.pack_start(timing_label, False, False, 0)
-        done = Gtk.Button(label="Gotowe" if self.pl else "Done")
+        done = Gtk.Button(label=i18n.t("Done"))
         done.connect("clicked", lambda *_: (self.app.insights.complete(self.printer.serial, task.id), self.rebuild()))
         snooze = Gtk.Button(label="7d")
-        snooze.set_tooltip_text("Przypomnij za 7 dni" if self.pl else "Remind in 7 days")
+        snooze.set_tooltip_text(i18n.t("Remind in 7 days"))
         snooze.connect("clicked", lambda *_: (self.app.insights.snooze(self.printer.serial, task.id), self.rebuild()))
         interval = Gtk.Entry()
         interval.set_text(str(round(task.interval_hours)))
@@ -145,7 +147,7 @@ class MaintenancePanel(Gtk.Frame):
         interval.set_size_request(36, 26)
         interval.set_alignment(0.5)
         save = Gtk.Button(label="✎")
-        save.set_tooltip_text("Ustaw interwał" if self.pl else "Set interval")
+        save.set_tooltip_text(i18n.t("Set interval"))
 
         def save_interval(*_args: object) -> None:
             try:
@@ -187,9 +189,8 @@ class MaintenancePanel(Gtk.Frame):
     def _instructions(self, *_args: object) -> None:
         dialog = Gtk.MessageDialog(transient_for=self.app.window, modal=True, message_type=Gtk.MessageType.INFO,
                                    buttons=Gtk.ButtonsType.OK,
-                                   text="Instrukcje konserwacji" if self.pl else "Maintenance instructions")
-        dialog.format_secondary_text(("Wyłącz i ostudź drukarkę. Oczyść prowadnice, zastosuj środek zalecany przez producenta, sprawdź paski i dyszę. Instrukcja producenta ma zawsze pierwszeństwo."
-                                      if self.pl else "Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide always takes precedence."))
+                                   text=i18n.t("Maintenance instructions"))
+        dialog.format_secondary_text((i18n.t("Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide always takes precedence.")))
         dialog.run(); dialog.destroy()
 
     @staticmethod

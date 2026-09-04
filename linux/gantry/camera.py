@@ -23,6 +23,7 @@ gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import GdkPixbuf, GLib, Gtk  # type: ignore  # noqa: E402
 
+from . import i18n
 from .core import PrinterKind
 from .jpegstream import split_jpegs
 from .overrides import overrides_for
@@ -57,7 +58,7 @@ class CameraView(Gtk.Box):
         self.pack_start(frame, True, True, 0)
         self.status = Gtk.Label(xalign=0)
         self.status.get_style_context().add_class("subtitle")
-        self.status.set_text("Łączenie z kamerą…" if pl else "Connecting to camera…")
+        self.status.set_text(i18n.t("Connecting to camera…"))
         self.pack_start(self.status, False, False, 0)
         self.badge = Gtk.Label(xalign=0)
         self.badge.get_style_context().add_class("meta")
@@ -98,11 +99,10 @@ class CameraView(Gtk.Box):
     def _run_bambu(self) -> None:
         pl = self.app.language == "pl"
         if Gst is None:
-            self._set_status("Brak GStreamera — doinstaluj obsługę GStreamer i kodek H.264."
-                             if pl else "GStreamer is unavailable — install GStreamer and the H.264 decoder.")
+            self._set_status(i18n.t("GStreamer is unavailable — install GStreamer and the H.264 decoder."))
             return
         if not self.access_code:
-            self._set_status("Brak kodu dostępu drukarki." if pl else "Printer access code is missing.")
+            self._set_status(i18n.t("Printer access code is missing."))
             return
 
         pipeline = Gst.Pipeline.new(f"bambu-camera-{self.serial}")
@@ -115,8 +115,7 @@ class CameraView(Gtk.Box):
         sink = Gst.ElementFactory.make("appsink", "sink")
         elements = (source, depay, parser, decoder, convert, encoder, sink)
         if pipeline is None or any(element is None for element in elements):
-            self._set_status("Brak wtyczek GStreamer H.264/JPEG."
-                             if pl else "Required GStreamer H.264/JPEG plugins are missing.")
+            self._set_status(i18n.t("Required GStreamer H.264/JPEG plugins are missing."))
             return
 
         source.set_property("location", f"rtsps://{self.camera_host}:322/streaming/live/1")
@@ -139,8 +138,7 @@ class CameraView(Gtk.Box):
             pipeline.add(element)
         if not depay.link(parser) or not parser.link(decoder) or not decoder.link(convert) \
                 or not convert.link(encoder) or not encoder.link(sink):
-            self._set_status("Nie można połączyć potoku kamery."
-                             if pl else "Could not link the camera pipeline.")
+            self._set_status(i18n.t("Could not link the camera pipeline."))
             pipeline.set_state(Gst.State.NULL)
             return
 
@@ -164,8 +162,7 @@ class CameraView(Gtk.Box):
         self._set_badge("RTSPS · 322")
         result = pipeline.set_state(Gst.State.PLAYING)
         if result == Gst.StateChangeReturn.FAILURE:
-            self._set_status("Nie można uruchomić kamery."
-                             if pl else "Could not start the camera stream.")
+            self._set_status(i18n.t("Could not start the camera stream."))
             pipeline.set_state(Gst.State.NULL)
             self._pipeline = None
             return
@@ -178,10 +175,9 @@ class CameraView(Gtk.Box):
                 continue
             if message.type == Gst.MessageType.ERROR:
                 error, _debug = message.parse_error()
-                self._set_status(("Błąd kamery: " if pl else "Camera error: ") + error.message)
+                self._set_status((i18n.t("Camera error: ")) + error.message)
             elif message.type == Gst.MessageType.EOS:
-                self._set_status("Strumień kamery został zakończony."
-                                 if pl else "The camera stream ended.")
+                self._set_status(i18n.t("The camera stream ended."))
             break
         pipeline.set_state(Gst.State.NULL)
         if self._pipeline is pipeline:
@@ -190,7 +186,7 @@ class CameraView(Gtk.Box):
     def _run_anycubic(self) -> None:
         pl = self.app.language == "pl"
         if Gst is None:
-            self._set_status("Brak GStreamera do dekodowania FLV." if pl else "GStreamer is unavailable for FLV decoding.")
+            self._set_status(i18n.t("GStreamer is unavailable for FLV decoding."))
             return
         pipeline = Gst.Pipeline.new(f"anycubic-camera-{self.serial}")
         source = Gst.ElementFactory.make("souphttpsrc", "source")
@@ -202,7 +198,7 @@ class CameraView(Gtk.Box):
         sink = Gst.ElementFactory.make("appsink", "sink")
         elements = (source, demux, queue, decoder, convert, encoder, sink)
         if pipeline is None or any(element is None for element in elements):
-            self._set_status("Nie można utworzyć potoku kamery FLV." if pl else "Could not create the FLV camera pipeline.")
+            self._set_status(i18n.t("Could not create the FLV camera pipeline."))
             return
         source.set_property("location", f"http://{self.camera_host}:18088/flv")
         encoder.set_property("quality", 82)
@@ -210,7 +206,7 @@ class CameraView(Gtk.Box):
         sink.set_property("max-buffers", 1); sink.set_property("drop", True)
         for element in elements: pipeline.add(element)
         if not source.link(demux) or not queue.link(decoder) or not convert.link(encoder) or not encoder.link(sink):
-            self._set_status("Nie można połączyć potoku kamery FLV." if pl else "Could not link the FLV camera pipeline.")
+            self._set_status(i18n.t("Could not link the FLV camera pipeline."))
             return
         def link_video_pad(_element: Any, pad: Any, target: Any) -> None:
             caps = pad.get_current_caps() or pad.query_caps(None)
@@ -227,14 +223,14 @@ class CameraView(Gtk.Box):
             return Gst.FlowReturn.OK
         sink.connect("new-sample", new_sample); self._pipeline = pipeline; self._set_badge("FLV · 18088")
         if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-            self._set_status("Nie można uruchomić kamery FLV." if pl else "Could not start the FLV camera.")
+            self._set_status(i18n.t("Could not start the FLV camera."))
             pipeline.set_state(Gst.State.NULL); self._pipeline = None; return
         bus = pipeline.get_bus()
         while not self._stop.is_set():
             message = bus.timed_pop_filtered(250 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if message is None: continue
             if message.type == Gst.MessageType.ERROR:
-                error, _debug = message.parse_error(); self._set_status(("Błąd kamery: " if pl else "Camera error: ") + error.message)
+                error, _debug = message.parse_error(); self._set_status((i18n.t("Camera error: ")) + error.message)
             break
         pipeline.set_state(Gst.State.NULL)
         if self._pipeline is pipeline: self._pipeline = None
@@ -243,7 +239,7 @@ class CameraView(Gtk.Box):
         pl = self.app.language == "pl"
         url = self._mjpeg_url()
         if not url:
-            self._set_status("Nie znaleziono adresu kamery MJPEG." if pl else "No MJPEG camera URL found.")
+            self._set_status(i18n.t("No MJPEG camera URL found."))
             return
         self._set_badge("MJPEG")
         request = urllib.request.Request(url)
@@ -321,7 +317,7 @@ class CameraWindow(Gtk.Window):
         super().__init__()
         printer = next((p for p in app.printers if p.serial == serial), None)
         pl = app.language == "pl"
-        self.set_title(("Kamera" if pl else "Camera") + f" · {printer.name if printer else serial}")
+        self.set_title((i18n.t("Camera")) + f" · {printer.name if printer else serial}")
         self.set_default_size(720, 460)
         self.set_transient_for(app.window)
         self.set_position(Gtk.WindowPosition.CENTER)
