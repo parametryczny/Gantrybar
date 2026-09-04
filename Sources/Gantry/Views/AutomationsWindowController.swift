@@ -18,7 +18,7 @@ final class AutomationsWindowController: NSWindowController {
         let name = store.printers.first(where: { $0.serial == serial })?.name ?? serial
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 640),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = AppSettings.shared.text("Automatyzacje — \(name)", "Automations — \(name)")
+        window.title = String(format: AppSettings.shared.t("Automations — %@"), name)
         window.contentMinSize = NSSize(width: 520, height: 420)
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -37,17 +37,15 @@ final class AutomationsWindowController: NSWindowController {
     private func buildUI() {
         guard let content = window?.contentView else { return }
 
-        let title = NSTextField(labelWithString: AppSettings.shared.text("Automatyzacje", "Automations"))
+        let title = NSTextField(labelWithString: AppSettings.shared.t("Automations"))
         title.font = .systemFont(ofSize: 15, weight: .bold)
-        let subtitle = NSTextField(labelWithString: AppSettings.shared.text(
-            "Wyzwalacz → akcja. Reguły warunkowe odpalają się raz na wydruk. Skrypty działają z Twoimi uprawnieniami.",
-            "Trigger → action. Conditional rules fire once per print. Scripts run with your privileges."))
+        let subtitle = NSTextField(labelWithString: AppSettings.shared.t("Trigger → action. Conditional rules fire once per print. Scripts run with your privileges."))
         subtitle.font = .systemFont(ofSize: 11)
         subtitle.textColor = .secondaryLabelColor
         subtitle.lineBreakMode = .byWordWrapping
         subtitle.maximumNumberOfLines = 2
 
-        let addButton = NSButton(title: AppSettings.shared.text("＋ Dodaj automatyzację", "＋ Add automation"),
+        let addButton = NSButton(title: AppSettings.shared.t("＋ Add automation"),
                                  target: self, action: #selector(addAutomation))
         addButton.bezelStyle = .rounded
 
@@ -93,9 +91,7 @@ final class AutomationsWindowController: NSWindowController {
     private func rebuildList() {
         listStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if automations.isEmpty {
-            let empty = NSTextField(labelWithString: AppSettings.shared.text(
-                "Brak automatyzacji. Dodaj pierwszą przyciskiem powyżej.",
-                "No automations yet. Add one with the button above."))
+            let empty = NSTextField(labelWithString: AppSettings.shared.t("No automations yet. Add one with the button above."))
             empty.font = .systemFont(ofSize: 12)
             empty.textColor = .tertiaryLabelColor
             listStack.addArrangedSubview(empty)
@@ -113,7 +109,7 @@ final class AutomationsWindowController: NSWindowController {
     }
 
     @objc private func addAutomation() {
-        var auto = PrinterAutomation(name: AppSettings.shared.text("Nowa automatyzacja", "New automation"))
+        var auto = PrinterAutomation(name: AppSettings.shared.t("New automation"))
         auto.trigger = .atLayer(1)
         auto.action = .light(false)
         automations.append(auto)
@@ -138,13 +134,10 @@ final class AutomationsWindowController: NSWindowController {
         // Scripts get an explicit confirmation; they run with the user's privileges.
         if auto.action.isScript, !ScriptRunner.shared.isRunning(auto.id) {
             let alert = NSAlert()
-            alert.messageText = AppSettings.shared.text("Uruchomić skrypt „\(auto.name)”?",
-                                                        "Run script “\(auto.name)”?")
-            alert.informativeText = AppSettings.shared.text(
-                "Skrypt uruchomi się z Twoimi uprawnieniami.",
-                "The script will run with your privileges.")
-            alert.addButton(withTitle: AppSettings.shared.text("Uruchom", "Run"))
-            alert.addButton(withTitle: AppSettings.shared.text("Anuluj", "Cancel"))
+            alert.messageText = String(format: AppSettings.shared.t("Run script “%@”?"), auto.name)
+            alert.informativeText = AppSettings.shared.t("The script will run with your privileges.")
+            alert.addButton(withTitle: AppSettings.shared.t("Run"))
+            alert.addButton(withTitle: AppSettings.shared.t("Cancel"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         if auto.action.isScript, ScriptRunner.shared.isRunning(auto.id) {
@@ -180,12 +173,9 @@ private final class AutomationRowView: NSView {
     private var actionValueHeight: NSLayoutConstraint?
     private let runButton = NSButton()
 
-    private static let triggerTitles = [("Ręczny", "Manual"), ("Po warstwie", "At layer"),
-                                        ("Po %", "At %"), ("Gdy stan", "On state")]
-    private static let actionTitles = [("Światło wł.", "Light on"), ("Światło wył.", "Light off"),
-                                       ("Pauza", "Pause"), ("Wznów", "Resume"), ("Stop", "Stop"),
-                                       ("Powiadomienie", "Notification"), ("Własna komenda", "Custom command"),
-                                       ("Skrypt", "Script")]
+    private static let triggerTitles = ["Manual", "At layer", "At %", "On state"]
+    private static let actionTitles = ["Light on", "Light off", "Pause", "Resume", "Stop",
+                                       "Notification", "Custom command", "Script"]
     private static let stateOptions: [PrinterState] = [.printing, .paused, .finished, .error, .idle]
 
     init(automation: PrinterAutomation,
@@ -207,7 +197,7 @@ private final class AutomationRowView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    private func t(_ pl: String, _ en: String) -> String { AppSettings.shared.text(pl, en) }
+    private func t(_ english: String) -> String { AppSettings.shared.t(english) }
 
     private func build() {
         enabledCheck.state = automation.enabled ? .on : .off
@@ -234,14 +224,14 @@ private final class AutomationRowView: NSView {
         topRow.spacing = 8
         nameField.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        for (pl, en) in Self.triggerTitles { triggerPopup.addItem(withTitle: t(pl, en)) }
+        for title in Self.triggerTitles { triggerPopup.addItem(withTitle: t(title)) }
         triggerPopup.target = self
         triggerPopup.action = #selector(triggerChanged)
-        for (pl, en) in Self.actionTitles { actionPopup.addItem(withTitle: t(pl, en)) }
+        for title in Self.actionTitles { actionPopup.addItem(withTitle: t(title)) }
         actionPopup.target = self
         actionPopup.action = #selector(actionChanged)
 
-        let triggerLabel = NSTextField(labelWithString: t("Wyzwalacz:", "Trigger:"))
+        let triggerLabel = NSTextField(labelWithString: t("Trigger:"))
         triggerLabel.font = .systemFont(ofSize: 11)
         triggerLabel.textColor = .secondaryLabelColor
         let triggerRow = NSStackView(views: [triggerLabel, triggerPopup, triggerValueContainer])
@@ -249,7 +239,7 @@ private final class AutomationRowView: NSView {
         triggerRow.alignment = .centerY
         triggerRow.spacing = 6
 
-        let actionLabel = NSTextField(labelWithString: t("Akcja:", "Action:"))
+        let actionLabel = NSTextField(labelWithString: t("Action:"))
         actionLabel.font = .systemFont(ofSize: 11)
         actionLabel.textColor = .secondaryLabelColor
         let actionRow = NSStackView(views: [actionLabel, actionPopup])
@@ -363,7 +353,7 @@ private final class AutomationRowView: NSView {
         case 5: // notify
             let field = NSTextField()
             field.bezelStyle = .roundedBezel
-            field.placeholderString = t("Treść powiadomienia", "Notification text")
+            field.placeholderString = t("Notification text")
             if case .notify(let s) = automation.action { field.stringValue = s }
             field.target = self
             field.action = #selector(fieldsChanged)
@@ -429,7 +419,7 @@ private final class AutomationRowView: NSView {
 
     private func syncRunButton() {
         let running = automation.action.isScript && ScriptRunner.shared.isRunning(automation.id)
-        runButton.title = running ? t("Stop", "Stop") : t("Uruchom", "Run")
+        runButton.title = running ? t("Stop") : t("Run")
     }
 
     // MARK: Actions
@@ -439,7 +429,7 @@ private final class AutomationRowView: NSView {
 
     @objc private func fieldsChanged() {
         automation.enabled = enabledCheck.state == .on
-        automation.name = nameField.stringValue.isEmpty ? t("Automatyzacja", "Automation") : nameField.stringValue
+        automation.name = nameField.stringValue.isEmpty ? t("Automation") : nameField.stringValue
         automation.trigger = currentTrigger()
         automation.action = currentAction()
         onChange(automation)

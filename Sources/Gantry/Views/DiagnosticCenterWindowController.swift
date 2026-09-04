@@ -91,19 +91,19 @@ final class DiagnosticCenterViewController: NSViewController {
         let s = AppSettings.shared
         view.appearance = s.appearance
 
-        let title = label(s.text("Centrum diagnostyczne", "Diagnostic Center"), 18, .bold, GantryTheme.text)
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.text("Zamknij", "Close"))!,
+        let title = label(s.t("Diagnostic Center"), 18, .bold, GantryTheme.text)
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
                              target: self, action: #selector(closePressed))
         close.isBordered = false
         close.contentTintColor = GantryTheme.secondary
-        close.toolTip = s.text("Zamknij", "Close")
+        close.toolTip = s.t("Close")
         let header = NSStackView(views: [title, NSView(), close])
         header.orientation = .horizontal; header.alignment = .centerY; header.spacing = 8
 
-        status.stringValue = s.text("Sprawdź łączność wszystkich drukarek.", "Check connectivity for every printer.")
+        status.stringValue = s.t("Check connectivity for every printer.")
         status.font = .systemFont(ofSize: 12)
         status.textColor = GantryTheme.secondary
-        runButton = button(s.text("Uruchom wszystkie testy", "Run all tests"), action: #selector(runPressed))
+        runButton = button(s.t("Run all tests"), action: #selector(runPressed))
         progress.style = .bar
         progress.isIndeterminate = false
         progress.controlSize = .small
@@ -157,8 +157,8 @@ final class DiagnosticCenterViewController: NSViewController {
         results.arrangedSubviews.forEach { results.removeArrangedSubview($0); $0.removeFromSuperview() }
         let printers = store.printers
         guard !printers.isEmpty else {
-            results.addArrangedSubview(line(AppSettings.shared.text("Brak drukarek.", "No printers.")))
-            status.stringValue = AppSettings.shared.text("Testy zakończone.", "Tests complete.")
+            results.addArrangedSubview(line(AppSettings.shared.t("No printers.")))
+            status.stringValue = AppSettings.shared.t("Tests complete.")
             runButton.isEnabled = true
             isRunning = false
             return
@@ -188,7 +188,7 @@ final class DiagnosticCenterViewController: NSViewController {
     private func beginProbe() {
         let s = AppSettings.shared
         let printer = runPrinters[runIndex]
-        status.stringValue = String(format: s.text("Testuję %d z %d: %@", "Testing %d of %d: %@"),
+        status.stringValue = String(format: s.t("Testing %d of %d: %@"),
                                     runIndex + 1, runPrinters.count, printer.name)
         let port = UInt16(printer.port ?? (printer.kind == .elegooCC2 ? 1883 : printer.kind == .klipper ? 7125 : 8883))
         probeStarted = Date()
@@ -205,7 +205,7 @@ final class DiagnosticCenterViewController: NSViewController {
         if let answered = pending?.result {
             outcome = answered
         } else if Date().timeIntervalSince(probeStarted) >= Self.perPrinterLimit {
-            outcome = (false, nil, s.text("brak odpowiedzi", "no response"))
+            outcome = (false, nil, s.t("no response"))
         } else {
             return                                   // still within this printer's budget
         }
@@ -225,8 +225,7 @@ final class DiagnosticCenterViewController: NSViewController {
             beginProbe()
         } else {
             pollTimer?.invalidate(); pollTimer = nil
-            status.stringValue = String(format: s.text("Testy zakończone: %d drukarek w %.1f s",
-                                                       "Tests complete: %d printers in %.1f s"),
+            status.stringValue = String(format: s.t("Tests complete: %d printers in %.1f s"),
                                         runPrinters.count, Date().timeIntervalSince(runStarted))
             progress.isHidden = true
             runButton.isEnabled = true
@@ -239,14 +238,14 @@ final class DiagnosticCenterViewController: NSViewController {
         let s = AppSettings.shared
         let latency = network.1
         let quality: String = latency.map { value in
-            value < 50 ? s.text("bardzo dobra", "excellent") : value < 150 ? s.text("dobra", "good")
-                : value < 400 ? s.text("słaba", "poor") : s.text("bardzo słaba", "very poor")
+            value < 50 ? s.t("excellent") : value < 150 ? s.t("good")
+                : value < 400 ? s.t("poor") : s.t("very poor")
         } ?? "—"
         let networkText = network.0
-            ? "✓  \(s.text("Sieć", "Network")) · \(String(format: "%.0f", latency ?? 0)) ms · \(quality)"
-            : "×  \(s.text("Sieć", "Network")) · \(network.2 ?? "—")"
+            ? "✓  \(s.t("Network")) · \(String(format: "%.0f", latency ?? 0)) ms · \(quality)"
+            : "×  \(s.t("Network")) · \(network.2 ?? "—")"
         let values = [networkText,
-                      "\(connected ? "✓" : "×")  \(s.text("Połączenie z drukarką", "Printer connection")) · \(connected ? s.text("telemetria aktywna", "telemetry active") : reason)"]
+                      "\(connected ? "✓" : "×")  \(s.t("Printer connection")) · \(connected ? s.t("telemetry active") : reason)"]
         let title = line(printer.name, size: 13, weight: .semibold, color: GantryTheme.text)
         let stack = NSStackView(views: [title] + values.map { line($0) })
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 5

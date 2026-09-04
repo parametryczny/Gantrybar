@@ -139,7 +139,7 @@ final class PrinterDashboardViewController: NSViewController {
         resetButton.contentTintColor = GantryTheme.secondary
         resetButton.target = self
         resetButton.action = #selector(resetPressed)
-        resetButton.toolTip = AppSettings.shared.text("Wyczyść zakończone", "Clear finished")
+        resetButton.toolTip = AppSettings.shared.t("Clear finished")
         // Layout toggle (cards ↔ list) — icon; image set per mode in refreshDashboard.
         compactButton.imagePosition = .imageOnly
         compactButton.isBordered = false
@@ -280,18 +280,12 @@ final class PrinterDashboardViewController: NSViewController {
         // Layout toggle icon: in card mode show a "list" icon (tap → list); in list mode a "grid" icon.
         compactButton.image = NSImage(systemSymbolName: useCompactMode ? "square.grid.2x2" : "list.bullet",
                                       accessibilityDescription: nil)
-        compactButton.toolTip = settings.text(
-            useCompactMode ? "Układ: kafle" : "Układ: lista",
-            useCompactMode ? "Layout: cards" : "Layout: list"
-        )
+        compactButton.toolTip = settings.t(useCompactMode ? "Layout: cards" : "Layout: list")
         // Column-count toggle only makes sense in card mode; hide it in the compact list.
         columnsButton.isHidden = useCompactMode
         columnsButton.image = NSImage(systemSymbolName: preferredColumns == 2 ? "rectangle.portrait" : "square.split.2x1",
                                       accessibilityDescription: nil)
-        columnsButton.toolTip = settings.text(
-            preferredColumns == 2 ? "Jedna kolumna" : "Dwie kolumny",
-            preferredColumns == 2 ? "One column" : "Two columns"
-        )
+        columnsButton.toolTip = settings.t(preferredColumns == 2 ? "One column" : "Two columns")
         cardsStack.spacing = useCompactMode ? 3 : 6
         if store.printers.isEmpty {
             detachCardRows()
@@ -300,10 +294,7 @@ final class PrinterDashboardViewController: NSViewController {
             renderedSerials.removeAll()
             renderedWideSerials.removeAll()
             renderedCompactMode = nil
-            let empty = NSTextField(wrappingLabelWithString: settings.text(
-                "Brak drukarek. Kliknij +, aby wyszukać urządzenia w sieci.",
-                "No printers. Click + to find devices on your network."
-            ))
+            let empty = NSTextField(wrappingLabelWithString: settings.t("No printers. Click + to find devices on your network."))
             empty.alignment = .center
             empty.textColor = .secondaryLabelColor
             empty.widthAnchor.constraint(equalToConstant: 440).isActive = true
@@ -536,14 +527,10 @@ final class PrinterDashboardViewController: NSViewController {
 
     private func refreshLocalization() {
         let settings = AppSettings.shared
-        footerLabel.stringValue = settings.text("Drukuj spokojnie — wszystko pod kontrolą",
-                                                "Print in peace — everything under control")
+        footerLabel.stringValue = settings.t("Print in peace — everything under control")
         // Reset/clear is icon-only (a broom-like ✨); don't set a title or it takes header width.
         resetButton.imagePosition = .imageOnly
-        resetButton.toolTip = settings.text(
-            "Usuń zakończone zadania i stare nazwy plików",
-            "Clear completed jobs and old file names"
-        )
+        resetButton.toolTip = settings.t("Clear completed jobs and old file names")
         // The layout-toggle button is icon-only; its image + tooltip are refreshed in refreshDashboard.
     }
 
@@ -561,10 +548,7 @@ final class PrinterDashboardViewController: NSViewController {
     private func openBambuStudio(camera: Bool) {
         let url = URL(fileURLWithPath: "/Applications/BambuStudio.app")
         guard FileManager.default.fileExists(atPath: url.path) else { return }
-        let cameraMessage = AppSettings.shared.text(
-            "Otwórz kartę Urządzenie, aby zobaczyć kamerę.",
-            "Open the Device tab to view the camera."
-        )
+        let cameraMessage = AppSettings.shared.t("Open the Device tab to view the camera.")
         NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, _ in
             if camera {
                 NotificationService.post(title: "Gantry", body: cameraMessage)
@@ -580,14 +564,11 @@ final class PrinterDashboardViewController: NSViewController {
     private func confirmRemove(_ printer: SavedPrinter) {
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = settings.text("Usunąć drukarkę \(printer.name)?", "Remove printer \(printer.name)?")
-        alert.informativeText = settings.text(
-            "Zapisany kod dostępu i pin certyfikatu tej drukarki zostaną usunięte.",
-            "This printer's saved access code and certificate pin will be removed."
-        )
+        alert.messageText = String(format: settings.t("Remove printer %@?"), printer.name)
+        alert.informativeText = settings.t("This printer's saved access code and certificate pin will be removed.")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: settings.text("Usuń", "Remove"))
-        alert.addButton(withTitle: settings.text("Anuluj", "Cancel"))
+        alert.addButton(withTitle: settings.t("Remove"))
+        alert.addButton(withTitle: settings.t("Cancel"))
         // Prefer a modal sheet on the window; fall back to a standalone alert.
         if let window = view.window {
             alert.beginSheetModal(for: window) { [weak self] result in
@@ -1053,28 +1034,28 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         statusLabel.lineBreakMode = .byTruncatingTail
 
         var actionEntries: [CardActionsButton.Entry] = [
-            .init(polishTitle: "Szczegóły", englishTitle: "Details", symbol: "chart.xyaxis.line", action: onShowDetails),
-            .init(polishTitle: "Połącz ponownie", englishTitle: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)
+            .init(title: "Details", symbol: "chart.xyaxis.line", action: onShowDetails),
+            .init(title: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)
         ]
         // Bambu still opens its slicer camera; Elegoo/Klipper cameras live in Gantry details.
         if printer.kind == .bambu {
-            actionEntries.append(.init(polishTitle: "Kamera w Bambu Studio", englishTitle: "Camera in Bambu Studio",
+            actionEntries.append(.init(title: "Camera in Bambu Studio",
                                        symbol: "video.fill", action: onOpenCamera))
         }
         // Any printer can open a slicer; offer whichever are installed as a submenu.
         let slicers = SlicerLauncher.installed()
         if !slicers.isEmpty {
             let slicerEntries = slicers.map { slicer in
-                CardActionsButton.Entry(polishTitle: slicer.name, englishTitle: slicer.name,
+                CardActionsButton.Entry(title: slicer.name,
                                         symbol: "square.and.arrow.up", action: { onOpenSlicer(slicer.url) })
             }
-            actionEntries.append(.init(polishTitle: "Otwórz slicer", englishTitle: "Open slicer",
+            actionEntries.append(.init(title: "Open slicer",
                                        symbol: "square.and.arrow.up", submenu: slicerEntries))
         }
         actionEntries.append(contentsOf: [
-            .init(polishTitle: "Kopiuj adres IP", englishTitle: "Copy IP address", symbol: "doc.on.doc", action: onCopyIP),
-            .init(polishTitle: "Edytuj drukarkę", englishTitle: "Edit printer", symbol: "pencil", action: onEdit),
-            .init(polishTitle: "Usuń drukarkę", englishTitle: "Remove printer", symbol: "trash", action: onRemove)
+            .init(title: "Copy IP address", symbol: "doc.on.doc", action: onCopyIP),
+            .init(title: "Edit printer", symbol: "pencil", action: onEdit),
+            .init(title: "Remove printer", symbol: "trash", action: onRemove)
         ])
         let actions = CardActionsButton(entries: actionEntries)
         let handle = PrinterDragHandle { [weak self] event in self?.beginCardDrag(with: event) }
@@ -1104,7 +1085,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             detailsIcon.widthAnchor.constraint(equalToConstant: 11),
             detailsIcon.heightAnchor.constraint(equalToConstant: 11)
         ])
-        detailsChip.toolTip = AppSettings.shared.text("Szczegóły", "Details")
+        detailsChip.toolTip = AppSettings.shared.t("Details")
         detailsChip.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(detailsPressed)))
         detailsChip.setContentHuggingPriority(.required, for: .horizontal)
         maintenanceChip.bezelStyle = .recessed
@@ -1113,7 +1094,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         maintenanceChip.contentTintColor = .systemYellow
         maintenanceChip.target = self
         maintenanceChip.action = #selector(maintenancePressed)
-        maintenanceChip.toolTip = AppSettings.shared.text("Konserwacja", "Maintenance")
+        maintenanceChip.toolTip = AppSettings.shared.t("Maintenance")
         maintenanceChip.isHidden = true
         maintenanceChip.setContentHuggingPriority(.required, for: .horizontal)
         printerAlertChip.bezelStyle = .recessed
@@ -1429,7 +1410,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             printerAlertChip.title = count > 1 ? "! \(count)" : "!"
             printerAlertChip.toolTip = HMSResolver.shared.description(
                 for: actionableHMS, serial: printer.serial, language: settings.language
-            ) ?? settings.text("Drukarka zgłosiła uwagę lub błąd", "Printer reported an alert or error")
+            ) ?? settings.t("Printer reported an alert or error")
         }
 
         switch PrinterInsightsStore.shared.signal(serial: printer.serial) {
@@ -1438,25 +1419,25 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         case .planned:
             maintenanceChip.title = "🔧"
             maintenanceChip.contentTintColor = GantryTheme.secondary
-            maintenanceChip.toolTip = settings.text("Zbliża się zaplanowana konserwacja", "Scheduled maintenance is approaching")
+            maintenanceChip.toolTip = settings.t("Scheduled maintenance is approaching")
             maintenanceChip.isHidden = false
         case .due(let count):
             maintenanceChip.title = "🔧 \(count)"
             maintenanceChip.contentTintColor = .systemYellow
-            maintenanceChip.toolTip = settings.text("Wymagana konserwacja", "Maintenance due")
+            maintenanceChip.toolTip = settings.t("Maintenance due")
             maintenanceChip.isHidden = false
         case .urgent(let count):
             maintenanceChip.title = "🔧 \(count)"
             maintenanceChip.contentTintColor = .systemRed
-            maintenanceChip.toolTip = settings.text("Pilna czynność konserwacyjna", "Urgent maintenance task")
+            maintenanceChip.toolTip = settings.t("Urgent maintenance task")
             maintenanceChip.isHidden = false
         }
 
         if telemetry.state == .error {
             let errorDescription = HMSResolver.shared.description(for: telemetry.hmsCodes, serial: printer.serial, language: settings.language)
                 ?? (telemetry.errorCode != 0
-                    ? String(format: settings.text("Kod błędu: 0x%llX", "Error code: 0x%llX"), telemetry.errorCode)
-                    : settings.text("Drukarka zgłosiła błąd", "Printer reported an error"))
+                    ? String(format: settings.t("Error code: 0x%llX"), telemetry.errorCode)
+                    : settings.t("Printer reported an error"))
             jobLabel.stringValue = errorDescription
             jobLabel.toolTip = errorDescription
         } else {
@@ -1466,7 +1447,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
                 && telemetry.jobName?.isEmpty == false
             jobLabel.stringValue = hasActiveJob
                 ? telemetry.jobName!
-                : settings.text("BRAK AKTYWNEGO ZADANIA", "NO ACTIVE JOB")
+                : settings.t("NO ACTIVE JOB")
             jobLabel.toolTip = hasActiveJob ? telemetry.jobName : nil
         }
         progress.value = telemetry.progress
@@ -1601,7 +1582,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         disconnectOverlay.isHidden = !disconnected
         if disconnected {
             disconnectLabel.stringValue = message
-                ?? settings.text("Brak połączenia z drukarką", "No connection to the printer")
+                ?? settings.t("No connection to the printer")
         }
     }
 
@@ -1624,10 +1605,10 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     /// compact single row (Nozzle · Bed · Chamber); dual-nozzle printers split into an L/P row and a
     /// Bed/Chamber row.
     private func configureMetricsLayout(dual: Bool, settings: AppSettings) {
-        leftNozzleMetric.label = dual ? settings.text("L", "L") : settings.text("Dysza", "Nozzle")
-        rightNozzleMetric.label = settings.text("P", "R")
-        bedMetric.label = settings.text("Stół", "Bed")
-        chamberMetric.label = settings.text("Komora", "Chamber")
+        leftNozzleMetric.label = dual ? settings.t("L") : settings.t("Nozzle")
+        rightNozzleMetric.label = settings.t("R")
+        bedMetric.label = settings.t("Bed")
+        chamberMetric.label = settings.t("Chamber")
         lastDual = dual
         // Dual nozzle needs two rows in a narrow column, but a wide (full-width) card fits all four
         // temperatures on a single line — no reason to spend a second row when there's room.
@@ -1762,8 +1743,7 @@ private final class PrinterDragHandle: NSView {
         wantsLayer = true
         layer?.cornerRadius = 10
         layer?.backgroundColor = NSColor.white.withAlphaComponent(0.065).cgColor
-        toolTip = AppSettings.shared.text("Przeciągnij w górę/dół, aby zmienić kolejność drukarek",
-                                          "Drag up/down to reorder printers")
+        toolTip = AppSettings.shared.t("Drag up/down to reorder printers")
         widthAnchor.constraint(equalToConstant: 20).isActive = true
         heightAnchor.constraint(equalToConstant: 20).isActive = true
     }
@@ -1809,16 +1789,15 @@ private final class PrinterDragHandle: NSView {
 @MainActor
 private final class CardActionsButton: NSButton {
     struct Entry {
-        let polishTitle: String
-        let englishTitle: String
+        let title: String
         let symbol: String
         let action: (() -> Void)?
         let submenu: [Entry]?
 
-        init(polishTitle: String, englishTitle: String, symbol: String,
+        /// `title` is the English source string, looked up in the catalog when the menu is built.
+        init(title: String, symbol: String,
              action: (() -> Void)? = nil, submenu: [Entry]? = nil) {
-            self.polishTitle = polishTitle
-            self.englishTitle = englishTitle
+            self.title = title
             self.symbol = symbol
             self.action = action
             self.submenu = submenu
@@ -1845,7 +1824,7 @@ private final class CardActionsButton: NSButton {
         contentTintColor = GantryTheme.text
         target = self
         action = #selector(showActions)
-        toolTip = AppSettings.shared.text("Więcej działań", "More actions")
+        toolTip = AppSettings.shared.t("More actions")
         widthAnchor.constraint(equalToConstant: 20).isActive = true
         heightAnchor.constraint(equalToConstant: 20).isActive = true
     }
@@ -1853,7 +1832,7 @@ private final class CardActionsButton: NSButton {
     required init?(coder: NSCoder) { nil }
 
     @objc private func showActions() {
-        toolTip = AppSettings.shared.text("Więcej działań", "More actions")
+        toolTip = AppSettings.shared.t("More actions")
         let menu = buildMenu(from: entries)
         menu.popUp(positioning: nil, at: NSPoint(x: bounds.maxX, y: bounds.minY), in: self)
     }
@@ -1861,7 +1840,7 @@ private final class CardActionsButton: NSButton {
     private func buildMenu(from entries: [Entry]) -> NSMenu {
         let menu = NSMenu()
         for entry in entries {
-            let title = AppSettings.shared.text(entry.polishTitle, entry.englishTitle)
+            let title = AppSettings.shared.t(entry.title)
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.image = NSImage(systemSymbolName: entry.symbol, accessibilityDescription: title)
             if let submenu = entry.submenu {
@@ -1988,20 +1967,20 @@ private final class TemperatureBentoView: NSView {
         if dual {
             let left = nozzles.first { $0.position == .left } ?? nozzles.first
             let right = nozzles.first { $0.position == .right }
-            zones.append((settings.text("DYSZE L", "NOZZLES L"), left?.currentTemperature,
+            zones.append((settings.t("NOZZLES L"), left?.currentTemperature,
                           left?.targetTemperature, GantryTheme.nozzle))
             zones.append(("P", right?.currentTemperature,
                           right?.targetTemperature, GantryTheme.nozzle))
         } else {
             let nozzle = nozzles.first
-            zones.append((settings.text("DYSZA", "NOZZLE"), nozzle?.currentTemperature,
+            zones.append((settings.t("NOZZLE"), nozzle?.currentTemperature,
                           nozzle?.targetTemperature, GantryTheme.nozzle))
         }
-        zones.append((settings.text("STÓŁ", "BED"), bedCurrent, bedTarget, GantryTheme.bed))
+        zones.append((settings.t("BED"), bedCurrent, bedTarget, GantryTheme.bed))
         // Only show a chamber tile when the printer actually reports a chamber temperature — an empty
         // "KOMORA — / —" tile just steals a third of the row, so nozzle + bed take the space instead.
         if chamberCurrent != nil {
-            zones.append((settings.text("KOMORA", "CHAMBER"), chamberCurrent, chamberTarget, GantryTheme.chamber))
+            zones.append((settings.t("CHAMBER"), chamberCurrent, chamberTarget, GantryTheme.chamber))
         }
 
         // Temperatures are coloured by state, per design/kolorystyka.md — the same map for nozzle, bed and
@@ -2483,7 +2462,7 @@ final class FilamentSlotView: NSView {
 
         // Click a slot to open its spool-assignment popover (Spoolbase).
         if onTap != nil {
-            toolTip = AppSettings.shared.text("Kliknij, aby przypisać rolkę", "Click to assign a spool")
+            toolTip = AppSettings.shared.t("Click to assign a spool")
             addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(handleTap)))
         }
     }

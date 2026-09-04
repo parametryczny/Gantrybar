@@ -150,8 +150,7 @@ final class PrinterStore: ObservableObject {
             guard allowCodeAction(auto, printerName: name) else { break }
             ScriptRunner.shared.run(auto.id, script: content)
             NotificationService.post(title: name,
-                                     body: AppSettings.shared.text("Uruchomiono skrypt: \(auto.name)",
-                                                                   "Ran script: \(auto.name)"))
+                                     body: String(format: AppSettings.shared.t("Ran script: %@"), auto.name))
         }
     }
 
@@ -163,8 +162,7 @@ final class PrinterStore: ObservableObject {
         let s = AppSettings.shared
         guard s.allowScriptActions else {
             NotificationService.post(title: printerName,
-                body: s.text("Pominięto „\(auto.name)” — akcje skryptowe/komendy są wyłączone (Ustawienia → Bezpieczeństwo).",
-                             "Skipped \"\(auto.name)\" — script/command actions are disabled (Settings → Security)."))
+                body: String(format: s.t("Skipped \"%@\" — script/command actions are disabled (Settings → Security)."), auto.name))
             return false
         }
         if s.isScriptRuleApproved(auto.id) { return true }
@@ -177,12 +175,12 @@ final class PrinterStore: ObservableObject {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = s.text("Potwierdź automatyzację", "Confirm automation")
-        alert.informativeText = s.text(
-            "Automatyzacja „\(auto.name)” (\(printerName)) chce wykonać \(isScript ? "skrypt na tym komputerze" : "komendę drukarki"):\n\n\(preview)\n\nZezwolić i zapamiętać dla tej reguły?",
-            "Automation \"\(auto.name)\" (\(printerName)) wants to run \(isScript ? "a script on this Mac" : "a printer command"):\n\n\(preview)\n\nAllow and remember for this rule?")
-        alert.addButton(withTitle: s.text("Zezwól", "Allow"))
-        alert.addButton(withTitle: s.text("Odmów", "Deny"))
+        alert.messageText = s.t("Confirm automation")
+        alert.informativeText = String(format: s.t("Automation \"%@\" (%@) wants to run %@:\n\n%@\n\nAllow and remember for this rule?"),
+                 auto.name, printerName,
+                 isScript ? s.t("a script on this Mac") : s.t("a printer command"), preview)
+        alert.addButton(withTitle: s.t("Allow"))
+        alert.addButton(withTitle: s.t("Deny"))
         let approved = alert.runModal() == .alertFirstButtonReturn
         if approved { s.approveScriptRule(auto.id) }
         return approved
@@ -635,9 +633,8 @@ final class PrinterStore: ObservableObject {
             let detached = SpoolbaseShared.spools.detachAssignmentsReplacedByNFC(
                 printerSerial: serial, previous: previous?.filamentGroups ?? [], current: value.filamentGroups)
             for item in detached {
-                let text = AppSettings.shared.text(
-                    "\(item.spoolID) wróciła do magazynu (wykryto tag NFC w \(item.slot))",
-                    "\(item.spoolID) returned to storage (NFC tag detected in \(item.slot))")
+                let text = String(format: AppSettings.shared.t("%@ returned to storage (NFC tag detected in %@)"),
+                                  item.spoolID, item.slot)
                 spoolNotices[serial, default: []].append(text)
             }
             recordTemperature(serial: serial, value: value)
@@ -758,8 +755,8 @@ final class PrinterStore: ObservableObject {
             PrintHistory.record(serial: printer.serial, printer: printer.name, job: current.jobName ?? "")
         }
         if settings.notifyFinished, current.state == .finished, previous?.state != .finished {
-            push(title: settings.text("Druk zakończony", "Print finished"),
-                 body: current.jobName ?? settings.text("Zadanie zostało ukończone.", "The job has completed."))
+            push(title: settings.t("Print finished"),
+                 body: current.jobName ?? settings.t("The job has completed."))
         }
         // Heads-up before the end. Armed once per print: it re-arms as soon as the remaining time is
         // back above the threshold (a new job) or the printer stops printing, so one job cannot nag.
@@ -767,8 +764,8 @@ final class PrinterStore: ObservableObject {
         if current.state == .printing, remainingMinutes > 0, remainingMinutes <= settings.finishingSoonMinutes {
             if settings.notifyFinishingSoon, !finishingSoonWarned.contains(printer.serial) {
                 finishingSoonWarned.insert(printer.serial)
-                push(title: String(format: settings.text("Koniec za ~%d min", "Finishing in ~%d min"), remainingMinutes),
-                     body: current.jobName ?? settings.text("Wydruk dobiega końca.", "The print is nearly done."))
+                push(title: String(format: settings.t("Finishing in ~%d min"), remainingMinutes),
+                     body: current.jobName ?? settings.t("The print is nearly done."))
             }
         } else {
             finishingSoonWarned.remove(printer.serial)
@@ -776,12 +773,12 @@ final class PrinterStore: ObservableObject {
         if settings.notifyError, current.state == .error, previous?.state != .error || previous?.hmsCodes != current.hmsCodes {
             let description = HMSResolver.shared.description(for: current.hmsCodes, serial: printer.serial, language: settings.language)
                 ?? (current.errorCode != 0
-                    ? String(format: settings.text("Kod błędu: 0x%llX", "Error code: 0x%llX"), current.errorCode)
-                    : settings.text("Drukarka zgłosiła błąd.", "The printer reported an error."))
-            push(title: settings.text("Błąd drukarki", "Printer error"), body: description)
+                    ? String(format: settings.t("Error code: 0x%llX"), current.errorCode)
+                    : settings.t("The printer reported an error."))
+            push(title: settings.t("Printer error"), body: description)
         } else if settings.notifyPaused, current.state == .paused, previous?.state != .paused {
-            push(title: settings.text("Druk wstrzymany", "Print paused"),
-                 body: current.jobName ?? settings.text("Drukarka oczekuje na działanie.", "The printer needs attention."))
+            push(title: settings.t("Print paused"),
+                 body: current.jobName ?? settings.t("The printer needs attention."))
         }
 
         // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
@@ -790,13 +787,13 @@ final class PrinterStore: ObservableObject {
         let previousLow = Set(previous?.amsSlots.filter(lowAndTrusted).map(\.id) ?? [])
         let newLow = current.amsSlots.filter { lowAndTrusted($0) && !previousLow.contains($0.id) }
         if settings.notifyLowFilament, let slot = newLow.first {
-            push(title: settings.text("Niski poziom filamentu", "Low filament"),
+            push(title: settings.t("Low filament"),
                  body: "\(slot.label) • \(slot.material) • \(slot.remainingPercent ?? 0)%")
         }
 
         if settings.notifyHumidity, isHumidityHigh(current.amsHumidity), !isHumidityHigh(previous?.amsHumidity) {
-            push(title: settings.text("Wysoka wilgotność AMS", "High AMS humidity"),
-                 body: settings.text("Sprawdź lub osusz pochłaniacz wilgoci.", "Check or dry the desiccant."))
+            push(title: settings.t("High AMS humidity"),
+                 body: settings.t("Check or dry the desiccant."))
         }
     }
 

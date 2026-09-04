@@ -549,16 +549,16 @@ final class SettingsWindowController: NSWindowController {
         guard let window else { return }
         let settings = AppSettings.shared
         window.appearance = settings.appearance
-        window.title = settings.text("Ustawienia Gantry", "Gantry Settings")
-        headerTitle.stringValue = settings.text("Ustawienia", "Settings")
+        window.title = settings.t("Gantry Settings")
+        headerTitle.stringValue = settings.t("Settings")
         headerSubtitle.stringValue = "Gantry · @parametryczny"
-        tabBar.setTitles([settings.text("Ogólne", "General"),
-                          settings.text("Wygląd", "Appearance"),
-                          settings.text("Zaawansowane", "Advanced")])
+        tabBar.setTitles([settings.t("General"),
+                          settings.t("Appearance"),
+                          settings.t("Advanced")])
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.19"
-        footerVersion.stringValue = settings.text("Wersja \(version)", "Version \(version)") + " • \(AccessCodeStore.modeName)"
-        closeButton.title = settings.text("Gotowe", "Done")
+        footerVersion.stringValue = String(format: settings.t("Version %@"), version) + " • \(AccessCodeStore.modeName)"
+        closeButton.title = settings.t("Done")
 
         refreshGeneral(settings, version: version)
         refreshAppearance(settings)
@@ -566,138 +566,126 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func refreshGeneral(_ settings: AppSettings, version: String) {
-        basicsGroupLabel.stringValue = settings.text("PODSTAWY", "BASICS")
-        languageRow.titleLabel.stringValue = settings.text("Język", "Language")
+        basicsGroupLabel.stringValue = settings.t("BASICS")
+        languageRow.titleLabel.stringValue = settings.t("Language")
         let languages = Localization.available()
         languageControl.removeAllItems()
         for language in languages { languageControl.addItem(withTitle: language.name) }
         if let index = languages.firstIndex(where: { $0.code == settings.language }) {
             languageControl.selectItem(at: index)
         }
-        launchRow.titleLabel.stringValue = settings.text("Uruchamiaj przy logowaniu", "Launch at login")
+        launchRow.titleLabel.stringValue = settings.t("Launch at login")
         launchRow.isOn = LaunchAtLoginManager.isEnabled
-        spoolbaseRow.titleLabel.stringValue = settings.text("Spoolbase", "Spoolbase")
-        spoolbaseRow.setSubtitle(settings.text("Magazyn filamentów w menu", "Filament stock in the menu"))
+        spoolbaseRow.titleLabel.stringValue = settings.t("Spoolbase")
+        spoolbaseRow.setSubtitle(settings.t("Filament stock in the menu"))
         spoolbaseRow.isOn = settings.spoolbaseEnabled
 
-        notificationsGroupLabel.stringValue = settings.text("POWIADOMIENIA", "NOTIFICATIONS")
-        notifyFinishedRow.titleLabel.stringValue = settings.text("Druk zakończony", "Print finished")
+        notificationsGroupLabel.stringValue = settings.t("NOTIFICATIONS")
+        notifyFinishedRow.titleLabel.stringValue = settings.t("Print finished")
         notifyFinishedRow.isOn = settings.notifyFinished
         notifyFinishingSoonRow.titleLabel.stringValue = String(
-            format: settings.text("Koniec za %d minut", "Finishing in %d minutes"), settings.finishingSoonMinutes)
+            format: settings.t("Finishing in %d minutes"), settings.finishingSoonMinutes)
         notifyFinishingSoonRow.isOn = settings.notifyFinishingSoon
-        notifyErrorRow.titleLabel.stringValue = settings.text("Błąd drukarki", "Printer error")
+        notifyErrorRow.titleLabel.stringValue = settings.t("Printer error")
         notifyErrorRow.isOn = settings.notifyError
-        notifyPausedRow.titleLabel.stringValue = settings.text("Druk wstrzymany", "Print paused")
+        notifyPausedRow.titleLabel.stringValue = settings.t("Print paused")
         notifyPausedRow.isOn = settings.notifyPaused
-        notifyLowFilamentRow.titleLabel.stringValue = settings.text("Niski poziom filamentu", "Low filament")
+        notifyLowFilamentRow.titleLabel.stringValue = settings.t("Low filament")
         notifyLowFilamentRow.isOn = settings.notifyLowFilament
-        notifyHumidityRow.titleLabel.stringValue = settings.text("Wysoka wilgotność AMS", "High AMS humidity")
+        notifyHumidityRow.titleLabel.stringValue = settings.t("High AMS humidity")
         notifyHumidityRow.isOn = settings.notifyHumidity
         // No explanatory line here: the two clocks already sit in the control column and would squeeze
         // a subtitle into four wrapped lines.
-        quietHoursRow.titleLabel.stringValue = settings.text("Godziny ciszy", "Quiet hours")
+        quietHoursRow.titleLabel.stringValue = settings.t("Quiet hours")
         quietHoursSwitch.state = QuietHours.isEnabled ? .on : .off
         quietStartPicker.dateValue = date(fromMinutes: QuietHours.startMinutes)
         quietEndPicker.dateValue = date(fromMinutes: QuietHours.endMinutes)
         setQuietPickersEnabled(QuietHours.isEnabled)
 
-        updatesGroupLabel.stringValue = settings.text("AKTUALIZACJE", "UPDATES")
-        updateRow.titleLabel.stringValue = settings.text("Sprawdź aktualizacje", "Check for updates")
-        updateButton.title = settings.text("Sprawdź", "Check")
-        autoUpdateRow.titleLabel.stringValue = settings.text("Instaluj automatycznie", "Install automatically")
-        autoUpdateRow.setSubtitle(settings.text("Pobiera i weryfikuje podpis wydania",
-                                                "Downloads and verifies the release signature"))
+        updatesGroupLabel.stringValue = settings.t("UPDATES")
+        updateRow.titleLabel.stringValue = settings.t("Check for updates")
+        updateButton.title = settings.t("Check")
+        autoUpdateRow.titleLabel.stringValue = settings.t("Install automatically")
+        autoUpdateRow.setSubtitle(settings.t("Downloads and verifies the release signature"))
         autoUpdateRow.isOn = settings.autoUpdate
 
-        aboutGroupLabel.stringValue = settings.text("O GANTRY", "ABOUT GANTRY")
+        aboutGroupLabel.stringValue = settings.t("ABOUT GANTRY")
         appRow.titleLabel.stringValue = "Gantry"
-        appRow.setSubtitle(settings.text("Wersja \(version) • \(AccessCodeStore.modeName)",
-                                         "Version \(version) • \(AccessCodeStore.modeName)"))
+        appRow.setSubtitle(String(format: settings.t("Version %@ • %@"), version, AccessCodeStore.modeName))
         githubRow.titleLabel.stringValue = "GitHub"
         githubButton.title = "@parametryczny"
         xRow.titleLabel.stringValue = "X"
         xButton.title = "@_parametryczny"
-        supportButton.title = settings.text("Wesprzyj projekt", "Support the project")
-        supportSubtitle.stringValue = settings.text(
-            "Dobrą kawką nie pogardzę, a ta wirtualna daje mi kofeinowego kopa do działania nad kolejnymi projektami! 🚀 Jeśli chcesz dorzucić się do mojego kolejnego kubka i wesprzeć moje działania, kliknij „Wesprzyj projekt”.",
-            "I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
+        supportButton.title = settings.t("Support the project")
+        supportSubtitle.stringValue = settings.t("I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
     }
 
     private func refreshAppearance(_ settings: AppSettings) {
-        themeGroupLabel.stringValue = settings.text("MOTYW", "THEME")
-        themeRow.titleLabel.stringValue = settings.text("Wygląd", "Appearance")
-        themeControl.setLabel(settings.text("JASNY", "LIGHT"), forSegment: 0)
-        themeControl.setLabel(settings.text("CIEMNY", "DARK"), forSegment: 1)
+        themeGroupLabel.stringValue = settings.t("THEME")
+        themeRow.titleLabel.stringValue = settings.t("Appearance")
+        themeControl.setLabel(settings.t("LIGHT"), forSegment: 0)
+        themeControl.setLabel(settings.t("DARK"), forSegment: 1)
         themeControl.selectedSegment = settings.theme == .light ? 0 : 1
-        transparencyRow.titleLabel.stringValue = settings.text("Przezroczystość", "Transparency")
-        transparencyControl.setLabel(settings.text("NISKA", "LOW"), forSegment: 0)
-        transparencyControl.setLabel(settings.text("ŚREDNIA", "MEDIUM"), forSegment: 1)
-        transparencyControl.setLabel(settings.text("WYSOKA", "HIGH"), forSegment: 2)
+        transparencyRow.titleLabel.stringValue = settings.t("Transparency")
+        transparencyControl.setLabel(settings.t("LOW"), forSegment: 0)
+        transparencyControl.setLabel(settings.t("MEDIUM"), forSegment: 1)
+        transparencyControl.setLabel(settings.t("HIGH"), forSegment: 2)
         switch settings.panelTransparency {
         case .low: transparencyControl.selectedSegment = 0
         case .medium: transparencyControl.selectedSegment = 1
         case .high: transparencyControl.selectedSegment = 2
         }
-        monochromeRow.titleLabel.stringValue = settings.text("Kolorystyka monochromatyczna", "Monochrome colours")
-        monochromeRow.setSubtitle(settings.text("Bez barwienia temperatur i filamentów",
-                                                "No tint on temperatures and filaments"))
+        monochromeRow.titleLabel.stringValue = settings.t("Monochrome colours")
+        monochromeRow.setSubtitle(settings.t("No tint on temperatures and filaments"))
         monochromeRow.isOn = settings.monochrome
 
-        cardsGroupLabel.stringValue = settings.text("KARTY DRUKAREK", "PRINTER CARDS")
-        cardFileNameRow.titleLabel.stringValue = settings.text("Nazwa pliku", "File name")
+        cardsGroupLabel.stringValue = settings.t("PRINTER CARDS")
+        cardFileNameRow.titleLabel.stringValue = settings.t("File name")
         cardFileNameRow.isOn = settings.cardShowFileName
-        cardProgressRow.titleLabel.stringValue = settings.text("Postęp", "Progress")
+        cardProgressRow.titleLabel.stringValue = settings.t("Progress")
         cardProgressRow.isOn = settings.cardShowProgress
-        cardTempsRow.titleLabel.stringValue = settings.text("Temperatury", "Temperatures")
+        cardTempsRow.titleLabel.stringValue = settings.t("Temperatures")
         cardTempsRow.isOn = settings.cardShowTemperatures
-        cardFilamentsRow.titleLabel.stringValue = settings.text("Filamenty / AMS", "Filaments / AMS")
+        cardFilamentsRow.titleLabel.stringValue = settings.t("Filaments / AMS")
         cardFilamentsRow.isOn = settings.cardShowFilaments
-        cardSpoolGramsRow.titleLabel.stringValue = settings.text("Gramy na rolce", "Grams on spool")
+        cardSpoolGramsRow.titleLabel.stringValue = settings.t("Grams on spool")
         cardSpoolGramsRow.setSubtitle("AMS NFC / Spoolbase")
         cardSpoolGramsRow.isOn = settings.cardShowSpoolGrams
 
-        dockGroupLabel.stringValue = settings.text("PASEK KRAWĘDZIOWY", "EDGE DOCK")
-        dockEnableRow.titleLabel.stringValue = settings.text("Pokazuj pasek na wierzchu", "Show the strip on top")
+        dockGroupLabel.stringValue = settings.t("EDGE DOCK")
+        dockEnableRow.titleLabel.stringValue = settings.t("Show the strip on top")
         dockEnableRow.isOn = settings.edgeDockEnabled
-        dockEdgeRow.titleLabel.stringValue = settings.text("Krawędź", "Edge")
-        dockEdgeControl.setLabel(settings.text("LEWA", "LEFT"), forSegment: 0)
-        dockEdgeControl.setLabel(settings.text("PRAWA", "RIGHT"), forSegment: 1)
+        dockEdgeRow.titleLabel.stringValue = settings.t("Edge")
+        dockEdgeControl.setLabel(settings.t("LEFT"), forSegment: 0)
+        dockEdgeControl.setLabel(settings.t("RIGHT"), forSegment: 1)
         dockEdgeControl.selectedSegment = settings.edgeDockEdge == .left ? 0 : 1
         dockEdgeControl.isEnabled = settings.edgeDockEnabled
         dockEdgeRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
-        dockOnlyPrintingRow.titleLabel.stringValue = settings.text("Tylko drukujące", "Only printing")
+        dockOnlyPrintingRow.titleLabel.stringValue = settings.t("Only printing")
         dockOnlyPrintingRow.isOn = settings.edgeDockOnlyPrinting
         dockOnlyPrintingRow.setEnabled(settings.edgeDockEnabled)
-        dockPrintersCaption.stringValue = settings.text("Które drukarki", "Which printers")
-        dockHint.stringValue = settings.text(
-            "Wąski pasek przyklejony do krawędzi ekranu, zawsze na wierzchu. Najechanie rozsuwa go do nazw, klik otwiera szczegóły.",
-            "A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.")
+        dockPrintersCaption.stringValue = settings.t("Which printers")
+        dockHint.stringValue = settings.t("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.")
         rebuildDockPrinters()
     }
 
     private func refreshAdvanced(_ settings: AppSettings) {
-        developerGroupLabel.stringValue = settings.text("TRYB DEWELOPERSKI", "DEVELOPER")
-        developerRow.titleLabel.stringValue = settings.text("Tryb deweloperski", "Developer mode")
-        developerRow.setSubtitle(settings.text("Odsłania sterowanie i automatyzacje",
-                                               "Reveals control and automations"))
+        developerGroupLabel.stringValue = settings.t("DEVELOPER")
+        developerRow.titleLabel.stringValue = settings.t("Developer mode")
+        developerRow.setSubtitle(settings.t("Reveals control and automations"))
         developerRow.isOn = settings.developerMode
-        scriptActionsRow.titleLabel.stringValue = settings.text("Skrypty w automatyzacjach", "Scripts in automations")
-        scriptActionsRow.setSubtitle(settings.text(
-            "Pozwala regule uruchomić program lub własną komendę. Domyślnie wyłączone.",
-            "Lets a rule run a program or a raw command. Off by default."))
+        scriptActionsRow.titleLabel.stringValue = settings.t("Scripts in automations")
+        scriptActionsRow.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
         scriptActionsRow.isOn = settings.allowScriptActions
 
         telegramGroupLabel.stringValue = "TELEGRAM"
-        telegramEnableRow.titleLabel.stringValue = settings.text("Wysyłaj powiadomienia", "Send notifications")
+        telegramEnableRow.titleLabel.stringValue = settings.t("Send notifications")
         telegramEnableRow.isOn = settings.telegramEnabled
-        telegramTokenRow.titleLabel.stringValue = settings.text("Token bota", "Bot token")
+        telegramTokenRow.titleLabel.stringValue = settings.t("Bot token")
         telegramChatRow.titleLabel.stringValue = "Chat ID"
-        telegramTestRow.titleLabel.stringValue = settings.text("Test połączenia", "Connection test")
-        telegramTestButton.title = settings.text("Wyślij", "Send")
-        telegramHint.stringValue = settings.text(
-            "Utwórz bota przez @BotFather (token), napisz do niego, a swój chat_id weź od @userinfobot. Wysyła te same zdarzenia co powiadomienia systemowe.",
-            "Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as the system notifications.")
+        telegramTestRow.titleLabel.stringValue = settings.t("Connection test")
+        telegramTestButton.title = settings.t("Send")
+        telegramHint.stringValue = settings.t("Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as the system notifications.")
         telegramTokenField.stringValue = settings.telegramBotToken
         telegramChatField.stringValue = settings.telegramChatID
         telegramTokenField.isEnabled = settings.telegramEnabled
@@ -714,9 +702,9 @@ final class SettingsWindowController: NSWindowController {
     /// Fills the web-dashboard section with the live LAN URLs and a scannable QR of the IP URL
     /// (the IP always resolves on the same network, unlike the friendlier `.local` name).
     private func refreshWebSection(_ settings: AppSettings) {
-        webGroupLabel.stringValue = settings.text("PODGLĄD W PRZEGLĄDARCE", "WEB DASHBOARD")
-        webEnableRow.titleLabel.stringValue = settings.text("Serwer podglądu", "Preview server")
-        webEnableRow.setSubtitle(settings.text("Sieć lokalna, tylko odczyt", "Local network, read only"))
+        webGroupLabel.stringValue = settings.t("WEB DASHBOARD")
+        webEnableRow.titleLabel.stringValue = settings.t("Preview server")
+        webEnableRow.setSubtitle(settings.t("Local network, read only"))
         webEnableRow.isOn = settings.webDashboardEnabled
         webContentRow?.isHidden = !settings.webDashboardEnabled
         guard settings.webDashboardEnabled else { return }
@@ -727,13 +715,9 @@ final class SettingsWindowController: NSWindowController {
         webLanURL.stringValue = lan ?? ""
         webLanURL.isHidden = (lan == nil) || (lan == primary)
         if host?.lowercased() == "gantry" {
-            webHint.stringValue = settings.text(
-                "Otwórz na telefonie w tej samej sieci Wi-Fi. Tylko podgląd.",
-                "Open on a phone on the same Wi-Fi. View only.")
+            webHint.stringValue = settings.t("Open on a phone on the same Wi-Fi. View only.")
         } else {
-            webHint.stringValue = settings.text(
-                "Otwórz na telefonie w tej samej sieci Wi-Fi (tylko podgląd). Chcesz adres gantry.local? Zmień nazwę lokalną Maca na „gantry”: Ustawienia systemowe → Ogólne → Udostępnianie → Nazwa lokalna.",
-                "Open on a phone on the same Wi-Fi (view only). Want gantry.local? Set the Mac's local hostname to “gantry”: System Settings → General → Sharing → Local hostname.")
+            webHint.stringValue = settings.t("Open on a phone on the same Wi-Fi (view only). Want gantry.local? Set the Mac's local hostname to “gantry”: System Settings → General → Sharing → Local hostname.")
         }
         webQRImage.image = Self.makeQR(lan ?? primary, side: 320)
     }
@@ -889,7 +873,7 @@ final class SettingsWindowController: NSWindowController {
         var rows: [NSView] = []
         if store.printers.isEmpty {
             let empty = SettingsRowView(control: nil, minHeight: 40)
-            empty.titleLabel.stringValue = settings.text("Brak drukarek", "No printers")
+            empty.titleLabel.stringValue = settings.t("No printers")
             empty.titleLabel.textColor = GantryTheme.muted
             rows.append(empty)
         }
@@ -947,18 +931,18 @@ final class SettingsWindowController: NSWindowController {
         let settings = AppSettings.shared
         let token = settings.telegramBotToken, chat = settings.telegramChatID
         guard !token.isEmpty, !chat.isEmpty else {
-            telegramTestRow.setSubtitle(settings.text("Wpisz token i chat_id.", "Enter a token and chat_id."))
+            telegramTestRow.setSubtitle(settings.t("Enter a token and chat_id."))
             telegramTestRow.subtitleLabel.textColor = GantryTheme.statusError
             return
         }
-        telegramTestRow.setSubtitle(settings.text("Wysyłanie…", "Sending…"))
+        telegramTestRow.setSubtitle(settings.t("Sending…"))
         telegramTestRow.subtitleLabel.textColor = GantryTheme.muted
-        let text = TelegramService.format(printer: "Gantry", title: settings.text("Test powiadomienia", "Test notification"),
-                                          body: settings.text("Połączenie działa.", "The connection works."))
+        let text = TelegramService.format(printer: "Gantry", title: settings.t("Test notification"),
+                                          body: settings.t("The connection works."))
         Task { @MainActor in
             let ok = await TelegramService.sendMessage(token: token, chatID: chat, text: text)
-            telegramTestRow.setSubtitle(ok ? settings.text("Wysłano ✓", "Sent ✓")
-                                           : settings.text("Nie udało się. Sprawdź token i chat_id.", "Failed. Check the token and chat_id."))
+            telegramTestRow.setSubtitle(ok ? settings.t("Sent ✓")
+                                           : settings.t("Failed. Check the token and chat_id."))
             telegramTestRow.subtitleLabel.textColor = ok ? GantryTheme.statusFinished : GantryTheme.statusError
         }
     }
@@ -969,7 +953,7 @@ final class SettingsWindowController: NSWindowController {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
         updateRow.subtitleLabel.textColor = GantryTheme.muted
-        updateRow.setSubtitle(settings.text("Sprawdzam…", "Checking…"))
+        updateRow.setSubtitle(settings.t("Checking…"))
         Task { @MainActor in
             defer { updateButton.isEnabled = true }
             do {
@@ -978,12 +962,12 @@ final class SettingsWindowController: NSWindowController {
                     updateRow.setSubtitle("")
                     presentUpdateAvailable(release)
                 } else {
-                    updateRow.setSubtitle(settings.text("Masz najnowszą wersję.", "You have the latest version."))
+                    updateRow.setSubtitle(settings.t("You have the latest version."))
                 }
             } catch {
                 updateRow.setSubtitle("")
                 presentAlert(
-                    title: settings.text("Nie udało się sprawdzić aktualizacji", "Could not check for updates"),
+                    title: settings.t("Could not check for updates"),
                     message: error.localizedDescription
                 )
             }
@@ -993,14 +977,12 @@ final class SettingsWindowController: NSWindowController {
     private func presentUpdateAvailable(_ release: UpdateService.Release) {
         let settings = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = settings.text("Dostępna aktualizacja: \(release.version)", "Update available: \(release.version)")
-        alert.informativeText = settings.text(
-            "Masz wersję \(UpdateService.currentVersion). Zainstalować \(release.version)? Gantry pobierze aktualizację i uruchomi się ponownie.",
-            "You have \(UpdateService.currentVersion). Install \(release.version)? Gantry will download the update and restart."
-        )
-        alert.addButton(withTitle: settings.text("Zainstaluj", "Install"))
-        alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page"))
-        alert.addButton(withTitle: settings.text("Anuluj", "Cancel"))
+        alert.messageText = String(format: settings.t("Update available: %@"), release.version)
+        alert.informativeText = String(format: settings.t("You have %@. Install %@? Gantry will download the update and restart."),
+                   UpdateService.currentVersion, release.version)
+        alert.addButton(withTitle: settings.t("Install"))
+        alert.addButton(withTitle: settings.t("Open page"))
+        alert.addButton(withTitle: settings.t("Cancel"))
         let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             switch response {
             case .alertFirstButtonReturn: self?.installUpdate(release)
@@ -1016,7 +998,7 @@ final class SettingsWindowController: NSWindowController {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
         updateRow.subtitleLabel.textColor = GantryTheme.muted
-        updateRow.setSubtitle(settings.text("Pobieram i instaluję…", "Downloading and installing…"))
+        updateRow.setSubtitle(settings.t("Downloading and installing…"))
         Task { @MainActor in
             do {
                 try await UpdateService.downloadAndInstall(release)
@@ -1025,12 +1007,9 @@ final class SettingsWindowController: NSWindowController {
                 updateButton.isEnabled = true
                 updateRow.setSubtitle("")
                 let alert = NSAlert()
-                alert.messageText = settings.text("Instalacja nie powiodła się", "Installation failed")
-                alert.informativeText = error.localizedDescription + "\n\n" + settings.text(
-                    "Otwórz stronę wydania, aby pobrać ręcznie.",
-                    "Open the release page to download it manually."
-                )
-                alert.addButton(withTitle: settings.text("Otwórz stronę", "Open page"))
+                alert.messageText = settings.t("Installation failed")
+                alert.informativeText = error.localizedDescription + "\n\n" + settings.t("Open the release page to download it manually.")
+                alert.addButton(withTitle: settings.t("Open page"))
                 alert.addButton(withTitle: "OK")
                 let openPage: (NSApplication.ModalResponse) -> Void = { response in
                     if response == .alertFirstButtonReturn { NSWorkspace.shared.open(release.pageURL) }
@@ -1084,18 +1063,16 @@ final class SettingsWindowController: NSWindowController {
     // MARK: LAN sync section
 
     private func refreshSyncSection(_ settings: AppSettings) {
-        syncGroupLabel.stringValue = settings.text("SYNCHRONIZACJA MIĘDZY KOMPUTERAMI", "SYNC BETWEEN COMPUTERS")
-        syncTokenTitle.stringValue = settings.text("Wspólny token (skopiuj na drugi komputer)", "Shared token (copy to the other computer)")
-        syncAddressTitle.stringValue = settings.text("Adres tego komputera", "This computer's address")
-        syncTokenRegenButton.title = settings.text("Nowy", "New")
-        syncAddPeerButton.title = settings.text("Dodaj", "Add")
-        syncSetTokenButton.title = settings.text("Ustaw token", "Set token")
-        syncNowButton.title = settings.text("Synchronizuj teraz", "Sync now")
-        syncPeerField.placeholderString = settings.text("adres drugiego komputera, np. gantry.local", "other computer address, e.g. gantry.local")
-        syncTokenField.placeholderString = settings.text("wklej token z drugiego komputera", "paste token from the other computer")
-        syncHint.stringValue = settings.text(
-            "Na drugim komputerze wklej powyższy token („Ustaw token”), potem dodaj adres tego komputera. Tylko sieć lokalna. Kody dostępu do drukarek nie są przesyłane.",
-            "On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.")
+        syncGroupLabel.stringValue = settings.t("SYNC BETWEEN COMPUTERS")
+        syncTokenTitle.stringValue = settings.t("Shared token (copy to the other computer)")
+        syncAddressTitle.stringValue = settings.t("This computer's address")
+        syncTokenRegenButton.title = settings.t("New")
+        syncAddPeerButton.title = settings.t("Add")
+        syncSetTokenButton.title = settings.t("Set token")
+        syncNowButton.title = settings.t("Sync now")
+        syncPeerField.placeholderString = settings.t("other computer address, e.g. gantry.local")
+        syncTokenField.placeholderString = settings.t("paste token from the other computer")
+        syncHint.stringValue = settings.t("On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.")
 
         guard let sync = SyncService.shared else {
             syncTokenValue.stringValue = "—"
@@ -1107,7 +1084,7 @@ final class SettingsWindowController: NSWindowController {
 
         syncPeersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if sync.peers.isEmpty {
-            let none = NSTextField(labelWithString: settings.text("Brak sparowanych komputerów.", "No paired computers."))
+            let none = NSTextField(labelWithString: settings.t("No paired computers."))
             none.font = .systemFont(ofSize: 11); none.textColor = GantryTheme.muted
             syncPeersStack.addArrangedSubview(none)
         }
@@ -1116,7 +1093,7 @@ final class SettingsWindowController: NSWindowController {
             name.font = .monospacedSystemFont(ofSize: 11, weight: .regular); name.textColor = GantryTheme.text
             let status = NSTextField(labelWithString: syncPeerStatus(peer, settings: settings))
             status.font = .systemFont(ofSize: 10); status.textColor = peer.lastError == nil ? GantryTheme.secondary : GantryTheme.statusPrinting
-            let remove = NSButton(title: settings.text("Usuń", "Remove"), target: self, action: #selector(syncRemovePeer(_:)))
+            let remove = NSButton(title: settings.t("Remove"), target: self, action: #selector(syncRemovePeer(_:)))
             configureTextButton(remove, action: #selector(syncRemovePeer(_:)))
             remove.tag = index
             let info = NSStackView(views: [name, status]); info.orientation = .vertical; info.alignment = .leading; info.spacing = 1
@@ -1128,10 +1105,10 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func syncPeerStatus(_ peer: SyncPeer, settings: AppSettings) -> String {
-        if let error = peer.lastError { return settings.text("Błąd: \(error)", "Error: \(error)") }
-        guard let last = peer.lastSyncAt else { return settings.text("jeszcze nie zsynchronizowano", "not synced yet") }
+        if let error = peer.lastError { return String(format: settings.t("Error: %@"), error) }
+        guard let last = peer.lastSyncAt else { return settings.t("not synced yet") }
         let formatter = DateFormatter(); formatter.dateStyle = .none; formatter.timeStyle = .short
-        return settings.text("ostatnio: \(formatter.string(from: last))", "last: \(formatter.string(from: last))")
+        return String(format: settings.t("last: %@"), formatter.string(from: last))
     }
 
     @objc private func syncRegenToken() {

@@ -208,7 +208,7 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     private func makeCustomizeButton() -> NSView {
-        let button = NSButton(title: AppSettings.shared.text("Dostosuj", "Customize"), target: self, action: #selector(customizePressed(_:)))
+        let button = NSButton(title: AppSettings.shared.t("Customize"), target: self, action: #selector(customizePressed(_:)))
         button.bezelStyle = .regularSquare
         button.isBordered = false
         button.wantsLayer = true
@@ -236,7 +236,7 @@ final class PrinterDetailViewController: NSViewController {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let reset = NSMenuItem(title: AppSettings.shared.text("Przywróć domyślny układ", "Restore default layout"),
+        let reset = NSMenuItem(title: AppSettings.shared.t("Restore default layout"),
                                action: #selector(resetLayout), keyEquivalent: "")
         reset.target = self
         menu.addItem(reset)
@@ -304,7 +304,7 @@ final class PrinterDetailViewController: NSViewController {
     // MARK: Header
 
     private func makeHeader() -> NSView {
-        backButton.title = AppSettings.shared.text(" Wróć", " Back")
+        backButton.title = AppSettings.shared.t(" Back")
         backButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: nil)
         backButton.imagePosition = .imageLeading
         backButton.bezelStyle = .accessoryBar
@@ -443,9 +443,9 @@ final class PrinterDetailViewController: NSViewController {
         recentPrintsStack.orientation = .vertical
         recentPrintsStack.alignment = .leading
         recentPrintsStack.spacing = 6
-        let showAll = NSButton(title: AppSettings.shared.text("Pokaż wszystkie", "Show all"), target: self, action: #selector(showPrintHistory))
+        let showAll = NSButton(title: AppSettings.shared.t("Show all"), target: self, action: #selector(showPrintHistory))
         showAll.bezelStyle = .rounded; showAll.controlSize = .small
-        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.text("Ostatnie wydruki", "Recent prints")), recentPrintsStack, showAll])
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("Recent prints")), recentPrintsStack, showAll])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 9
         pin(stack, in: box, inset: 11)
         recentPrintsStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -457,10 +457,10 @@ final class PrinterDetailViewController: NSViewController {
         maintenanceStack.orientation = .vertical
         maintenanceStack.alignment = .leading
         maintenanceStack.spacing = 6
-        let open = NSButton(title: AppSettings.shared.text("Otwórz konserwację…", "Open maintenance…"),
+        let open = NSButton(title: AppSettings.shared.t("Open maintenance…"),
                             target: self, action: #selector(openMaintenance))
         open.bezelStyle = .rounded; open.controlSize = .small
-        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.text("Konserwacja", "Maintenance")), maintenanceStack, open])
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("Maintenance")), maintenanceStack, open])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 9
         pin(stack, in: box, inset: 11)
         maintenanceStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -472,7 +472,7 @@ final class PrinterDetailViewController: NSViewController {
         statisticsStack.orientation = .horizontal
         statisticsStack.distribution = .fillEqually
         statisticsStack.spacing = 8
-        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.text("Statystyki", "Statistics")), statisticsStack])
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("Statistics")), statisticsStack])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 9
         pin(stack, in: box, inset: 11)
         statisticsStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -498,18 +498,18 @@ final class PrinterDetailViewController: NSViewController {
             return "\(entry.endedAt.formatted(date: .abbreviated, time: .shortened)) · \(entry.job.isEmpty ? "—" : entry.job) · \(duration)"
         }
         let alert = NSAlert()
-        alert.messageText = settings.text("Pełna historia", "Full history")
-        alert.informativeText = rows.isEmpty ? settings.text("Brak historii.", "No history.") : rows.joined(separator: "\n")
+        alert.messageText = settings.t("Full history")
+        alert.informativeText = rows.isEmpty ? settings.t("No history.") : rows.joined(separator: "\n")
         alert.runModal()
     }
 
     private func makeControlCard() -> NSView {
         let box = card()
-        let onButton = NSButton(title: AppSettings.shared.text("Światło wł.", "Light on"),
+        let onButton = NSButton(title: AppSettings.shared.t("Light on"),
                                 target: self, action: #selector(lightOn))
-        let offButton = NSButton(title: AppSettings.shared.text("Światło wył.", "Light off"),
+        let offButton = NSButton(title: AppSettings.shared.t("Light off"),
                                  target: self, action: #selector(lightOff))
-        let automationsButton = NSButton(title: AppSettings.shared.text("Automatyzacje…", "Automations…"),
+        let automationsButton = NSButton(title: AppSettings.shared.t("Automations…"),
                                          target: self, action: #selector(openAutomations))
         for b in [onButton, offButton, automationsButton] { b.bezelStyle = .rounded; b.controlSize = .regular }
         let buttons = NSStackView(views: [onButton, offButton, NSView(), automationsButton])
@@ -537,7 +537,7 @@ final class PrinterDetailViewController: NSViewController {
         cameraCard = box
         cameraView.translatesAutoresizingMaskIntoConstraints = false
         cameraView.heightAnchor.constraint(equalToConstant: 230).isActive = true
-        let advancedButton = NSButton(title: AppSettings.shared.text("Zaawansowane…", "Advanced…"),
+        let advancedButton = NSButton(title: AppSettings.shared.t("Advanced…"),
                                       target: self, action: #selector(openAdvanced))
         advancedButton.isBordered = false
         advancedButton.font = .systemFont(ofSize: 10, weight: .medium)
@@ -576,7 +576,7 @@ final class PrinterDetailViewController: NSViewController {
         let printer = store.printers.first(where: { $0.serial == serial })
 
         stateDot.layer?.backgroundColor = Self.color(for: t.state).cgColor
-        stateLabel.stringValue = settings.text(t.state.label, englishState(t.state))
+        stateLabel.stringValue = settings.t(englishState(t.state))
         stateLabel.textColor = Self.color(for: t.state)
         nameLabel.stringValue = printer?.name ?? serial
         percentLabel.stringValue = "\(t.progress)%"
@@ -597,7 +597,7 @@ final class PrinterDetailViewController: NSViewController {
             remainingLabel.isHidden = true
         }
         if let cur = t.currentLayer, let total = t.totalLayers, total > 0 {
-            layerLabel.stringValue = settings.text("Warstwa \(cur) / \(total)", "Layer \(cur) / \(total)")
+            layerLabel.stringValue = String(format: settings.t("Layer %d / %d"), cur, total)
             layerLabel.isHidden = false
         } else {
             layerLabel.isHidden = true
@@ -614,12 +614,12 @@ final class PrinterDetailViewController: NSViewController {
         auxFan.set(percent: t.auxFanPercent)
         chamberFan.set(percent: t.chamberFanPercent)
         if let level = t.speedLevel {
-            var text = settings.text("Prędkość: ", "Speed: ") + speedName(level)
+            var text = settings.t("Speed: ") + speedName(level)
             if let mag = t.speedPercent { text += " · \(mag)%" }
             speedLabel.stringValue = text
             speedLabel.isHidden = false
         } else if let mag = t.speedPercent {
-            speedLabel.stringValue = settings.text("Prędkość: \(mag)%", "Speed: \(mag)%")
+            speedLabel.stringValue = String(format: settings.t("Speed: %d%%"), mag)
             speedLabel.isHidden = false
         } else {
             speedLabel.isHidden = true
@@ -651,13 +651,13 @@ final class PrinterDetailViewController: NSViewController {
         clear(recentPrintsStack)
         let recent = Array(snapshot.history.prefix(3))
         if recent.isEmpty {
-            recentPrintsStack.addArrangedSubview(line(settings.text("Brak zapisanej historii.", "No recorded history.")))
+            recentPrintsStack.addArrangedSubview(line(settings.t("No recorded history.")))
         } else {
             for entry in recent {
                 let icon = entry.result == .completed ? "✓" : entry.result == .failed ? "!" : "×"
                 let minutes = Int(entry.durationSeconds / 60)
                 let duration = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
-                let job = entry.job.isEmpty ? settings.text("Bez nazwy", "Untitled") : entry.job
+                let job = entry.job.isEmpty ? settings.t("Untitled") : entry.job
                 recentPrintsStack.addArrangedSubview(line("\(icon)  \(job)  ·  \(duration)",
                     color: entry.result == .completed ? GantryTheme.secondary : .systemOrange,
                     weight: .medium))
@@ -672,8 +672,8 @@ final class PrinterDetailViewController: NSViewController {
         }.prefix(2))
         for task in shown {
             let timing = task.isDue
-                ? String(format: settings.text("przekroczono o %.0f h", "overdue by %.0f h"), task.overdueHours)
-                : String(format: settings.text("za %.0f h druku", "in %.0f print h"), task.remainingHours)
+                ? String(format: settings.t("overdue by %.0f h"), task.overdueHours)
+                : String(format: settings.t("in %.0f print h"), task.remainingHours)
             maintenanceStack.addArrangedSubview(line("\(task.isUrgent ? "!" : task.isDue ? "⚠" : "○")  \(task.title) · \(timing)",
                 color: task.isUrgent ? .systemRed : task.isDue ? .systemYellow : GantryTheme.secondary,
                 weight: task.isDue ? .semibold : .regular))
@@ -689,9 +689,9 @@ final class PrinterDetailViewController: NSViewController {
             stack.orientation = .vertical; stack.alignment = .centerX; stack.spacing = 3
             return stack
         }
-        statisticsStack.addArrangedSubview(metric(String(format: "%.1f h", snapshot.totalPrintHours), settings.text("Czas druku", "Print time")))
-        statisticsStack.addArrangedSubview(metric(snapshot.successPercent.map { "\($0)%" } ?? "—", settings.text("Skuteczność", "Success")))
-        statisticsStack.addArrangedSubview(metric(String(format: "%.0f g", snapshot.consumedGrams), settings.text("Filament", "Filament")))
+        statisticsStack.addArrangedSubview(metric(String(format: "%.1f h", snapshot.totalPrintHours), settings.t("Print time")))
+        statisticsStack.addArrangedSubview(metric(snapshot.successPercent.map { "\($0)%" } ?? "—", settings.t("Success")))
+        statisticsStack.addArrangedSubview(metric(String(format: "%.0f g", snapshot.consumedGrams), settings.t("Filament")))
     }
 
     private func renderAMS(_ groups: [FilamentGroup]) {
@@ -739,11 +739,10 @@ final class PrinterDetailViewController: NSViewController {
 
     private func startBambuCamera(_ printer: SavedPrinter) {
         guard stream == nil, let code = store.accessCode(for: serial), !code.isEmpty else {
-            cameraView.showStatus(AppSettings.shared.text("Kamera niedostępna (brak kodu dostępu)",
-                                                          "Camera unavailable (no access code)"))
+            cameraView.showStatus(AppSettings.shared.t("Camera unavailable (no access code)"))
             return
         }
-        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
+        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
         let stream = RTSPCameraStream(
             host: cameraHost(for: printer),
             accessCode: code,
@@ -757,7 +756,7 @@ final class PrinterDetailViewController: NSViewController {
 
     private func startKlipperCamera(_ printer: SavedPrinter) {
         guard klipperStream == nil else { return }
-        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
+        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
         let stream = KlipperCameraStream(
             host: cameraHost(for: printer),
             port: printer.port ?? 7125,
@@ -777,7 +776,7 @@ final class PrinterDetailViewController: NSViewController {
         let port = isCC2 ? 8080 : 3031
         let path = isCC2 ? "/?action=stream" : "/video"
         guard let url = URL(string: "http://\(cameraHost(for: printer)):\(port)\(path)") else { return }
-        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą…", "Connecting to camera…"))
+        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
         let stream = ElegooCameraStream(url: url,
             onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
             onState: { state in Task { @MainActor [weak self] in
@@ -788,7 +787,7 @@ final class PrinterDetailViewController: NSViewController {
 
     private func startAnycubicCamera(_ printer: SavedPrinter) {
         guard anycubicStream == nil, let url = URL(string: "http://\(cameraHost(for: printer)):18088/flv") else { return }
-        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą FLV…", "Connecting to FLV camera…"))
+        cameraView.showStatus(AppSettings.shared.t("Connecting to FLV camera…"))
         let stream = AnycubicCameraStream(url: url,
             onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
             onState: { state in Task { @MainActor [weak self] in
@@ -830,7 +829,7 @@ final class PrinterDetailViewController: NSViewController {
     private func startBambuJPEGFallback(_ printer: SavedPrinter) {
         guard jpegStream == nil, !receivedFrame,
               let code = store.accessCode(for: serial), !code.isEmpty else { return }
-        cameraView.showStatus(AppSettings.shared.text("Łączenie z kamerą P1/A1…", "Connecting to the P1/A1 camera…"))
+        cameraView.showStatus(AppSettings.shared.t("Connecting to the P1/A1 camera…"))
         let stream = BambuJPEGCameraStream(
             host: cameraHost(for: printer),
             accessCode: code,
@@ -865,9 +864,7 @@ final class PrinterDetailViewController: NSViewController {
             break
         case .failed:
             if !receivedFrame {
-                cameraView.showStatus(AppSettings.shared.text(
-                    "Kamera niedostępna — sprawdź konfigurację webcam w Moonraker (Fluidd/Mainsail)",
-                    "Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)"))
+                cameraView.showStatus(AppSettings.shared.t("Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)"))
             }
         }
     }
@@ -887,10 +884,10 @@ final class PrinterDetailViewController: NSViewController {
 
     private func speedName(_ level: Int) -> String {
         switch level {
-        case 1: AppSettings.shared.text("Cichy", "Silent")
+        case 1: AppSettings.shared.t("Silent")
         case 2: "Standard"
         case 3: "Sport"
-        case 4: AppSettings.shared.text("Wariat", "Ludicrous")
+        case 4: AppSettings.shared.t("Ludicrous")
         default: "—"
         }
     }
@@ -915,9 +912,7 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     static var cameraUnavailableText: String {
-        AppSettings.shared.text(
-            "Brak podglądu kamery.\nWłącz „LAN Only Mode” w drukarce — lokalny strumień\nnie działa, gdy drukarka jest połączona z chmurą.",
-            "No camera preview.\nEnable “LAN Only Mode” on the printer — the local stream\nis unavailable while the printer is cloud-connected.")
+        AppSettings.shared.t("No camera preview.\nEnable “LAN Only Mode” on the printer — the local stream\nis unavailable while the printer is cloud-connected.")
     }
 
     private static let finishFormatter: DateFormatter = {
@@ -950,7 +945,7 @@ final class TemperatureGraphView: NSView {
         NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
 
         guard samples.count >= 2 else {
-            drawCentered(AppSettings.shared.text("Zbieranie danych…", "Collecting data…"))
+            drawCentered(AppSettings.shared.t("Collecting data…"))
             return
         }
 
@@ -1340,7 +1335,7 @@ final class CardDragHandle: NSView {
             icon.centerXAnchor.constraint(equalTo: centerXAnchor),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
-        toolTip = AppSettings.shared.text("Przeciągnij, aby zmienić kolejność", "Drag to reorder")
+        toolTip = AppSettings.shared.t("Drag to reorder")
     }
 
     required init?(coder: NSCoder) { nil }
@@ -1382,9 +1377,9 @@ final class PhaseStepperView: NSView {
     func update(progress: Int, state: PrinterState, settings: AppSettings) {
         fraction = max(0, min(1, CGFloat(progress) / 100))
         activeIndex = state == .finished ? 2 : (fraction < 0.02 ? 0 : (fraction >= 0.99 ? 2 : 1))
-        labels[0].stringValue = settings.text("Przygotowanie", "Prep")
-        labels[1].stringValue = settings.text("Drukowanie", "Printing")
-        labels[2].stringValue = settings.text("Zakończono", "Finished")
+        labels[0].stringValue = settings.t("Prep")
+        labels[1].stringValue = settings.t("Printing")
+        labels[2].stringValue = settings.t("Finished")
         for (index, label) in labels.enumerated() {
             label.textColor = index == activeIndex ? GantryTheme.text : GantryTheme.muted
         }

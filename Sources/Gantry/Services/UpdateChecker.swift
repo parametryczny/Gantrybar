@@ -34,7 +34,7 @@ enum UpdateChecker {
                 BambuDefaults.shared.removeObject(forKey: installedPendingKey)
                 guard !QuietHours.isActive() else { return }
                 NotificationService.post(
-                    title: settings.text("Aktualizacja nie powiodła się", "Update failed"),
+                    title: settings.t("Update failed"),
                     body: error.localizedDescription,
                     userInfo: ["type": "update"])
             }
@@ -46,9 +46,8 @@ enum UpdateChecker {
         guard BambuDefaults.shared.string(forKey: notifiedKey) != release.version else { return }
         BambuDefaults.shared.set(release.version, forKey: notifiedKey)
         NotificationService.post(
-            title: settings.text("Dostępna aktualizacja Gantry", "Gantry update available"),
-            body: settings.text("Wersja \(release.version) jest do pobrania. Kliknij, aby zainstalować.",
-                                "Version \(release.version) is available. Click to install."),
+            title: settings.t("Gantry update available"),
+            body: String(format: settings.t("Version %@ is available. Click to install."), release.version),
             userInfo: ["type": "update"])
     }
 
@@ -60,9 +59,8 @@ enum UpdateChecker {
         guard pending == UpdateService.currentVersion else { return }
         let settings = AppSettings.shared
         NotificationService.post(
-            title: settings.text("Zaktualizowano Gantry", "Gantry updated"),
-            body: settings.text("Zainstalowano wersję \(pending). Podpis zweryfikowany — wszystko OK.",
-                                "Installed version \(pending). Signature verified — all good."),
+            title: settings.t("Gantry updated"),
+            body: String(format: settings.t("Installed version %@. Signature verified — all good."), pending),
             userInfo: ["type": "updated"])
     }
 }

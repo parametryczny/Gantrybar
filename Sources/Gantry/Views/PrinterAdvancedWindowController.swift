@@ -23,7 +23,7 @@ final class PrinterAdvancedWindowController: NSWindowController {
         let height: CGFloat = (store.printers.first(where: { $0.serial == serial })?.kind == .klipper) ? 540 : 320
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: height),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = AppSettings.shared.text("Zaawansowane — \(name)", "Advanced — \(name)")
+        window.title = String(format: AppSettings.shared.t("Advanced — %@"), name)
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildUI()
@@ -38,7 +38,7 @@ final class PrinterAdvancedWindowController: NSWindowController {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func t(_ pl: String, _ en: String) -> String { AppSettings.shared.text(pl, en) }
+    private func t(_ english: String) -> String { AppSettings.shared.t(english) }
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
@@ -49,24 +49,21 @@ final class PrinterAdvancedWindowController: NSWindowController {
             return f
         }
 
-        let cameraLabel = label(t("IP kamery (opcjonalnie)", "Camera IP (optional)"), bold: true)
-        let cameraHint = hint(t("Gdy kamera jest pod innym adresem niż drukarka (np. Raspberry Pi z kamerą).",
-                                "When the camera is on a different address than the printer (e.g. a Pi cam)."))
-        _ = field(cameraField, placeholder: t("np. 192.168.1.50", "e.g. 192.168.1.50"))
+        let cameraLabel = label(t("Camera IP (optional)"), bold: true)
+        let cameraHint = hint(t("When the camera is on a different address than the printer (e.g. a Pi cam)."))
+        _ = field(cameraField, placeholder: t("e.g. 192.168.1.50"))
 
-        let ledLabel = label(t("Własne komendy światła (opcjonalnie)", "Custom light commands (optional)"), bold: true)
+        let ledLabel = label(t("Custom light commands (optional)"), bold: true)
         let ledHint = hint(isKlipper
-            ? t("Klipper: linia G-code, np. „SET_PIN PIN=caselight VALUE=1”.",
-                "Klipper: a G-code line, e.g. “SET_PIN PIN=caselight VALUE=1”.")
-            : t("Bambu: surowy JSON MQTT (jak w automatyzacjach).",
-                "Bambu: raw MQTT JSON (as in automations)."))
-        _ = field(ledOnField, placeholder: t("Komenda „światło wł.”", "“Light on” command"))
-        _ = field(ledOffField, placeholder: t("Komenda „światło wył.”", "“Light off” command"))
+            ? t("Klipper: a G-code line, e.g. “SET_PIN PIN=caselight VALUE=1”.")
+            : t("Bambu: raw MQTT JSON (as in automations)."))
+        _ = field(ledOnField, placeholder: t("“Light on” command"))
+        _ = field(ledOffField, placeholder: t("“Light off” command"))
 
-        let saveButton = NSButton(title: t("Zapisz", "Save"), target: self, action: #selector(save))
+        let saveButton = NSButton(title: t("Save"), target: self, action: #selector(save))
         saveButton.bezelStyle = .rounded
         saveButton.keyEquivalent = "\r"
-        let cancelButton = NSButton(title: t("Zamknij", "Close"), target: self, action: #selector(close))
+        let cancelButton = NSButton(title: t("Close"), target: self, action: #selector(close))
         cancelButton.bezelStyle = .rounded
         let buttons = NSStackView(views: [NSView(), cancelButton, saveButton])
         buttons.orientation = .horizontal
@@ -75,18 +72,17 @@ final class PrinterAdvancedWindowController: NSWindowController {
         var rows: [NSView] = [cameraLabel, cameraField, cameraHint, ledLabel, ledHint, ledOnField, ledOffField]
 
         if isKlipper {
-            let objLabel = label(t("Nazwy obiektów Klipper (opcjonalnie)", "Klipper object names (optional)"), bold: true)
-            let objHint = hint(t("Dla niestandardowych konfiguracji. Puste = domyślne (extruder / heater_bed / auto / fan).",
-                                 "For non-standard configs. Empty = defaults (extruder / heater_bed / auto / fan)."))
+            let objLabel = label(t("Klipper object names (optional)"), bold: true)
+            let objHint = hint(t("For non-standard configs. Empty = defaults (extruder / heater_bed / auto / fan)."))
             _ = field(nozzleField, placeholder: "extruder")
             _ = field(bedField, placeholder: "heater_bed")
-            _ = field(chamberField, placeholder: t("np. temperature_sensor chamber", "e.g. temperature_sensor chamber"))
+            _ = field(chamberField, placeholder: t("e.g. temperature_sensor chamber"))
             _ = field(fanField, placeholder: "fan")
             rows += [objLabel, objHint,
-                     labeledRow(t("Dysza:", "Nozzle:"), nozzleField),
-                     labeledRow(t("Stół:", "Bed:"), bedField),
-                     labeledRow(t("Komora:", "Chamber:"), chamberField),
-                     labeledRow(t("Wentylator:", "Fan:"), fanField)]
+                     labeledRow(t("Nozzle:"), nozzleField),
+                     labeledRow(t("Bed:"), bedField),
+                     labeledRow(t("Chamber:"), chamberField),
+                     labeledRow(t("Fan:"), fanField)]
         }
         rows.append(buttons)
 

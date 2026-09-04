@@ -167,10 +167,10 @@ private final class EdgeDockView: NSView {
                 return "\(entry.progress)% · \(minutes / 60):\(String(format: "%02d", minutes % 60))"
             }
             return "\(entry.progress)%"
-        case .finished: return settings.text("gotowe", "done")
-        case .idle: return settings.text("bezcz.", "idle")
-        case .error: return settings.text("błąd", "error")
-        case .offline: return settings.text("brak", "offline")
+        case .finished: return settings.t("done")
+        case .idle: return settings.t("idle")
+        case .error: return settings.t("error")
+        case .offline: return settings.t("offline")
         }
     }
 

@@ -90,20 +90,20 @@ final class MaintenancePanelViewController: NSViewController {
         body.translatesAutoresizingMaskIntoConstraints = false
 
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.isPolish)
-        let title = label(s.text("Konserwacja · \(printer.name)", "Maintenance · \(printer.name)"), 18, .bold)
-        let instructions = button(s.text("Instrukcje", "Instructions")) { [weak self] in self?.showInstructions() }
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.text("Zamknij", "Close"))!,
+        let title = label(String(format: s.t("Maintenance · %@"), printer.name), 18, .bold)
+        let instructions = button(s.t("Instructions")) { [weak self] in self?.showInstructions() }
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
                              target: self, action: #selector(closePressed))
         close.isBordered = false
         close.contentTintColor = GantryTheme.secondary
-        close.toolTip = s.text("Zamknij", "Close")
+        close.toolTip = s.t("Close")
         let header = NSStackView(views: [title, instructions, NSView(), close])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 8
         body.addArrangedSubview(header)
         header.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
-        let summary = label(String(format: s.text("%.1f h druku · dysza %@", "%.1f print h · nozzle %@"),
+        let summary = label(String(format: s.t("%.1f print h · nozzle %@"),
                                    snapshot.totalPrintHours,
                                    telemetry.nozzleDiameter.map { String(format: "%.1f mm", $0) } ?? "—"),
                             12, .regular, GantryTheme.secondary)
@@ -111,7 +111,7 @@ final class MaintenancePanelViewController: NSViewController {
 
         let printerAlerts = alertMessages(settings: s)
         if !printerAlerts.isEmpty {
-            body.addArrangedSubview(label(s.text("UWAGI DRUKARKI", "PRINTER ALERTS"), 10, .bold, GantryTheme.muted))
+            body.addArrangedSubview(label(s.t("PRINTER ALERTS"), 10, .bold, GantryTheme.muted))
             let alertList = compactAlertList(printerAlerts)
             body.addArrangedSubview(alertList)
             alertList.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
@@ -122,14 +122,14 @@ final class MaintenancePanelViewController: NSViewController {
         taskGrid.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
 
         let recent = Array(snapshot.history.prefix(3))
-        var historyRows: [NSView] = [label(s.text("OSTATNIE WYDRUKI", "RECENT PRINTS"), 10, .bold, GantryTheme.muted)]
+        var historyRows: [NSView] = [label(s.t("RECENT PRINTS"), 10, .bold, GantryTheme.muted)]
         if recent.isEmpty {
-            historyRows.append(label(s.text("Brak zapisanej historii.", "No recorded history."), 12, .regular, GantryTheme.secondary))
+            historyRows.append(label(s.t("No recorded history."), 12, .regular, GantryTheme.secondary))
         } else {
             for entry in recent {
                 let icon = entry.result == .completed ? "✓" : entry.result == .failed ? "!" : "×"
                 let duration = formatDuration(entry.durationSeconds)
-                let text = "\(icon)  \(entry.job.isEmpty ? s.text("Bez nazwy", "Untitled") : entry.job)  ·  \(duration)"
+                let text = "\(icon)  \(entry.job.isEmpty ? s.t("Untitled") : entry.job)  ·  \(duration)"
                 historyRows.append(label(text, 11.5, .medium, entry.result == .completed ? GantryTheme.text : .systemOrange))
             }
         }
@@ -164,12 +164,12 @@ final class MaintenancePanelViewController: NSViewController {
         }
         if telemetry.errorCode != 0 {
             return [(
-                String(format: s.text("Kod błędu: 0x%llX", "Error code: 0x%llX"), telemetry.errorCode),
+                String(format: s.t("Error code: 0x%llX"), telemetry.errorCode),
                 nil
             )]
         }
         if telemetry.state == .error {
-            return [(s.text("Drukarka zgłosiła błąd", "Printer reported an error"), nil)]
+            return [(s.t("Printer reported an error"), nil)]
         }
         return []
     }
@@ -244,13 +244,13 @@ final class MaintenancePanelViewController: NSViewController {
         let title = label("\(icon)  \(task.title)", 11, .semibold)
         let timing: String
         if task.isDue {
-            timing = String(format: s.text("Przekroczono o %.0f h", "Overdue by %.0f h"), task.overdueHours)
+            timing = String(format: s.t("Overdue by %.0f h"), task.overdueHours)
         } else if let until = task.snoozedUntil, until > Date() {
             // Day + month only: the full date pushed the task title into an ellipsis in a two-column card.
             let day = until.formatted(.dateTime.day().month(.abbreviated))
-            timing = s.text("Odłożono do \(day)", "Snoozed until \(day)")
+            timing = String(format: s.t("Snoozed until %@"), day)
         } else {
-            timing = String(format: s.text("Za %.0f h druku", "In %.0f print h"), task.remainingHours)
+            timing = String(format: s.t("In %.0f print h"), task.remainingHours)
         }
         let timingLabel = label(timing.replacingOccurrences(of: " druku", with: ""), 10, .regular, GantryTheme.secondary)
         timingLabel.setContentHuggingPriority(.required, for: .horizontal)
@@ -270,7 +270,7 @@ final class MaintenancePanelViewController: NSViewController {
         interval.layer?.cornerRadius = 7
         interval.layer?.borderWidth = 1
         interval.layer?.borderColor = GantryTheme.line.cgColor
-        interval.toolTip = s.text("Interwał w godzinach druku", "Interval in print hours")
+        interval.toolTip = s.t("Interval in print hours")
         // Wide enough for a four-digit interval (some axis tasks run into the thousands of hours).
         interval.widthAnchor.constraint(equalToConstant: 44).isActive = true
         interval.heightAnchor.constraint(equalToConstant: 26).isActive = true
@@ -280,10 +280,10 @@ final class MaintenancePanelViewController: NSViewController {
             PrinterInsightsStore.shared.setInterval(serial: self.printer.serial, taskID: task.id, hours: value)
             self.rebuild()
         }
-        save.toolTip = s.text("Ustaw interwał", "Set interval")
+        save.toolTip = s.t("Set interval")
         let intervalRow = NSStackView(views: [interval, hours, save])
         intervalRow.orientation = .horizontal; intervalRow.alignment = .centerY; intervalRow.spacing = 2
-        let done = button(s.text("Gotowe", "Done")) { [weak self] in
+        let done = button(s.t("Done")) { [weak self] in
             guard let self else { return }
             PrinterInsightsStore.shared.complete(serial: self.printer.serial, taskID: task.id)
             self.rebuild()
@@ -293,7 +293,7 @@ final class MaintenancePanelViewController: NSViewController {
             PrinterInsightsStore.shared.snooze(serial: self.printer.serial, taskID: task.id)
             self.rebuild()
         }
-        snooze.toolTip = s.text("Przypomnij za 7 dni", "Remind in 7 days")
+        snooze.toolTip = s.t("Remind in 7 days")
         let heading = NSStackView(views: [title, NSView(), timingLabel])
         heading.orientation = .horizontal; heading.alignment = .centerY; heading.spacing = 6
         // A plain spacer absorbs the slack so every control keeps its natural width. With
@@ -375,15 +375,15 @@ final class MaintenancePanelViewController: NSViewController {
             return stack
         }
         let metrics = NSStackView(views: [
-            metric("\(snapshot.completedCount)", s.text("zakończone", "completed")),
-            metric(snapshot.successPercent.map { "\($0)%" } ?? "—", s.text("skuteczność", "success")),
-            metric(String(format: "%.0f g", snapshot.consumedGrams), s.text("filament", "filament"))
+            metric("\(snapshot.completedCount)", s.t("completed")),
+            metric(snapshot.successPercent.map { "\($0)%" } ?? "—", s.t("success")),
+            metric(String(format: "%.0f g", snapshot.consumedGrams), s.t("filament"))
         ])
         metrics.orientation = .horizontal
         metrics.alignment = .centerY
         metrics.distribution = .fillEqually
         metrics.spacing = 8
-        let title = label(s.text("STATYSTYKI", "STATISTICS"), 10, .bold, GantryTheme.muted)
+        let title = label(s.t("STATISTICS"), 10, .bold, GantryTheme.muted)
         let stack = NSStackView(views: [title, metrics])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
         metrics.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -423,10 +423,8 @@ final class MaintenancePanelViewController: NSViewController {
     private func showInstructions() {
         let s = AppSettings.shared
         let alert = NSAlert()
-        alert.messageText = s.text("Instrukcje konserwacji", "Maintenance instructions")
-        alert.informativeText = s.text(
-            "Wyłącz i ostudź drukarkę. Oczyść prowadnice, zastosuj środek zalecany przez producenta, sprawdź paski i dyszę. Instrukcja producenta ma zawsze pierwszeństwo.",
-            "Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide always takes precedence.")
+        alert.messageText = s.t("Maintenance instructions")
+        alert.informativeText = s.t("Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide always takes precedence.")
         alert.runModal()
     }
 

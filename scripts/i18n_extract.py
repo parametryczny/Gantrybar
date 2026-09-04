@@ -58,11 +58,20 @@ def main() -> int:
         print("Ujednolic je w zrodlach, inaczej katalog zgubi jeden z wariantow.", file=sys.stderr)
         return 1
     OUT.parent.mkdir(exist_ok=True)
-    # Keys starting with "@" are catalog metadata, not translatable text: "@name" carries the language
-    # name shown in Settings. Preserve whatever the existing file declares.
+    # MERGE, never replace. Once a call site becomes t("English"), the Polish text lives only in the
+    # catalog and no regex can recover it from the sources; overwriting here would delete the
+    # translation. So existing entries win and this script only ever adds what it newly finds.
+    # Keys starting with "@" are catalog metadata ("@name" is the language name shown in Settings).
     if OUT.exists():
         previous = json.loads(OUT.read_text(encoding="utf-8"))
-        catalog.update({k: v for k, v in previous.items() if k.startswith("@")})
+        merged = dict(catalog)
+        merged.update(previous)
+        added = sorted(set(catalog) - set(previous))
+        catalog = merged
+        if added:
+            print(f"Nowe hasla: {len(added)}")
+            for key in added[:10]:
+                print(f"    {key!r}")
     OUT.write_text(json.dumps(dict(sorted(catalog.items())), ensure_ascii=False, indent=2) + "\n",
                    encoding="utf-8")
     print(f"Zapisano {OUT.relative_to(ROOT)}: {len(catalog)} hasel")

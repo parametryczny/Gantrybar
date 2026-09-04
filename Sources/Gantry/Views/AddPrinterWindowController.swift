@@ -49,7 +49,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     init(store: PrinterStore) {
         self.store = store
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 430), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = AppSettings.shared.text("Dodaj drukarkę Bambu Lab", "Add Bambu Lab printer")
+        window.title = AppSettings.shared.t("Add Bambu Lab printer")
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildInterface()
@@ -212,36 +212,22 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         }
         switch selectedKind {
         case .klipper:
-            infoLabel.stringValue = settings.text(
-                "Podaj adres IP hosta Klipper (Moonraker, port 7125). Kod dostępu nie jest wymagany. Działa też przez VPN — wpisz po prostu adres Tailscale.",
-                "Enter the Klipper host IP (Moonraker, port 7125). No access code is needed. Works over VPN too — just enter the Tailscale IP.")
+            infoLabel.stringValue = settings.t("Enter the Klipper host IP (Moonraker, port 7125). No access code is needed. Works over VPN too — just enter the Tailscale IP.")
         case .prusa:
-            infoLabel.stringValue = settings.text(
-                "Podaj adres IP drukarki Prusa (PrusaLink, port 80) i klucz API z ustawień PrusaLink. Bez konta Prusy. Działa też przez VPN — wpisz po prostu adres Tailscale.",
-                "Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account. Works over VPN too — just enter the Tailscale IP.")
+            infoLabel.stringValue = settings.t("Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account. Works over VPN too — just enter the Tailscale IP.")
         case .snapmaker:
-            infoLabel.stringValue = settings.text(
-                "Podaj adres IP drukarki Snapmaker (HTTP, port 8080). Obsługa: Snapmaker 2.0 i Artisan. Po dodaniu na EKRANIE DRUKARKI pojawi się prośba o zgodę na połączenie — dotknij „Zezwól” (Allow). Autoryzację trzeba powtórzyć po każdym wyłączeniu drukarki.",
-                "Enter the Snapmaker printer IP (HTTP, port 8080). Supports Snapmaker 2.0 and Artisan. After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. You'll need to re-authorize after each power cycle.")
+            infoLabel.stringValue = settings.t("Enter the Snapmaker printer IP (HTTP, port 8080). Supports Snapmaker 2.0 and Artisan. After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. You'll need to re-authorize after each power cycle.")
         case .anycubicKobraS1:
-            infoLabel.stringValue = settings.text(
-                "Anycubic Kobra S1: podaj adres IP i włącz tryb LAN w drukarce. Gantry automatycznie pobierze dane MQTT przez port 18910. Kamera FLV: port 18088.",
-                "Anycubic Kobra S1: enter the IP address and enable LAN mode on the printer. Gantry obtains MQTT settings automatically via port 18910. FLV camera: port 18088.")
+            infoLabel.stringValue = settings.t("Anycubic Kobra S1: enter the IP address and enable LAN mode on the printer. Gantry obtains MQTT settings automatically via port 18910. FLV camera: port 18088.")
         case .bambu:
-            infoLabel.stringValue = settings.text(
-                "Wykrywanie przez SSDP i skan podsieci. Wybierz urządzenie z listy albo wpisz dane ręcznie. Port zwykle 8883 — zmień tylko przy tunelu (np. socat na kilka drukarek). ",
-                "Discovery via SSDP and a subnet scan. Pick a device from the list or enter details manually. Port is usually 8883 — change it only for a tunnel (e.g. socat forwarding several printers). ")
+            infoLabel.stringValue = settings.t("Discovery via SSDP and a subnet scan. Pick a device from the list or enter details manually. Port is usually 8883 — change it only for a tunnel (e.g. socat forwarding several printers). ")
                 + (AccessCodeStore.usesKeychain
-                    ? settings.text("Kod zostanie zapisany w pęku kluczy macOS.", "The code is stored in macOS Keychain.")
-                    : settings.text("Kod zostanie zapisany w lokalnych ustawieniach tego Maca.", "The code is stored in this Mac's local preferences."))
+                    ? settings.t("The code is stored in macOS Keychain.")
+                    : settings.t("The code is stored in this Mac's local preferences."))
         case .elegooCC1:
-            infoLabel.stringValue = settings.text(
-                "Elegoo Centauri Carbon łączy się lokalnie przez SDCP/WebSocket na porcie 3030. Kod dostępu nie jest wymagany; kamera działa na porcie 3031.",
-                "Elegoo Centauri Carbon connects locally over SDCP/WebSocket on port 3030. No access code is required; camera uses port 3031.")
+            infoLabel.stringValue = settings.t("Elegoo Centauri Carbon connects locally over SDCP/WebSocket on port 3030. No access code is required; camera uses port 3031.")
         case .elegooCC2:
-            infoLabel.stringValue = settings.text(
-                "Elegoo Centauri Carbon 2 używa MQTT LAN na porcie 1883. Włącz LAN-only w drukarce i wpisz jej kod dostępu. Kamera MJPEG działa na porcie 8080.",
-                "Elegoo Centauri Carbon 2 uses LAN MQTT on port 1883. Enable LAN-only on the printer and enter its access code. MJPEG camera uses port 8080.")
+            infoLabel.stringValue = settings.t("Elegoo Centauri Carbon 2 uses LAN MQTT on port 1883. Enable LAN-only on the printer and enter its access code. MJPEG camera uses port 8080.")
         }
     }
 
@@ -258,53 +244,38 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     private func localize() {
         let settings = AppSettings.shared
         titleLabel.stringValue = editingSerial == nil
-            ? settings.text("Dodaj drukarkę", "Add printer")
-            : settings.text("Edytuj drukarkę", "Edit printer")
+            ? settings.t("Add printer")
+            : settings.t("Edit printer")
         let storageDescription = AccessCodeStore.usesKeychain
-            ? settings.text("Kod zostanie zapisany w pęku kluczy macOS.", "The code is stored in macOS Keychain.")
-            : settings.text("Kod zostanie zapisany w lokalnych ustawieniach tego Maca.", "The code is stored in this Mac's local preferences.")
-        infoLabel.stringValue = settings.text(
-            "Wybierz urządzenie znalezione w Wi‑Fi albo wpisz dane ręcznie. ",
-            "Select a device found on Wi-Fi or enter its details manually. "
-        ) + storageDescription
-        scanButton.title = settings.text("Skanuj ponownie", "Scan again")
-        importButton.title = settings.text("Importuj drukarki i kody", "Import printers and codes")
-        importButton.toolTip = settings.text(
-            "Dopasuj wykryte drukarki i pobierz ich kody z lokalnej konfiguracji Bambu Studio",
-            "Match detected printers and load their codes from the local Bambu Studio configuration"
-        )
-        importConsent.title = settings.text(
-            "Pozwól odczytać konfigurację Bambu Studio",
-            "Allow reading the Bambu Studio configuration"
-        )
-        importHint.stringValue = settings.text(
-            "Przyspiesza dodawanie, ale odczytuje lokalny plik slicera z kodami dostępu do drukarek. Nic nie jest czytane, dopóki tego nie zaznaczysz.",
-            "Speeds up adding, but reads the local slicer file containing printer access codes. Nothing is read until you tick this."
-        )
-        pasteCodeButton.title = settings.text("Wklej", "Paste")
-        pasteCodeButton.toolTip = settings.text("Wklej kod dostępu ze schowka", "Paste access code from clipboard")
-        detectedLabel.stringValue = settings.text("Wykryte:", "Detected:")
-        nameLabel.stringValue = settings.text("Nazwa:", "Name:")
-        hostLabel.stringValue = settings.text("Adres IP:", "IP address:")
-        serialLabel.stringValue = settings.text("Numer seryjny:", "Serial number:")
-        codeLabel.stringValue = settings.text("Kod dostępu:", "Access code:")
-        cancelButton.title = settings.text("Anuluj", "Cancel")
-        nameField.placeholderString = settings.text("np. Drukarka w warsztacie", "e.g. Workshop printer")
-        hostField.placeholderString = settings.text("np. 192.168.1.50", "e.g. 192.168.1.50")
-        serialField.placeholderString = settings.text("Numer seryjny drukarki", "Printer serial number")
+            ? settings.t("The code is stored in macOS Keychain.")
+            : settings.t("The code is stored in this Mac's local preferences.")
+        infoLabel.stringValue = settings.t("Select a device found on Wi-Fi or enter its details manually. ") + storageDescription
+        scanButton.title = settings.t("Scan again")
+        importButton.title = settings.t("Import printers and codes")
+        importButton.toolTip = settings.t("Match detected printers and load their codes from the local Bambu Studio configuration")
+        importConsent.title = settings.t("Allow reading the Bambu Studio configuration")
+        importHint.stringValue = settings.t("Speeds up adding, but reads the local slicer file containing printer access codes. Nothing is read until you tick this.")
+        pasteCodeButton.title = settings.t("Paste")
+        pasteCodeButton.toolTip = settings.t("Paste access code from clipboard")
+        detectedLabel.stringValue = settings.t("Detected:")
+        nameLabel.stringValue = settings.t("Name:")
+        hostLabel.stringValue = settings.t("IP address:")
+        serialLabel.stringValue = settings.t("Serial number:")
+        codeLabel.stringValue = settings.t("Access code:")
+        cancelButton.title = settings.t("Cancel")
+        nameField.placeholderString = settings.t("e.g. Workshop printer")
+        hostField.placeholderString = settings.t("e.g. 192.168.1.50")
+        serialField.placeholderString = settings.t("Printer serial number")
         codeField.placeholderString = "PIN / Access Code"
-        portLabel.stringValue = settings.text("Port:", "Port:")
-        apiKeyLabel.stringValue = settings.text("Klucz API:", "API key:")
+        portLabel.stringValue = settings.t("Port:")
+        apiKeyLabel.stringValue = settings.t("API key:")
         portField.placeholderString = "7125"
-        apiKeyField.placeholderString = settings.text("opcjonalny", "optional")
-        progressCheck.title = settings.text("Pokaż postęp tej drukarki na pasku menu",
-                                            "Show this printer's progress in the menu bar")
+        apiKeyField.placeholderString = settings.t("optional")
+        progressCheck.title = settings.t("Show this printer's progress in the menu bar")
 
-        subnetTargetsLabel.stringValue = settings.text("Nie widać drukarki? Dodatkowe adresy do skanowania (VPN):",
-                                                       "Printer not listed? Extra scan targets (VPN):")
-        subnetTargetsHint.stringValue = settings.text(
-            "Bambu wykrywa się w sieci lokalnej. Drukarkę spoza LAN (np. przez Tailscale) dopisz tu jej adresem, potem kliknij ⟳. Obsługiwane: pojedynczy adres (zalecane), zakres a-b, CIDR /n. Duże zakresy odrzucane (limit \(SubnetTargets.maxHosts)).",
-            "Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. Supports: a single address (best), an a-b range, CIDR /n. Large ranges are rejected (limit \(SubnetTargets.maxHosts)).")
+        subnetTargetsLabel.stringValue = settings.t("Printer not listed? Extra scan targets (VPN):")
+        subnetTargetsHint.stringValue = String(format: settings.t("Bambu is found on the local network. Add a printer outside the LAN (e.g. over Tailscale) by its address here, then click ⟳. Supports: a single address (best), an a-b range, CIDR /n. Large ranges are rejected (limit %d)."),
+                   SubnetTargets.maxHosts)
         if subnetTargetsField.currentEditor() == nil { subnetTargetsField.stringValue = settings.subnetScanTargets }
         validateSubnetField()
     }
@@ -333,10 +304,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         } else {
             subnetTargetsError.isHidden = false
             subnetTargetsError.stringValue = SubnetTargets.isTooLarge(text)
-                ? settings.text("Zakres za duży (max \(SubnetTargets.maxHosts)) — podaj węższy zakres lub pojedynczy adres.",
-                                "Range too large (max \(SubnetTargets.maxHosts)) — use a narrower range or a single address.")
-                : settings.text("Nieprawidłowy wpis — użyj IP, zakresu a-b lub CIDR /n.",
-                                "Invalid entry — use an IP, an a-b range or CIDR /n.")
+                ? String(format: settings.t("Range too large (max %d) — use a narrower range or a single address."),
+                                SubnetTargets.maxHosts)
+                : settings.t("Invalid entry — use an IP, an a-b range or CIDR /n.")
         }
     }
 
@@ -347,7 +317,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         importButton.isEnabled = editingSerial == nil && importConsent.state == .on
         guard editingSerial == nil else { return }
         if store.isScanning {
-            statusLabel.stringValue = AppSettings.shared.text("Skanowanie sieci…", "Scanning network…")
+            statusLabel.stringValue = AppSettings.shared.t("Scanning network…")
             statusLabel.textColor = .secondaryLabelColor
         } else if let message = store.globalMessage {
             statusLabel.stringValue = message
@@ -373,8 +343,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         printerPopup.removeAllItems()
         if results.isEmpty {
             printerPopup.addItem(withTitle: store.isScanning
-                ? AppSettings.shared.text("Szukam drukarek w sieci…", "Searching for printers…")
-                : AppSettings.shared.text("Nie znaleziono — wpisz dane ręcznie", "Not found — enter details manually"))
+                ? AppSettings.shared.t("Searching for printers…")
+                : AppSettings.shared.t("Not found — enter details manually"))
             return
         }
         printerPopup.addItems(withTitles: results.map { "\($0.name) — \($0.host)" })
@@ -422,11 +392,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         do {
             let count = try store.importFromBambuStudio()
             let alert = NSAlert()
-            alert.messageText = AppSettings.shared.text("Zaimportowano drukarki", "Printers imported")
-            alert.informativeText = AppSettings.shared.text(
-                "Dodano lub zaktualizowano: \(count). Gantry będzie używać kodów z lokalnej konfiguracji Bambu Studio.",
-                "Added or updated: \(count). Gantry will use codes from the local Bambu Studio configuration."
-            )
+            alert.messageText = AppSettings.shared.t("Printers imported")
+            alert.informativeText = String(format: AppSettings.shared.t("Added or updated: %d. Gantry will use codes from the local Bambu Studio configuration."), count)
             alert.addButton(withTitle: "OK")
             if let window {
                 alert.beginSheetModal(for: window) { [weak self] _ in self?.close() }
@@ -439,7 +406,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
 
     @objc private func pasteAccessCode() {
         guard let value = NSPasteboard.general.string(forType: .string) else {
-            statusLabel.stringValue = AppSettings.shared.text("Schowek nie zawiera tekstu.", "The clipboard contains no text.")
+            statusLabel.stringValue = AppSettings.shared.t("The clipboard contains no text.")
             return
         }
         codeField.stringValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -527,8 +494,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         progressCheck.isHidden = true          // menu-bar pin is offered when editing a saved printer
         localize()
         applyKind()
-        window?.title = settings.text("Dodaj drukarkę", "Add printer")
-        saveButton.title = settings.text("Dodaj", "Add")
+        window?.title = settings.t("Add printer")
+        saveButton.title = settings.t("Add")
         codeField.placeholderString = "PIN / Access Code"
         printerPopup.isEnabled = true
         scanButton.isEnabled = true
@@ -537,7 +504,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         clear()
         popupPrinters = []
         printerPopup.removeAllItems()
-        printerPopup.addItem(withTitle: settings.text("Szukam drukarek w sieci…", "Searching for printers…"))
+        printerPopup.addItem(withTitle: settings.t("Searching for printers…"))
         store.scan()
     }
 
@@ -559,8 +526,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         progressCheck.state = MenuBarProgressPreference.isEnabled(printer.serial) ? .on : .off
         localize()
         applyKind()
-        window?.title = settings.text("Edytuj drukarkę \(printer.name)", "Edit printer \(printer.name)")
-        saveButton.title = settings.text("Zapisz", "Save")
+        window?.title = String(format: settings.t("Edit printer %@"), printer.name)
+        saveButton.title = settings.t("Save")
         nameField.stringValue = printer.name
         hostField.stringValue = printer.host
         statusLabel.stringValue = ""
@@ -574,9 +541,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             serialField.stringValue = printer.serial
             codeField.stringValue = ""
             if printer.kind == .elegooCC2, let code = AccessCodeStore.accessCode(for: printer.serial) { codeField.stringValue = code }
-            codeField.placeholderString = printer.kind == .elegooCC1 ? "" : settings.text("Pozostaw puste, aby zachować obecny kod", "Leave blank to keep the current code")
+            codeField.placeholderString = printer.kind == .elegooCC1 ? "" : settings.t("Leave blank to keep the current code")
             printerPopup.removeAllItems()
-            printerPopup.addItem(withTitle: settings.text("Edycja zapisanej drukarki", "Editing saved printer"))
+            printerPopup.addItem(withTitle: settings.t("Editing saved printer"))
             printerPopup.isEnabled = false
             scanButton.isEnabled = false
             importButton.isEnabled = false

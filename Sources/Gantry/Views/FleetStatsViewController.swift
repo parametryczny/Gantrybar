@@ -80,19 +80,19 @@ final class FleetStatsViewController: NSViewController {
         let s = AppSettings.shared
         view.appearance = s.appearance
 
-        let title = label(s.text("Statystyki floty", "Fleet statistics"), 18, .bold, GantryTheme.text)
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.text("Zamknij", "Close"))!,
+        let title = label(s.t("Fleet statistics"), 18, .bold, GantryTheme.text)
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
                              target: self, action: #selector(closePressed))
         close.isBordered = false
         close.contentTintColor = GantryTheme.secondary
         let header = NSStackView(views: [title, NSView(), close])
         header.orientation = .horizontal; header.alignment = .centerY; header.spacing = 8
 
-        let period = NSSegmentedControl(labels: [s.text("7 dni", "7 days"), s.text("30 dni", "30 days"),
-                                                 s.text("Rok", "Year"), s.text("Wszystko", "All")],
+        let period = NSSegmentedControl(labels: [s.t("7 days"), s.t("30 days"),
+                                                 s.t("Year"), s.t("All")],
                                         trackingMode: .selectOne, target: self, action: #selector(periodChanged(_:)))
         period.selectedSegment = 1
-        let export = button(s.text("Eksportuj do pliku…", "Export to file…"), action: #selector(exportPressed))
+        let export = button(s.t("Export to file…"), action: #selector(exportPressed))
         let controls = NSStackView(views: [period, NSView(), export])
         controls.orientation = .horizontal; controls.alignment = .centerY; controls.spacing = 8
 
@@ -175,26 +175,26 @@ final class FleetStatsViewController: NSViewController {
         let success = prints == 0 ? nil : Int((Double(prints - failed) / Double(prints) * 100).rounded())
 
         var lines: [String] = []
-        lines.append(String(format: s.text("Okres: %@", "Period: %@"), periodLabel()))
-        lines.append(String(format: s.text("Wydruki: %d (nieudane: %d)", "Prints: %d (failed: %d)"), prints, failed))
-        lines.append(String(format: s.text("Skuteczność: %@", "Success rate: %@"),
+        lines.append(String(format: s.t("Period: %@"), periodLabel()))
+        lines.append(String(format: s.t("Prints: %d (failed: %d)"), prints, failed))
+        lines.append(String(format: s.t("Success rate: %@"),
                             success.map { "\($0)%" } ?? "—"))
-        lines.append(String(format: s.text("Czas druku: %.1f h", "Print time: %.1f h"), hours))
+        lines.append(String(format: s.t("Print time: %.1f h"), hours))
         if grams > 0 {
-            lines.append(String(format: s.text("Filament: %.2f kg", "Filament: %.2f kg"), grams / 1000))
+            lines.append(String(format: s.t("Filament: %.2f kg"), grams / 1000))
         }
 
-        body.addArrangedSubview(label(s.text("PODSUMOWANIE", "SUMMARY"), 10, .bold, GantryTheme.muted))
+        body.addArrangedSubview(label(s.t("SUMMARY"), 10, .bold, GantryTheme.muted))
         let summary = card(lines)
         body.addArrangedSubview(summary)
         summary.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
 
-        body.addArrangedSubview(label(s.text("WEDŁUG DRUKARKI", "BY PRINTER"), 10, .bold, GantryTheme.muted))
+        body.addArrangedSubview(label(s.t("BY PRINTER"), 10, .bold, GantryTheme.muted))
         if all.isEmpty {
-            body.addArrangedSubview(label(s.text("Brak drukarek.", "No printers."), 12, .regular, GantryTheme.secondary))
+            body.addArrangedSubview(label(s.t("No printers."), 12, .regular, GantryTheme.secondary))
         }
         for row in all.sorted(by: { $0.prints > $1.prints }) {
-            let detail = String(format: s.text("%d wydruków · %.1f h · %@", "%d prints · %.1f h · %@"),
+            let detail = String(format: s.t("%d prints · %.1f h · %@"),
                                 row.prints, row.hours, row.successPercent.map { "\($0)%" } ?? "—")
             let box = card([row.name, detail], titleFirst: true)
             body.addArrangedSubview(box)
@@ -208,10 +208,10 @@ final class FleetStatsViewController: NSViewController {
     private func periodLabel() -> String {
         let s = AppSettings.shared
         switch periodDays {
-        case 7: return s.text("ostatnie 7 dni", "last 7 days")
-        case 30: return s.text("ostatnie 30 dni", "last 30 days")
-        case 365: return s.text("ostatni rok", "last year")
-        default: return s.text("cała historia", "all time")
+        case 7: return s.t("last 7 days")
+        case 30: return s.t("last 30 days")
+        case 365: return s.t("last year")
+        default: return s.t("all time")
         }
     }
 
@@ -222,19 +222,19 @@ final class FleetStatsViewController: NSViewController {
         let s = AppSettings.shared
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyy-MM-dd HH:mm"
-        var out = ["Gantry \(s.text("statystyki floty", "fleet statistics"))",
-                   "\(s.text("Wygenerowano", "Generated")): \(stamp.string(from: Date()))",
-                   "\(s.text("Okres", "Period")): \(periodLabel())",
+        var out = ["Gantry \(s.t("fleet statistics"))",
+                   "\(s.t("Generated")): \(stamp.string(from: Date()))",
+                   "\(s.t("Period")): \(periodLabel())",
                    "",
-                   "\(s.text("Wydruki", "Prints")): \(prints)  (\(s.text("nieudane", "failed")): \(failed))",
-                   "\(s.text("Skuteczność", "Success rate")): \(success.map { "\($0)%" } ?? "—")",
-                   String(format: "\(s.text("Czas druku", "Print time")): %.1f h", hours)]
-        if grams > 0 { out.append(String(format: "\(s.text("Filament", "Filament")): %.2f kg", grams / 1000)) }
+                   "\(s.t("Prints")): \(prints)  (\(s.t("failed")): \(failed))",
+                   "\(s.t("Success rate")): \(success.map { "\($0)%" } ?? "—")",
+                   String(format: "\(s.t("Print time")): %.1f h", hours)]
+        if grams > 0 { out.append(String(format: "\(s.t("Filament")): %.2f kg", grams / 1000)) }
         out.append("")
-        out.append(s.text("Według drukarki:", "By printer:"))
+        out.append(s.t("By printer:"))
         for row in all.sorted(by: { $0.prints > $1.prints }) {
             out.append(String(format: "  %@: %d %@, %.1f h, %@", row.name, row.prints,
-                              s.text("wydruków", "prints"), row.hours,
+                              s.t("prints"), row.hours,
                               row.successPercent.map { "\($0)%" } ?? "—"))
         }
         return out.joined(separator: "\n") + "\n"
@@ -251,7 +251,7 @@ final class FleetStatsViewController: NSViewController {
                 try self.renderedText.write(to: url, atomically: true, encoding: .utf8)
             } catch {
                 let alert = NSAlert()
-                alert.messageText = s.text("Nie udało się zapisać pliku.", "Could not save the file.")
+                alert.messageText = s.t("Could not save the file.")
                 alert.informativeText = error.localizedDescription
                 alert.runModal()
             }

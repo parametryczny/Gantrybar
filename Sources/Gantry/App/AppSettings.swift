@@ -249,11 +249,11 @@ final class AppSettings: ObservableObject {
 
     func stateLabel(_ state: PrinterState) -> String {
         switch state {
-        case .idle: text("Gotowa", "Ready")
-        case .printing: text("Drukowanie", "Printing")
-        case .paused: text("Wstrzymana", "Paused")
-        case .finished: text("Zakończono", "Finished")
-        case .error: text("Błąd", "Error")
+        case .idle: t("Ready")
+        case .printing: t("Printing")
+        case .paused: t("Paused")
+        case .finished: t("Finished")
+        case .error: t("Error")
         case .offline: "Offline"
         }
     }

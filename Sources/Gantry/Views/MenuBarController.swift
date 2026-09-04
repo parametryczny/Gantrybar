@@ -137,7 +137,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             button.image = GantryLogo.statusItemImage(height: 14)
             button.imagePosition = .imageOnly
             button.toolTip = store.activePrintCount > 0
-                ? AppSettings.shared.text("Gantry — drukuje: \(store.activePrintCount)", "Gantry — printing: \(store.activePrintCount)")
+                ? String(format: AppSettings.shared.t("Gantry — printing: %d"), store.activePrintCount)
                 : "Gantry"
         }
     }
@@ -247,13 +247,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         menu.autoenablesItems = false
 
         menu.addItem(row(icon: "printer.fill", tint: Self.accentTint,
-                         title: settings.text("Pokaż drukarki", "Show printers")) { [weak self] in
+                         title: settings.t("Show printers")) { [weak self] in
             self?.showPopoverFromMenu()
         })
 
         if settings.spoolbaseEnabled {
             menu.addItem(row(icon: "shippingbox.fill",
-                             title: settings.text("Spoolbase — magazyn filamentów", "Spoolbase — filament stock")) { [weak self] in
+                             title: settings.t("Spoolbase — filament stock")) { [weak self] in
                 guard let button = self?.anchorButton else { return }
                 self?.spoolbase.toggle(from: button)
             })
@@ -262,32 +262,32 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "antenna.radiowaves.left.and.right",
-                         title: settings.text("Szukaj drukarek…", "Search printers…"),
+                         title: settings.t("Search printers…"),
                          enabled: !store.isScanning) { [weak self] in
             self?.store.scan()
         })
         menu.addItem(row(icon: "plus",
-                         title: settings.text("Dodaj drukarkę…", "Add printer…")) { [weak self] in
+                         title: settings.t("Add printer…")) { [weak self] in
             self?.showAddPrinter()
         })
         menu.addItem(row(icon: "arrow.clockwise",
-                         title: settings.text("Połącz ponownie (wszystkie)", "Reconnect (all)"),
+                         title: settings.t("Reconnect (all)"),
                          enabled: !store.printers.isEmpty) { [weak self] in
             self?.store.reconnectAll()
         })
         menu.addItem(row(icon: "stethoscope",
-                         title: settings.text("Centrum diagnostyczne…", "Diagnostic Center…")) { [weak self] in
+                         title: settings.t("Diagnostic Center…")) { [weak self] in
             self?.showDiagnostics()
         })
         menu.addItem(row(icon: "chart.bar",
-                         title: settings.text("Statystyki floty…", "Fleet statistics…")) { [weak self] in
+                         title: settings.t("Fleet statistics…")) { [weak self] in
             self?.showFleetStats()
         })
 
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "globe",
-                         title: settings.text("Język", "Language"),
+                         title: settings.t("Language"),
                          accessory: .value(settings.language.uppercased())) {
             // Cycles through the installed catalogs, so a dropped-in language is reachable here too.
             let codes = Localization.available().map(\.code)
@@ -295,17 +295,17 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             AppSettings.shared.language = codes[next]
         })
         menu.addItem(row(icon: QuietHours.isEnabled ? "moon.fill" : "moon",
-                         title: settings.text("Godziny ciszy", "Quiet hours"),
-                         accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.text("wył.", "off"))) {
+                         title: settings.t("Quiet hours"),
+                         accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))) {
             QuietHours.isEnabled.toggle()
         })
         menu.addItem(row(icon: "arrow.down.circle",
-                         title: settings.text("Sprawdź aktualizacje…", "Check for updates…"),
+                         title: settings.t("Check for updates…"),
                          accessory: .detail("v\(UpdateService.currentVersion)")) {
             UpdatePresenter.checkAndPresent(from: nil)
         })
         menu.addItem(row(icon: "gearshape",
-                         title: settings.text("Ustawienia…", "Settings…"),
+                         title: settings.t("Settings…"),
                          accessory: .detail("⌘,")) { [weak self] in
             self?.showSettings()
         })
@@ -313,20 +313,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // Every icon in this menu is drawn by a custom row view; a plain NSMenuItem's native image
         // doesn't render here, and a view-based item won't open a submenu on hover. So the icon is an
         // emoji in the title — it always renders and keeps the row expandable.
-        let legendItem = NSMenuItem(title: settings.text("🎨  Legenda kolorów", "🎨  Colour legend"),
+        let legendItem = NSMenuItem(title: settings.t("🎨  Colour legend"),
                                     action: nil, keyEquivalent: "")
         legendItem.submenu = colourLegendMenu(settings: settings)
         menu.addItem(legendItem)
 
         menu.addItem(row(icon: "cup.and.saucer.fill",
-                         title: settings.text("Postaw kawę ☕️", "Buy me a coffee ☕️")) {
+                         title: settings.t("Buy me a coffee ☕️")) {
             if let url = URL(string: "https://buycoffee.to/parametryczny") { NSWorkspace.shared.open(url) }
         })
 
         menu.addItem(.separator())
 
         menu.addItem(row(icon: "power",
-                         title: settings.text("Zakończ Gantry", "Quit Gantry"),
+                         title: settings.t("Quit Gantry"),
                          accessory: .detail("⌘Q")) {
             NSApplication.shared.terminate(nil)
         })
@@ -338,19 +338,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// the colours crisp inside the submenu without custom drawing.
     private func colourLegendMenu(settings: AppSettings) -> NSMenu {
         let statusEntries: [(String, String)] = [
-            ("🔵", settings.text("Drukuje (świeże dane)", "Printing (live data)")),
-            ("🟢", settings.text("Gotowe / zakończone", "Ready / finished")),
-            ("🟠", settings.text("Uwaga: nieświeże dane, pauza lub wilgotność AMS",
-                                 "Attention: stale data, paused, or AMS humidity")),
-            ("🔴", settings.text("Błąd drukarki", "Printer error")),
-            ("⚪", settings.text("Offline / brak / neutralna informacja", "Offline / none / neutral")),
+            ("🔵", settings.t("Printing (live data)")),
+            ("🟢", settings.t("Ready / finished")),
+            ("🟠", settings.t("Attention: stale data, paused, or AMS humidity")),
+            ("🔴", settings.t("Printer error")),
+            ("⚪", settings.t("Offline / none / neutral")),
         ]
         // Slot markers explain the small cues drawn on the filament swatches themselves.
         let slotEntries: [(String, String)] = [
-            ("⭕", settings.text("Slot AMS z białym pierścieniem — aktywny (drukuje z niego)",
-                                 "AMS slot with a white ring — active (printing from it)")),
-            ("🔴", settings.text("Czerwona kropka na slocie — mało filamentu (≤15%)",
-                                 "Red dot on a slot — low filament (≤15%)")),
+            ("⭕", settings.t("AMS slot with a white ring — active (printing from it)")),
+            ("🔴", settings.t("Red dot on a slot — low filament (≤15%)")),
         ]
         let submenu = NSMenu()
         submenu.autoenablesItems = false
@@ -361,7 +358,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
         for (dot, text) in statusEntries { addEntry(dot, text) }
         submenu.addItem(.separator())
-        let header = NSMenuItem(title: settings.text("Sloty filamentu:", "Filament slots:"), action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: settings.t("Filament slots:"), action: nil, keyEquivalent: "")
         header.isEnabled = false
         submenu.addItem(header)
         for (dot, text) in slotEntries { addEntry(dot, text) }
