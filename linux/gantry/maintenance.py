@@ -188,7 +188,7 @@ class MaintenancePanel(Gtk.Frame):
         dialog = Gtk.MessageDialog(transient_for=self.app.window, modal=True, message_type=Gtk.MessageType.INFO,
                                    buttons=Gtk.ButtonsType.OK,
                                    text="Instrukcje konserwacji" if self.pl else "Maintenance instructions")
-        dialog.format_secondary_text(("Wyłącz i ostudź drukarkę. Oczyść prowadnice, użyj środka zalecanego przez producenta, sprawdź paski i dyszę. Instrukcja producenta ma zawsze pierwszeństwo."
+        dialog.format_secondary_text(("Wyłącz i ostudź drukarkę. Oczyść prowadnice, zastosuj środek zalecany przez producenta, sprawdź paski i dyszę. Instrukcja producenta ma zawsze pierwszeństwo."
                                       if self.pl else "Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide always takes precedence."))
         dialog.run(); dialog.destroy()
 

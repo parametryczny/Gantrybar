@@ -39,6 +39,10 @@
     </Content>
     <!-- Gantry wordmark logo (embedded resource, used in the dashboard header). -->
     <Resource Include="Assets\wordmark.png" />
+    <!-- Translation catalog, shared verbatim with the macOS and Linux builds. -->
+    <Content Include="..\..\i18n\pl.json" Link="i18n\pl.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- WPF + WinForms both add implicit global usings; drop the WinForms ones so WPF types

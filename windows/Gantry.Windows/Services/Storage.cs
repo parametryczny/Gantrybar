@@ -377,6 +377,10 @@ public static class AppSettings
         set => Defaults.SetString("detail-hidden-modules", value);
     }
 
+    /// <summary>Looks the English source string up in the shipped catalog (i18n/pl.json). This is the
+    /// form new code should use; <see cref="Text"/> below stays until every call site is migrated.</summary>
+    public static string T(string english) => Polish ? Localization.ToPolish(english) : english;
+
     public static string Text(string polish, string english) => Polish ? polish : english;
 
     private static string DefaultLanguage()

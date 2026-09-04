@@ -689,7 +689,7 @@ final class PrinterDetailViewController: NSViewController {
             stack.orientation = .vertical; stack.alignment = .centerX; stack.spacing = 3
             return stack
         }
-        statisticsStack.addArrangedSubview(metric(String(format: "%.1f h", snapshot.totalPrintHours), settings.text("Czas pracy", "Print time")))
+        statisticsStack.addArrangedSubview(metric(String(format: "%.1f h", snapshot.totalPrintHours), settings.text("Czas druku", "Print time")))
         statisticsStack.addArrangedSubview(metric(snapshot.successPercent.map { "\($0)%" } ?? "—", settings.text("Skuteczność", "Success")))
         statisticsStack.addArrangedSubview(metric(String(format: "%.0f g", snapshot.consumedGrams), settings.text("Filament", "Filament")))
     }
@@ -1384,7 +1384,7 @@ final class PhaseStepperView: NSView {
         activeIndex = state == .finished ? 2 : (fraction < 0.02 ? 0 : (fraction >= 0.99 ? 2 : 1))
         labels[0].stringValue = settings.text("Przygotowanie", "Prep")
         labels[1].stringValue = settings.text("Drukowanie", "Printing")
-        labels[2].stringValue = settings.text("Zakończono", "Done")
+        labels[2].stringValue = settings.text("Zakończono", "Finished")
         for (index, label) in labels.enumerated() {
             label.textColor = index == activeIndex ? GantryTheme.text : GantryTheme.muted
         }

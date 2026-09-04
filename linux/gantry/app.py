@@ -34,6 +34,7 @@ from .discovery import scan
 from .http_clients import HttpConnection
 from .layout import needs_wide, place_cards
 from .mqtt import MqttConnection
+from . import i18n
 from .storage import Config, SecretStore, SecretStoreError, autostart_enabled, set_autostart
 from .studio import devices as studio_devices
 
@@ -367,6 +368,7 @@ class Gantry:
         from .insights import PrinterInsights
         self.insights = PrinterInsights(self)
         self.language = str(self.config.data.get("language", "pl")); self.text = TEXT.get(self.language, TEXT["pl"])
+        i18n.set_language(self.language)
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
         self.connection_reasons: dict[str, str] = {}
@@ -580,6 +582,7 @@ class Gantry:
 
     def _toggle_language(self) -> None:
         self.language = "en" if self.language == "pl" else "pl"
+        i18n.set_language(self.language)
         self.config.data["language"] = self.language
         self.config.save(); self.text = TEXT.get(self.language, TEXT["pl"])
         self.rebuild_cards(); self._tray()

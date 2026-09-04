@@ -9,6 +9,7 @@ enum ProtocolSelfTest {
         checkMoonraker(&failures)
         checkMQTTFraming(&failures)
         checkSubnetTargets(&failures)
+        checkLocalization(&failures)
         return failures
     }
 
@@ -132,6 +133,18 @@ enum ProtocolSelfTest {
         if printer.host != "192.168.1.42" { failures.append("wrong SSDP host") }
         if printer.name != "Warsztat" { failures.append("wrong SSDP name") }
         if printer.model != "P1S" { failures.append("wrong SSDP model") }
+    }
+
+    /// The translation catalog has to actually load and resolve, otherwise every screen silently
+    /// falls back to English and nobody notices until a user reports it.
+    private static func checkLocalization(_ failures: inout [String]) {
+        if Localization.loadedCount == 0 { failures.append("translation catalog did not load") }
+        if Localization.polish(for: "Launch at login") != "Uruchamiaj przy logowaniu" {
+            failures.append("known catalog entry did not resolve")
+        }
+        // A string with no entry must fall through to English, never to an empty label.
+        let unknown = "Gantry self-test string with no catalog entry"
+        if Localization.polish(for: unknown) != unknown { failures.append("missing key did not fall back") }
     }
 
     private static func checkTelemetry(_ failures: inout [String]) {

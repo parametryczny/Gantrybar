@@ -229,6 +229,12 @@ final class AppSettings: ObservableObject {
         NSAppearance(named: theme == .dark ? .darkAqua : .aqua)
     }
 
+    /// Looks the English source string up in the shipped catalog (i18n/pl.json). This is the form new
+    /// code should use; `text(_:_:)` below stays until every call site is migrated.
+    func t(_ english: String) -> String {
+        language == .pl ? Localization.polish(for: english) : english
+    }
+
     func text(_ polish: String, _ english: String) -> String {
         language == .pl ? polish : english
     }

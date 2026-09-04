@@ -447,7 +447,7 @@ class SettingsDialog(Gtk.Dialog):
                 "Podaj token i chat ID." if self.pl else "Enter a token and chat ID.")
             return
         self.telegram_test.set_sensitive(False)
-        self.telegram_status.set_text("Wysyłam…" if self.pl else "Sending…")
+        self.telegram_status.set_text("Wysyłanie…" if self.pl else "Sending…")
 
         def work() -> None:
             from .telegram import send_test

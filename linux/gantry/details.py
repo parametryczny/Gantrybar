@@ -371,7 +371,7 @@ class PhaseStepper(Gtk.Box):
         self.labels = Gtk.Box()
         self.prep = Gtk.Label(label="Przygotowanie" if pl else "Prep", xalign=0)
         self.printing = Gtk.Label(label="Drukowanie" if pl else "Printing", xalign=0.5)
-        self.done = Gtk.Label(label="Zakończono" if pl else "Done", xalign=1)
+        self.done = Gtk.Label(label="Zakończono" if pl else "Finished", xalign=1)
         for label in (self.prep, self.printing, self.done):
             label.get_style_context().add_class("slot-id")
             self.labels.pack_start(label, True, True, 0)
@@ -673,7 +673,7 @@ class DetailPanel(Gtk.Box):
             self.maintenance.pack_start(self._line(f"{'!' if task.urgent else '⚠' if task.due else '○'}  {task.title} · {timing}"), False, False, 0)
         self._clear(self.stats)
         success = "—" if snap["success"] is None else f"{snap['success']}%"
-        for title, value in ((("Czas pracy" if pl else "Print time"), f"{snap['total_hours']:.1f} h"),
+        for title, value in ((("Czas druku" if pl else "Print time"), f"{snap['total_hours']:.1f} h"),
                              (("Skuteczność" if pl else "Success"), success),
                              (("Filament"), f"{snap['consumed_grams']:.0f} g")):
             self.stats.pack_start(self._metric(title, value), True, True, 0)
