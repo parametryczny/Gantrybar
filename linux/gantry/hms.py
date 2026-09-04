@@ -6,8 +6,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from . import i18n
-
 _CACHE: dict[str, dict[str, str]] = {}
 
 
@@ -72,7 +70,7 @@ def _messages(language: str, serial: str = "") -> dict[str, str]:
 
 
 def actionable_codes(codes: list[str], serial: str, language: str) -> list[str]:
-    messages = _messages(i18n.t("en"), serial)
+    messages = _messages("pl" if language == "pl" else "en", serial)
     return [code for code in codes if _normalize(code) not in messages or messages[_normalize(code)].strip()]
 
 
@@ -80,7 +78,7 @@ def description(codes: list[str], serial: str, language: str) -> str | None:
     actionable = actionable_codes(codes, serial, language)
     if not actionable:
         return None
-    messages = _messages(i18n.t("en"), serial)
+    messages = _messages("pl" if language == "pl" else "en", serial)
     for code in actionable:
         if message := messages.get(_normalize(code), "").strip():
             return message

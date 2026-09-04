@@ -555,7 +555,7 @@ class Gantry:
         self._refresh_progress_indicators()
 
     def _toggle_language(self) -> None:
-        self.language =i18n.t("pl")
+        self.language = "en" if self.language == "pl" else "pl"
         i18n.set_language(self.language)
         self.config.data["language"] = self.language
         self.config.save(); self.text = TEXT.get(self.language, TEXT["pl"])

@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from . import i18n
 from .core import Printer, printer_to_dict
 
 
@@ -91,7 +90,7 @@ class Config:
         self.data = dict(DEFAULTS)
         if not CONFIG_FILE.exists():
             language = (locale.getlocale()[0] or os.environ.get("LANG", "")).lower()
-            self.data["language"] =i18n.t("en")
+            self.data["language"] = "pl" if language.startswith("pl") else "en"
         self.load()
 
     def load(self) -> None:
