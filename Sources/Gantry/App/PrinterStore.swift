@@ -516,22 +516,6 @@ final class PrinterStore: ObservableObject {
         spoolNotices[serial] = nil
     }
 
-    /// Merges peer printers from LAN sync: adds any printer we do not already have (matched by serial).
-    /// Secrets are never synced (Bambu access codes live in the Keychain, Klipper/Prusa apiKey is
-    /// dropped), so a newly added printer appears but needs its access code entered once on this Mac
-    /// before it connects. Existing printers and deletions are left untouched in v1.
-    @discardableResult
-    func mergeRemote(printers remote: [SyncPrinter]) -> Bool {
-        var didChange = false
-        for candidate in remote where !printers.contains(where: { $0.serial == candidate.serial }) {
-            printers.append(SavedPrinter(serial: candidate.serial, name: candidate.name, model: candidate.model,
-                                         host: candidate.host, kind: candidate.kind, port: candidate.port, apiKey: nil))
-            didChange = true
-        }
-        if didChange { persistence.save(printers); reconnectAll() }
-        return didChange
-    }
-
     func retryAfterLocalNetworkPermission() {
         guard localNetworkWasDenied else { return }
         reconnectAll()

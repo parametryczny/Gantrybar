@@ -130,19 +130,6 @@ final class SettingsWindowController: NSWindowController {
     private let webContentStack = NSStackView()
     private var webContentRow: SettingsContentRow?
 
-    private let syncGroupLabel = NSTextField(labelWithString: "")
-    private let syncTokenTitle = NSTextField(labelWithString: "")
-    private let syncTokenValue = NSTextField(labelWithString: "")
-    private let syncTokenRegenButton = NSButton()
-    private let syncAddressTitle = NSTextField(labelWithString: "")
-    private let syncAddressValue = NSTextField(labelWithString: "")
-    private let syncPeerField = NSTextField()
-    private let syncAddPeerButton = NSButton()
-    private let syncTokenField = NSTextField()
-    private let syncSetTokenButton = NSButton()
-    private let syncNowButton = NSButton()
-    private let syncPeersStack = NSStackView()
-    private let syncHint = NSTextField(wrappingLabelWithString: "")
 
     private var settingsSubscription: AnyCancellable?
 
@@ -495,52 +482,12 @@ final class SettingsWindowController: NSWindowController {
         let webRow = SettingsContentRow(webContentStack)
         webContentRow = webRow
 
-        // Sync: shared token, this machine's address, then pairing controls and the peer list.
-        syncTokenValue.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
-        syncTokenValue.textColor = GantryTheme.text
-        syncTokenValue.isSelectable = true
-        syncAddressValue.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        syncAddressValue.textColor = GantryTheme.secondary
-        syncAddressValue.isSelectable = true
-        _ = caption(syncTokenTitle)
-        _ = caption(syncAddressTitle)
-        configureTextButton(syncTokenRegenButton, action: #selector(syncRegenToken))
-        configureTextButton(syncAddPeerButton, action: #selector(syncAddPeer))
-        configureTextButton(syncSetTokenButton, action: #selector(syncSetToken))
-        configureTextButton(syncNowButton, action: #selector(syncNow))
-        for field in [syncPeerField, syncTokenField] {
-            field.font = .systemFont(ofSize: 12)
-            field.translatesAutoresizingMaskIntoConstraints = false
-            field.widthAnchor.constraint(greaterThanOrEqualToConstant: 180).isActive = true
-        }
-        syncHint.font = .systemFont(ofSize: 11)
-        syncHint.textColor = GantryTheme.muted
-
-        let tokenRow = NSStackView(views: [syncTokenValue, NSView(), syncTokenRegenButton])
-        tokenRow.orientation = .horizontal; tokenRow.alignment = .centerY; tokenRow.spacing = 8
-        let tokenBlock = NSStackView(views: [syncTokenTitle, tokenRow])
-        tokenBlock.orientation = .vertical; tokenBlock.alignment = .leading; tokenBlock.spacing = 3
-        let addressBlock = NSStackView(views: [syncAddressTitle, syncAddressValue])
-        addressBlock.orientation = .vertical; addressBlock.alignment = .leading; addressBlock.spacing = 3
-        let addPeerRow = NSStackView(views: [syncPeerField, syncAddPeerButton])
-        addPeerRow.orientation = .horizontal; addPeerRow.alignment = .centerY; addPeerRow.spacing = 8
-        let setTokenRow = NSStackView(views: [syncTokenField, syncSetTokenButton])
-        setTokenRow.orientation = .horizontal; setTokenRow.alignment = .centerY; setTokenRow.spacing = 8
-        syncPeersStack.orientation = .vertical; syncPeersStack.alignment = .leading; syncPeersStack.spacing = 6
-        let syncBody = NSStackView(views: [tokenBlock, addressBlock, addPeerRow, setTokenRow,
-                                           syncPeersStack, syncNowButton, syncHint])
-        syncBody.orientation = .vertical; syncBody.alignment = .leading; syncBody.spacing = 12
-        for row in [tokenRow, tokenBlock, addressBlock, addPeerRow, setTokenRow, syncPeersStack, syncHint] {
-            row.widthAnchor.constraint(equalTo: syncBody.widthAnchor).isActive = true
-        }
-        let syncRow = SettingsContentRow(syncBody)
 
         return [
             makeGroup(developerGroupLabel, [developerRow, scriptActionsRow]),
             makeGroup(telegramGroupLabel, [telegramEnableRow, telegramTokenRow, telegramChatRow,
                                            telegramTestRow, telegramHintRow]),
-            makeGroup(webGroupLabel, [webEnableRow, webRow]),
-            makeGroup(syncGroupLabel, [syncRow])
+            makeGroup(webGroupLabel, [webEnableRow, webRow])
         ]
     }
 
@@ -699,7 +646,6 @@ final class SettingsWindowController: NSWindowController {
         }
 
         refreshWebSection(settings)
-        refreshSyncSection(settings)
     }
 
     /// Fills the web-dashboard section with the live LAN URLs and a scannable QR of the IP URL
@@ -1062,92 +1008,6 @@ final class SettingsWindowController: NSWindowController {
         button.controlSize = .small
         button.font = .systemFont(ofSize: 11, weight: .medium)
     }
-
-    // MARK: LAN sync section
-
-    private func refreshSyncSection(_ settings: AppSettings) {
-        syncGroupLabel.stringValue = settings.t("SYNC BETWEEN COMPUTERS")
-        syncTokenTitle.stringValue = settings.t("Shared token (copy to the other computer)")
-        syncAddressTitle.stringValue = settings.t("This computer's address")
-        syncTokenRegenButton.title = settings.t("New")
-        syncAddPeerButton.title = settings.t("Add")
-        syncSetTokenButton.title = settings.t("Set token")
-        syncNowButton.title = settings.t("Sync now")
-        syncPeerField.placeholderString = settings.t("other computer address, e.g. gantry.local")
-        syncTokenField.placeholderString = settings.t("paste token from the other computer")
-        syncHint.stringValue = settings.t("On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.")
-
-        guard let sync = SyncService.shared else {
-            syncTokenValue.stringValue = "—"
-            syncAddressValue.stringValue = "—"
-            return
-        }
-        syncTokenValue.stringValue = sync.token
-        syncAddressValue.stringValue = GantryWebServer.primaryURL().replacingOccurrences(of: "http://", with: "")
-
-        syncPeersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        if sync.peers.isEmpty {
-            let none = NSTextField(labelWithString: settings.t("No paired computers."))
-            none.font = .systemFont(ofSize: 11); none.textColor = GantryTheme.muted
-            syncPeersStack.addArrangedSubview(none)
-        }
-        for (index, peer) in sync.peers.enumerated() {
-            let name = NSTextField(labelWithString: peer.address)
-            name.font = .monospacedSystemFont(ofSize: 11, weight: .regular); name.textColor = GantryTheme.text
-            let status = NSTextField(labelWithString: syncPeerStatus(peer, settings: settings))
-            status.font = .systemFont(ofSize: 10); status.textColor = peer.lastError == nil ? GantryTheme.secondary : GantryTheme.statusPrinting
-            let remove = NSButton(title: settings.t("Remove"), target: self, action: #selector(syncRemovePeer(_:)))
-            configureTextButton(remove, action: #selector(syncRemovePeer(_:)))
-            remove.tag = index
-            let info = NSStackView(views: [name, status]); info.orientation = .vertical; info.alignment = .leading; info.spacing = 1
-            let row = NSStackView(views: [info, NSView(), remove]); row.orientation = .horizontal; row.alignment = .centerY
-            row.translatesAutoresizingMaskIntoConstraints = false
-            syncPeersStack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: syncPeersStack.widthAnchor).isActive = true
-        }
-    }
-
-    private func syncPeerStatus(_ peer: SyncPeer, settings: AppSettings) -> String {
-        if let error = peer.lastError { return settings.t("Error: {0}", error) }
-        guard let last = peer.lastSyncAt else { return settings.t("not synced yet") }
-        let formatter = DateFormatter(); formatter.dateStyle = .none; formatter.timeStyle = .short
-        return settings.t("last: {0}", formatter.string(from: last))
-    }
-
-    @objc private func syncRegenToken() {
-        SyncService.shared?.regenerateToken()
-        refresh()
-    }
-
-    @objc private func syncAddPeer() {
-        let address = syncPeerField.stringValue
-        guard !address.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        SyncService.shared?.addPeer(address: address)
-        syncPeerField.stringValue = ""
-        refresh()
-    }
-
-    @objc private func syncSetToken() {
-        let token = syncTokenField.stringValue
-        guard !token.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        SyncService.shared?.setToken(token)
-        syncTokenField.stringValue = ""
-        refresh()
-    }
-
-    @objc private func syncNow() {
-        SyncService.shared?.syncNow()
-    }
-
-    @objc private func syncRemovePeer(_ sender: NSButton) {
-        guard let sync = SyncService.shared, sender.tag >= 0, sender.tag < sync.peers.count else { return }
-        sync.removePeer(sync.peers[sender.tag].id)
-        refresh()
-    }
-
-
-
-
 
     @objc private func closeSettings() {
         close()

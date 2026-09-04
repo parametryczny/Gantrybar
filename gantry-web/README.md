@@ -11,7 +11,7 @@ drukarki w LAN → aplikacja Gantry → HTTPS → Gantry Web → przeglądarka
 ```
 
 - panel jest tylko do odczytu;
-- klucz Web Link ma być inny niż token synchronizacji LAN;
+- klucz Web Link służy wyłącznie Web Linkowi i nie jest dzielony z niczym innym;
 - snapshot jest nadpisywany, a nie dopisywany bez końca;
 - brak kontaktu z aplikacją przez 45 sekund oznacza `offline`;
 - kilka komputerów może wysyłać dane, a nowsza kopia tej samej drukarki wygrywa.

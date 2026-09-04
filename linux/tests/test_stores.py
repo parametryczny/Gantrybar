@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from gantry.physicalspool import PhysicalSpoolStore, same_slot, location_for
-from gantry.sync import make_token, normalize_address
 from gantry.webserver import fleet_snapshot
 from gantry.core import Printer, PrinterKind, Telemetry, FilamentGroup, FilamentSlot, PrinterState, parse_telemetry
 
@@ -15,25 +14,7 @@ def _store():
     return PhysicalSpoolStore(d / "spools.json", d / "usage.json")
 
 
-class PhysicalSpoolMergeTests(unittest.TestCase):
-    def test_last_write_wins_and_usage_dedup(self):
-        st = _store()
-        spool = {"id": "SP-00001", "nominalWeightGrams": 1000, "remainingWeightGrams": 850,
-                 "status": "active", "location": {}, "updatedAt": "2026-08-27T10:00:00Z"}
-        event = {"id": "e1", "spoolID": "SP-00001", "printJobID": "job#1", "consumedGrams": 50,
-                 "timestamp": "2026-08-27T10:00:00Z"}
-        self.assertTrue(st.merge_remote([spool], [event]))
-        self.assertEqual(st.spool("SP-00001")["remainingWeightGrams"], 850)
-        # An older copy is ignored; a newer one wins.
-        older = dict(spool, remainingWeightGrams=700, updatedAt="2026-08-26T10:00:00Z")
-        self.assertFalse(st.merge_remote([older], []))
-        newer = dict(spool, remainingWeightGrams=600, updatedAt="2026-08-28T10:00:00Z")
-        self.assertTrue(st.merge_remote([newer], []))
-        self.assertEqual(st.spool("SP-00001")["remainingWeightGrams"], 600)
-        # The same usage event does not duplicate.
-        self.assertFalse(st.merge_remote([], [event]))
-        self.assertEqual(len(st.usage), 1)
-
+class PhysicalSpoolTests(unittest.TestCase):
     def test_create_assign_and_set_remaining(self):
         st = _store()
         loc = location_for("X1", False, 0, 0)
@@ -79,42 +60,11 @@ class PhysicalSpoolMergeTests(unittest.TestCase):
         self.assertFalse(same_slot(loc, {}))
 
 
-class SyncHelperTests(unittest.TestCase):
-    def test_token_and_normalize(self):
-        self.assertTrue(make_token().startswith("GANTRY-"))
-        self.assertEqual(normalize_address("http://gantry.local/"), "gantry.local:8787")
-        self.assertEqual(normalize_address("192.168.1.9"), "192.168.1.9:8787")
-        self.assertEqual(normalize_address("host:9000"), "host:9000")
-        self.assertEqual(normalize_address(""), "")
-
-    def test_wire_date_strips_fractional(self):
-        from gantry.sync import _wire_date
-        self.assertEqual(_wire_date("2026-08-29T12:34:56.123456+00:00"), "2026-08-29T12:34:56Z")
-        self.assertEqual(_wire_date("2026-08-29T12:34:56Z"), "2026-08-29T12:34:56Z")
-
-
 try:
     import gi  # noqa: F401
     _HAS_GI = True
 except Exception:
     _HAS_GI = False
-
-
-class CatalogMergeTests(unittest.TestCase):
-    def test_last_write_wins_by_id(self):
-        from gantry.filamentstore import FilamentStore
-        store = FilamentStore(Path(tempfile.mkdtemp()) / "inventory.json")
-        base = {"id": "F1", "brand": "Bambu", "name": "Matte", "type": "PLA",
-                "colorName": "Pink", "colorHex": "E89CC6", "spoolCount": 2,
-                "updatedAt": "2026-08-27T10:00:00Z"}
-        self.assertTrue(store.merge_remote([base]))
-        self.assertEqual(store.filaments[0].spoolCount, 2)
-        older = dict(base, spoolCount=9, updatedAt="2026-08-26T10:00:00Z")
-        self.assertFalse(store.merge_remote([older]))
-        self.assertEqual(store.filaments[0].spoolCount, 2)
-        newer = dict(base, spoolCount=5, updatedAt="2026-08-28T10:00:00.500000+00:00")
-        self.assertTrue(store.merge_remote([newer]))
-        self.assertEqual(store.filaments[0].spoolCount, 5)
 
 
 class WebFleetTests(unittest.TestCase):

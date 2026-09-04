@@ -212,30 +212,6 @@ final class PhysicalSpoolStore {
         return true
     }
 
-    // MARK: LAN sync merge (two-way, last-write-wins)
-
-    /// Merges a peer's spools and usage history into this store. Spools reconcile by `updatedAt`
-    /// (newest wins, new ids added); usage events union by id and stay idempotent per (printJobID,
-    /// spoolID) so a shared finished print never double-subtracts once the ledgers have synced.
-    /// Deletions are not propagated in v1 (union only) to avoid tombstone complexity.
-    @discardableResult
-    func mergeRemote(spools remoteSpools: [PhysicalSpool], usageEvents remoteEvents: [SpoolUsageEvent]) -> Bool {
-        var didChange = false
-        for event in remoteEvents {
-            let known = usageEvents.contains { $0.id == event.id || ($0.printJobID == event.printJobID && $0.spoolID == event.spoolID) }
-            if !known { usageEvents.append(event); didChange = true }
-        }
-        for remote in remoteSpools {
-            if let index = spools.firstIndex(where: { $0.id == remote.id }) {
-                if remote.updatedAt > spools[index].updatedAt { spools[index] = remote; didChange = true }
-            } else {
-                spools.append(remote); didChange = true
-            }
-        }
-        if didChange { save(); saveUsage(); onChange?() }
-        return didChange
-    }
-
     // MARK: Persistence
 
     private func changed() {

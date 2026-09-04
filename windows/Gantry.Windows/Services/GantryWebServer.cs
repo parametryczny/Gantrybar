@@ -6,7 +6,7 @@ using Gantry.Models;
 
 namespace Gantry.Services;
 
-/// <summary>A tiny, read-only web dashboard plus the /api/sync endpoint, served on the LAN. Uses a raw
+/// <summary>A tiny, read-only web dashboard served on the LAN. Nothing here accepts state changes. Uses a raw
 /// TcpListener (not HttpListener) so it can bind to every interface without an admin URL reservation.
 /// The dashboard view is polling-based (the shared HTML falls back from WebSocket to polling).</summary>
 public sealed class GantryWebServer
@@ -16,7 +16,6 @@ public sealed class GantryWebServer
     private readonly PrinterStore _store;
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
-    public SyncService? Sync { get; set; }
 
     public GantryWebServer(PrinterStore store) { _store = store; }
 
@@ -97,28 +96,8 @@ public sealed class GantryWebServer
     {
         var lines = headerText.Split("\r\n");
         var parts = lines[0].Split(' ');
-        string method = parts.Length > 0 ? parts[0].ToUpperInvariant() : "GET";
         string path = parts.Length > 1 ? parts[1] : "/";
-        string? Auth() => lines.Skip(1).Select(l => l.Split(':', 2)).Where(p => p.Length == 2 && p[0].Trim().Equals("authorization", StringComparison.OrdinalIgnoreCase)).Select(p => p[1].Trim()).FirstOrDefault();
 
-        if (path.StartsWith("/api/sync"))
-        {
-            if (Sync is null || !Sync.Authorize(Auth()))
-                return (401, Encoding.UTF8.GetBytes("{\"error\":\"unauthorized\"}"), "application/json");
-            if (method == "GET")
-                return (200, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(Sync.LocalSnapshot(), SyncJson.Options)), "application/json");
-            if (method == "POST")
-            {
-                try
-                {
-                    var snap = JsonSerializer.Deserialize<SyncSnapshot>(Encoding.UTF8.GetString(body), SyncJson.Options);
-                    if (snap != null) System.Windows.Application.Current.Dispatcher.Invoke(() => Sync.Apply(snap));
-                    return (200, Encoding.UTF8.GetBytes("{\"ok\":true}"), "application/json");
-                }
-                catch { return (400, Encoding.UTF8.GetBytes("{\"error\":\"bad snapshot\"}"), "application/json"); }
-            }
-            return (400, Encoding.UTF8.GetBytes("{\"error\":\"method\"}"), "application/json");
-        }
         if (path.StartsWith("/api/printers"))
             return (200, Encoding.UTF8.GetBytes(FleetJson()), "application/json");
         return (200, Encoding.UTF8.GetBytes(Html), "text/html; charset=utf-8");

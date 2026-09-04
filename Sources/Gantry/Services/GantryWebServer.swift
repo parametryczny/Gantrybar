@@ -13,9 +13,6 @@ final class GantryWebServer {
     static let port: UInt16 = 8787
 
     private weak var store: PrinterStore?
-    /// Set by GantryApp so the /api/sync endpoint can serve and receive snapshots. Optional so the
-    /// dashboard still runs if sync is not wired.
-    weak var syncService: SyncService?
     private var listener: NWListener?
     private nonisolated let queue = DispatchQueue(label: "gantry.webserver")
     private var mdnsService: DNSServiceRef?
@@ -77,7 +74,7 @@ final class GantryWebServer {
     }
 
     /// Accumulates bytes until the full request (headers, and any Content-Length body) has arrived, so
-    /// POST /api/sync with a large JSON body that spans several TCP reads is assembled correctly.
+    /// a request that spans several TCP reads is assembled correctly.
     private nonisolated func receiveRequest(_ conn: NWConnection, buffer: Data) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self else { conn.cancel(); return }
@@ -133,27 +130,9 @@ final class GantryWebServer {
         conn.send(content: out, completion: .contentProcessed { _ in conn.cancel() })
     }
 
-    /// Routes a request to a response tuple (status, body, contentType). The dashboard endpoints are
-    /// open (read-only view); /api/sync requires the shared bearer token.
+    /// Routes a request to a response tuple (status, body, contentType). Every endpoint here is an
+    /// open, read-only view of the fleet; the server accepts nothing that changes state.
     private func route(_ request: ParsedRequest) -> (Int, Data, String) {
-        if request.path.hasPrefix("/api/sync") {
-            guard let sync = syncService, sync.authorize(bearer: request.headers["authorization"]) else {
-                return (401, Data("{\"error\":\"unauthorized\"}".utf8), "application/json")
-            }
-            switch request.method {
-            case "GET":
-                let data = (try? SyncService.encoder.encode(sync.localSnapshot())) ?? Data("{}".utf8)
-                return (200, data, "application/json")
-            case "POST":
-                if let snapshot = try? SyncService.decoder.decode(SyncSnapshot.self, from: request.body) {
-                    sync.apply(snapshot)
-                    return (200, Data("{\"ok\":true}".utf8), "application/json")
-                }
-                return (400, Data("{\"error\":\"bad snapshot\"}".utf8), "application/json")
-            default:
-                return (400, Data("{\"error\":\"method\"}".utf8), "application/json")
-            }
-        }
         if request.path.hasPrefix("/api/printers") { return (200, fleetJSON(), "application/json") }
         return (200, Data(Self.html.utf8), "text/html; charset=utf-8")
     }

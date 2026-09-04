@@ -2,6 +2,12 @@
 
 Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są opisane w tym pliku.
 
+## Niewydane
+
+### Usunięte
+
+- **synchronizacja między komputerami** została w całości wycofana z macOS, Windows i GNU/Linux. Aplikacja nie wysyła już niczego do innych komputerów, nie przyjmuje zapisów przez sieć i nie przechowuje tokenu parowania ani listy sparowanych maszyn. Podgląd floty w przeglądarce zostaje i pozostaje tylko do odczytu.
+
 ## 0.10.0 - 2026-09-01
 
 To wydanie ujednolica macOS, Windows i GNU/Linux wokół dopracowanego interfejsu oraz flow wersji macOS. Windows i Linux otrzymują zgodny pulpit, proporcje sekcji AMS / AMS HT / EXT, krótkie pastylki filamentu, spójne okna Szczegółów, Ustawień, edycji i dodawania drukarki, a także poprawione Spoolbase i przypisywanie fizycznych rolek.

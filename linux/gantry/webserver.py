@@ -1,8 +1,8 @@
 """A tiny, read-only web dashboard for the fleet, served on the LAN so it can be viewed from a phone.
 
 View-only, local network only, no cloud. Built on the stdlib http.server (no extra dependency). The
-page polls /api/printers every 2s. The /api/sync endpoint (two-way sync) is wired in when a SyncService
-is attached; without one it returns 404, so the web view works on its own.
+page polls /api/printers every 2s. Every endpoint is read-only: the server accepts nothing that
+changes state.
 """
 
 from __future__ import annotations
@@ -81,7 +81,6 @@ def local_ipv4() -> str | None:
 class GantryWebServer:
     def __init__(self, app: Any) -> None:
         self.app = app
-        self.sync: Any = None
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -89,7 +88,6 @@ class GantryWebServer:
         if self._httpd is not None:
             return
         app = self.app
-        server = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_args: Any) -> None:
@@ -106,16 +104,7 @@ class GantryWebServer:
                 except Exception:
                     pass
 
-            def _auth(self) -> str | None:
-                return self.headers.get("Authorization")
-
             def do_GET(self) -> None:
-                if self.path.startswith("/api/sync"):
-                    if server.sync is None or not server.sync.authorize(self._auth()):
-                        self._send(401, b'{"error":"unauthorized"}', "application/json")
-                        return
-                    self._send(200, json.dumps(server.sync.local_snapshot()).encode(), "application/json")
-                    return
                 if self.path.startswith("/api/printers"):
                     data = fleet_snapshot(list(app.printers), dict(app.telemetry))
                     self._send(200, json.dumps(data).encode(), "application/json")
@@ -123,20 +112,7 @@ class GantryWebServer:
                 self._send(200, HTML.encode(), "text/html; charset=utf-8")
 
             def do_POST(self) -> None:
-                if not self.path.startswith("/api/sync"):
-                    self._send(404, b"not found", "text/plain")
-                    return
-                if server.sync is None or not server.sync.authorize(self._auth()):
-                    self._send(401, b'{"error":"unauthorized"}', "application/json")
-                    return
-                try:
-                    length = int(self.headers.get("Content-Length", "0"))
-                    body = self.rfile.read(length) if length else b""
-                    snapshot = json.loads(body.decode()) if body else {}
-                    server.sync.apply_remote(snapshot)
-                    self._send(200, b'{"ok":true}', "application/json")
-                except Exception:
-                    self._send(400, b'{"error":"bad snapshot"}', "application/json")
+                self._send(404, b"not found", "text/plain")
 
         try:
             self._httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

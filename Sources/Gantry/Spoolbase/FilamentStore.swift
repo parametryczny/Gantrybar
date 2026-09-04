@@ -46,21 +46,6 @@ final class FilamentStore {
         changed()
     }
 
-    /// Merges a peer's catalog (LAN sync): reconcile by `updatedAt`, add unseen definitions.
-    @discardableResult
-    func mergeRemote(_ remote: [Filament]) -> Bool {
-        var didChange = false
-        for item in remote {
-            if let index = filaments.firstIndex(where: { $0.id == item.id }) {
-                if item.updatedAt > filaments[index].updatedAt { filaments[index] = item; didChange = true }
-            } else {
-                filaments.append(item); didChange = true
-            }
-        }
-        if didChange { changed() }
-        return didChange
-    }
-
     func delete(id: UUID) {
         filaments.removeAll { $0.id == id }
         changed()

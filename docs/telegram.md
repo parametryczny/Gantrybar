@@ -27,9 +27,8 @@ macOS: `AppSettings` (UserDefaults). Windows: `AppSettings` (Storage.cs). Linux:
 Nazwy i formaty są **identyczne na wszystkich platformach**, więc konfiguracja jest przenośna bez
 tłumaczenia.
 
-Ustawienia Telegrama **nie są** objęte synchronizacją między komputerami użytkownika (`SyncService`
-nie niesie żadnego z tych pól) i jest to zamierzone: token bota zostaje na maszynie, na której go
-wpisano. Każdy komputer konfiguruje się osobno.
+Ustawienia Telegrama zostają na maszynie, na której je wpisano: token bota nigdy nie opuszcza tego
+komputera. Każdy komputer konfiguruje się osobno.
 
 ## Model działania
 

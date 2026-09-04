@@ -1,5 +1,5 @@
-"""Physical filament rolls for Spoolbase (grams), with the same on-disk JSON as macOS/Windows so a
-LAN sync between platforms round-trips. Pure Python (no GTK) so it stays unit-testable.
+"""Physical filament rolls for Spoolbase (grams), with the same on-disk JSON as macOS/Windows so the
+same store file reads on every platform. Pure Python (no GTK) so it stays unit-testable.
 
 State belongs to the roll, not the slot: a roll carries its grams wherever it is assigned. Files live
 in ``$XDG_DATA_HOME/Spoolbase/`` next to the filament catalogue.
@@ -238,33 +238,6 @@ class PhysicalSpoolStore:
         self._save()
         if callable(self.on_change):
             self.on_change()
-
-    # --- sync merge -----------------------------------------------------------
-    def merge_remote(self, remote_spools: list[dict[str, Any]], remote_usage: list[dict[str, Any]]) -> bool:
-        changed = False
-        for event in remote_usage or []:
-            eid, pj, sp = event.get("id"), event.get("printJobID"), event.get("spoolID")
-            known = any(u.get("id") == eid or (u.get("printJobID") == pj and u.get("spoolID") == sp) for u in self.usage)
-            if not known:
-                self.usage.append(event)
-                changed = True
-        by_id = {s.get("id"): s for s in self.spools}
-        for remote in remote_spools or []:
-            rid = remote.get("id")
-            local = by_id.get(rid)
-            if local is None:
-                self.spools.append(remote)
-                by_id[rid] = remote
-                changed = True
-            elif _parse_iso(remote.get("updatedAt")) > _parse_iso(local.get("updatedAt")):
-                self.spools[self.spools.index(local)] = remote
-                by_id[rid] = remote
-                changed = True
-        if changed:
-            self._save()
-            if callable(self.on_change):
-                self.on_change()
-        return changed
 
     def detach_assignments_replaced_by_nfc(self, serial: str, previous_groups: list, current_groups: list) -> list[tuple[str, str]]:
         """A newly-inserted RFID/NFC roll supersedes a stale manual assignment in that slot: send the

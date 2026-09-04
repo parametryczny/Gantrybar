@@ -1,4 +1,4 @@
-"""GUI-free Spoolbase catalogue and inventory model shared by GTK and sync code."""
+"""GUI-free Spoolbase catalogue and inventory model, kept separate from the GTK views."""
 from __future__ import annotations
 
 import json
@@ -136,25 +136,6 @@ class FilamentStore:
                 existing.updatedAt = _now()
                 self._changed()
                 return
-
-    def merge_remote(self, remote: list[dict[str, Any]]) -> bool:
-        """Reconcile a peer's catalogue by id, last-write-wins on updatedAt."""
-        by_id = {filament.id: filament for filament in self.filaments}
-        changed = False
-        for data in remote or []:
-            incoming = Filament.from_dict(data)
-            local = by_id.get(incoming.id)
-            if local is None:
-                self.filaments.append(incoming)
-                by_id[incoming.id] = incoming
-                changed = True
-            elif _parse_iso(incoming.updatedAt) > _parse_iso(local.updatedAt):
-                self.filaments[self.filaments.index(local)] = incoming
-                by_id[incoming.id] = incoming
-                changed = True
-        if changed:
-            self._changed()
-        return changed
 
     def _changed(self) -> None:
         self._save()

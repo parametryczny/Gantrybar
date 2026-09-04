@@ -4,7 +4,7 @@
 
 Zmodyfikuj aplikacje Gantry na macOS, Windows i Linux tak, aby opcjonalnie publikowały bieżący, pozbawiony sekretów snapshot floty do samodzielnie hostowanego Gantry Web.
 
-Nie zastępuj i nie rozszerzaj istniejącego `/api/sync`. Jest to osobna funkcja o nazwie **Gantry Web Link**.
+Jest to osobna funkcja o nazwie **Gantry Web Link**. Lokalny dashboard aplikacji zostaje bez zmian: pozostaje tylko do odczytu i nie przyjmuje żadnych zapisów.
 
 ## Pliki źródłowe kontraktu
 
@@ -22,7 +22,7 @@ Nie zastępuj i nie rozszerzaj istniejącego `/api/sync`. Jest to osobna funkcja
    - haseł, tokenów MQTT, certyfikatów ani pinów certyfikatów;
    - lokalnego IP/hosta drukarki;
    - pełnej konfiguracji `SavedPrinter`/`Printer`.
-3. Web Link Key musi być innym sekretem niż token `SyncService`.
+3. Web Link Key musi być sekretem używanym wyłącznie przez Web Link, niedzielonym z żadnym innym mechanizmem.
 4. Klucz ma mieć 32 losowe bajty. Format tekstowy: `GW1-` + base64url bez paddingu. Nie używaj UUID jako klucza.
 5. Na macOS klucz przechowuj w osobnym elemencie Keychain, na Windows przez DPAPI, na Linux przez Secret Service. URL i przełącznik mogą być w zwykłych ustawieniach.
 6. Logi nigdy nie mogą zawierać nagłówka `Authorization`, Web Link Key ani pełnego body snapshotu.
@@ -129,8 +129,6 @@ Utwórz:
 - `Sources/Gantry/Services/GantryWebLinkSecretStore.swift` — osobny Keychain service `pl.gantry.web-link-key.v1`, account `default`;
 - `Sources/Gantry/Services/GantryWebLinkService.swift` — `@MainActor final class`, obserwacja store, debounce, heartbeat, PUT i backoff.
 
-Nie dokładaj tych modeli do [`SyncService.swift`](/Users/kamilgrzegorczyk/Documents/bambu%20lab%20monitor/Sources/Gantry/Services/SyncService.swift), bo oba protokoły mają inną odpowiedzialność.
-
 ### Ustawienia
 
 W [`AppSettings.swift`](/Users/kamilgrzegorczyk/Documents/bambu%20lab%20monitor/Sources/Gantry/App/AppSettings.swift) dodaj `@Published` dla enabled, URL i device name oraz trwałe device ID. Nie dodawaj sekretu do `UserDefaults`.
@@ -171,7 +169,7 @@ Utwórz w `windows/Gantry.Windows/Services/`:
 - `GantryWebLinkSecretStore.cs`;
 - `GantryWebLinkService.cs`.
 
-Modele oznacz `[JsonPropertyName]` albo użyj spójnych `JsonSerializerOptions` z camelCase. Nie wykorzystuj `SyncSnapshot`, ponieważ nie odpowiada on snapshotowi telemetrii Web Link.
+Modele oznacz `[JsonPropertyName]` albo użyj spójnych `JsonSerializerOptions` z camelCase.
 
 ### Sekret i ustawienia
 
@@ -232,4 +230,4 @@ Integracja jest ukończona dopiero, gdy:
 - po wyłączeniu Web Link nie działa żaden timer ani request;
 - aplikacja nie loguje sekretów;
 - panel działa przez HTTPS i aktualizuje się bez ręcznego odświeżania;
-- dokumentacja użytkownika rozróżnia lokalny dashboard, synchronizację LAN i hostowany Gantry Web.
+- dokumentacja użytkownika rozróżnia lokalny dashboard i hostowany Gantry Web.

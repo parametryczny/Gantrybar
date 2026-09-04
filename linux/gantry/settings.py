@@ -50,7 +50,7 @@ class SettingsDialog(Gtk.Dialog):
         self.stack.add_titled(self._page([self._appearance(), self._cards(), self._dock()]),
                               "appearance",i18n.t("Appearance"))
         self.stack.add_titled(self._page([self._developer(), self._telegram(),
-                                          self._web(), self._sync()]),
+                                          self._web()]),
                               "advanced",i18n.t("Advanced"))
         self.show_all()
         self.release_link.hide()
@@ -263,127 +263,6 @@ i18n.t("Quiet hours (no notifications)"),
         hint.get_style_context().add_class("settings-hint")
         return self._section(i18n.t("WEB DASHBOARD"),
                              [self.web_enabled, self.web_address, hint])
-
-    def _sync(self) -> Gtk.Widget:
-        """Pairing for the LAN sync service, which ran on Linux with no way to pair from the UI."""
-        sync = getattr(self.app, "sync_service", None)
-        token = sync.token if sync is not None else "—"
-        from .webserver import PORT, local_ipv4
-        address = local_ipv4()
-
-        token_caption = Gtk.Label(
-            label=(i18n.t("Shared token (copy to the other computer)")), xalign=0)
-        token_caption.get_style_context().add_class("settings-hint")
-        token_value = Gtk.Label(label=token, xalign=0, selectable=True)
-        token_value.get_style_context().add_class("settings-version")
-        regen = Gtk.Button(label=i18n.t("New"))
-        regen.connect("clicked", self._sync_regenerate)
-        token_row = Gtk.Box(spacing=8)
-        token_row.pack_start(token_value, True, True, 0)
-        token_row.pack_end(regen, False, False, 0)
-
-        address_caption = Gtk.Label(
-            label=i18n.t("This computer's address"), xalign=0)
-        address_caption.get_style_context().add_class("settings-hint")
-        address_value = Gtk.Label(label=f"{address}:{PORT}" if address else "—", xalign=0, selectable=True)
-        address_value.get_style_context().add_class("settings-version")
-
-        self.sync_peer_entry = Gtk.Entry()
-        self.sync_peer_entry.set_placeholder_text(i18n.t("other computer address, e.g. gantry.local"))
-        add_peer = Gtk.Button(label=i18n.t("Add"))
-        add_peer.connect("clicked", self._sync_add_peer)
-        peer_row = Gtk.Box(spacing=8)
-        peer_row.pack_start(self.sync_peer_entry, True, True, 0)
-        peer_row.pack_end(add_peer, False, False, 0)
-
-        self.sync_token_entry = Gtk.Entry()
-        self.sync_token_entry.set_placeholder_text(
-i18n.t("paste token from the other computer"))
-        set_token = Gtk.Button(label=i18n.t("Set token"))
-        set_token.connect("clicked", self._sync_set_token)
-        set_row = Gtk.Box(spacing=8)
-        set_row.pack_start(self.sync_token_entry, True, True, 0)
-        set_row.pack_end(set_token, False, False, 0)
-
-        self.sync_peers_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self._rebuild_sync_peers()
-
-        sync_now = Gtk.Button(label=i18n.t("Sync now"))
-        sync_now.set_halign(Gtk.Align.START)
-        sync_now.connect("clicked", lambda *_: sync.sync_now() if sync is not None else None)
-
-        hint = Gtk.Label(
-            label=(i18n.t("On the other computer paste this token, then add this computer's address. Local network only. Printer access codes are never sent.")),
-            xalign=0, wrap=True)
-        hint.get_style_context().add_class("settings-hint")
-        return self._section(i18n.t("SYNC BETWEEN COMPUTERS"),
-                             [token_caption, token_row, address_caption, address_value,
-                              peer_row, set_row, self.sync_peers_box, sync_now, hint])
-
-    def _rebuild_sync_peers(self) -> None:
-        for child in self.sync_peers_box.get_children():
-            self.sync_peers_box.remove(child)
-        sync = getattr(self.app, "sync_service", None)
-        peers = sync.peers() if sync is not None else []
-        if not peers:
-            empty = Gtk.Label(label=i18n.t("No paired computers."),
-                              xalign=0)
-            empty.get_style_context().add_class("settings-hint")
-            self.sync_peers_box.pack_start(empty, False, False, 0)
-            self.sync_peers_box.show_all()
-            return
-        for peer in peers:
-            address = str(peer.get("address", ""))
-            error = peer.get("lastError")
-            last = peer.get("lastSyncAt")
-            if error:
-                status = (i18n.t("Error: {0}").format(error))
-            elif last:
-                status = (i18n.t("last: {0}").format(str(last)[11:16]))
-            else:
-                status = (i18n.t("not synced yet"))
-            name = Gtk.Label(label=address, xalign=0)
-            name.get_style_context().add_class("settings-version")
-            note = Gtk.Label(label=status, xalign=0)
-            note.get_style_context().add_class("settings-hint")
-            info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-            info.pack_start(name, False, False, 0)
-            info.pack_start(note, False, False, 0)
-            remove = Gtk.Button(label=i18n.t("Remove"))
-            remove.connect("clicked", self._sync_remove_peer, address)
-            row = Gtk.Box(spacing=8)
-            row.pack_start(info, True, True, 0)
-            row.pack_end(remove, False, False, 0)
-            self.sync_peers_box.pack_start(row, False, False, 0)
-        self.sync_peers_box.show_all()
-
-    def _sync_regenerate(self, *_args: object) -> None:
-        sync = getattr(self.app, "sync_service", None)
-        if sync is not None:
-            sync.regenerate_token()
-            self._rebuild_sync_peers()
-
-    def _sync_add_peer(self, *_args: object) -> None:
-        sync = getattr(self.app, "sync_service", None)
-        address = self.sync_peer_entry.get_text().strip()
-        if sync is not None and address:
-            sync.add_peer(address)
-            self.sync_peer_entry.set_text("")
-            self._rebuild_sync_peers()
-
-    def _sync_set_token(self, *_args: object) -> None:
-        sync = getattr(self.app, "sync_service", None)
-        token = self.sync_token_entry.get_text().strip()
-        if sync is not None and token:
-            sync.set_token(token)
-            self.sync_token_entry.set_text("")
-            self._rebuild_sync_peers()
-
-    def _sync_remove_peer(self, _button: Gtk.Widget, address: str) -> None:
-        sync = getattr(self.app, "sync_service", None)
-        if sync is not None:
-            sync.remove_peer(address)
-            self._rebuild_sync_peers()
 
     def _telegram(self) -> Gtk.Widget:
         self.telegram_enabled = self._check(i18n.t("Send notifications and control over Telegram"),
@@ -650,9 +529,6 @@ i18n.t("☕  Support the project"))
             checker = getattr(self.app, "check_updates_background", None)
             if callable(checker):
                 checker()
-        sync = getattr(self.app, "sync_service", None)
-        if sync is not None:
-            sync.note_settings_changed()
         bot = getattr(self.app, "telegram_bot", None)
         if bot is not None:
             bot.sync()

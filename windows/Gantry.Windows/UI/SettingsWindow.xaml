@@ -364,32 +364,6 @@
                                 <TextBlock x:Name="WebAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="14,11,14,12"/>
                             </StackPanel>
                         </Border>
-
-                        <TextBlock x:Name="SyncHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel Margin="14,12">
-                                <TextBlock x:Name="SyncTokenLabel" FontSize="11" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
-                                <Grid Margin="0,3,0,8">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="SyncTokenBox" IsReadOnly="True" FontFamily="Consolas" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
-                                    <Button Grid.Column="1" x:Name="SyncNewTokenButton" MinWidth="60" Margin="8,0,0,0"/>
-                                </Grid>
-                                <TextBlock x:Name="SyncAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,0,0,8" TextWrapping="Wrap"/>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="SyncPeerBox" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
-                                    <Button Grid.Column="1" x:Name="SyncAddPeerButton" MinWidth="70" Margin="8,0,0,0"/>
-                                </Grid>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="SyncSetTokenBox" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
-                                    <Button Grid.Column="1" x:Name="SyncSetTokenButton" MinWidth="90" Margin="8,0,0,0"/>
-                                </Grid>
-                                <StackPanel x:Name="SyncPeersList"/>
-                                <Button x:Name="SyncNowButton" MinWidth="150" HorizontalAlignment="Left" Margin="0,6,0,0"/>
-                                <TextBlock x:Name="SyncHint" FontSize="10.5" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"/>
-                            </StackPanel>
-                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

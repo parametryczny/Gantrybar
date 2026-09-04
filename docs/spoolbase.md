@@ -20,7 +20,7 @@ Gantry siedzi w pasku/zasobniku systemowym i pokazuje **flotę drukarek** jako k
   wentylatorami, prędkością, średnicą dyszy, modułami filamentu i postępem,
 - dane drukarek pobierane są po sieci lokalnej (Bambu przez MQTT, Klipper/Moonraker i Prusa/Snapmaker
   przez HTTP). Kody dostępu trzymane są w bezpiecznym magazynie systemu i **nigdy nie są wysyłane** na
-  zewnątrz ani w synchronizacji.
+  zewnątrz.
 
 **Spoolbase** to wbudowany magazyn filamentów. Ma dwie warstwy:
 
@@ -52,9 +52,6 @@ W oknie Spoolbase filamenty są pogrupowane typem (PLA, PETG, ...), każdy z kol
    własny (marka, nazwa, typ, kolor HEX).
 3. Podaj **liczbę szpul** na stanie.
 4. Gotowe. Filament trafia do Twojego magazynu i jest widoczny przy przypisywaniu rolek.
-
-Ten katalog **synchronizuje się** między Twoimi komputerami (macOS/Windows/Linux) razem z rolkami i
-ustawieniami, jeśli włączysz synchronizację w LAN.
 
 ---
 
@@ -124,15 +121,6 @@ Po zakończonym wydruku Gantry odejmuje realnie zużyty filament od przypisanej 
 
 Odejmowanie jest **idempotentne per zadanie**: reconnect, restart albo dwa komputery patrzące na tę
 samą drukarkę nie policzą zużycia dwa razy. Gdy rolka zejdzie do zera, dostaje status „pusta".
-
----
-
-## 7. Synchronizacja i wiele komputerów
-
-Rolki, magazyn (katalog) i zużycie **synchronizują się w sieci lokalnej** między Twoimi komputerami
-(macOS, Windows, Linux). Scalanie działa metodą „ostatni wygrywa" po czasie zmiany, a zużycie jest
-idempotentne, więc wspólny wydruk nie odejmie się podwójnie. **Kody dostępu do drukarek nie są
-przesyłane.**
 
 ---
 

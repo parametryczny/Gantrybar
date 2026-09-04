@@ -8,8 +8,6 @@ final class GantryApp: NSObject, NSApplicationDelegate {
     private var permissionPrompter: LocalNetworkPermissionPrompter?
     private var webServer: GantryWebServer?
     private var webServerSub: AnyCancellable?
-    private var syncService: SyncService?
-    private var syncTimer: Timer?
     private var telegramBot: TelegramBot?
     private var telegramSub: AnyCancellable?
 
@@ -119,15 +117,6 @@ final class GantryApp: NSObject, NSApplicationDelegate {
             .sink { [weak self] enabled in
                 if enabled { self?.webServer?.start() } else { self?.webServer?.stop() }
             }
-        // Two-way LAN sync of Spoolbase, printers and display settings between the user's own Macs.
-        let sync = SyncService(store: store)
-        syncService = sync
-        SyncService.shared = sync
-        webServer?.syncService = sync
-        sync.syncNow()
-        syncTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { _ in
-            Task { @MainActor in sync.syncNow() }
-        }
         // Two-way Telegram bot (/status, control, /photo). Starts only when enabled + configured; the
         // Settings section re-syncs it directly, and toggling the switch is covered here too.
         let bot = TelegramBot(store: store)

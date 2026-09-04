@@ -434,22 +434,6 @@ public sealed class PrinterStore
     /// <summary>Clears the card notices for a printer (the user pressed "OK" on the on-card message).</summary>
     public void DismissSpoolNotices(string serial) => SpoolNotices.Remove(serial);
 
-    /// <summary>Merges peer printers from LAN sync: adds any printer we do not already have (by serial).
-    /// Secrets are never synced (Bambu access codes stay in this machine's store, apiKey is dropped), so
-    /// a new printer appears but needs its access code entered once here before it connects.</summary>
-    public bool MergeRemote(List<SyncPrinter> remote)
-    {
-        bool changed = false;
-        foreach (var r in remote)
-            if (!Printers.Any(p => p.Serial == r.Serial))
-            {
-                Printers.Add(new SavedPrinter { Serial = r.Serial, Name = r.Name, Model = r.Model, Host = r.Host, Kind = SyncPrinter.KindFromString(r.Kind), Port = r.Port });
-                changed = true;
-            }
-        if (changed) { SavedPrinterStore.Save(Printers); ReconnectAll(); }
-        return changed;
-    }
-
     public void Reconnect(SavedPrinter printer)
     {
         if (_reconnectTasks.Remove(printer.Serial, out var task)) task.Cancel();

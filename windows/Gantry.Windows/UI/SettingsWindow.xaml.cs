@@ -37,7 +37,7 @@ public partial class SettingsWindow : Window
             int index = codes.IndexOf(AppSettings.Language);
             AppSettings.Language = codes[(index < 0 ? 0 : index + 1) % codes.Count];
             ApplyLanguage();
-            RefreshWebSync();
+            RefreshWeb();
         };
         DockEnableCheckBox.Click += (_, _) =>
         {
@@ -104,14 +104,8 @@ public partial class SettingsWindow : Window
         {
             AppSettings.WebDashboardEnabled = WebDashboardCheckBox.IsChecked == true;
             if (AppSettings.WebDashboardEnabled) App.WebServerShared?.Start(); else App.WebServerShared?.Stop();
-            RefreshWebSync();
+            RefreshWeb();
         };
-        SyncNewTokenButton.Click += (_, _) => { SyncService.Shared?.RegenerateToken(); RefreshWebSync(); };
-        SyncAddPeerButton.Click += (_, _) => { SyncService.Shared?.AddPeer(SyncPeerBox.Text); SyncPeerBox.Text = ""; RefreshWebSync(); };
-        SyncSetTokenButton.Click += (_, _) => { SyncService.Shared?.SetToken(SyncSetTokenBox.Text); SyncSetTokenBox.Text = ""; RefreshWebSync(); };
-        SyncNowButton.Click += (_, _) => SyncService.Shared?.SyncNow();
-        // The user may have changed synced settings; let the newer side win on the next merge.
-        Closed += (_, _) => SyncService.Shared?.NoteSettingsChanged();
         CloseButton.Click += (_, _) => Close();
     }
 
@@ -182,50 +176,13 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void RefreshWebSync()
+    private void RefreshWeb()
     {
         WebHeading.Text = AppSettings.T("WEB DASHBOARD");
         WebDashboardCheckBox.Content = AppSettings.T("Preview server (local network)");
         WebDashboardCheckBox.IsChecked = AppSettings.WebDashboardEnabled;
         var ip = GantryWebServer.LocalIPv4();
         WebAddressLabel.Text = ip != null ? $"http://{ip}:{GantryWebServer.Port}" : AppSettings.T("no IP address");
-
-        SyncHeading.Text = AppSettings.T("SYNC BETWEEN COMPUTERS");
-        SyncTokenLabel.Text = AppSettings.T("Shared token (copy to the other computer)");
-        SyncNewTokenButton.Content = AppSettings.T("New");
-        SyncAddPeerButton.Content = AppSettings.T("Add");
-        SyncSetTokenButton.Content = AppSettings.T("Set token");
-        SyncNowButton.Content = AppSettings.T("Sync now");
-        SyncHint.Text = AppSettings.T("On the other computer paste this token (Set token), then add this computer's address. Local network only. Printer access codes are never sent.");
-
-        var sync = SyncService.Shared;
-        SyncTokenBox.Text = sync?.Token ?? "";
-        SyncAddressLabel.Text = ip != null ? $"http://{ip}:{GantryWebServer.Port}" : "";
-        SyncPeersList.Children.Clear();
-        if (sync != null)
-        {
-            if (sync.Peers.Count == 0)
-                SyncPeersList.Children.Add(new System.Windows.Controls.TextBlock { Text = AppSettings.T("No paired computers."), FontSize = 11, Foreground = GTheme.Brush(GTheme.Muted), Margin = new System.Windows.Thickness(0, 2, 0, 4) });
-            foreach (var peer in sync.Peers.ToList())
-            {
-                var grid = new System.Windows.Controls.Grid { Margin = new System.Windows.Thickness(0, 2, 0, 2) };
-                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
-                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = System.Windows.GridLength.Auto });
-                string status = peer.LastError != null ? string.Format(AppSettings.T("Error: {0}"), peer.LastError)
-                    : peer.LastSyncAt is { } ls ? string.Format(AppSettings.T("last: {0:HH:mm}"), ls.ToLocalTime())
-                    : AppSettings.T("not synced yet");
-                var info = new System.Windows.Controls.StackPanel();
-                info.Children.Add(new System.Windows.Controls.TextBlock { Text = peer.Address, FontFamily = new System.Windows.Media.FontFamily("Consolas"), FontSize = 11, Foreground = GTheme.Brush(GTheme.Text) });
-                info.Children.Add(new System.Windows.Controls.TextBlock { Text = status, FontSize = 10, Foreground = peer.LastError != null ? GTheme.Brush(GTheme.StatusPrinting) : GTheme.Brush(GTheme.Secondary) });
-                grid.Children.Add(info);
-                var remove = new System.Windows.Controls.Button { Content = AppSettings.T("Remove"), MinWidth = 60, Height = 24, FontSize = 11 };
-                string peerId = peer.Id;
-                remove.Click += (_, _) => { SyncService.Shared?.RemovePeer(peerId); RefreshWebSync(); };
-                System.Windows.Controls.Grid.SetColumn(remove, 1);
-                grid.Children.Add(remove);
-                SyncPeersList.Children.Add(grid);
-            }
-        }
     }
 
     private void SaveQuietTimes()
@@ -393,7 +350,7 @@ public partial class SettingsWindow : Window
         QuietStartBox.Text = MinutesToText(QuietHours.StartMinutes);
         QuietEndBox.Text = MinutesToText(QuietHours.EndMinutes);
         QuietTimesRow.IsEnabled = QuietHours.Enabled;
-        RefreshWebSync();
+        RefreshWeb();
         SupportButton.Click += (_, _) =>
         {
             try { Process.Start(new ProcessStartInfo("https://buycoffee.to/parametryczny") { UseShellExecute = true }); }

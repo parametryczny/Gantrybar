@@ -305,21 +305,17 @@ class Gantry:
         self.expanded_compact_serial: str | None = None
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         self.reconnect_all()
-        # Read-only LAN web dashboard + two-way sync between the user's own computers.
+        # Read-only LAN web dashboard.
         from .webserver import GantryWebServer
-        from .sync import SyncService
         from .physicalspool import PhysicalSpoolStore
         from .spoolbase import FilamentStore
         self.physical_spools = PhysicalSpoolStore()
-        self.filament_store = FilamentStore()   # shared inventory (also synced as the catalog)
+        self.filament_store = FilamentStore()
         from .automation import AutomationEngine
         self.automations = AutomationEngine(self)
-        self.sync_service = SyncService(self)
         self.web_server = GantryWebServer(self)
-        self.web_server.sync = self.sync_service
         if bool(self.config.data.get("web_dashboard_enabled", True)):
             self.web_server.start()
-        self.sync_service.sync_now()
         from .telegram import TelegramBot
         self.telegram_bot = TelegramBot(self)
         self.telegram_bot.sync()
@@ -328,18 +324,10 @@ class Gantry:
         from .edgedock import EdgeDock
         self.edge_dock = EdgeDock(self)
         self.edge_dock.refresh()
-        GLib.timeout_add_seconds(45, self._sync_tick)
         GLib.timeout_add_seconds(8, self._initial_update_check)
         GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
         if AppIndicator is None and not background:
             self.window.show_all()
-
-    def _sync_tick(self) -> bool:
-        try:
-            self.sync_service.sync_now()
-        except Exception:
-            pass
-        return True  # keep the periodic timer running
 
     def _initial_update_check(self) -> bool:
         if bool(self.config.data.get("auto_update_check", False)):

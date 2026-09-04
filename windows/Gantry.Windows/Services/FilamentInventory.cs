@@ -209,20 +209,6 @@ public sealed class FilamentStore
         Save();
     }
 
-    /// <summary>Merges a peer's catalog (LAN sync): reconcile by UpdatedAt, add unseen definitions.</summary>
-    public bool MergeRemote(List<Filament> remote)
-    {
-        bool changed = false;
-        foreach (var r in remote)
-        {
-            var index = _filaments.FindIndex(f => f.Id == r.Id);
-            if (index < 0) { _filaments.Add(r); changed = true; }
-            else if (r.UpdatedAt > _filaments[index].UpdatedAt) { _filaments[index] = r; changed = true; }
-        }
-        if (changed) { Changed?.Invoke(this, EventArgs.Empty); Save(); }
-        return changed;
-    }
-
     public void Adjust(Guid id, int spools)
     {
         var item = _filaments.FirstOrDefault(f => f.Id == id);
