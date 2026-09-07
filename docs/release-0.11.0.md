@@ -1,6 +1,6 @@
-# Gantry 0.11.0: powiadomienia Telegram, konserwacja drukarek i Anycubic Kobra S1
+# Gantry 0.11.0: powiadomienia Telegram, konserwacja drukarek, tłumaczenia i Anycubic Kobra S1
 
-Gantry 0.11.0 wyprowadza monitorowanie poza komputer. Powiadomienia i sterowanie trafiają na Telegram, a drukarki zyskują własny plan konserwacji, historię wydruków i centrum diagnostyczne. Wszystkie trzy nowości działają na macOS, Windows i GNU/Linux. Dochodzi też obsługa Anycubic Kobra S1.
+Gantry 0.11.0 wyprowadza monitorowanie poza komputer. Powiadomienia i sterowanie trafiają na Telegram, a drukarki zyskują własny plan konserwacji, historię wydruków i centrum diagnostyczne. Wszystkie trzy nowości działają na macOS, Windows i GNU/Linux. Dochodzi też obsługa Anycubic Kobra S1 oraz wspólny katalog tłumaczeń, w którym nowy język to jeden plik.
 
 Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera pośredniczącego.
 
@@ -14,6 +14,10 @@ Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera poś
 - **Alert przed końcem druku**, domyślnie wyłączony, do włączenia w ustawieniach.
 - **Pasek krawędziowy**: wąski panel przyklejony do krawędzi ekranu, zawsze na wierzchu, z pierścieniem postępu na drukarkę. Domyślnie wyłączony.
 - **Nowe okno ustawień**: trzy zakładki zamiast jednej długiej listy.
+- **Tłumaczenia w osobnym pliku**: nowy język to jeden plik wrzucony do katalogu `i18n/`, bez dotykania kodu i bez nowego wydania.
+- **Karta drukarki krótsza o 32 punkty na rząd**, bez utraty żadnej informacji.
+- **Przełącznik Spoolbase gasi teraz całą funkcję**, a nie tylko pozycję w menu.
+- **Synchronizacja między komputerami została usunięta.** Szczegóły niżej.
 - **Instalator Windows schudł z 91 do 52 MB**, a paczka ZIP ze 130 do 76 MB.
 - **Naprawione powiadomienia systemowe na Windows 11**, wentylatory na drukarkach Klipper oraz koniec skakania sekcji AMS w oknie szczegółów.
 
@@ -66,7 +70,7 @@ Centrum diagnostyczne otwierasz z menu prawego przycisku na ikonie Gantry. Dla k
 
 ## Statystyki floty
 
-Nowa pozycja w menu prawego przycisku. `PrinterInsights` zbierał historię, godziny druku i zużycie filamentu osobno dla każdej drukarki, ale nic nie składało tego razem, więc nie dało się odpowiedzieć na pytanie ile wydrukowałem w tym miesiącu.
+Nowa pozycja w menu prawego przycisku, **na wszystkich trzech systemach**. `PrinterInsights` zbierał historię, godziny druku i zużycie filamentu osobno dla każdej drukarki, ale nic nie składało tego razem, więc nie dało się odpowiedzieć na pytanie ile wydrukowałem w tym miesiącu.
 
 Panel pokazuje liczbę wydruków, nieudane, skuteczność, czas druku i filament w wybranym okresie (7 dni, 30 dni, rok, cała historia), a pod spodem rozbicie na drukarki posortowane po liczbie zadań. Przycisk eksportu zapisuje to samo podsumowanie jako zwykły tekst.
 
@@ -84,7 +88,7 @@ Popover w pasku menu wymaga kliknięcia, a przy dłuższym wydruku zerka się na
 
 Panel wyrasta z krawędzi zamiast obok niej stać: w miejscu styku ma wklęsłe przejścia, więc wtapia się w brzeg ekranu. Widać go na każdym pulpicie i nad aplikacją w trybie pełnoekranowym, a kliknięcie nie zabiera fokusu temu, w czym akurat piszesz.
 
-W ustawieniach wybiera się krawędź, tryb **Tylko drukujące** oraz drukarki, które mają się pojawić. Lista jest zapisywana jako wykluczenia, więc nowo dodana drukarka pokazuje się sama, zamiast po cichu brakować. **Domyślnie wyłączony**, bo to druga powierzchnia obok popovera, a nie jego zamiennik.
+Pasek działa na macOS, Windows i GNU/Linuksie, z tą samą sylwetką wrastającą w krawędź. W ustawieniach wybiera się krawędź, tryb **Tylko drukujące** oraz drukarki, które mają się pojawić. Lista jest zapisywana jako wykluczenia, więc nowo dodana drukarka pokazuje się sama, zamiast po cichu brakować. **Domyślnie wyłączony**, bo to druga powierzchnia obok popovera, a nie jego zamiennik.
 
 Jedno zastrzeżenie dotyczy GNU/Linuksa: **na Wayland nie istnieje protokół trzymania okna na wierzchu**. Na X11 działa to normalnie, podobnie na kompozytorach wlroots (Sway, Hyprland), ale w sesji Wayland pod GNOME pasek da się przykryć innym oknem. Reszta zachowania jest tam identyczna.
 
@@ -95,6 +99,48 @@ Ustawienia urosły do dziewięciu sekcji w jednej przewijanej kolumnie i każda 
 Pod spodem jest jeden system wierszy, więc etykiety mają teraz wspólną kolumnę po lewej, a kontrolki po prawej, w całym oknie. Pola wyboru zastąpiły przełączniki, doszła linia opisu tam, gdzie sama nazwa nie wystarcza, a nieaktywne sekcje przygasają w całości, nie tylko sama kontrolka.
 
 Na wszystkich trzech systemach ten sam podział i ta sama wielkość okna. Windows dostał przełączniki przez szablon pola wyboru, a GNU/Linux korzysta z systemowego `StackSwitcher`, który sam rysuje pasek zakładek.
+
+## Tłumaczenia
+
+Napisy były dotąd wpisane parami wprost w kod, w czterech różnych idiomach naraz: `text(pl, en)` na macOS, `AppSettings.Text(pl, en)` i wyrażenia warunkowe na Windows, a na Linuksie wyrażenie warunkowe obok słownika `TEXT`. Łącznie 1091 wywołań i 623 unikalne pary. Dodanie trzeciego języka oznaczało dopisanie trzeciego argumentu w 1091 miejscach na trzech systemach.
+
+Teraz jest jeden katalog w `i18n/`, wspólny dla macOS, Windows i GNU/Linuksa, kluczowany **angielskim napisem źródłowym**, tak jak gettext kluczuje po `msgid`. Ma to dwa praktyczne skutki. Brakujące hasło degraduje się do czytelnego angielskiego zamiast pokazywać surowy klucz w rodzaju `settings.launchAtLogin`. Angielski nie potrzebuje własnego pliku, bo **jest** kluczem.
+
+**Nowy język to jeden plik.** Kopiujesz `i18n/pl.json`, tłumaczysz wartości, zapisujesz jako `i18n/de.json` i gotowe: język pojawia się na liście w Ustawieniach sam. Nazwę własną języka niesie klucz `@name` w środku pliku, więc nigdzie w kodzie nie ma tabeli nazw ani listy dostępnych języków. Nie trzeba rekompilować aplikacji ani czekać na wydanie.
+
+Wypełniacze są pozycyjne (`{0}`, `{1}`), bo to natywny format `string.Format` w C# i `str.format` w Pythonie, więc ten sam plik działa bez tłumaczenia na formaty każdego systemu.
+
+W wydaniu jedzie polski katalog: 722 hasła. Przy scalaniu wyszło pięć miejsc, gdzie ten sam angielski napis miał wcześniej dwa różne polskie tłumaczenia (`Printing` raz jako „Drukowanie", raz „Drukuje", `Paused` raz „Wstrzymana", raz „Pauza"), więc kilka napisów jest teraz spójnych, choć brzmią inaczej niż w 0.10.0.
+
+Katalogu pilnuje kontrola w CI: sprawdza brakujące hasła, hasła bez użycia w kodzie i klucze urwane w połowie.
+
+## Krótsza karta drukarki
+
+Karta rosła przez kolejne wydania i przy pięciu drukarkach okno zajmowało większość ekranu. Zmieniony został układ, nie zawartość: **żadna informacja nie znika**.
+
+Procent przeniósł się do linii statusu, po prawej, więc zniknął cały wiersz, w którym stał sam w 22 punktach; sam procent schodzi do 14 punktów pogrubionych. Czas do końca i warstwy stają obok paska postępu, w tym samym wierszu. Etykieta temperatury stoi teraz obok wartości zamiast nad nią, więc sekcja temperatur ma 22 punkty zamiast 34.
+
+Zmierzone, nie oszacowane: karta schudła ze **134 do 102 punktów**, czyli 32 punkty na rząd. Przy pięciu drukarkach w dwóch kolumnach to około 96 punktów mniej w oknie.
+
+Mały kafelek wykresu obok nazwy drukarki dostał własny przełącznik w Ustawieniach, w sekcji Wygląd, **domyślnie wyłączony**. Nic się przez to nie traci, bo menu trzech kropek zawsze niesie pozycję Szczegóły; kafelek był skrótem, nie jedyną drogą.
+
+Zmiana wchodzi na razie **tylko na macOS**, do obejrzenia przed portem na Windows i GNU/Linux.
+
+## Spoolbase: przełącznik gasi całą funkcję
+
+Przełącznik Spoolbase chował dotąd wyłącznie pozycję w menu, a reszta funkcji chodziła dalej. Na macOS i Windows kliknięcie slotu AMS nadal otwierało okno przypisania rolki, karta nadal czytała przypisaną rolkę zamiast odczytu z AMS, a po skończonym wydruku gramy nadal były odejmowane. Linux blokował sam klik, ale odejmował tak samo. Trzy systemy, trzy różne zachowania.
+
+Teraz obowiązuje jedna zasada wszędzie. Wyłączony Spoolbase oznacza: brak okna przypisania, karta z surowym odczytem z AMS, brak automatycznego odejmowania po wydruku i brak odpinania przypisań przez tag NFC. Podgląd w przeglądarce i komenda `/spools` w Telegramie idą za tym samym przełącznikiem, żeby dane rolek nie wyciekały bokiem.
+
+Rolki nie są ruszane, a wydruki skończone przy wyłączonej funkcji nie są zapamiętywane jako odjęte, więc ponowne włączenie wraca do gramów sprzed wyłączenia.
+
+## Usunięte: synchronizacja między komputerami
+
+Dwukierunkowa synchronizacja Spoolbase, listy drukarek i ustawień między własnymi komputerami weszła w 0.9.0. W 0.11.0 **znika w całości**, z macOS, Windows i GNU/Linuksa.
+
+Znikają usługi synchronizacji, sekcja „Synchronizacja między komputerami" w Ustawieniach, wpisy w konfiguracji (token parowania, identyfikator urządzenia, lista sparowanych maszyn) oraz cały ruch sieciowy. Serwer podglądu floty zostaje, ale przestaje przyjmować jakiekolwiek zapisy: endpoint `/api/sync` i autoryzacja tokenem znikają na wszystkich trzech systemach, więc **każda ścieżka serwera jest teraz tylko do odczytu**.
+
+Co to znaczy przy aktualizacji: dane lokalne zostają nietknięte, nic nie jest kasowane. Przestaje działać wyłącznie przenoszenie ich między maszynami. Jeżeli używałeś synchronizacji, po aktualizacji każdy komputer trzyma swoją kopię magazynu i listy drukarek, tak jak przed 0.9.0.
 
 ## Anycubic Kobra S1
 
@@ -114,6 +160,10 @@ Obsługa obejmuje stan zadania, temperatury, sterowanie drukiem, światło komor
 - **Kamera P1 i A1 na macOS**: te modele nie mają punktu RTSP i serwują obraz strumieniem JPEG na porcie 6000. macOS próbował wyłącznie RTSP, więc nie miał jak się połączyć. Protokół, który Windows obsługuje od początku, działa teraz także na macOS.
 - **Okno szczegółów na Windows**: przebudowywało sześć sekcji co sekundę, bezwarunkowo, podczas gdy macOS i Linux robią to zdarzeniowo. Przebudowuje się już tylko to, co faktycznie się zmieniło.
 - **Wyciszenie Telegrama** zapisywane jest w tym samym formacie na wszystkich systemach. Starszy zapis jest odczytywany i migrowany, więc aktywne wyciszenie nie przepada przy aktualizacji.
+- **Temperatura komory na H2D i X2D**: po włączeniu podgrzewania komory na ekranie pojawiało się `4259904` zamiast 64 stopni. Drukarka pakuje w to pole dwie liczby naraz, bieżący odczyt i nastawę, tak samo jak przy dyszach, a wszystkie trzy parsery czytały je surowo. Przy wyłączonym podgrzewaniu nastawa wynosi zero i liczba wyglądała poprawnie, dlatego błąd ujawniał się dopiero po włączeniu grzania. Przy okazji nastawa komory jest już pokazywana obok odczytu, tak jak przy dyszy i stole.
+- **Konserwacja pokazywała `78.52096950885323 h` zamiast `78.5`**: ujednolicanie wypełniaczy zdjęło z kilku napisów informację o precyzji, więc liczba szła na ekran ze wszystkimi piętnastoma cyframi. Widoczne było w konserwacji, statystykach floty i szczegółach. Poza poprawieniem tych miejsc podstawianie liczb ma teraz własne formatowanie, jedno miejsce po przecinku i bez ogona `.0` przy całkowitych, więc następne takie wywołanie nie powtórzy błędu.
+- **Nakładka drukarki offline zasłaniała menu karty**: przykrywała całą kartę razem z nagłówkiem, więc nazwa, kafelek szczegółów i menu trzech kropek znikały pod przyciemnieniem. Efekt był taki, że niedostępnej drukarki nie dało się wyedytować ani usunąć, czyli akcje znikały dokładnie wtedy, gdy są potrzebne. Nakładka zaczyna się teraz pod nagłówkiem, a płaską plamę koloru zastąpiło rozmycie tym samym materiałem, którego używa panel.
+- **Podsumowanie reguły automatyzacji na macOS**: wiersz reguły pokazuje pod nazwą linijkę „wyzwalacz, akcja", tak jak od dawna robi to Linux. Przy okazji stan drukarki w podsumowaniu pokazywał surową wartość zapisu (`printing` zamiast nazwy stanu).
 - **Kody HMS**: poprawione rozpoznawanie katalogów i wycentrowane pola formularzy.
 
 ## Rozmiar pakietów
@@ -141,12 +191,13 @@ Wydania są teraz budowane w konfiguracji release. Wcześniej skrypt pakował bu
 - **Windows:** 64-bitowy Windows 10 lub 11;
 - **GNU/Linux:** GTK 3, pakiety `.deb`, `.rpm` i `.AppImage`.
 
-Aktualizacja zachowuje zapisane drukarki, ustawienia, Spoolbase i bezpiecznie przechowywane kody dostępu. Historia wydruków i liczniki konserwacji zaczynają się naliczać od pierwszego uruchomienia nowej wersji.
+Aktualizacja zachowuje zapisane drukarki, ustawienia, Spoolbase i bezpiecznie przechowywane kody dostępu. Historia wydruków i liczniki konserwacji zaczynają się naliczać od pierwszego uruchomienia nowej wersji. Usunięcie synchronizacji nie kasuje żadnych danych lokalnych, przestaje działać wyłącznie ich przenoszenie między maszynami.
 
 Po aktualizacji na macOS system może poprosić o ponowne przyznanie dostępu do sieci lokalnej. Znajdziesz to w Ustawieniach systemowych, w sekcji Prywatność i ochrona, Sieć lokalna.
 
 ## Kontrola jakości
 
 - automatyczna kontrola zgodności kontraktu UI macOS, Windows i Linux;
-- 33 testy jednostkowe macOS i 61 testów rdzenia oraz integracji wersji Linux;
+- kontrola katalogu tłumaczeń w trybie `--strict`: brakujące hasła, hasła bez użycia w kodzie i klucze urwane w połowie zatrzymują budowanie;
+- 33 testy jednostkowe macOS i 57 testów rdzenia oraz integracji wersji Linux;
 - osobne workflow budujące macOS, Windows oraz pakiety `.deb`, `.rpm` i `.AppImage`.

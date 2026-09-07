@@ -2,15 +2,46 @@
 
 Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są opisane w tym pliku.
 
-## Niewydane
+## 0.11.0 - 2026-09-07
+
+Wydanie wyprowadza monitorowanie poza komputer i porządkuje to, co zostało w środku. Powiadomienia i sterowanie trafiają na Telegram, drukarki zyskują plan konserwacji, historię wydruków i centrum diagnostyczne, a napisy przenoszą się do wspólnego katalogu, w którym nowy język to jeden plik. Dochodzi obsługa Anycubic Kobra S1, pasek krawędziowy i przepisane okno ustawień. Synchronizacja między komputerami zostaje wycofana.
+
+### Najważniejsze
+
+- **powiadomienia i sterowanie przez Telegram**: własny bot użytkownika, alerty o zakończeniu, błędzie, pauzie i niskim filamencie, komendy `/status`, `/all`, `/spools`, `/history`, `/watch`, `/mute` oraz zdjęcia z kamery na trzech systemach;
+- **konserwacja i historia**: cztery zadania serwisowe rozliczane w godzinach faktycznego druku, z odkładaniem i własnymi interwałami, obok listy ostatnich wydruków i statystyk skuteczności;
+- **centrum diagnostyczne**: sprawdza całą flotę, pokazuje opóźnienie i ocenę jakości połączenia, z twardym limitem trzech sekund na drukarkę;
+- **wspólny katalog tłumaczeń** w `i18n/`, kluczowany angielskim napisem źródłowym; nowy język to jeden plik wrzucony do katalogu, bez zmian w kodzie i bez nowego wydania;
+- **Anycubic Kobra S1** przez lokalne MQTT/TLS w trybie LAN, bez konta w chmurze producenta;
+- **statystyki floty** z eksportem do pliku tekstowego, na macOS, Windows i GNU/Linuksie;
+- **pasek krawędziowy**: wąski panel przy krawędzi ekranu, zawsze na wierzchu, z pierścieniem postępu na drukarkę, domyślnie wyłączony;
+- **nowe okno ustawień**: trzy zakładki zamiast jednej długiej listy, ten sam podział na trzech systemach;
+- **alert przed końcem druku**, domyślnie wyłączony;
+- **instalator Windows schudł z 91 do 52 MB**, a paczka ZIP ze 130 do 76 MB.
 
 ### Zmienione
 
-- **przełącznik Spoolbase gasi teraz całą funkcję**, a nie tylko pozycję w menu. Przy wyłączonym Spoolbase kliknięcie slotu AMS nie otwiera okna przypisania, karta pokazuje surowe odczyty z AMS zamiast danych przypisanej rolki, po skończonym wydruku nic nie jest odejmowane, a tag NFC nie odpina przypisań. Rolki zostają nietknięte, więc ponowne włączenie wraca do stanu sprzed wyłączenia. Dotąd macOS i Windows ignorowały ten przełącznik poza kartą, a Linux blokował sam klik.
+- **karta drukarki jest krótsza o 32 punkty na rząd** (ze 134 do 102), bez utraty jakiejkolwiek informacji: procent przeniósł się do linii statusu, czas i warstwy stanęły obok paska postępu, a etykiety temperatur obok wartości zamiast nad nimi. Na razie tylko macOS, przed portem na pozostałe systemy;
+- **kafelek szczegółów na karcie** dostał własny przełącznik w Ustawieniach, w sekcji Wygląd, domyślnie wyłączony;
+- **przełącznik Spoolbase gasi teraz całą funkcję**, a nie tylko pozycję w menu. Przy wyłączonym Spoolbase kliknięcie slotu AMS nie otwiera okna przypisania, karta pokazuje surowe odczyty z AMS zamiast danych przypisanej rolki, po skończonym wydruku nic nie jest odejmowane, a tag NFC nie odpina przypisań. Rolki zostają nietknięte, więc ponowne włączenie wraca do stanu sprzed wyłączenia. Dotąd macOS i Windows ignorowały ten przełącznik poza kartą, a Linux blokował sam klik;
+- **wydania budowane są w konfiguracji release**, wcześniej skrypt pakował build debug.
+
+### Naprawione
+
+- **temperatura komory na H2D i X2D**: po włączeniu podgrzewania pojawiało się `4259904` zamiast 64 stopni, bo drukarka pakuje w to pole odczyt i nastawę naraz, a parsery czytały je surowo;
+- **konserwacja pokazywała `78.52096950885323 h`** zamiast `78.5`; podstawianie liczb ma teraz własne formatowanie, więc błąd nie może się powtórzyć w kolejnym miejscu;
+- **nakładka drukarki offline zasłaniała menu karty**, przez co niedostępnej drukarki nie dało się wyedytować ani usunąć;
+- **powiadomienia systemowe na Windows 11**: rejestracja odbywa się na wątku STA aplikacji, z powrotem do dymka w zasobniku, gdy powiadomienia są wyłączone;
+- **sekcja AMS przestała skakać** w oknie szczegółów;
+- **wentylatory na drukarkach Klipper**: odpytywane są wszystkie wentylatory, jakie maszyna wystawia, nie tylko obiekt o nazwie `fan`;
+- **kamera Anycubica na macOS** (wydania nie zawierały wymaganego ffmpeg) oraz **kamera P1 i A1 na macOS** przez strumień JPEG na porcie 6000;
+- **podsumowanie reguły automatyzacji na macOS** pokazuje linijkę „wyzwalacz, akcja", tak jak na Linuksie.
 
 ### Usunięte
 
-- **synchronizacja między komputerami** została w całości wycofana z macOS, Windows i GNU/Linux. Aplikacja nie wysyła już niczego do innych komputerów, nie przyjmuje zapisów przez sieć i nie przechowuje tokenu parowania ani listy sparowanych maszyn. Podgląd floty w przeglądarce zostaje i pozostaje tylko do odczytu.
+- **synchronizacja między komputerami** została w całości wycofana z macOS, Windows i GNU/Linuksa. Aplikacja nie wysyła już niczego do innych komputerów, nie przyjmuje zapisów przez sieć i nie przechowuje tokenu parowania ani listy sparowanych maszyn. Podgląd floty w przeglądarce zostaje i pozostaje tylko do odczytu. Dane lokalne nie są kasowane, przestaje działać wyłącznie ich przenoszenie między maszynami.
+
+Pełny opis wydania: [`docs/release-0.11.0.md`](docs/release-0.11.0.md).
 
 ## 0.10.0 - 2026-09-01
 
