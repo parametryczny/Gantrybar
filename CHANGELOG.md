@@ -16,6 +16,9 @@ Wydanie wyprowadza monitorowanie poza komputer i porządkuje to, co zostało w �
 - **statystyki floty** z eksportem do pliku tekstowego, na macOS, Windows i GNU/Linuksie;
 - **pasek krawędziowy**: wąski panel przy krawędzi ekranu, zawsze na wierzchu, z pierścieniem postępu na drukarkę, domyślnie wyłączony;
 - **nowe okno ustawień**: trzy zakładki zamiast jednej długiej listy, ten sam podział na trzech systemach;
+- **tryb okna**: ten sam pulpit floty odpięty od paska menu jako zwykłe okno pulpitu, z własnym zapamiętanym rozmiarem, natywną ramą, obecnością w pasku zadań i pinezką „zawsze na wierzchu". Zamknięcie okna chowa Gantry zamiast kończyć program, a ikona przywraca je z powrotem. Przełącznik w nagłówku panelu i w Ustawieniach, domyślnie wyłączony;
+- **ekran łączenia przy starcie**: karty nie pojawiają się z pustymi wartościami, tylko po pierwszej telemetrii, z zejściem po piętnastu sekundach albo na kliknięcie;
+- **przewodnik po karcie** przy pierwszym uruchomieniu, pokazywany raz, do otwarcia ponownie z nagłówka;
 - **alert przed końcem druku**, domyślnie wyłączony;
 - **instalator Windows schudł z 91 do 52 MB**, a paczka ZIP ze 130 do 76 MB.
 
@@ -36,7 +39,8 @@ Wydanie wyprowadza monitorowanie poza komputer i porządkuje to, co zostało w �
 - **sekcja AMS przestała skakać** w oknie szczegółów;
 - **wentylatory na drukarkach Klipper**: odpytywane są wszystkie wentylatory, jakie maszyna wystawia, nie tylko obiekt o nazwie `fan`;
 - **kamera Anycubica na macOS** (wydania nie zawierały wymaganego ffmpeg) oraz **kamera P1 i A1 na macOS** przez strumień JPEG na porcie 6000;
-- **podsumowanie reguły automatyzacji na macOS** pokazuje linijkę „wyzwalacz, akcja", tak jak na Linuksie.
+- **podsumowanie reguły automatyzacji na macOS** pokazuje linijkę „wyzwalacz, akcja", tak jak na Linuksie;
+- **karta na Linuksie nie wywala się już przy pustej liście dysz**: pamięć o drugiej dyszy jest celowo trwała, żeby częściowy pakiet nie zwijał karty dwudyszowej, ale odwołania do listy dysz nie znosiły pakietu bez dysz ani karty budowanej przed pierwszą telemetrią.
 
 ### Usunięte
 
