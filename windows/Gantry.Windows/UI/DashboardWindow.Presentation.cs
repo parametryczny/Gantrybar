@@ -156,11 +156,27 @@ public partial class DashboardWindow
         backdrop.MouseLeftButtonDown += (_, _) => ClosePanel();
         content.Margin = new Thickness(0);
         content.HorizontalAlignment = HorizontalAlignment.Stretch;
+        // Horizontal scrolling is off on purpose: the content must fit the panel width. With it on,
+        // a card slightly wider than the panel produced a scrollbar across the bottom instead of
+        // simply laying out narrower.
         _panelScroll = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, Background = GTheme.Brush(GTheme.Canvas) };
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Background = Brushes.Transparent,
+            Padding = new Thickness(0) };
+        // Every surface in Gantry is a rounded card; the panel was a flat rectangle with none of the
+        // chrome, which is what made it look pasted on top of the app rather than part of it.
+        var panelCard = new Border
+        {
+            CornerRadius = new CornerRadius(14), Background = GTheme.Brush(GTheme.Canvas),
+            BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            ClipToBounds = true, Child = _panelScroll,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 28, ShadowDepth = 8, Direction = 270, Opacity = .45, Color = Colors.Black
+            }
+        };
         _panelWidth = width; _panelHeight = height; _panelCleanup = cleanup;
-        _boundedLayer = new Grid { Children = { backdrop, _panelScroll } };
+        _boundedLayer = new Grid { Children = { backdrop, panelCard } };
         KeyboardNavigation.SetTabNavigation(_boundedLayer, KeyboardNavigationMode.Cycle);
         DashboardHost.Children.Add(_boundedLayer);
         FleetSurface.Effect = new BlurEffect { Radius = 5, RenderingBias = RenderingBias.Performance };
@@ -173,8 +189,12 @@ public partial class DashboardWindow
     private void FitPanel()
     {
         if (_panelScroll == null) return;
-        _panelScroll.Width = Math.Max(1, Math.Min(_panelWidth, DashboardHost.ActualWidth - 32));
-        _panelScroll.Height = Math.Max(1, Math.Min(_panelHeight, DashboardHost.ActualHeight - 48));
+        // The rounded card owns the size now; the scroller inside just fills it.
+        if (_panelScroll.Parent is Border card)
+        {
+            card.Width = Math.Max(1, Math.Min(_panelWidth, DashboardHost.ActualWidth - 32));
+            card.Height = Math.Max(1, Math.Min(_panelHeight, DashboardHost.ActualHeight - 48));
+        }
     }
 
     internal void ClosePanel()
@@ -243,7 +263,13 @@ public partial class DashboardWindow
         int step = 0;
         var body = new StackPanel { Margin = new Thickness(18) };
         var title = GuideText("", 22); var description = GuideText("", 13);
-        var source = new ComboBox { Margin = new Thickness(0, 0, 0, 12), DisplayMemberPath = "Name", SelectedValuePath = "Serial" };
+        // A bare WPF ComboBox renders as a white system control on the dark panel, which is what made
+        // the guide look foreign. The app already picks values by cycling a button (language, theme,
+        // transparency), so the printer picker does the same and inherits the panel's button style.
+        var sourceButton = new Button { Margin = new Thickness(0, 0, 0, 12), Padding = new Thickness(10, 6, 10, 6),
+                                        HorizontalAlignment = HorizontalAlignment.Left };
+        var sourceOrder = new List<SavedPrinter>();
+        string? sourceSerial = null;
         var preview = new Border { IsHitTestVisible = false, Focusable = false };
         KeyboardNavigation.SetTabNavigation(preview, KeyboardNavigationMode.None);
         PrinterCard? card = null;
@@ -252,7 +278,7 @@ public partial class DashboardWindow
         var back = GuideButtonFor("Previous step", () => { step = Math.Max(0, step - 1); refresh(); });
         var next = GuideButtonFor("Next", () => { if (step == 3) ClosePanel(); else { step++; refresh(); } });
         nav.Children.Add(back); nav.Children.Add(next); nav.Children.Add(GuideButtonFor("Close", ClosePanel));
-        body.Children.Add(title); body.Children.Add(description); body.Children.Add(source); body.Children.Add(preview);
+        body.Children.Add(title); body.Children.Add(description); body.Children.Add(sourceButton); body.Children.Add(preview);
         body.Children.Add(GuideText("Read-only view · same widgets and settings as your dashboard", 11)); body.Children.Add(nav);
         bool refreshing = false;
         refresh = () =>
@@ -263,14 +289,14 @@ public partial class DashboardWindow
             description.Text = AppSettings.T(steps[step].Item2);
             back.IsEnabled = step > 0; next.Content = AppSettings.T(step == 3 ? "Done" : "Next");
             var available = _store.DashboardPrinters.Where(p => _store.Telemetry[p.Serial].State != PrinterState.Offline).ToList();
-            var selected = source.SelectedValue as string;
-            if (!source.Items.Cast<SavedPrinter>().Select(p => (p.Serial, p.Name)).SequenceEqual(available.Select(p => (p.Serial, p.Name))))
+            sourceOrder.Clear(); sourceOrder.AddRange(available);
+            if (sourceSerial is null || available.All(p => p.Serial != sourceSerial))
+                sourceSerial = available.FirstOrDefault()?.Serial;
+            // One printer means there is nothing to cycle through, so the button just names it.
+            sourceButton.IsEnabled = available.Count > 1;
+            if (available.FirstOrDefault(p => p.Serial == sourceSerial) is { } printer)
             {
-                source.ItemsSource = available;
-                source.SelectedValue = available.Any(p => p.Serial == selected) ? selected : available.FirstOrDefault()?.Serial;
-            }
-            if (source.SelectedItem is SavedPrinter printer)
-            {
+                sourceButton.Content = available.Count > 1 ? $"{printer.Name}  ⌄" : printer.Name;
                 if (card?.Serial != printer.Serial)
                 {
                     card = new PrinterCard(this, printer, 410); card.Root.Width = double.NaN;
@@ -281,11 +307,18 @@ public partial class DashboardWindow
             else
             {
                 card = null;
+                sourceButton.Content = AppSettings.T("No printer");
                 preview.Child = GuideText("Waiting for printer data. Your actual card will appear here after connecting.", 13);
             }
             refreshing = false;
         };
-        source.SelectionChanged += (_, _) => refresh();
+        sourceButton.Click += (_, _) =>
+        {
+            if (sourceOrder.Count < 2) return;
+            int index = sourceOrder.FindIndex(p => p.Serial == sourceSerial);
+            sourceSerial = sourceOrder[(index < 0 ? 0 : index + 1) % sourceOrder.Count].Serial;
+            refresh();
+        };
         ShowPanel(body, 460, 620); _guideRefresh = refresh; refresh();
     }
 }
