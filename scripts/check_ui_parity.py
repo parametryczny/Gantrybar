@@ -248,8 +248,11 @@ require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         "macOS printer grip must not initiate a window drag")
 
 # Presentation ports: keep session state and actual card previews, not separate demo components.
+# The Windows side reads the stored key through AppSettings.FloatingWindowEnabled (which also pins the
+# mode off in the LITE build), so either form counts as "the mode is still here".
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
-        r'floating-window-enabled', "Windows is missing persistent window mode")
+        r'floating-window-enabled|AppSettings\.FloatingWindowEnabled',
+        "Windows is missing persistent window mode")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r'new PrinterCard\(this, printer', "Windows guide must use production printer cards")
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
