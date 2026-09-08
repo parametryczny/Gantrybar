@@ -37,6 +37,14 @@ Grab the latest build from the **[Releases page](https://github.com/parametryczn
 
 Neither Windows download needs a separate .NET install. On macOS the app is self‑signed, so on first launch open it with right‑click → **Open**. / Żaden wariant Windows nie wymaga osobnej instalacji .NET. Na macOS aplikacja jest podpisana lokalnie — przy pierwszym uruchomieniu otwórz ją PPM → **Otwórz**.
 
+### Gantry LITE
+
+The same app, cut down to a monitor: the menu‑bar/tray icon, the fleet panel with printer cards, adding printers (Bambu Lab, Anycubic, Elegoo, Klipper/Moonraker, Prusa, Snapmaker — and whatever is added later), notifications, quiet hours, language, theme, transparency and the card‑content switches. No Spoolbase, detail view, camera, maintenance, automations, diagnostics, fleet statistics, Telegram, web dashboard, floating window, edge dock, guide — and no updater: LITE does not check for or install updates. Files: `Gantry-LITE-*-macOS.zip`, `Gantry-LITE-Setup-Windows-x64.exe`, `Gantry-LITE-*-Linux-all.deb`.
+
+*Ta sama aplikacja obcięta do monitora: ikona w pasku menu/zasobniku, panel floty z kartami drukarek, dodawanie drukarek (Bambu Lab, Anycubic, Elegoo, Klipper/Moonraker, Prusa, Snapmaker — i kolejne w przyszłości), powiadomienia, godziny ciszy, język, motyw, przezroczystość i przełączniki zawartości karty. Bez Spoolbase, szczegółów, kamery, konserwacji, automatyzacji, diagnostyki, statystyk floty, Telegrama, panelu webowego, trybu okna, paska krawędziowego, przewodnika — i bez aktualizacji: LITE ich nie sprawdza ani nie instaluje.*
+
+Building it / Budowanie: `scripts/build-app.sh lite` (macOS), `dotnet build -p:GantryEdition=lite` (Windows), `GANTRY_EDITION=lite linux/scripts/build-deb.sh` (GNU/Linux).
+
 ---
 
 ## English

@@ -10,6 +10,7 @@ from typing import Any
 from gi.repository import GLib, Gtk  # type: ignore
 
 from . import __version__
+from . import edition
 from . import i18n
 from .storage import autostart_enabled, set_autostart
 
@@ -44,14 +45,24 @@ class SettingsDialog(Gtk.Dialog):
         outer.pack_start(self.stack, True, True, 0)
         self.get_content_area().pack_start(outer, True, True, 0)
 
-        self.stack.add_titled(self._page([self._basics(), self._notifications(),
-                                          self._updates(), self._about()]),
-                              "general",i18n.t("General"))
-        self.stack.add_titled(self._page([self._appearance(), self._cards(), self._dock()]),
-                              "appearance",i18n.t("Appearance"))
-        self.stack.add_titled(self._page([self._developer(), self._telegram(),
-                                          self._web()]),
-                              "advanced",i18n.t("Advanced"))
+        # LITE has no updater, so its General tab goes Basics → Notifications → About. The section is
+        # still built: save() and the live-update wiring read its widgets.
+        updates = self._updates()
+        general_sections = ([self._basics(), self._notifications(), updates, self._about()]
+                            if edition.HAS_EXTRAS
+                            else [self._basics(), self._notifications(), self._about()])
+        self.stack.add_titled(self._page(general_sections), "general",i18n.t("General"))
+        # The sections LITE does not show are still BUILT — save() reads their widgets, and building
+        # them from the stored config means an unshown control writes back exactly what it read, so a
+        # full Gantry sharing this config file is never edited behind the user's back. They are simply
+        # left out of the pages (and the Advanced tab is not added at all).
+        dock, developer, telegram, web = self._dock(), self._developer(), self._telegram(), self._web()
+        appearance_sections = ([self._appearance(), self._cards(), dock] if edition.HAS_EXTRAS
+                               else [self._appearance(), self._cards()])
+        self.stack.add_titled(self._page(appearance_sections), "appearance",i18n.t("Appearance"))
+        if edition.HAS_EXTRAS:
+            self.stack.add_titled(self._page([developer, telegram, web]),
+                                  "advanced",i18n.t("Advanced"))
         self.show_all()
         self.release_link.hide()
         self._connect_live_updates()
@@ -112,7 +123,9 @@ class SettingsDialog(Gtk.Dialog):
         self.floating_window.set_active(bool(self.app.config.data.get("floating-window-enabled", False)))
         self.always_on_top = Gtk.CheckButton(label=i18n.t("Always on top"))
         self.always_on_top.set_active(bool(self.app.config.data.get("floating-window-always-on-top", True)))
-        return self._section(i18n.t("APPEARANCE"), [form, self.floating_window, self.always_on_top])
+        # LITE lives in the tray only: no second surface to offer.
+        rows_below = [self.floating_window, self.always_on_top] if edition.HAS_EXTRAS else []
+        return self._section(i18n.t("APPEARANCE"), [form, *rows_below])
 
     def _preview_transparency(self, combo: Gtk.ComboBoxText) -> None:
         self.app.preview_panel_transparency(combo.get_active_id() or "low")
@@ -140,8 +153,9 @@ class SettingsDialog(Gtk.Dialog):
         self.spoolbase = self._check(
 i18n.t("Spoolbase — filament stock"),
             bool(self.app.config.data.get("spoolbase_enabled", True)))
-        return self._section(i18n.t("BASICS"),
-                             [language_row, self.autostart, self.spoolbase])
+        basics = ([language_row, self.autostart, self.spoolbase] if edition.HAS_EXTRAS
+                  else [language_row, self.autostart])
+        return self._section(i18n.t("BASICS"), basics)
 
     def _developer(self) -> Gtk.Widget:
         self.developer = self._check(i18n.t("Developer mode (control + automations)"),
@@ -203,7 +217,7 @@ i18n.t("Only printing"),
             ("card_show_progress", "Progress", True),
             ("card_show_temperatures", "Temperatures", True),
             ("card_show_filaments", "Filaments / AMS", True),
-            ("card_show_details_chip", "Details chip on the card", False),
+            *((("card_show_details_chip", "Details chip on the card", False),) if edition.HAS_EXTRAS else ()),
         ):
             check = self._check(i18n.t(english),
                                 bool(self.app.config.data.get(key, default)))
@@ -221,7 +235,8 @@ i18n.t("Shortcut to the detail view; the ⋯ menu always has it"))
 i18n.t("Monochrome colours"),
             bool(self.app.config.data.get("monochrome", False)))
         self.monochrome.set_tooltip_text(i18n.t("Grey temperatures, calmer AMS colours"))
-        widgets.extend((self.spool_grams, self.details_chip, self.monochrome))
+        widgets.extend((self.spool_grams, self.details_chip, self.monochrome) if edition.HAS_EXTRAS
+                       else (self.monochrome,))
         return self._section(i18n.t("PRINTER CARDS"), widgets)
 
     def _notifications(self) -> Gtk.Widget:

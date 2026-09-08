@@ -80,7 +80,8 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         app.delegate = delegate
         // A detached dashboard behaves like a normal Mac window and therefore belongs in the Dock.
         // In menu-bar/popover mode Gantry remains an accessory and stays out of the Dock.
-        app.setActivationPolicy(AppSettings.shared.floatingWindowEnabled ? .regular : .accessory)
+        // LITE has no detached window at all, so it is always an accessory.
+        app.setActivationPolicy(!Build.isLite && AppSettings.shared.floatingWindowEnabled ? .regular : .accessory)
         app.mainMenu = makeMainMenu(target: nil)
         app.run()
     }
@@ -90,8 +91,8 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         let settings = AppSettings.shared
 
         if let target {
-            let appRoot = NSMenuItem(title: "Gantry", action: nil, keyEquivalent: "")
-            let appMenu = NSMenu(title: "Gantry")
+            let appRoot = NSMenuItem(title: Build.appName, action: nil, keyEquivalent: "")
+            let appMenu = NSMenu(title: Build.appName)
             appMenu.autoenablesItems = false
 
             func action(_ key: String, symbol: String, selector: String,
@@ -107,9 +108,11 @@ final class GantryApp: NSObject, NSApplicationDelegate {
 
             appMenu.addItem(action("Show printers", symbol: "printer.fill",
                                    selector: "appMenuShowPrinters:"))
-            appMenu.addItem(action("How to read Gantry", symbol: "questionmark.circle",
-                                   selector: "appMenuOnboarding:"))
-            if settings.spoolbaseEnabled {
+            if Build.hasExtras {
+                appMenu.addItem(action("How to read Gantry", symbol: "questionmark.circle",
+                                       selector: "appMenuOnboarding:"))
+            }
+            if Build.hasExtras, settings.spoolbaseEnabled {
                 appMenu.addItem(action("Spoolbase — filament stock", symbol: "shippingbox.fill",
                                        selector: "appMenuShowSpoolbase:"))
             }
@@ -120,10 +123,12 @@ final class GantryApp: NSObject, NSApplicationDelegate {
                                    selector: "appMenuAddPrinter:"))
             appMenu.addItem(action("Reconnect (all)", symbol: "arrow.clockwise",
                                    selector: "appMenuReconnectAll:"))
-            appMenu.addItem(action("Diagnostic Center…", symbol: "stethoscope",
-                                   selector: "appMenuDiagnostics:"))
-            appMenu.addItem(action("Fleet statistics…", symbol: "chart.bar",
-                                   selector: "appMenuFleetStats:"))
+            if Build.hasExtras {
+                appMenu.addItem(action("Diagnostic Center…", symbol: "stethoscope",
+                                       selector: "appMenuDiagnostics:"))
+                appMenu.addItem(action("Fleet statistics…", symbol: "chart.bar",
+                                       selector: "appMenuFleetStats:"))
+            }
             appMenu.addItem(.separator())
 
             let language = action("Language", symbol: "globe", selector: "appMenuCycleLanguage:")
@@ -133,8 +138,10 @@ final class GantryApp: NSObject, NSApplicationDelegate {
                                selector: "appMenuToggleQuietHours:")
             quiet.title += " — \(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))"
             appMenu.addItem(quiet)
-            appMenu.addItem(action("Check for updates…", symbol: "arrow.down.circle",
-                                   selector: "appMenuCheckForUpdates:"))
+            if Build.hasExtras {
+                appMenu.addItem(action("Check for updates…", symbol: "arrow.down.circle",
+                                       selector: "appMenuCheckForUpdates:"))
+            }
             appMenu.addItem(action("Settings…", symbol: "gearshape",
                                    selector: "appMenuSettings:", shortcut: ","))
 
@@ -197,35 +204,43 @@ final class GantryApp: NSObject, NSApplicationDelegate {
                     NSApp.mainMenu = Self.makeMainMenu(target: controller)
                 }
             }
-        activationPolicySub = AppSettings.shared.$floatingWindowEnabled
-            .removeDuplicates()
-            .receive(on: RunLoop.main)
-            .sink { enabled in
-                NSApp.setActivationPolicy(enabled ? .regular : .accessory)
-                if enabled { NSApp.activate(ignoringOtherApps: true) }
-            }
+        if Build.hasExtras {
+            activationPolicySub = AppSettings.shared.$floatingWindowEnabled
+                .removeDuplicates()
+                .receive(on: RunLoop.main)
+                .sink { enabled in
+                    NSApp.setActivationPolicy(enabled ? .regular : .accessory)
+                    if enabled { NSApp.activate(ignoringOtherApps: true) }
+                }
+        }
         store.reconnectAll()
-        // Read-only web dashboard on the LAN (http://<host>.local:8787), toggled in Settings.
-        webServer = GantryWebServer(store: store)
-        webServerSub = AppSettings.shared.$webDashboardEnabled
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                if enabled { self?.webServer?.start() } else { self?.webServer?.stop() }
-            }
-        // Two-way Telegram bot (/status, control, /photo). Starts only when enabled + configured; the
-        // Settings section re-syncs it directly, and toggling the switch is covered here too.
-        let bot = TelegramBot(store: store)
-        telegramBot = bot
-        bot.syncWithSettings()
-        telegramSub = AppSettings.shared.$telegramEnabled.removeDuplicates().sink { _ in bot.syncWithSettings() }
+        // Read-only web dashboard on the LAN (http://<host>.local:8787), toggled in Settings. LITE is a
+        // pure tray monitor and never opens a listening socket, so it does not build the server at all.
+        if Build.hasExtras {
+            webServer = GantryWebServer(store: store)
+            webServerSub = AppSettings.shared.$webDashboardEnabled
+                .removeDuplicates()
+                .sink { [weak self] enabled in
+                    if enabled { self?.webServer?.start() } else { self?.webServer?.stop() }
+                }
+            // Two-way Telegram bot (/status, control, /photo). Starts only when enabled + configured; the
+            // Settings section re-syncs it directly, and toggling the switch is covered here too.
+            let bot = TelegramBot(store: store)
+            telegramBot = bot
+            bot.syncWithSettings()
+            telegramSub = AppSettings.shared.$telegramEnabled.removeDuplicates().sink { _ in bot.syncWithSettings() }
+        }
         let prompter = LocalNetworkPermissionPrompter {
             Task { @MainActor in store.retryAfterLocalNetworkPermission() }
         }
         permissionPrompter = prompter
         prompter.start()
-        UpdateChecker.start()
+        // LITE never checks for or installs updates; it is a fixed, self-contained build.
+        if Build.hasExtras { UpdateChecker.start() }
         // After the BambuBar → Gantry rename, offer to remove a leftover old app (once, with consent).
-        LegacyAppCleanup.offerRemovalIfNeeded()
+        // Only the full edition does this: LITE may well be installed next to another Gantry, and it is
+        // not its place to propose removing the app the user already had.
+        if Build.hasExtras { LegacyAppCleanup.offerRemovalIfNeeded() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

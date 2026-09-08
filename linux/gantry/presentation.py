@@ -1,6 +1,7 @@
 """Native window mode, bounded panels and live-card onboarding shared by tray and desktop."""
 from __future__ import annotations
 from gi.repository import Gtk, Gdk, GLib
+from . import edition
 from . import i18n
 from .core import PrinterState
 
@@ -25,10 +26,11 @@ class DesktopPresentation:
         box.pack_start(Gtk.Label(label=i18n.t("Connecting to printers…")), False, False, 0)
         self._startup_count = Gtk.Label()
         box.pack_start(self._startup_count, False, False, 0)
-        guide = Gtk.Button(label=i18n.t("How to read Gantry"))
-        guide.get_style_context().add_class("guide-action")
-        guide.connect("clicked", lambda *_: self.show_onboarding())
-        box.pack_start(guide, False, False, 0)
+        if edition.HAS_EXTRAS:   # LITE ships no guide
+            guide = Gtk.Button(label=i18n.t("How to read Gantry"))
+            guide.get_style_context().add_class("guide-action")
+            guide.connect("clicked", lambda *_: self.show_onboarding())
+            box.pack_start(guide, False, False, 0)
         skip = Gtk.Button(label=i18n.t("Show dashboard now"))
         skip.get_style_context().add_class("guide-action")
         skip.connect("clicked", lambda *_: self.app._finish_startup())
@@ -207,6 +209,8 @@ class DesktopPresentation:
         return False
 
     def show_onboarding(self):
+        if edition.IS_LITE:
+            return   # LITE ships no guide
         from .dashboard import PrinterCard
         self.app.startup.guide_claimed = True
         self.app.config.data["gantry.onboarding.v1.seen"] = True

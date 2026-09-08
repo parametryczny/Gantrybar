@@ -68,7 +68,8 @@ final class DashboardStartupView: NSView {
     override func layout() {
         super.layout()
         let width = min(340, max(1, bounds.width - 32))
-        let height = min(212, max(1, bounds.height - 52))
+        // One button shorter in LITE (no guide), so the card does not keep that row's empty space.
+        let height = min(Build.isLite ? 181 : 212, max(1, bounds.height - 52))
         card.frame = NSRect(x: floor((bounds.width - width) / 2),
                             y: floor((bounds.height - height) / 2) - 10, width: width, height: height)
         spinner.isHidden = height < 140
@@ -77,7 +78,8 @@ final class DashboardStartupView: NSView {
         title.frame = NSRect(x: 12, y: height - 83, width: width - 24, height: 22)
         if height < 140 { title.frame.origin.y = max(42, height - 40) }
         count.frame = NSRect(x: 12, y: height - 107, width: width - 24, height: 18)
-        guide.isHidden = height < 195
+        // LITE has no guide to open, so the scrim shows only "Show dashboard now".
+        guide.isHidden = Build.isLite || height < 195
         guide.frame = NSRect(x: (width - min(220, width - 24)) / 2, y: 47,
                             width: min(220, width - 24), height: 24)
         skip.frame = NSRect(x: (width - min(220, width - 24)) / 2, y: 16,

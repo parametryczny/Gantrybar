@@ -159,7 +159,11 @@ final class PrinterDashboardViewController: NSViewController {
         wordmark.setContentCompressionResistancePriority(.required, for: .horizontal)
         titleDot.font = .systemFont(ofSize: 12, weight: .semibold)
         titleDot.textColor = GantryTheme.muted
-        let titleStack = NSStackView(views: [wordmark, titleDot, summaryLabel])
+        // In LITE the wordmark carries a small edition badge, so the panel says which app this is.
+        let titleViews: [NSView] = Build.isLite
+            ? [wordmark, Self.makeEditionBadge(), titleDot, summaryLabel]
+            : [wordmark, titleDot, summaryLabel]
+        let titleStack = NSStackView(views: titleViews)
         titleStack.orientation = .horizontal
         titleStack.alignment = .centerY
         titleStack.spacing = 7
@@ -213,6 +217,8 @@ final class PrinterDashboardViewController: NSViewController {
         presentationModeButton.target = self
         presentationModeButton.action = #selector(togglePresentationMode)
         presentationModeButton.setAccessibilityIdentifier("dashboard.presentation-mode")
+        // LITE lives in the menu bar only, so there is no popover ↔ window switch to offer.
+        presentationModeButton.isHidden = Build.isLite
         updatePresentationModeButton()
 
         // Keep window-level actions and printer actions readable as two groups instead of one dense
@@ -226,10 +232,17 @@ final class PrinterDashboardViewController: NSViewController {
         controlDivider.layer?.backgroundColor = GantryTheme.line.cgColor
         controlDivider.widthAnchor.constraint(equalToConstant: 1).isActive = true
         controlDivider.heightAnchor.constraint(equalToConstant: 16).isActive = true
+        // It separates two groups, so it only earns its place when the left one has something in it.
+        // In the LITE popover every window control is hidden and the line would dangle on its own.
+        controlDivider.isHidden = windowControls.arrangedSubviews.allSatisfy(\.isHidden)
         let guideButton = iconButton("questionmark.circle", tooltip: AppSettings.shared.t("How to read Gantry"), action: #selector(showOnboarding))
         onboardingButton = guideButton
-        let printerControls = NSStackView(views: [guideButton, columnsButton, compactButton,
-                                                  resetButton, refreshButton, addButton])
+        // LITE drops the guide and "clear finished": it is a plain live view of the fleet, and a
+        // finished job simply stays on the card until the next print starts.
+        let printerControlViews: [NSView] = Build.hasExtras
+            ? [guideButton, columnsButton, compactButton, resetButton, refreshButton, addButton]
+            : [columnsButton, compactButton, refreshButton, addButton]
+        let printerControls = NSStackView(views: printerControlViews)
         printerControls.orientation = .horizontal
         printerControls.alignment = .centerY
         printerControls.spacing = 8
@@ -427,6 +440,7 @@ final class PrinterDashboardViewController: NSViewController {
     }
 
     @objc func showOnboarding() {
+        guard Build.hasExtras else { return }   // LITE ships no guide
         guard onboardingPanel == nil else { return }
         store.markOnboardingSeen()
         let controller = DashboardOnboardingViewController(store: store) { [weak self] in
@@ -891,6 +905,35 @@ final class PrinterDashboardViewController: NSViewController {
                                                accessibilityDescription: label)
         presentationModeButton.toolTip = label
         presentationModeButton.setAccessibilityLabel(label)
+    }
+
+    /// The "LITE" pill that sits next to the wordmark in the LITE build. Same outlined-chip styling as
+    /// the manufacturer tag on a card, so it reads as a label rather than a button.
+    private static func makeEditionBadge() -> NSView {
+        let label = NSTextField(labelWithString: "LITE")
+        label.font = .systemFont(ofSize: 9, weight: .bold)
+        label.textColor = GantryTheme.muted
+        label.alignment = .center
+        label.wantsLayer = true
+        label.layer?.cornerRadius = 4
+        label.layer?.borderWidth = 1
+        label.layer?.borderColor = GantryTheme.line.cgColor
+        label.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.05).cgColor
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let holder = NSView()
+        holder.translatesAutoresizingMaskIntoConstraints = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: 4),
+            label.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: -4),
+            label.topAnchor.constraint(equalTo: holder.topAnchor, constant: 2),
+            label.bottomAnchor.constraint(equalTo: holder.bottomAnchor, constant: -2)
+        ])
+        holder.setContentHuggingPriority(.required, for: .horizontal)
+        holder.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return holder
     }
 
     private func iconButton(_ symbol: String, tooltip: String, action: Selector) -> NSButton {
@@ -1444,17 +1487,19 @@ final class PrinterCardView: NSView, NSDraggingSource {
         statusLabel.font = .systemFont(ofSize: 10, weight: .medium)
         statusLabel.lineBreakMode = .byTruncatingTail
 
-        var actionEntries: [CardActionsButton.Entry] = [
-            .init(title: "Details", symbol: "chart.xyaxis.line", action: onShowDetails),
-            .init(title: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)
-        ]
-        // Bambu still opens its slicer camera; Elegoo/Klipper cameras live in Gantry details.
-        if printer.kind == .bambu {
+        // LITE has no detail view, so its ⋯ menu starts straight at Reconnect.
+        var actionEntries: [CardActionsButton.Entry] = Build.hasExtras
+            ? [.init(title: "Details", symbol: "chart.xyaxis.line", action: onShowDetails),
+               .init(title: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)]
+            : [.init(title: "Reconnect", symbol: "arrow.clockwise", action: onReconnect)]
+        // Bambu still opens its slicer camera; Elegoo/Klipper cameras live in Gantry details. LITE
+        // monitors and does not hand off to other apps, so it offers neither the camera nor a slicer.
+        if Build.hasExtras, printer.kind == .bambu {
             actionEntries.append(.init(title: "Camera in Bambu Studio",
                                        symbol: "video.fill", action: onOpenCamera))
         }
         // Any printer can open a slicer; offer whichever are installed as a submenu.
-        let slicers = SlicerLauncher.installed()
+        let slicers = Build.hasExtras ? SlicerLauncher.installed() : []
         if !slicers.isEmpty {
             let slicerEntries = slicers.map { slicer in
                 CardActionsButton.Entry(title: slicer.name,
@@ -1885,7 +1930,9 @@ final class PrinterCardView: NSView, NSDraggingSource {
         let actionableHMS = HMSResolver.shared.actionableCodes(
             telemetry.hmsCodes, serial: printer.serial, language: settings.language
         )
-        let hasPrinterAlert = !actionableHMS.isEmpty || telemetry.errorCode != 0 || telemetry.state == .error
+        // The "!" chip opens maintenance/details, which LITE does not have, so it never appears there.
+        let hasPrinterAlert = Build.hasExtras
+            && (!actionableHMS.isEmpty || telemetry.errorCode != 0 || telemetry.state == .error)
         printerAlertChip.isHidden = !hasPrinterAlert
         if hasPrinterAlert {
             let count = max(1, actionableHMS.count)
@@ -1895,7 +1942,10 @@ final class PrinterCardView: NSView, NSDraggingSource {
             ) ?? settings.t("Printer reported an alert or error")
         }
 
-        switch PrinterInsightsStore.shared.signal(serial: printer.serial) {
+        // Maintenance tracking is a full-edition feature; LITE never shows the wrench.
+        let maintenanceSignal: PrinterInsightsStore.Signal =
+            Build.isLite ? .none : PrinterInsightsStore.shared.signal(serial: printer.serial)
+        switch maintenanceSignal {
         case .none:
             maintenanceChip.isHidden = true
         case .planned:
@@ -3045,11 +3095,12 @@ final class FilamentGroupView: NSView {
             dot.setContentCompressionResistancePriority(.required, for: .horizontal)
             return dot
         }
-        if let temp = group.temperatureCelsius {
+        // LITE names the module and stops there — no chamber temperature, no humidity.
+        if Build.hasExtras, let temp = group.temperatureCelsius {
             headerViews.append(separator())
             headerViews.append(Self.envCluster(emoji: "🌡", text: "\(Int(temp.rounded()))°"))
         }
-        if let humidity = group.humidityPercent {
+        if Build.hasExtras, let humidity = group.humidityPercent {
             headerViews.append(separator())
             headerViews.append(Self.envCluster(emoji: "💧", text: humidity <= 5 ? "\(humidity)/5" : "\(humidity)%"))
         }

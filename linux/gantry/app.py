@@ -29,6 +29,7 @@ except (ValueError, ImportError):
     AppIndicator = None
 
 from . import __version__
+from . import edition
 from .core import STATE_LABELS, Printer, PrinterKind, PrinterState, Telemetry, expand_scan_targets
 from .csvimport import parse_printer_csv
 from .discovery import scan
@@ -308,27 +309,32 @@ class Gantry:
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         GLib.timeout_add_seconds(15, self._finish_startup)
         self.reconnect_all()
-        # Read-only LAN web dashboard.
-        from .webserver import GantryWebServer
-        from .physicalspool import PhysicalSpoolStore
-        from .spoolbase import FilamentStore
-        self.physical_spools = PhysicalSpoolStore()
-        self.filament_store = FilamentStore()
-        from .automation import AutomationEngine
-        self.automations = AutomationEngine(self)
-        self.web_server = GantryWebServer(self)
-        if bool(self.config.data.get("web_dashboard_enabled", True)):
-            self.web_server.start()
-        from .telegram import TelegramBot
-        self.telegram_bot = TelegramBot(self)
-        self.telegram_bot.sync()
-        # Optional always-on-top strip at a screen edge. It owns its own visibility, so creating it
-        # unconditionally is safe: with the setting off it simply never shows itself.
-        from .edgedock import EdgeDock
-        self.edge_dock = EdgeDock(self)
-        self.edge_dock.refresh()
-        GLib.timeout_add_seconds(8, self._initial_update_check)
-        GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
+        # Everything below is full-edition only: LITE is a tray monitor, so it starts no web server,
+        # no Telegram bot, no automation engine and no edge strip, and loads no filament stores.
+        if edition.HAS_EXTRAS:
+            # Read-only LAN web dashboard.
+            from .webserver import GantryWebServer
+            from .physicalspool import PhysicalSpoolStore
+            from .spoolbase import FilamentStore
+            self.physical_spools = PhysicalSpoolStore()
+            self.filament_store = FilamentStore()
+            from .automation import AutomationEngine
+            self.automations = AutomationEngine(self)
+            self.web_server = GantryWebServer(self)
+            if bool(self.config.data.get("web_dashboard_enabled", True)):
+                self.web_server.start()
+            from .telegram import TelegramBot
+            self.telegram_bot = TelegramBot(self)
+            self.telegram_bot.sync()
+            # Optional always-on-top strip at a screen edge. It owns its own visibility, so creating it
+            # unconditionally is safe: with the setting off it simply never shows itself.
+            from .edgedock import EdgeDock
+            self.edge_dock = EdgeDock(self)
+            self.edge_dock.refresh()
+        # LITE never checks for or installs updates; it is a fixed, self-contained build.
+        if edition.HAS_EXTRAS:
+            GLib.timeout_add_seconds(8, self._initial_update_check)
+            GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
         if (AppIndicator is None or not self.window.tray_mode) and not background:
             self.show()
 
@@ -452,7 +458,7 @@ class Gantry:
         menu = Gtk.Menu()
         panel_label =i18n.t("Gantry panel")
         item = Gtk.MenuItem(label=panel_label); item.connect("activate", lambda *_: self.toggle_panel()); menu.append(item)
-        if bool(self.config.data.get("spoolbase_enabled", True)):
+        if edition.HAS_EXTRAS and bool(self.config.data.get("spoolbase_enabled", True)):
             spoolbase_label =i18n.t("Spoolbase — filament stock")
             item = Gtk.MenuItem(label=spoolbase_label); item.connect("activate", lambda *_: self.toggle_spoolbase()); menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
@@ -462,20 +468,22 @@ class Gantry:
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
         reconnect = Gtk.MenuItem(label=i18n.t("Reconnect (all)"))
         reconnect.connect("activate", lambda *_: self.reconnect_all()); menu.append(reconnect)
-        diagnostics = Gtk.MenuItem(label=i18n.t("Diagnostic Center…"))
-        diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
-        stats = Gtk.MenuItem(label=i18n.t("Fleet statistics…"))
-        stats.connect("activate", lambda *_: self.open_fleet_stats()); menu.append(stats)
-        guide = Gtk.MenuItem(label=i18n.t("How to read Gantry"))
-        guide.connect("activate", lambda *_: (self.show(), self.window.show_onboarding())); menu.append(guide)
+        if edition.HAS_EXTRAS:
+            diagnostics = Gtk.MenuItem(label=i18n.t("Diagnostic Center…"))
+            diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
+            stats = Gtk.MenuItem(label=i18n.t("Fleet statistics…"))
+            stats.connect("activate", lambda *_: self.open_fleet_stats()); menu.append(stats)
+            guide = Gtk.MenuItem(label=i18n.t("How to read Gantry"))
+            guide.connect("activate", lambda *_: (self.show(), self.window.show_onboarding())); menu.append(guide)
         menu.append(Gtk.SeparatorMenuItem())
 
         language = Gtk.MenuItem(label=i18n.t("Language: EN"))
         language.connect("activate", lambda *_: self._toggle_language()); menu.append(language)
         quiet = Gtk.CheckMenuItem(label=i18n.t("Quiet hours")); quiet.set_active(bool(self.config.data.get("quiet_hours_enabled", True)))
         quiet.connect("toggled", lambda item: self._toggle_quiet(item.get_active())); menu.append(quiet)
-        updates = Gtk.MenuItem(label=(i18n.t("Check for updates…")))
-        updates.connect("activate", lambda *_: self.check_updates_background()); menu.append(updates)
+        if edition.HAS_EXTRAS:
+            updates = Gtk.MenuItem(label=(i18n.t("Check for updates…")))
+            updates.connect("activate", lambda *_: self.check_updates_background()); menu.append(updates)
         settings = Gtk.MenuItem(label=i18n.t("Settings")); settings.connect("activate", lambda *_: self.open_settings()); menu.append(settings)
         legend = Gtk.MenuItem(label=i18n.t("Color legend"))
         legend_menu = Gtk.Menu()

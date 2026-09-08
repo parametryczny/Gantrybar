@@ -21,6 +21,7 @@ from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from . import i18n
 from .core import STATE_LABELS, Printer, PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
+from . import edition
 from .desktop import installed_slicers, open_desktop_app
 from .presentation import DesktopPresentation
 
@@ -448,13 +449,15 @@ class PrinterCard(Gtk.Frame):
     def _show_menu(self, button: Gtk.Button) -> None:
         pl = self.app.language == "pl"
         menu = Gtk.Menu()
-        entries: list[tuple[str, Any]] = [
-            ((i18n.t("Details")), lambda *_: self.app.open_details(self.printer.serial)),
-            ((i18n.t("Reconnect")), lambda *_: self.app.reconnect_printer(self.printer.serial)),
-        ]
+        # LITE keeps the menu to what a monitor needs: reconnect, copy IP, edit, remove. No detail
+        # view, no slicer hand-offs.
+        entries: list[tuple[str, Any]] = []
+        if edition.HAS_EXTRAS:
+            entries.append((i18n.t("Details"), lambda *_: self.app.open_details(self.printer.serial)))
+        entries.append((i18n.t("Reconnect"), lambda *_: self.app.reconnect_printer(self.printer.serial)))
         for label, callback in entries:
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
-        slicers = installed_slicers()
+        slicers = installed_slicers() if edition.HAS_EXTRAS else []
         if self.printer.kind == PrinterKind.BAMBU:
             bambu = next((slicer for slicer in slicers if slicer.name == "Bambu Studio"), None)
             if bambu is not None:
@@ -515,7 +518,9 @@ class PrinterCard(Gtk.Frame):
 
     def update(self, telemetry: Telemetry, reason: str | None = None) -> None:
         self._last_telemetry = telemetry
-        signal, count = self.app.insights.signal(self.printer.serial)
+        # LITE carries neither chip: maintenance tracking is a full-edition feature, and the "!" chip
+        # opens maintenance, which LITE does not have.
+        signal, count = self.app.insights.signal(self.printer.serial) if edition.HAS_EXTRAS else ("none", 0)
         ctx = self.maintenance.get_style_context()
         ctx.remove_class("maintenance-due"); ctx.remove_class("maintenance-urgent")
         if signal == "none":
@@ -527,7 +532,8 @@ class PrinterCard(Gtk.Frame):
             self.maintenance.set_no_show_all(False); self.maintenance.show()
         from .hms import actionable_codes
         alerts = actionable_codes(telemetry.hms_codes, self.printer.serial, self.app.language)
-        has_alert = bool(alerts or getattr(telemetry, "error_code", 0) or telemetry.state == PrinterState.ERROR)
+        has_alert = edition.HAS_EXTRAS and bool(
+            alerts or getattr(telemetry, "error_code", 0) or telemetry.state == PrinterState.ERROR)
         if has_alert:
             self.printer_alert.set_label(f"! {len(alerts)}" if len(alerts) > 1 else "!")
             self.printer_alert.set_no_show_all(False); self.printer_alert.show()
@@ -718,9 +724,10 @@ class PrinterCard(Gtk.Frame):
                     header.pack_start(separator, False, False, 0)
                     header.pack_start(cluster, False, False, 0)
 
-                if group.temperature is not None:
+                # LITE names the module and stops there — no chamber temperature, no humidity.
+                if edition.HAS_EXTRAS and group.temperature is not None:
                     add_environment("🌡", f"{group.temperature:.0f}°")
-                if group.humidity is not None:
+                if edition.HAS_EXTRAS and group.humidity is not None:
                     humidity = f"{group.humidity}/5" if group.humidity <= 5 else f"{group.humidity}%"
                     add_environment("💧", humidity)
                 gbox.pack_start(header, False, False, 0)
@@ -925,7 +932,7 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         root.get_style_context().add_class("fleet-root")
         header = Gtk.Box(spacing=7)
         header.get_style_context().add_class("fleet-header")
-        wordmark = Gtk.Label(label="GANTRY")
+        wordmark = Gtk.Label(label="GANTRY LITE" if edition.IS_LITE else "GANTRY")
         wordmark.get_style_context().add_class("wordmark")
         dot = Gtk.Label(label="·"); dot.get_style_context().add_class("summary")
         self.subtitle = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
@@ -943,7 +950,12 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         settings.set_tooltip_text(i18n.t("Settings"))
         guide = self._header_button("?", lambda *_: self.show_onboarding())
         guide.set_tooltip_text(i18n.t("How to read Gantry"))
-        for button in (self.pin, settings, guide, self.columns, self.collapse, clear, refresh, add):
+        # LITE header: settings plus the printer actions. No guide, and no "clear finished" — a
+        # finished job simply stays on the card until the next print starts.
+        buttons = ((self.pin, settings, guide, self.columns, self.collapse, clear, refresh, add)
+                   if edition.HAS_EXTRAS
+                   else (self.pin, settings, self.columns, self.collapse, refresh, add))
+        for button in buttons:
             header.pack_start(button, False, False, 0)
         root.pack_start(header, False, False, 0)
         self.scroll = Gtk.ScrolledWindow()

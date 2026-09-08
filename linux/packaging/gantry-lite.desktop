@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Gantry LITE
+GenericName=3D printer status monitor
+GenericName[pl]=Monitor stanu drukarek 3D
+Comment=Tray monitor for Bambu Lab, Elegoo, Anycubic, Klipper and Prusa printers
+Comment[pl]=Monitor w zasobniku dla drukarek Bambu Lab, Elegoo, Anycubic, Klipper i Prusa
+Exec=gantry-lite
+Icon=gantry
+Terminal=false
+Categories=Utility;Network;
+StartupNotify=true
+Keywords=Bambu;Klipper;Moonraker;Prusa;3D;printer;AMS;MMU;

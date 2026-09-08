@@ -1,11 +1,24 @@
-#define MyAppName "Gantry"
+; Compile with /DLITE to build the Gantry LITE installer instead (iscc /DLITE Gantry.iss). LITE has
+; its own AppId, exe and Run entry, so it installs and updates independently of the full Gantry.
+#ifdef LITE
+  #define MyAppName "Gantry LITE"
+  #define MyAppExeName "GantryLite.exe"
+  #define MyAppId "{{310C91F4-6ACC-47B2-B50B-8BA450D1269B}"
+  #define MyOutputBase "Gantry-LITE-Setup-Windows-x64"
+  #define MyRunValue "GantryLite"
+#else
+  #define MyAppName "Gantry"
+  #define MyAppExeName "Gantry.exe"
+  #define MyAppId "{{D83CD1A0-DC31-4A57-A152-8B7EE75046F1}"
+  #define MyOutputBase "Gantry-Setup-Windows-x64"
+  #define MyRunValue "Gantry"
+#endif
 #define MyAppVersion "0.11.0"
 #define MyAppPublisher "Kamil Grzegorczyk"
 #define MyAppURL "https://github.com/parametryczny/gantrybar"
-#define MyAppExeName "Gantry.exe"
 
 [Setup]
-AppId={{D83CD1A0-DC31-4A57-A152-8B7EE75046F1}
+AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion} Windows Beta
@@ -20,7 +33,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\installer-output
-OutputBaseFilename=Gantry-Setup-Windows-x64
+OutputBaseFilename={#MyOutputBase}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -31,7 +44,7 @@ UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 VersionInfoVersion=0.11.0.0
 VersionInfoCompany={#MyAppPublisher}
-VersionInfoDescription=Gantry Windows Beta Installer
+VersionInfoDescription={#MyAppName} Windows Beta Installer
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoCopyright=Copyright (C) 2026 Kamil Grzegorczyk
@@ -50,7 +63,7 @@ Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cr
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Gantry"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyRunValue}"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue
 ; Remove the pre-rebrand autostart entry so upgrades don't leave a duplicate BambuBar launch.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "BambuBar"; Flags: deletevalue
 

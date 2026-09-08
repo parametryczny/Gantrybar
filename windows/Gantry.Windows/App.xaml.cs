@@ -96,15 +96,18 @@ public partial class App : Application
 
         _store.ReconnectAll();
 
-        // Read-only LAN web dashboard.
-        _webServer = new GantryWebServer(_store);
-        WebServerShared = _webServer;
-        if (AppSettings.WebDashboardEnabled) _webServer.Start();
+        // Read-only LAN web dashboard. LITE is a pure tray monitor and opens no listening socket.
+        if (Build.HasExtras)
+        {
+            _webServer = new GantryWebServer(_store);
+            WebServerShared = _webServer;
+            if (AppSettings.WebDashboardEnabled) _webServer.Start();
 
-        // Two-way Telegram bot (/status, control, /photo, /all, /spools, /history, /mute, /watch). Starts
-        // only when enabled + configured; the Settings section re-syncs it after a change.
-        _telegramBot = new TelegramBot(_store);
-        _telegramBot.SyncWithSettings();
+            // Two-way Telegram bot (/status, control, /photo, /all, /spools, /history, /mute, /watch). Starts
+            // only when enabled + configured; the Settings section re-syncs it after a change.
+            _telegramBot = new TelegramBot(_store);
+            _telegramBot.SyncWithSettings();
+        }
     }
 
     private TelegramBot? _telegramBot;

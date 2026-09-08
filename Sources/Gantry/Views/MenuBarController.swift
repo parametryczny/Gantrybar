@@ -85,27 +85,32 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             }
         }
         // Optional always-on-top strip at a screen edge. It owns its own visibility, so it is safe to
-        // create unconditionally: with the setting off it simply never orders itself in.
-        edgeDock = EdgeDockWindowController(store: store) { [weak self] serial in
-            self?.revealDetails(serial: serial)
+        // create unconditionally: with the setting off it simply never orders itself in. LITE has one
+        // surface only — the menu-bar popover — so neither extra window is built there.
+        if Build.hasExtras {
+            edgeDock = EdgeDockWindowController(store: store) { [weak self] serial in
+                self?.revealDetails(serial: serial)
+            }
+            floatingDashboard = FloatingDashboardWindowController(
+                store: store,
+                onAdd: { [weak self] in self?.showAddPrinter() },
+                onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
+                onReconnect: { [weak store] printer in store?.reconnect(printer) },
+                onShowDetails: { [weak self] serial in self?.revealDetails(serial: serial) },
+                onShowSettings: { [weak self] in self?.showSettings() }
+            )
         }
-        floatingDashboard = FloatingDashboardWindowController(
-            store: store,
-            onAdd: { [weak self] in self?.showAddPrinter() },
-            onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
-            onReconnect: { [weak store] printer in store?.reconnect(printer) },
-            onShowDetails: { [weak self] serial in self?.revealDetails(serial: serial) },
-            onShowSettings: { [weak self] in self?.showSettings() }
-        )
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .gantryShowDashboard, object: nil, queue: .main
         ) { [weak self] _ in
             DispatchQueue.main.async { self?.showDashboard() }
         }
-        updateNotificationObserver = NotificationCenter.default.addObserver(
-            forName: .gantryCheckForUpdates, object: nil, queue: .main
-        ) { _ in
-            DispatchQueue.main.async { UpdatePresenter.checkAndPresent(from: nil) }
+        if Build.hasExtras {
+            updateNotificationObserver = NotificationCenter.default.addObserver(
+                forName: .gantryCheckForUpdates, object: nil, queue: .main
+            ) { _ in
+                DispatchQueue.main.async { UpdatePresenter.checkAndPresent(from: nil) }
+            }
         }
     }
 
@@ -210,7 +215,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             button.imagePosition = .imageOnly
             button.toolTip = store.activePrintCount > 0
                 ? AppSettings.shared.t("Gantry — printing: {0}", store.activePrintCount)
-                : "Gantry"
+                : Build.appName
         }
     }
 
@@ -324,11 +329,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          title: settings.t("Show printers")) { [weak self] in
             self?.showPopoverFromMenu()
         })
-        menu.addItem(row(icon: "questionmark.circle", title: settings.t("How to read Gantry")) { [weak self] in
-            self?.appMenuOnboarding(nil)
-        })
+        if Build.hasExtras {
+            menu.addItem(row(icon: "questionmark.circle", title: settings.t("How to read Gantry")) { [weak self] in
+                self?.appMenuOnboarding(nil)
+            })
+        }
 
-        if settings.spoolbaseEnabled {
+        if Build.hasExtras, settings.spoolbaseEnabled {
             menu.addItem(row(icon: "shippingbox.fill",
                              title: settings.t("Spoolbase — filament stock")) { [weak self] in
                 self?.showSpoolbase()
@@ -351,14 +358,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          enabled: !store.printers.isEmpty) { [weak self] in
             self?.store.reconnectAll()
         })
-        menu.addItem(row(icon: "stethoscope",
-                         title: settings.t("Diagnostic Center…")) { [weak self] in
-            self?.showDiagnostics()
-        })
-        menu.addItem(row(icon: "chart.bar",
-                         title: settings.t("Fleet statistics…")) { [weak self] in
-            self?.showFleetStats()
-        })
+        if Build.hasExtras {
+            menu.addItem(row(icon: "stethoscope",
+                             title: settings.t("Diagnostic Center…")) { [weak self] in
+                self?.showDiagnostics()
+            })
+            menu.addItem(row(icon: "chart.bar",
+                             title: settings.t("Fleet statistics…")) { [weak self] in
+                self?.showFleetStats()
+            })
+        }
 
         menu.addItem(.separator())
 
@@ -375,11 +384,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))) {
             QuietHours.isEnabled.toggle()
         })
-        menu.addItem(row(icon: "arrow.down.circle",
-                         title: settings.t("Check for updates…"),
-                         accessory: .detail("v\(UpdateService.currentVersion)")) {
-            UpdatePresenter.checkAndPresent(from: nil)
-        })
+        if Build.hasExtras {
+            menu.addItem(row(icon: "arrow.down.circle",
+                             title: settings.t("Check for updates…"),
+                             accessory: .detail("v\(UpdateService.currentVersion)")) {
+                UpdatePresenter.checkAndPresent(from: nil)
+            })
+        }
         menu.addItem(row(icon: "gearshape",
                          title: settings.t("Settings…"),
                          accessory: .detail("⌘,")) { [weak self] in
@@ -580,6 +591,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Swaps the popover's content to the in-bubble detail view for one printer, keeping everything
     /// inside the popover instead of opening a separate window.
     private func showDetails(serial: String) {
+        // LITE ships no detail view; the cards themselves are the whole surface.
+        guard Build.hasExtras else { return }
         if AppSettings.shared.floatingWindowEnabled {
             closePopover()
             let detail = PrinterDetailViewController(

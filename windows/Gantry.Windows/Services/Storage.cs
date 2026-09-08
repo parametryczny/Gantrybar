@@ -158,8 +158,17 @@ public static class AppSettings
     /// Developer mode: reveals the printer control + automations tile in the detail window.
     public static bool DeveloperMode
     {
-        get => Defaults.GetBool("developer-mode");
+        get => Build.HasExtras && Defaults.GetBool("developer-mode");
         set => Defaults.SetBool("developer-mode", value);
+    }
+
+    /// <summary>Second surface: the fleet in a resizable desktop window instead of the tray flyout.
+    /// LITE ships the flyout only, so it reads false here whatever a full Gantry left in the shared
+    /// defaults file (the setters stay live so the full app's own value is never rewritten).</summary>
+    public static bool FloatingWindowEnabled
+    {
+        get => Build.HasExtras && Defaults.GetBool("floating-window-enabled");
+        set => Defaults.SetBool("floating-window-enabled", value);
     }
 
     /// Security kill switch for automation actions that execute code: "script" (runs a program on this
@@ -168,7 +177,7 @@ public static class AppSettings
     /// KeePass triggers (CVE-2023-24055). The rule engine refuses these actions unless this is enabled.
     public static bool AllowScriptActions
     {
-        get => Defaults.GetBool("allow-script-actions", false);
+        get => Build.HasExtras && Defaults.GetBool("allow-script-actions", false);
         set => Defaults.SetBool("allow-script-actions", value);
     }
 
@@ -234,13 +243,13 @@ public static class AppSettings
     /// <summary>Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).</summary>
     public static bool CardShowSpoolGrams
     {
-        get => Defaults.GetBool("card-show-spool-grams", false);
+        get => Build.HasExtras && Defaults.GetBool("card-show-spool-grams", false);
         set => Defaults.SetBool("card-show-spool-grams", value);
     }
     /// <summary>Optional chart shortcut in the card header. The ⋯ menu always exposes Details.</summary>
     public static bool CardShowDetailsChip
     {
-        get => Defaults.GetBool("card-show-details-chip", false);
+        get => Build.HasExtras && Defaults.GetBool("card-show-details-chip", false);
         set => Defaults.SetBool("card-show-details-chip", value);
     }
     /// <summary>Calmer palette: temperatures stay grey and filament colours are muted toward grey.</summary>
@@ -253,14 +262,14 @@ public static class AppSettings
     // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     public static bool SpoolbaseEnabled
     {
-        get => Defaults.GetBool("spoolbase-enabled", true);
+        get => Build.HasExtras && Defaults.GetBool("spoolbase-enabled", true);
         set => Defaults.SetBool("spoolbase-enabled", value);
     }
 
     /// <summary>Whether the read-only LAN web dashboard (http://&lt;ip&gt;:8787) runs.</summary>
     public static bool WebDashboardEnabled
     {
-        get => Defaults.GetBool("web-dashboard-enabled", true);
+        get => Build.HasExtras && Defaults.GetBool("web-dashboard-enabled", true);
         set => Defaults.SetBool("web-dashboard-enabled", value);
     }
 
@@ -296,7 +305,7 @@ public static class AppSettings
     // macOS/Linux. Off by default, because it is an opt-in second surface, not a tray replacement.
     public static bool EdgeDockEnabled
     {
-        get => Defaults.GetBool("edge-dock-enabled", false);
+        get => Build.HasExtras && Defaults.GetBool("edge-dock-enabled", false);
         set => Defaults.SetBool("edge-dock-enabled", value);
     }
 
@@ -326,7 +335,7 @@ public static class AppSettings
     // Telegram push + bot. Keys shared verbatim with macOS/Linux (see docs/telegram.md).
     public static bool TelegramEnabled
     {
-        get => Defaults.GetBool("telegram-enabled", false);
+        get => Build.HasExtras && Defaults.GetBool("telegram-enabled", false);
         set => Defaults.SetBool("telegram-enabled", value);
     }
     public static string TelegramBotToken

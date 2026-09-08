@@ -231,6 +231,23 @@ final class AppSettings: ObservableObject {
         edgeDockOnlyPrinting = defaults.object(forKey: "edge-dock-only-printing") as? Bool ?? false
         edgeDockHiddenPrinters = Set((defaults.string(forKey: "edge-dock-hidden") ?? "")
             .split(separator: "\n").map(String.init))
+        if Build.isLite { forceLiteDefaults() }
+    }
+
+    /// LITE ships only the tray surface, so every switch it has no UI for is pinned off, whatever a
+    /// stored value says. Assigning here rather than in the property definitions keeps didSet from
+    /// firing, so nothing is written back. (LITE has its own bundle id and therefore its own defaults
+    /// domain — a full Gantry on the same Mac keeps its settings and printers untouched either way.)
+    private func forceLiteDefaults() {
+        spoolbaseEnabled = false
+        webDashboardEnabled = false
+        telegramEnabled = false
+        floatingWindowEnabled = false
+        edgeDockEnabled = false
+        developerMode = false
+        allowScriptActions = false
+        cardShowSpoolGrams = false
+        cardShowDetailsChip = false
     }
 
     func applyTheme() {

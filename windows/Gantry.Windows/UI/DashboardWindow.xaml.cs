@@ -993,14 +993,19 @@ public partial class DashboardWindow : Window
         public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
         {
             _name.Text = printer.Name;
-            var maintenanceSignal = PrinterInsights.GetSignal(printer.Serial);
+            // LITE carries neither chip: maintenance tracking is a full-edition feature, and the alert
+            // "!" only pays off with the detail view behind it.
+            var maintenanceSignal = Build.IsLite
+                ? new PrinterInsights.Signal(PrinterInsights.SignalKind.None, 0)
+                : PrinterInsights.GetSignal(printer.Serial);
             _maintenance.Visibility = maintenanceSignal.Kind == PrinterInsights.SignalKind.None ? Visibility.Collapsed : Visibility.Visible;
             _maintenance.Content = maintenanceSignal.Kind == PrinterInsights.SignalKind.Planned ? "🔧" : $"🔧 {maintenanceSignal.Count}";
             _maintenance.Foreground = new SolidColorBrush(maintenanceSignal.Kind == PrinterInsights.SignalKind.Urgent
                 ? Color.FromRgb(0xFF, 0x5A, 0x4E) : maintenanceSignal.Kind == PrinterInsights.SignalKind.Due
                     ? Color.FromRgb(0xF2, 0xC9, 0x4C) : GTheme.Secondary);
             var actionable = HmsResolver.ActionableCodes(t.HmsCodes, printer.Serial, pl);
-            bool hasPrinterAlert = actionable.Count > 0 || t.ErrorCode != 0 || t.State == PrinterState.Error;
+            bool hasPrinterAlert = Build.HasExtras
+                && (actionable.Count > 0 || t.ErrorCode != 0 || t.State == PrinterState.Error);
             _printerAlert.Visibility = hasPrinterAlert ? Visibility.Visible : Visibility.Collapsed;
             _printerAlert.Content = actionable.Count > 1 ? $"! {actionable.Count}" : "!";
             _printerAlert.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x4E));
@@ -1389,7 +1394,9 @@ public partial class DashboardWindow : Window
         static double Weight(FilamentGroup g) => g.DeclaredCapacity > 1 ? 3 : 1;
         static double MinW(FilamentGroup g)
         {
-            if (g.HumidityPercent is not null || g.TemperatureCelsius is not null) return 118; // header room
+            // Only the full edition draws those values, so only it needs the wider header.
+            if (Build.HasExtras && (g.HumidityPercent is not null || g.TemperatureCelsius is not null))
+                return 118; // header room
             if (g.IsExternal) return 58;
             return 0;
         }
@@ -1422,12 +1429,13 @@ public partial class DashboardWindow : Window
         header.Children.Add(new TextBlock { Text = ShortName(group.DisplayName), FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
         var envBrush = new SolidColorBrush(Color.FromArgb(0xB8, 0xD4, 0xD7, 0xD3));   // metric @ ~72%
         TextBlock Sep() => new() { Text = "·", FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(0x73, 0xD4, 0xD7, 0xD3)), Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-        if (group.TemperatureCelsius is { } tc)
+        // LITE names the module and stops there — no chamber temperature, no humidity.
+        if (Build.HasExtras && group.TemperatureCelsius is { } tc)
         {
             header.Children.Add(Sep());
             header.Children.Add(EnvCluster("🌡", tc.ToString("0", CultureInfo.InvariantCulture) + "°", envBrush));
         }
-        if (group.HumidityPercent is { } h)
+        if (Build.HasExtras && group.HumidityPercent is { } h)
         {
             header.Children.Add(Sep());
             header.Children.Add(EnvCluster("💧", h <= 5 ? $"{h}/5" : $"{h}%", envBrush));
@@ -1696,18 +1704,23 @@ public partial class DashboardWindow : Window
             items.Children.Add(button);
         }
 
-        Item(AppSettings.T("Details"), () => ShowDetail(serial));
+        // LITE keeps the menu to what a monitor needs: reconnect, copy IP, edit, remove. No detail
+        // view, no slicer hand-offs.
+        if (Build.HasExtras) Item(AppSettings.T("Details"), () => ShowDetail(serial));
         Item(AppSettings.T("Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 
-        var slicers = SlicerLauncher.Installed();
-        if (printer.Kind == PrinterKind.Bambu)
+        if (Build.HasExtras)
         {
-            var bambu = slicers.FirstOrDefault(s => s.Name == "Bambu Studio");
-            if (bambu is not null)
-                Item(AppSettings.T("Camera in Bambu Studio"), () => SlicerLauncher.Open(bambu.Path));
+            var slicers = SlicerLauncher.Installed();
+            if (printer.Kind == PrinterKind.Bambu)
+            {
+                var bambu = slicers.FirstOrDefault(s => s.Name == "Bambu Studio");
+                if (bambu is not null)
+                    Item(AppSettings.T("Camera in Bambu Studio"), () => SlicerLauncher.Open(bambu.Path));
+            }
+            foreach (var slicer in slicers)
+                Item(string.Format(AppSettings.T("Open in {0}"), slicer.Name), () => SlicerLauncher.Open(slicer.Path));
         }
-        foreach (var slicer in slicers)
-            Item(string.Format(AppSettings.T("Open in {0}"), slicer.Name), () => SlicerLauncher.Open(slicer.Path));
 
         Item(AppSettings.T("Copy IP address"), () =>
         {

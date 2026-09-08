@@ -32,12 +32,21 @@ public partial class DashboardWindow
         // discoverable: people look for it where the mockups and the Mac put it.
         WindowModeButton.Click += (_, _) =>
         {
-            Defaults.SetBool("floating-window-enabled", !Defaults.GetBool("floating-window-enabled"));
+            AppSettings.FloatingWindowEnabled = !AppSettings.FloatingWindowEnabled;
             ApplyWindowMode();
-            if (Defaults.GetBool("floating-window-enabled")) { Show(); Activate(); }
+            if (AppSettings.FloatingWindowEnabled) { Show(); Activate(); }
         };
         GuideButton.ToolTip = AppSettings.T("How to read Gantry");
         GuideButton.Click += (_, _) => ShowOnboarding();
+        if (Build.IsLite)
+        {
+            // LITE header: wordmark plus the printer actions. No window/popover switch (one surface),
+            // no guide, and no "clear finished" — a finished job simply stays until the next print.
+            BrandText.Text = "GANTRY LITE";
+            WindowModeButton.Visibility = Visibility.Collapsed;
+            GuideButton.Visibility = Visibility.Collapsed;
+            ClearButton.Visibility = Visibility.Collapsed;
+        }
         PinButton.ToolTip = AppSettings.T("Always on top");
         PinButton.Click += (_, _) =>
         {
@@ -88,7 +97,7 @@ public partial class DashboardWindow
         body.Children.Add(new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 18) });
         body.Children.Add(GuideText("Connecting to printers…", 19));
         _startupCount = GuideText("", 13); body.Children.Add(_startupCount);
-        body.Children.Add(GuideButtonFor("How to read Gantry", ShowOnboarding));
+        if (Build.HasExtras) body.Children.Add(GuideButtonFor("How to read Gantry", ShowOnboarding));
         body.Children.Add(GuideButtonFor("Show dashboard now", () => { _store.Startup.Finish(); UpdateStartup(); FitHeightToContent(); }));
         _startupLayer = new Border { Background = GTheme.Brush(GTheme.Canvas), CornerRadius = new CornerRadius(14),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Child = body };
@@ -97,7 +106,7 @@ public partial class DashboardWindow
 
     public void ApplyWindowMode()
     {
-        bool enabled = Defaults.GetBool("floating-window-enabled");
+        bool enabled = AppSettings.FloatingWindowEnabled;
         bool changed = enabled != WindowMode;
         _changingMode = true;
         WindowMode = enabled;
@@ -253,6 +262,7 @@ public partial class DashboardWindow
 
     public void ShowOnboarding()
     {
+        if (Build.IsLite) return;   // LITE ships no guide
         Defaults.SetBool("gantry.onboarding.v1.seen", true);
         _store.Startup.ClaimGuide(false);
         var steps = new[] {

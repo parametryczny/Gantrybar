@@ -171,3 +171,79 @@ jobs:
           name: Gantry-Windows-Installer-x64
           path: windows/installer-output/Gantry-Setup-Windows-x64.exe
           if-no-files-found: error
+
+  # Gantry LITE: the same sources with -p:GantryEdition=lite (GANTRY_LITE). Its own exe name, AppId and
+  # Run entry, so it installs beside a full Gantry. No ffmpeg — LITE has no camera view.
+  lite:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore Gantry.Windows/Gantry.Windows.csproj
+      - name: Build
+        run: dotnet build Gantry.Windows/Gantry.Windows.csproj -c Release -p:GantryEdition=lite --no-restore
+      - name: Self-test
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path Gantry.Windows\bin\Release -Recurse -Filter GantryLite.exe | Select-Object -First 1
+          if (-not $exe) { throw "GantryLite.exe not found after build." }
+          & $exe.FullName --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish self-contained app
+        run: dotnet publish Gantry.Windows/Gantry.Windows.csproj -c Release -r win-x64 -p:GantryEdition=lite --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --yes --no-progress
+          }
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler was not found."
+          }
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DLITE" "installer\Gantry.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test silent install, autostart and uninstall
+        shell: pwsh
+        run: |
+          $setup = Resolve-Path "installer-output\Gantry-LITE-Setup-Windows-x64.exe"
+          $install = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)." }
+
+          $installedExe = Join-Path $env:LOCALAPPDATA "Programs\Gantry LITE\GantryLite.exe"
+          if (-not (Test-Path $installedExe)) { throw "Installed application was not found." }
+
+          $runValue = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "GantryLite" -ErrorAction Stop).GantryLite
+          if ($runValue -notlike "*GantryLite.exe*") { throw "Autostart registry value is invalid." }
+
+          $uninstaller = Join-Path $env:LOCALAPPDATA "Programs\Gantry LITE\unins000.exe"
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($uninstall.ExitCode)." }
+          if (Test-Path $installedExe) { throw "Application remained after uninstall." }
+      - name: Package ZIP
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath Gantry-LITE-Windows-x64.zip -Force
+      - name: Upload packaged application
+        uses: actions/upload-artifact@v7
+        with:
+          name: Gantry-LITE-Windows-x64
+          path: windows/Gantry-LITE-Windows-x64.zip
+          if-no-files-found: error
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: Gantry-LITE-Windows-Installer-x64
+          path: windows/installer-output/Gantry-LITE-Setup-Windows-x64.exe
+          if-no-files-found: error

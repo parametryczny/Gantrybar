@@ -7,6 +7,10 @@ import CoreImage
 /// right column across the whole window instead of each section inventing its own layout.
 private enum SettingsTab: Int, CaseIterable {
     case general, appearance, advanced
+
+    /// LITE has nothing to put under Advanced (no developer mode, no Telegram, no web dashboard), so
+    /// it shows two tabs. The bar addresses tabs by position in this list, not by rawValue.
+    static var visible: [SettingsTab] { Build.isLite ? [.general, .appearance] : allCases }
 }
 
 @MainActor
@@ -16,7 +20,7 @@ final class SettingsWindowController: NSWindowController {
     // Chrome
     private let headerTitle = NSTextField(labelWithString: "")
     private let headerSubtitle = NSTextField(labelWithString: "")
-    private let tabBar = SettingsTabBar(count: SettingsTab.allCases.count)
+    private let tabBar = SettingsTabBar(count: SettingsTab.visible.count)
     private let pagesContainer = NSView()
     private var pages: [SettingsTab: NSScrollView] = [:]
     private var currentTab: SettingsTab = .general
@@ -271,8 +275,9 @@ final class SettingsWindowController: NSWindowController {
         headerText.spacing = 1
 
         tabBar.onSelect = { [weak self] index in
-            guard let tab = SettingsTab(rawValue: index) else { return }
-            self?.show(tab: tab)
+            let tabs = SettingsTab.visible
+            guard index >= 0, index < tabs.count else { return }
+            self?.show(tab: tabs[index])
         }
 
         languageControl.target = self
@@ -283,7 +288,7 @@ final class SettingsWindowController: NSWindowController {
 
         pages[.general] = makePage(buildGeneralGroups())
         pages[.appearance] = makePage(buildAppearanceGroups())
-        pages[.advanced] = makePage(buildAdvancedGroups())
+        if Build.hasExtras { pages[.advanced] = makePage(buildAdvancedGroups()) }
 
         pagesContainer.translatesAutoresizingMaskIntoConstraints = false
         for page in pages.values {
@@ -351,7 +356,7 @@ final class SettingsWindowController: NSWindowController {
     private func show(tab: SettingsTab) {
         currentTab = tab
         for (key, page) in pages { page.isHidden = key != tab }
-        tabBar.select(tab.rawValue)
+        if let index = SettingsTab.visible.firstIndex(of: tab) { tabBar.select(index) }
     }
 
     // MARK: Page contents
@@ -391,17 +396,31 @@ final class SettingsWindowController: NSWindowController {
         let supportRow = SettingsContentRow(supportStack)
         supportSubtitle.widthAnchor.constraint(equalTo: supportStack.widthAnchor).isActive = true
 
-        return [
-            makeGroup(basicsGroupLabel, [languageRow, launchRow, spoolbaseRow]),
+        // Spoolbase is a full-edition tool, so LITE's basics are language + launch at login only.
+        let basics: [NSView] = Build.hasExtras ? [languageRow, launchRow, spoolbaseRow]
+                                               : [languageRow, launchRow]
+        // LITE never checks for or installs updates, so it has no UPDATES section.
+        var groups: [NSView] = [
+            makeGroup(basicsGroupLabel, basics),
             makeGroup(notificationsGroupLabel, [notifyFinishedRow, notifyFinishingSoonRow, notifyErrorRow,
                                                 notifyPausedRow, notifyLowFilamentRow, notifyHumidityRow,
-                                                quietHoursRow]),
-            makeGroup(updatesGroupLabel, [updateRow, autoUpdateRow]),
-            makeGroup(aboutGroupLabel, [appRow, githubRow, xRow, supportRow])
+                                                quietHoursRow])
         ]
+        if Build.hasExtras { groups.append(makeGroup(updatesGroupLabel, [updateRow, autoUpdateRow])) }
+        groups.append(makeGroup(aboutGroupLabel, [appRow, githubRow, xRow, supportRow]))
+        return groups
     }
 
     private func buildAppearanceGroups() -> [NSView] {
+        // LITE keeps the look-and-feel controls and the card content switches; the second and third
+        // surfaces (floating window, edge dock) and the Spoolbase/details extras on the card are gone.
+        if Build.isLite {
+            return [
+                makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
+                makeGroup(cardsGroupLabel, [cardFileNameRow, cardProgressRow, cardTempsRow, cardFilamentsRow])
+            ]
+        }
+
         dockHint.font = .systemFont(ofSize: 11)
         dockHint.textColor = GantryTheme.muted
         _ = caption(dockPrintersCaption)
@@ -503,10 +522,14 @@ final class SettingsWindowController: NSWindowController {
         window.appearance = settings.appearance
         window.title = settings.t("Gantry Settings")
         headerTitle.stringValue = settings.t("Settings")
-        headerSubtitle.stringValue = "Gantry · @parametryczny"
-        tabBar.setTitles([settings.t("General"),
-                          settings.t("Appearance"),
-                          settings.t("Advanced")])
+        headerSubtitle.stringValue = "\(Build.appName) · @parametryczny"
+        tabBar.setTitles(SettingsTab.visible.map {
+            switch $0 {
+            case .general: settings.t("General")
+            case .appearance: settings.t("Appearance")
+            case .advanced: settings.t("Advanced")
+            }
+        })
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.19"
         footerVersion.stringValue = settings.t("Version {0}", version) + " • \(AccessCodeStore.modeName)"
@@ -514,7 +537,7 @@ final class SettingsWindowController: NSWindowController {
 
         refreshGeneral(settings, version: version)
         refreshAppearance(settings)
-        refreshAdvanced(settings)
+        if Build.hasExtras { refreshAdvanced(settings) }
     }
 
     private func refreshGeneral(_ settings: AppSettings, version: String) {
@@ -528,9 +551,11 @@ final class SettingsWindowController: NSWindowController {
         }
         launchRow.titleLabel.stringValue = settings.t("Launch at login")
         launchRow.isOn = LaunchAtLoginManager.isEnabled
-        spoolbaseRow.titleLabel.stringValue = settings.t("Spoolbase")
-        spoolbaseRow.setSubtitle(settings.t("Filament stock in the menu"))
-        spoolbaseRow.isOn = settings.spoolbaseEnabled
+        if Build.hasExtras {
+            spoolbaseRow.titleLabel.stringValue = settings.t("Spoolbase")
+            spoolbaseRow.setSubtitle(settings.t("Filament stock in the menu"))
+            spoolbaseRow.isOn = settings.spoolbaseEnabled
+        }
 
         notificationsGroupLabel.stringValue = settings.t("NOTIFICATIONS")
         notifyFinishedRow.titleLabel.stringValue = settings.t("Print finished")
@@ -553,15 +578,17 @@ final class SettingsWindowController: NSWindowController {
         quietEndPicker.dateValue = date(fromMinutes: QuietHours.endMinutes)
         setQuietPickersEnabled(QuietHours.isEnabled)
 
-        updatesGroupLabel.stringValue = settings.t("UPDATES")
-        updateRow.titleLabel.stringValue = settings.t("Check for updates")
-        updateButton.title = settings.t("Check")
-        autoUpdateRow.titleLabel.stringValue = settings.t("Install automatically")
-        autoUpdateRow.setSubtitle(settings.t("Downloads and verifies the release signature"))
-        autoUpdateRow.isOn = settings.autoUpdate
+        if Build.hasExtras {
+            updatesGroupLabel.stringValue = settings.t("UPDATES")
+            updateRow.titleLabel.stringValue = settings.t("Check for updates")
+            updateButton.title = settings.t("Check")
+            autoUpdateRow.titleLabel.stringValue = settings.t("Install automatically")
+            autoUpdateRow.setSubtitle(settings.t("Downloads and verifies the release signature"))
+            autoUpdateRow.isOn = settings.autoUpdate
+        }
 
         aboutGroupLabel.stringValue = settings.t("ABOUT GANTRY")
-        appRow.titleLabel.stringValue = "Gantry"
+        appRow.titleLabel.stringValue = Build.appName
         appRow.setSubtitle(settings.t("Version {0} • {1}", version, AccessCodeStore.modeName))
         githubRow.titleLabel.stringValue = "GitHub"
         githubButton.title = "@parametryczny"
@@ -599,6 +626,8 @@ final class SettingsWindowController: NSWindowController {
         cardTempsRow.isOn = settings.cardShowTemperatures
         cardFilamentsRow.titleLabel.stringValue = settings.t("Filaments / AMS")
         cardFilamentsRow.isOn = settings.cardShowFilaments
+        // Everything below belongs to rows LITE never builds.
+        guard Build.hasExtras else { return }
         cardSpoolGramsRow.titleLabel.stringValue = settings.t("Grams on spool")
         cardSpoolGramsRow.setSubtitle("AMS NFC / Spoolbase")
         cardSpoolGramsRow.isOn = settings.cardShowSpoolGrams
@@ -788,9 +817,12 @@ final class SettingsWindowController: NSWindowController {
         settings.cardShowProgress = cardProgressRow.isOn
         settings.cardShowTemperatures = cardTempsRow.isOn
         settings.cardShowFilaments = cardFilamentsRow.isOn
+        settings.monochrome = monochromeRow.isOn
+        // These two rows only exist in the full edition; in LITE they are never built, so reading them
+        // here would only write a default back over the stored value.
+        guard Build.hasExtras else { return }
         settings.cardShowSpoolGrams = cardSpoolGramsRow.isOn
         settings.cardShowDetailsChip = cardDetailsChipRow.isOn
-        settings.monochrome = monochromeRow.isOn
     }
 
     @objc private func floatingWindowToggled() {
