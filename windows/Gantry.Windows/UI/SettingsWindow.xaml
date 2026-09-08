@@ -295,6 +295,7 @@
                                 <CheckBox x:Name="CardFilamentsCheckBox"/>
                                 <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="CardSpoolGramsCheckBox"/>
+                                <CheckBox x:Name="CardDetailsChipCheckBox"/>
                             </StackPanel>
                         </Border>
 

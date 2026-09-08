@@ -237,6 +237,13 @@ public static class AppSettings
         get => Defaults.GetBool("card-show-spool-grams", false);
         set => Defaults.SetBool("card-show-spool-grams", value);
     }
+    /// <summary>Small chart chip beside the printer name, a shortcut to the detail view (off by
+    /// default). The card's ⋯ menu always carries Details, so the chip is a shortcut, not the only way.</summary>
+    public static bool CardShowDetailsChip
+    {
+        get => Defaults.GetBool("card-show-details-chip", false);
+        set => Defaults.SetBool("card-show-details-chip", value);
+    }
     /// <summary>Calmer palette: temperatures stay grey and filament colours are muted toward grey.</summary>
     public static bool Monochrome
     {

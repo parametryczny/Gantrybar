@@ -756,7 +756,8 @@ public partial class DashboardWindow : Window
         private readonly TextBlock _noticeText;
         private Action? _onDismissNotice;
         private readonly Grid _bar;
-        private readonly StackPanel _progressRow;
+        private readonly Grid _progressRow;
+        private readonly Button _detailsChip;
         // Signature of the last-rendered filament dock, so it's only rebuilt when something actually
         // changed (rebuilding every tick made the AMS chips flicker).
         private string? _lastAmsSig;
@@ -811,6 +812,7 @@ public partial class DashboardWindow : Window
                 ToolTip = AppSettings.T("Details")
             };
             details.Click += (_, _) => _owner.ShowDetail(Serial);
+            _detailsChip = details;
             var leftCluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             leftCluster.Children.Add(printerIcon);
             leftCluster.Children.Add(_name);
@@ -866,32 +868,38 @@ public partial class DashboardWindow : Window
             statusLine.Children.Add(_pillText);
             _jobSeparator = new TextBlock { Text = " · ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_jobSeparator, 1); statusLine.Children.Add(_jobSeparator);
-            // Full-width file name now that layers moved to the progress row — no more truncation race.
+            // The file name takes the flexible column; the percent claims the last one.
             _job = new TextBlock { Foreground = GTheme.Brush(GTheme.Text), FontSize = 10, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(_job, 2); Grid.SetColumnSpan(_job, 2); statusLine.Children.Add(_job);
+            Grid.SetColumn(_job, 2); statusLine.Children.Add(_job);
+            // The percent rides the status line, right-aligned. It used to own a whole row at 22 pt,
+            // which cost about 32 points per card row for one number that fits here (macOS variant B).
+            _percent = new TextBlock { FontSize = 14, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            Typography.SetNumeralAlignment(_percent, FontNumeralAlignment.Tabular);
+            Grid.SetColumn(_percent, 3); statusLine.Children.Add(_percent);
             jobStack.Children.Add(statusLine);
 
-            _progressRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
-            _bar = new Grid { Height = 8 };
+            // ETA and layers sit beside the bar rather than above it, so the whole progress block is
+            // one line instead of two. The bar takes the flexible column, the metrics hug their text.
+            _progressRow = new Grid { Margin = new Thickness(0, 3, 0, 2) };
+            _progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            _progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            _bar = new Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center };
             for (int i = 0; i < 32; i++)
             {
                 _bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 var segment = new Border { CornerRadius = new CornerRadius(1), Margin = new Thickness(i == 0 ? 0 : 1, 0, 0, 0) };
                 Grid.SetColumn(segment, i); _bar.Children.Add(segment);
             }
-            _percent = new TextBlock { FontSize = 22, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-            Typography.SetNumeralAlignment(_percent, FontNumeralAlignment.Tabular);
-            _progressRow.Children.Add(_percent);
+            Grid.SetColumn(_bar, 0); _progressRow.Children.Add(_bar);
             _eta = new TextBlock { FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Padding = new Thickness(0), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            _progressRow.Children.Add(_eta);
-            // Layers ride the progress line next to ETA (macOS layout) — dead space put to use.
+            Grid.SetColumn(_eta, 1); _progressRow.Children.Add(_eta);
             var layersCluster = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             layersCluster.Children.Add(new TextBlock { Text = "⧉ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
             _layers = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
             layersCluster.Children.Add(_layers);
-            _progressRow.Children.Add(layersCluster);
+            Grid.SetColumn(layersCluster, 2); _progressRow.Children.Add(layersCluster);
             jobStack.Children.Add(_progressRow);
-            jobStack.Children.Add(_bar);
             // Flat: no box around the job section; long thin rules separate the sections instead.
             stack.Children.Add(new Border { Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 2, 2, 2), Child = jobStack });
             _tempDivider = SectionDivider();
@@ -1114,6 +1122,7 @@ public partial class DashboardWindow : Window
             var show = Visibility.Visible;
             _job.Visibility = _jobSeparator.Visibility = AppSettings.CardShowFileName ? show : collapse;
             _progressRow.Visibility = _bar.Visibility = AppSettings.CardShowProgress ? show : collapse;
+            _detailsChip.Visibility = AppSettings.CardShowDetailsChip ? show : collapse;
             _temps.Visibility = AppSettings.CardShowTemperatures ? show : collapse;
             _ams.Visibility = hasGroups && AppSettings.CardShowFilaments ? show : collapse;
             // Section rules only show when their section does (no orphan lines).
@@ -1295,18 +1304,22 @@ public partial class DashboardWindow : Window
         for (int i = 0; i < cells.Length; i++)
         {
             var (label, value, colour, bold) = cells[i];
-            var cell = new Grid { Height = 34 };
-            cell.Children.Add(new TextBlock
+            // Label and value share one baseline instead of stacking. Two lines per reading cost 12
+            // points a card row for a caption that reads just as well beside the number (macOS variant B).
+            var line = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 4, 0) };
+            var cell = new Grid { Height = 22, Children = { line } };
+            line.Children.Add(new TextBlock
             {
                 Text = label.ToUpperInvariant(), FontFamily = new FontFamily("Segoe UI"), FontSize = 7,
-                FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Margin = new Thickness(6, 3, 4, 0),
-                VerticalAlignment = VerticalAlignment.Top, TextTrimming = TextTrimming.CharacterEllipsis
+                FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary),
+                Margin = new Thickness(0, 0, 5, 0), VerticalAlignment = VerticalAlignment.Bottom,
+                TextTrimming = TextTrimming.CharacterEllipsis
             });
             var valueBlock = new TextBlock
             {
                 FontFamily = new FontFamily("Segoe UI"), FontSize = 14,
-                FontWeight = bold ? FontWeights.Bold : FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 6, 3, 0)
+                FontWeight = bold ? FontWeights.Bold : FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Bottom
             };
             // The one spot of colour per zone is the live value; the target "/ X°" stays small and faint.
             int slash = value.IndexOf('/');
@@ -1320,7 +1333,7 @@ public partial class DashboardWindow : Window
                 valueBlock.Text = value;
                 valueBlock.Foreground = colour ?? GTheme.Brush(GTheme.Text);
             }
-            cell.Children.Add(valueBlock);
+            line.Children.Add(valueBlock);
             // Neutral tile with a faint top-light; a thin line separates zones (no coloured washes).
             var zone = new Border
             {

@@ -115,6 +115,40 @@ require("windows/Gantry.Windows/UI/AutomationsWindow.cs", r"GTheme\.ApplyWindowT
 require("linux/gantry/app.py", r"self\.kind\.set_visible\(False\)",
         "Linux edit flow still exposes printer-brand changes")
 
+# --- card variant B -----------------------------------------------------------------------------
+# The card layout was the one place where macOS moved ahead and the contract kept describing the old
+# shape, so nothing caught the drift. These three checks pin the parts that actually changed: the
+# percent size (it moved from its own row into the status line), the one-line temperature zone, and
+# the details chip switch. One per platform, so a port that forgets a system fails here.
+percent_size = int(CONTRACT["statusRow"]["percentLabel"]["size"])
+temp_height = int(CONTRACT["tempBento"]["height"])
+chip_key = CONTRACT["header"]["detailsChip"]["setting"]
+
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        rf"percentLabel\.font = \.monospacedDigitSystemFont\(ofSize: {percent_size}, weight: \.bold\)",
+        "macOS percent is not the contract size for the status line")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        rf"_percent = new TextBlock \{{ FontSize = {percent_size},",
+        "Windows percent is not the contract size for the status line")
+require("linux/gantry/dashboard.py",
+        rf"\.percent \{{[^}}]*font-size: {percent_size}px",
+        "Linux percent is not the contract size for the status line")
+
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        rf"heightAnchor\.constraint\(equalToConstant: {temp_height}\)\.isActive = true",
+        "macOS temperature row is not the contract height")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        rf"new Grid \{{ Height = {temp_height}, Children = \{{ line \}} \}}",
+        "Windows temperature row is not the contract height")
+require("linux/gantry/dashboard.py", r'box = Gtk\.Box\(spacing=5\)\n\s*box\.get_style_context\(\)\.add_class\("temp-zone"\)',
+        "Linux temperature zone still stacks the label above the value")
+
+# Linux spells its config keys with underscores, the other two with hyphens; same setting.
+for path, key in (("Sources/Gantry/App/AppSettings.swift", chip_key),
+                  ("windows/Gantry.Windows/Services/Storage.cs", chip_key),
+                  ("linux/gantry/storage.py", chip_key.replace("-", "_"))):
+    require(path, re.escape(key), f"{path} is missing the details-chip switch")
+
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)
     for error in ERRORS:

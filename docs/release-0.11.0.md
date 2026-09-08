@@ -15,7 +15,7 @@ Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera poś
 - **Pasek krawędziowy**: wąski panel przyklejony do krawędzi ekranu, zawsze na wierzchu, z pierścieniem postępu na drukarkę. Domyślnie wyłączony.
 - **Nowe okno ustawień**: trzy zakładki zamiast jednej długiej listy.
 - **Tłumaczenia w osobnym pliku**: nowy język to jeden plik wrzucony do katalogu `i18n/`, bez dotykania kodu i bez nowego wydania.
-- **Karta drukarki krótsza o 32 punkty na rząd**, bez utraty żadnej informacji.
+- **Karta drukarki krótsza o 32 punkty na rząd** na macOS i o 29 pikseli na GNU/Linuksie, bez utraty żadnej informacji, na trzech systemach naraz.
 - **Przełącznik Spoolbase gasi teraz całą funkcję**, a nie tylko pozycję w menu.
 - **Synchronizacja między komputerami została usunięta.** Szczegóły niżej.
 - **Instalator Windows schudł z 91 do 52 MB**, a paczka ZIP ze 130 do 76 MB.
@@ -120,11 +120,11 @@ Karta rosła przez kolejne wydania i przy pięciu drukarkach okno zajmowało wi�
 
 Procent przeniósł się do linii statusu, po prawej, więc zniknął cały wiersz, w którym stał sam w 22 punktach; sam procent schodzi do 14 punktów pogrubionych. Czas do końca i warstwy stają obok paska postępu, w tym samym wierszu. Etykieta temperatury stoi teraz obok wartości zamiast nad nią, więc sekcja temperatur ma 22 punkty zamiast 34.
 
-Zmierzone, nie oszacowane: karta schudła ze **134 do 102 punktów**, czyli 32 punkty na rząd. Przy pięciu drukarkach w dwóch kolumnach to około 96 punktów mniej w oknie.
+Zmierzone, nie oszacowane: na macOS karta schudła ze **134 do 102 punktów**, czyli 32 punkty na rząd. Przy pięciu drukarkach w dwóch kolumnach to około 96 punktów mniej w oknie. Na GNU/Linuksie ta sama zmiana daje **220 na 191 pikseli**, czyli 29 na rząd; różnica bierze się z innych metryk czcionek, nie z innego układu.
 
-Mały kafelek wykresu obok nazwy drukarki dostał własny przełącznik w Ustawieniach, w sekcji Wygląd, **domyślnie wyłączony**. Nic się przez to nie traci, bo menu trzech kropek zawsze niesie pozycję Szczegóły; kafelek był skrótem, nie jedyną drogą.
+Mały kafelek wykresu obok nazwy drukarki dostał własny przełącznik w Ustawieniach, w sekcji Karty drukarek, **domyślnie wyłączony**. Nic się przez to nie traci, bo menu trzech kropek zawsze niesie pozycję Szczegóły; kafelek był skrótem, nie jedyną drogą.
 
-Zmiana wchodzi na razie **tylko na macOS**, do obejrzenia przed portem na Windows i GNU/Linux.
+Zmiana wchodzi **na wszystkich trzech systemach naraz**, razem z przełącznikiem kafelka. Kontrakt układu karty (`design/gantry-card-layout.impl.json`) opisuje teraz wariant B i pilnuje go w CI osobno dla macOS, Windows i Linuksa: rozmiar procentu, wysokość wiersza temperatur i obecność przełącznika. Wcześniej kontrakt opisywał starą kartę, więc nic nie łapało rozjazdu między systemami.
 
 ## Spoolbase: przełącznik gasi całą funkcję
 

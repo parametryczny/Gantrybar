@@ -86,6 +86,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.Click += (_, _) => AppSettings.CardShowTemperatures = CardTempsCheckBox.IsChecked == true;
         CardFilamentsCheckBox.Click += (_, _) => AppSettings.CardShowFilaments = CardFilamentsCheckBox.IsChecked == true;
         CardSpoolGramsCheckBox.Click += (_, _) => AppSettings.CardShowSpoolGrams = CardSpoolGramsCheckBox.IsChecked == true;
+        CardDetailsChipCheckBox.Click += (_, _) => AppSettings.CardShowDetailsChip = CardDetailsChipCheckBox.IsChecked == true;
         MonochromeCheckBox.Click += (_, _) => AppSettings.Monochrome = MonochromeCheckBox.IsChecked == true;
         CheckUpdatesButton.Click += async (_, _) => await CheckUpdatesAsync();
         TelegramEnableCheckBox.Click += (_, _) =>
@@ -232,6 +233,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.Content = AppSettings.T("Temperatures");
         CardFilamentsCheckBox.Content = AppSettings.T("Filaments / AMS");
         CardSpoolGramsCheckBox.Content = AppSettings.T("Grams on spool (AMS NFC / Spoolbase)");
+        CardDetailsChipCheckBox.Content = AppSettings.T("Details chip on the card");
         MonochromeCheckBox.Content = AppSettings.T("Monochrome colours");
 
         NotificationsHeading.Text = AppSettings.T("NOTIFICATIONS");
@@ -345,6 +347,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.IsChecked = AppSettings.CardShowTemperatures;
         CardFilamentsCheckBox.IsChecked = AppSettings.CardShowFilaments;
         CardSpoolGramsCheckBox.IsChecked = AppSettings.CardShowSpoolGrams;
+        CardDetailsChipCheckBox.IsChecked = AppSettings.CardShowDetailsChip;
         MonochromeCheckBox.IsChecked = AppSettings.Monochrome;
         QuietHoursCheckBox.IsChecked = QuietHours.Enabled;
         QuietStartBox.Text = MinutesToText(QuietHours.StartMinutes);

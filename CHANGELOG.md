@@ -21,8 +21,9 @@ Wydanie wyprowadza monitorowanie poza komputer i porządkuje to, co zostało w �
 
 ### Zmienione
 
-- **karta drukarki jest krótsza o 32 punkty na rząd** (ze 134 do 102), bez utraty jakiejkolwiek informacji: procent przeniósł się do linii statusu, czas i warstwy stanęły obok paska postępu, a etykiety temperatur obok wartości zamiast nad nimi. Na razie tylko macOS, przed portem na pozostałe systemy;
-- **kafelek szczegółów na karcie** dostał własny przełącznik w Ustawieniach, w sekcji Wygląd, domyślnie wyłączony;
+- **karta drukarki jest krótsza o rząd wielkości jednego wiersza**, bez utraty jakiejkolwiek informacji: procent przeniósł się do linii statusu, czas i warstwy stanęły obok paska postępu, a etykiety temperatur obok wartości zamiast nad nimi. Zmierzone: macOS ze 134 do 102 punktów, GNU/Linux z 220 do 191 pikseli. Zmiana obejmuje macOS, Windows i GNU/Linuksa;
+- **kafelek szczegółów na karcie** dostał własny przełącznik w Ustawieniach, w sekcji Karty drukarek, domyślnie wyłączony, na trzech systemach;
+- **kontrakt układu karty pilnuje teraz wariantu B** osobno dla każdego systemu (rozmiar procentu, wysokość wiersza temperatur, obecność przełącznika kafelka), więc rozjazd między platformami zatrzyma budowanie;
 - **przełącznik Spoolbase gasi teraz całą funkcję**, a nie tylko pozycję w menu. Przy wyłączonym Spoolbase kliknięcie slotu AMS nie otwiera okna przypisania, karta pokazuje surowe odczyty z AMS zamiast danych przypisanej rolki, po skończonym wydruku nic nie jest odejmowane, a tag NFC nie odpina przypisań. Rolki zostają nietknięte, więc ponowne włączenie wraca do stanu sprzed wyłączenia. Dotąd macOS i Windows ignorowały ten przełącznik poza kartą, a Linux blokował sam klik;
 - **wydania budowane są w konfiguracji release**, wcześniej skrypt pakował build debug.
 

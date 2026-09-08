@@ -81,10 +81,10 @@ button.printer-alert { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .status-dot { background: %(metric)s; border-radius: 3px; min-width: 6px; min-height: 6px; }
 .status { color: %(metric)s; font-size: 10px; font-weight: 600; }
 .job { color: %(text)s; font-size: 10px; font-weight: 600; }
-.percent { color: %(metric)s; font-family: monospace; font-size: 22px; font-weight: 600; }
+.percent { color: %(metric)s; font-family: monospace; font-size: 14px; font-weight: 700; }
 .metric { color: %(secondary)s; font-family: monospace; font-size: 10px; font-weight: 600; }
 .section-rule { background: alpha(#ffffff, 0.09); min-height: 1px; }
-.temp-zone { padding: 3px 7px 4px; border-left: 1px solid alpha(#ffffff, 0.09); }
+.temp-zone { padding: 2px 7px 2px; border-left: 1px solid alpha(#ffffff, 0.09); }
 .temp-zone:first-child { border-left: none; }
 .temp-name { color: %(muted)s; font-family: monospace; font-size: 7px; font-weight: 600; }
 .temp-value { color: %(metric)s; font-family: monospace; font-size: 14px; font-weight: 600; }
@@ -347,8 +347,12 @@ class PrinterCard(Gtk.Frame):
                       PrinterKind.ANYCUBIC_KOBRA_S1: "MQTT LAN"}[printer.kind]
         self.connection = Gtk.Label(label=connection)
         self.connection.get_style_context().add_class("connection")
-        details = self._button("⌁",i18n.t("Details"))
-        details.connect("clicked", lambda *_: app.open_details(printer.serial))
+        # Shortcut to the detail view, off by default. Nothing is lost when it is hidden: the ⋯ menu
+        # always carries Details, so the chip is a shortcut, not the only way in.
+        self.details_chip = self._button("⌁",i18n.t("Details"))
+        self.details_chip.connect("clicked", lambda *_: app.open_details(printer.serial))
+        self.details_chip.set_no_show_all(True)
+        details = self.details_chip
         self.printer_alert = self._button("",i18n.t("Printer alert"))
         self.printer_alert.set_no_show_all(True)
         self.printer_alert.get_style_context().add_class("printer-alert")
@@ -381,21 +385,25 @@ class PrinterCard(Gtk.Frame):
         self.job_separator = sep
         self.status_row.pack_start(self.job_separator, False, False, 0)
         self.status_row.pack_start(self.job, True, True, 0)
+        # The percent rides the status line, right-aligned. It used to own a whole row at 22 px,
+        # which cost about 32 points per card row for one number that fits here (macOS variant B).
+        self.percent = Gtk.Label(label="0%", xalign=1)
+        self.percent.get_style_context().add_class("percent")
+        self.status_row.pack_end(self.percent, False, False, 0)
         self.box.pack_start(self.status_row, False, False, 0)
 
-        metrics = Gtk.Box(spacing=7)
-        self.percent = Gtk.Label(label="0%", xalign=0)
-        self.percent.get_style_context().add_class("percent")
+        # ETA and layers sit beside the bar rather than above it, so the whole progress block is one
+        # line instead of two. The bar takes the flexible space, the metrics hug their text.
+        self.progress_row = Gtk.Box(spacing=7)
+        self.progress = SegmentedProgress()
         self.eta = Gtk.Label(label="—", xalign=0)
         self.eta.get_style_context().add_class("metric")
         self.layers = Gtk.Label(label="—", xalign=0)
         self.layers.get_style_context().add_class("metric")
-        metrics.pack_start(self.percent, False, False, 0)
-        metrics.pack_start(self.eta, False, False, 0)
-        metrics.pack_start(self.layers, False, False, 0)
-        self.box.pack_start(metrics, False, False, 0)
-        self.progress = SegmentedProgress()
-        self.box.pack_start(self.progress, False, False, 0)
+        self.progress_row.pack_start(self.progress, True, True, 0)
+        self.progress_row.pack_start(self.eta, False, False, 0)
+        self.progress_row.pack_start(self.layers, False, False, 0)
+        self.box.pack_start(self.progress_row, False, False, 0)
 
         self.temp_rule = _rule()
         self.box.pack_start(self.temp_rule, False, False, 1)
@@ -476,7 +484,7 @@ class PrinterCard(Gtk.Frame):
 
     def set_compact(self, compact: bool, expanded: bool = False) -> None:
         hidden = compact and not expanded
-        for widget in (self.status_row, self.percent.get_parent(), self.progress, self.temp_rule,
+        for widget in (self.status_row, self.progress_row, self.temp_rule,
                        self.temps, self.ams_rule, self.ams):
             widget.set_no_show_all(hidden)
             widget.set_visible(not hidden)
@@ -540,10 +548,12 @@ class PrinterCard(Gtk.Frame):
         show_progress = bool(self.app.config.data.get("card_show_progress", True))
         show_temperatures = bool(self.app.config.data.get("card_show_temperatures", True))
         show_filaments = bool(self.app.config.data.get("card_show_filaments", True))
+        show_chip = bool(self.app.config.data.get("card_show_details_chip", False))
         for widget in (self.job, self.job_separator):
             widget.set_no_show_all(not show_filename); widget.set_visible(show_filename)
-        for widget in (self.percent.get_parent(), self.progress):
+        for widget in (self.progress_row, self.progress):
             widget.set_no_show_all(not show_progress); widget.set_visible(show_progress)
+        self.details_chip.set_visible(show_chip)
         for widget in (self.temp_rule, self.temps):
             widget.set_no_show_all(not show_temperatures); widget.set_visible(show_temperatures)
         has_filaments = bool(telemetry.filament_groups) and show_filaments
@@ -564,7 +574,9 @@ class PrinterCard(Gtk.Frame):
         errored = telemetry.state == PrinterState.ERROR
 
         def zone(label: str, current: float | None, target: float | None) -> Gtk.Widget:
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            # Label and value share one line instead of stacking. Two lines per reading cost 12
+            # points a card row for a caption that reads just as well beside the number.
+            box = Gtk.Box(spacing=5)
             box.get_style_context().add_class("temp-zone")
             title = Gtk.Label(label=label.upper(), xalign=0)
             title.get_style_context().add_class("temp-name")
@@ -577,9 +589,11 @@ class PrinterCard(Gtk.Frame):
             value.get_style_context().add_class("mono" if mono else state)
             target_label = Gtk.Label(label=f"/ {target:.0f}°" if target else "/ —")
             target_label.get_style_context().add_class("temp-target")
-            values.set_halign(Gtk.Align.CENTER)
+            values.set_halign(Gtk.Align.START)
+            values.set_valign(Gtk.Align.BASELINE)
             values.pack_start(value, False, False, 0)
             values.pack_start(target_label, False, False, 0)
+            title.set_valign(Gtk.Align.BASELINE)
             box.pack_start(title, False, False, 0)
             box.pack_start(values, False, False, 0)
             return box
