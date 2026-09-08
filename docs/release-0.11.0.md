@@ -4,6 +4,8 @@ Gantry 0.11.0 wyprowadza monitorowanie poza komputer. Powiadomienia i sterowanie
 
 Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera pośredniczącego.
 
+![Gantry: cała flota w jednym widoku, na macOS, Windows i GNU/Linuksie](https://raw.githubusercontent.com/parametryczny/gantrybar/ce03e7c3b53188eff39485487bd26f32d8db1493/docs/renders/readme-dashboard.png)
+
 ## Najważniejsze zmiany
 
 - **Powiadomienia i sterowanie przez Telegram**: alerty o zakończeniu, błędzie, pauzie i niskim filamencie trafiają na telefon, a bot pozwala odpytać drukarkę i nią sterować.
@@ -22,6 +24,8 @@ Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera poś
 - **Naprawione powiadomienia systemowe na Windows 11**, wentylatory na drukarkach Klipper oraz koniec skakania sekcji AMS w oknie szczegółów.
 
 ## Telegram
+
+![Gantry na Telegramie: powiadomienia, sterowanie drukarką i zdjęcia z kamery](https://raw.githubusercontent.com/parametryczny/gantrybar/ce03e7c3b53188eff39485487bd26f32d8db1493/docs/renders/readme-telegram.png)
 
 **Mostkiem jest Twój komputer.** Gantry nie ma serwera w chmurze, więc powiadomienia i komendy działają tylko wtedy, gdy maszyna z uruchomionym Gantry jest włączona, nie śpi i ma dostęp do sieci. Zamknięty laptop oznacza milczącego bota; po ponownym uruchomieniu wszystko wraca samo. Kto chce mieć to dostępne bez przerwy, powinien trzymać Gantry na czymś, co i tak chodzi cały czas.
 
@@ -83,6 +87,8 @@ Powiadomienie przychodziło dotąd dopiero po fakcie. Przy kilku drukarkach uprz
 Alert uzbraja się raz na wydruk i sam przezbraja, gdy pozostały czas wróci powyżej progu (nowe zadanie) albo drukarka przestanie drukować, więc jedno zadanie nie może przypominać o sobie w kółko. Próg to 10 minut. **Domyślnie wyłączony**, bo na zajętej flocie to jeden dodatkowy alert na każde zadanie obok tego o zakończeniu; włącznik jest w sekcji powiadomień.
 
 ## Pasek krawędziowy
+
+![Pasek krawędziowy: 22 punkty w spoczynku, rozsuwa się po najechaniu](https://raw.githubusercontent.com/parametryczny/gantrybar/ce03e7c3b53188eff39485487bd26f32d8db1493/docs/renders/readme-edge-panel.png)
 
 Popover w pasku menu wymaga kliknięcia, a przy dłuższym wydruku zerka się na postęp co kilka minut. Pasek krawędziowy jest odpowiedzią na to zerkanie: wąski na 22 punkty panel przyklejony do lewej albo prawej krawędzi ekranu, zawsze nad innymi oknami, z jednym pierścieniem postępu na drukarkę. W spoczynku niesie tylko kolor statusu i wypełnienie pierścienia. Najechanie kursorem rozsuwa go do listy z nazwami, procentem i pozostałym czasem, a kliknięcie wiersza otwiera szczegóły tej drukarki.
 
