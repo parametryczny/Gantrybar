@@ -252,7 +252,7 @@ public static class StatusParser
                         Label = $"{letter}{trayIndex + 1}",
                         Material = material,
                         ColorHex = material != null ? ((hasTray ? Str(tray, "tray_color") : null) ?? "8E8E93FF") : null,
-                        RemainingPercent = material != null && hasTray ? Int(tray, "remain") : null,
+                        RemainingPercent = material != null && hasTray ? KnownRemain(tray, "remain") : null,
                         RemainingWeightGrams = material != null && hasTray ? NfcGrams(tray) : null,
                         IsActive = ResolveActive(slotId, matches)
                     });
@@ -303,7 +303,7 @@ public static class StatusParser
                         Label = label,
                         Material = material,
                         ColorHex = material != null ? (Str(external, "tray_color") ?? "E8E8E8FF") : null,
-                        RemainingPercent = material != null ? Int(external, "remain") : null,
+                        RemainingPercent = material != null ? KnownRemain(external, "remain") : null,
                         RemainingWeightGrams = material != null ? NfcGrams(external) : null,
                         IsActive = ResolveActive(slotId, matches)
                     }
@@ -347,6 +347,15 @@ public static class StatusParser
     {
         var n = Num(obj, key);
         return n.HasValue ? (int)n.Value : null;
+    }
+
+    /// <summary>Slot level, or null when the printer says it cannot measure it. Bambu reports
+    /// remain: -1 for a slot with no RFID tag (a third-party spool), and passing that through
+    /// printed "-1%" on the card. Negative means unknown, not a level.</summary>
+    private static int? KnownRemain(JsonElement source, string key)
+    {
+        var value = Int(source, key);
+        return value is { } v && v >= 0 ? v : null;
     }
 
     /// <summary>Remaining grams from an AMS NFC/RFID tray: tray_weight (nominal grams) scaled by remain (%).

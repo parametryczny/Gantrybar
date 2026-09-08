@@ -199,6 +199,13 @@ enum BambuStatusParser {
     }
 
     /// Remaining grams from an AMS NFC/RFID tray: the tag's `tray_weight` (nominal grams for the spool)
+    /// Bambu reports `remain: -1` for a slot it cannot measure (no RFID tag, third-party spool), so
+    /// a raw pass-through printed "-1%" on the card. A negative reading means "unknown", not a level.
+    static func knownRemain(_ value: Any?) -> Int? {
+        guard let remain = integer(value), remain >= 0 else { return nil }
+        return remain
+    }
+
     /// scaled by `remain` (%). Nil when the tag carries no weight (non-RFID / third-party spool).
     private static func nfcWeightGrams(_ tray: [String: Any]) -> Double? {
         guard let nominal = number(tray["tray_weight"]), nominal > 0 else { return nil }
@@ -266,7 +273,7 @@ enum BambuStatusParser {
                         label: "\(letter)\(trayIndex + 1)",
                         material: material,
                         colorHex: material != nil ? (string(tray["tray_color"]) ?? "8E8E93FF") : nil,
-                        remainingPercent: material != nil ? integer(tray["remain"]) : nil,
+                        remainingPercent: material != nil ? knownRemain(tray["remain"]) : nil,
                         isActive: resolveActive(id: slotID, matches: matches),
                         remainingWeightGrams: material != nil ? nfcWeightGrams(tray) : nil
                     ))

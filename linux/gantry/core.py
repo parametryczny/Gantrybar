@@ -209,6 +209,14 @@ def _integer(value: Any) -> int | None:
     return int(number) if number is not None else None
 
 
+
+def _known_remain(value: Any) -> int | None:
+    """Slot level, or None when the printer says it cannot measure it. Bambu reports ``remain: -1``
+    for a slot with no RFID tag (a third-party spool); passing that through printed "-1%" on the
+    card. A negative reading means unknown, not a level."""
+    remain = _integer(value)
+    return remain if remain is not None and remain >= 0 else None
+
 def _fan_percent(value: Any) -> int | None:
     """Bambu reports fan speed as a 0-15 gear; convert to a percentage. A value already above 15 is
     treated as a direct percentage (some firmwares/models)."""
@@ -295,7 +303,7 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
                 label=f"{letter}{tray_index + 1}",
                 material=material,
                 color=str(tray.get("tray_color") or "8E8E93FF") if material else None,
-                remaining=_integer(tray.get("remain")) if material else None,
+                remaining=_known_remain(tray.get("remain")) if material else None,
                 active=resolve_active(slot_id, matches),
                 remaining_weight_g=_nfc_grams(tray) if material else None,
             ))
@@ -338,7 +346,7 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
             slots=[FilamentSlot(
                 slot_id=slot_id, label=label, material=material,
                 color=(str(external.get("tray_color") or "E8E8E8FF")) if material else None,
-                remaining=_integer(external.get("remain")) if material else None,
+                remaining=_known_remain(external.get("remain")) if material else None,
                 active=resolve_active(slot_id, matches),
                 remaining_weight_g=_nfc_grams(external) if material else None,
             )],

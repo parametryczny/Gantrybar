@@ -64,6 +64,7 @@
                         <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0"/>
                     </StackPanel>
                     <WrapPanel x:Name="HeaderTools" Grid.Column="1" MaxWidth="300" VerticalAlignment="Center">
+                        <Button x:Name="WindowModeButton" Style="{StaticResource FlatIconButton}" Width="28" Height="28" Margin="4,0" FontSize="13"/>
                         <Button x:Name="PinButton" Style="{StaticResource FlatIconButton}" Content="📌" Width="28" Height="28" Margin="4,0"/>
                         <Button x:Name="SettingsButton" Style="{StaticResource FlatIconButton}" Content="⚙" Width="28" Height="28" Margin="4,0"/>
                         <Button x:Name="GuideButton" Style="{StaticResource FlatIconButton}" Content="?" Width="28" Height="28" Margin="4,0"/>

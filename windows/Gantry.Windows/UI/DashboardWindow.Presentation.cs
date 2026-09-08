@@ -28,6 +28,14 @@ public partial class DashboardWindow
     {
         SettingsButton.ToolTip = AppSettings.T("Settings…");
         SettingsButton.Click += (_, _) => SettingsRequested?.Invoke();
+        // macOS carries this switch in the panel header, so Windows does too. Settings alone was not
+        // discoverable: people look for it where the mockups and the Mac put it.
+        WindowModeButton.Click += (_, _) =>
+        {
+            Defaults.SetBool("floating-window-enabled", !Defaults.GetBool("floating-window-enabled"));
+            ApplyWindowMode();
+            if (Defaults.GetBool("floating-window-enabled")) { Show(); Activate(); }
+        };
         GuideButton.ToolTip = AppSettings.T("How to read Gantry");
         GuideButton.Click += (_, _) => ShowOnboarding();
         PinButton.ToolTip = AppSettings.T("Always on top");
@@ -99,6 +107,8 @@ public partial class DashboardWindow
         ShowInTaskbar = enabled;
         Topmost = !enabled || Defaults.GetBool("floating-window-always-on-top", true);
         PinButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        WindowModeButton.Content = enabled ? "❐" : "▭";
+        WindowModeButton.ToolTip = AppSettings.T(enabled ? "Switch to popover" : "Switch to window");
         PinButton.Opacity = Topmost ? 1 : .5;
         MinWidth = enabled ? 317 : 0; MinHeight = enabled ? 322 : 0;
         if (changed && enabled)
