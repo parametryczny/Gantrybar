@@ -33,6 +33,8 @@ final class FilamentEditorWindowController: NSWindowController {
             defer: false
         )
         window.title = filament == nil ? "Dodaj do bazy" : "Edytuj w bazie"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildUI()

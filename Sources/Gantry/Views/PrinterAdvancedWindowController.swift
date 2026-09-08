@@ -7,6 +7,7 @@ final class PrinterAdvancedWindowController: NSWindowController {
     private let store: PrinterStore
     private let serial: String
     private let isKlipper: Bool
+    private let printerName: String
     private let cameraField = NSTextField()
     private let ledOnField = NSTextField()
     private let ledOffField = NSTextField()
@@ -20,10 +21,13 @@ final class PrinterAdvancedWindowController: NSWindowController {
         self.serial = serial
         self.isKlipper = store.printers.first(where: { $0.serial == serial })?.kind == .klipper
         let name = store.printers.first(where: { $0.serial == serial })?.name ?? serial
+        self.printerName = name
         let height: CGFloat = (store.printers.first(where: { $0.serial == serial })?.kind == .klipper) ? 540 : 320
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: height),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = AppSettings.shared.t("Advanced — {0}", name)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildUI()
@@ -52,6 +56,12 @@ final class PrinterAdvancedWindowController: NSWindowController {
             return f
         }
 
+        // The printer name lived only in the title bar. With the bar hidden for a consistent look
+        // across the app's windows, the window would have had nothing identifying it, so the name
+        // moves into the content as a heading.
+        let heading = NSTextField(labelWithString: t("Advanced — {0}", printerName))
+        heading.font = .systemFont(ofSize: 15, weight: .bold)
+
         let cameraLabel = label(t("Camera IP (optional)"), bold: true)
         let cameraHint = hint(t("When the camera is on a different address than the printer (e.g. a Pi cam)."))
         _ = field(cameraField, placeholder: t("e.g. 192.168.1.50"))
@@ -72,7 +82,7 @@ final class PrinterAdvancedWindowController: NSWindowController {
         buttons.orientation = .horizontal
         buttons.spacing = 8
 
-        var rows: [NSView] = [cameraLabel, cameraField, cameraHint, ledLabel, ledHint, ledOnField, ledOffField]
+        var rows: [NSView] = [heading, cameraLabel, cameraField, cameraHint, ledLabel, ledHint, ledOnField, ledOffField]
 
         if isKlipper {
             let objLabel = label(t("Klipper object names (optional)"), bold: true)
@@ -93,6 +103,7 @@ final class PrinterAdvancedWindowController: NSWindowController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 7
+        stack.setCustomSpacing(14, after: heading)
         stack.setCustomSpacing(16, after: cameraHint)
         stack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)

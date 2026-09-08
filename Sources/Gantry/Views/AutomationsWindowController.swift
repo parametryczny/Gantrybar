@@ -8,6 +8,7 @@ final class AutomationsWindowController: NSWindowController {
     private let store: PrinterStore
     private let serial: String
     private var automations: [PrinterAutomation]
+    private let printerName: String
     private let listStack = NSStackView()
 
     init(store: PrinterStore, serial: String) {
@@ -16,9 +17,12 @@ final class AutomationsWindowController: NSWindowController {
         self.automations = AutomationStore.shared.automations(for: serial)
 
         let name = store.printers.first(where: { $0.serial == serial })?.name ?? serial
+        self.printerName = name
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 640),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = AppSettings.shared.t("Automations — {0}", name)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.contentMinSize = NSSize(width: 520, height: 420)
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -37,7 +41,8 @@ final class AutomationsWindowController: NSWindowController {
     private func buildUI() {
         guard let content = window?.contentView else { return }
 
-        let title = NSTextField(labelWithString: AppSettings.shared.t("Automations"))
+        // The printer name moves out of the (now hidden) title bar into the heading.
+        let title = NSTextField(labelWithString: AppSettings.shared.t("Automations — {0}", printerName))
         title.font = .systemFont(ofSize: 15, weight: .bold)
         let subtitle = NSTextField(labelWithString: AppSettings.shared.t("Trigger → action. Conditional rules fire once per print. Scripts run with your privileges."))
         subtitle.font = .systemFont(ofSize: 11)
