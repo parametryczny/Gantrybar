@@ -73,14 +73,17 @@ final class PrinterDetailViewController: NSViewController {
     private var anycubicStream: AnycubicCameraStream?
     private var cameraTimeout: DispatchWorkItem?
     private var receivedFrame = false
+    private let presentation: DashboardPresentation
 
     init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
-         onOpenAutomations: @escaping () -> Void, onOpenAdvanced: @escaping () -> Void) {
+         onOpenAutomations: @escaping () -> Void, onOpenAdvanced: @escaping () -> Void,
+         presentation: DashboardPresentation = .popover) {
         self.store = store
         self.serial = serial
         self.onBack = onBack
         self.onOpenAutomations = onOpenAutomations
         self.onOpenAdvanced = onOpenAdvanced
+        self.presentation = presentation
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -88,14 +91,15 @@ final class PrinterDetailViewController: NSViewController {
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 700))
-        // NSPopover measures the content's Auto Layout fittingSize (contentSize alone isn't honored
-        // when the content uses constraints). Nothing here has an absolute width/height, so pin the
-        // root to a fixed 480×700 and let the inner scroll view handle overflow.
+        // The popover needs a fixed fitting size. In the detached window the host controls both
+        // dimensions, keeping the header visible and the entire vertical scroll within the window.
         root.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            root.widthAnchor.constraint(equalToConstant: 480),
-            root.heightAnchor.constraint(equalToConstant: 700)
-        ])
+        if presentation == .popover {
+            NSLayoutConstraint.activate([
+                root.widthAnchor.constraint(equalToConstant: 480),
+                root.heightAnchor.constraint(equalToConstant: 700)
+            ])
+        }
         let header = makeHeader()
         header.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(header)
@@ -105,6 +109,7 @@ final class PrinterDetailViewController: NSViewController {
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
         root.addSubview(scroll)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
@@ -126,8 +131,7 @@ final class PrinterDetailViewController: NSViewController {
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         flipped.addSubview(contentStack)
         NSLayoutConstraint.activate([
-            flipped.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            flipped.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+            flipped.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
             contentStack.topAnchor.constraint(equalTo: flipped.topAnchor),
             contentStack.leadingAnchor.constraint(equalTo: flipped.leadingAnchor),
             contentStack.trailingAnchor.constraint(equalTo: flipped.trailingAnchor),
@@ -500,7 +504,11 @@ final class PrinterDetailViewController: NSViewController {
         let alert = NSAlert()
         alert.messageText = settings.t("Full history")
         alert.informativeText = rows.isEmpty ? settings.t("No history.") : rows.joined(separator: "\n")
-        alert.runModal()
+        if let window = view.window, window.windowController is FloatingDashboardWindowController {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     private func makeControlCard() -> NSView {

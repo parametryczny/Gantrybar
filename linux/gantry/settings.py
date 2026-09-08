@@ -108,7 +108,11 @@ class SettingsDialog(Gtk.Dialog):
             widget.set_hexpand(True)
             form.attach(label, 0, row, 1, 1)
             form.attach(widget, 1, row, 1, 1)
-        return self._section(i18n.t("APPEARANCE"), [form])
+        self.floating_window = Gtk.CheckButton(label=i18n.t("Show Gantry in a floating window"))
+        self.floating_window.set_active(bool(self.app.config.data.get("floating-window-enabled", False)))
+        self.always_on_top = Gtk.CheckButton(label=i18n.t("Always on top"))
+        self.always_on_top.set_active(bool(self.app.config.data.get("floating-window-always-on-top", True)))
+        return self._section(i18n.t("APPEARANCE"), [form, self.floating_window, self.always_on_top])
 
     def _preview_transparency(self, combo: Gtk.ComboBoxText) -> None:
         self.app.preview_panel_transparency(combo.get_active_id() or "low")
@@ -194,14 +198,17 @@ i18n.t("Only printing"),
     def _cards(self) -> Gtk.Widget:
         self.card_options: dict[str, Gtk.CheckButton] = {}
         widgets: list[Gtk.Widget] = []
-        for key, polish, english in (
-            ("card_show_filename", "Nazwa pliku", "File name"),
-            ("card_show_progress", "Postęp", "Progress"),
-            ("card_show_temperatures", "Temperatury", "Temperatures"),
-            ("card_show_filaments", "Filamenty / AMS", "Filaments / AMS"),
+        for key, english, default in (
+            ("card_show_filename", "File name", True),
+            ("card_show_progress", "Progress", True),
+            ("card_show_temperatures", "Temperatures", True),
+            ("card_show_filaments", "Filaments / AMS", True),
+            ("card_show_details_chip", "Details chip on the card", False),
         ):
             check = self._check(i18n.t(english),
-                                bool(self.app.config.data.get(key, True)))
+                                bool(self.app.config.data.get(key, default)))
+            if key == "card_show_details_chip":
+                check.set_tooltip_text(i18n.t("Shortcut to the detail view; the ⋯ menu always has it"))
             self.card_options[key] = check
             widgets.append(check)
         self.spool_grams = self._check(i18n.t("Grams on spool (AMS NFC / Spoolbase)"),
@@ -481,6 +488,8 @@ i18n.t("☕  Support the project"))
         except ValueError:
             return False
         before = dict(self.app.config.data)
+        self.app.config.data["floating-window-enabled"] = self.floating_window.get_active()
+        self.app.config.data["floating-window-always-on-top"] = self.always_on_top.get_active()
         self.app.config.data.update(
             language=self.language.get_active_id(),
             theme=self.theme.get_active_id(),
@@ -526,6 +535,11 @@ i18n.t("☕  Support the project"))
             self.app.apply_theme(animate=True)
         if card_changed or language_changed:
             self.app.rebuild_cards()
+        if any(before.get(key) != self.app.config.data.get(key) for key in
+               ("floating-window-enabled", "floating-window-always-on-top")):
+            self.app.window.close_panel()
+            self.app.window.apply_window_mode()
+            self.app.show()
         if menu_changed:
             self.app._tray()
         if self.auto_update.get_active():

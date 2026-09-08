@@ -10,6 +10,8 @@ final class GantryApp: NSObject, NSApplicationDelegate {
     private var webServerSub: AnyCancellable?
     private var telegramBot: TelegramBot?
     private var telegramSub: AnyCancellable?
+    private var activationPolicySub: AnyCancellable?
+    private var mainMenuSub: AnyCancellable?
 
     static func main() {
         if CommandLine.arguments.contains("--self-test") {
@@ -76,13 +78,90 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         let app = NSApplication.shared
         let delegate = GantryApp()
         app.delegate = delegate
-        app.setActivationPolicy(.accessory)
-        app.mainMenu = makeMainMenu()
+        // A detached dashboard behaves like a normal Mac window and therefore belongs in the Dock.
+        // In menu-bar/popover mode Gantry remains an accessory and stays out of the Dock.
+        app.setActivationPolicy(AppSettings.shared.floatingWindowEnabled ? .regular : .accessory)
+        app.mainMenu = makeMainMenu(target: nil)
         app.run()
     }
 
-    private static func makeMainMenu() -> NSMenu {
+    private static func makeMainMenu(target: MenuBarController?) -> NSMenu {
         let mainMenu = NSMenu()
+        let settings = AppSettings.shared
+
+        if let target {
+            let appRoot = NSMenuItem(title: "Gantry", action: nil, keyEquivalent: "")
+            let appMenu = NSMenu(title: "Gantry")
+            appMenu.autoenablesItems = false
+
+            func action(_ key: String, symbol: String, selector: String,
+                        shortcut: String = "") -> NSMenuItem {
+                let item = NSMenuItem(title: settings.t(key),
+                                      action: Selector((selector)), keyEquivalent: shortcut)
+                item.target = target
+                item.isEnabled = true
+                item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+                item.image?.isTemplate = true
+                return item
+            }
+
+            appMenu.addItem(action("Show printers", symbol: "printer.fill",
+                                   selector: "appMenuShowPrinters:"))
+            appMenu.addItem(action("How to read Gantry", symbol: "questionmark.circle",
+                                   selector: "appMenuOnboarding:"))
+            if settings.spoolbaseEnabled {
+                appMenu.addItem(action("Spoolbase — filament stock", symbol: "shippingbox.fill",
+                                       selector: "appMenuShowSpoolbase:"))
+            }
+            appMenu.addItem(.separator())
+            appMenu.addItem(action("Search printers…", symbol: "antenna.radiowaves.left.and.right",
+                                   selector: "appMenuSearchPrinters:"))
+            appMenu.addItem(action("Add printer…", symbol: "plus",
+                                   selector: "appMenuAddPrinter:"))
+            appMenu.addItem(action("Reconnect (all)", symbol: "arrow.clockwise",
+                                   selector: "appMenuReconnectAll:"))
+            appMenu.addItem(action("Diagnostic Center…", symbol: "stethoscope",
+                                   selector: "appMenuDiagnostics:"))
+            appMenu.addItem(action("Fleet statistics…", symbol: "chart.bar",
+                                   selector: "appMenuFleetStats:"))
+            appMenu.addItem(.separator())
+
+            let language = action("Language", symbol: "globe", selector: "appMenuCycleLanguage:")
+            language.title += " — \(settings.language.uppercased())"
+            appMenu.addItem(language)
+            let quiet = action("Quiet hours", symbol: QuietHours.isEnabled ? "moon.fill" : "moon",
+                               selector: "appMenuToggleQuietHours:")
+            quiet.title += " — \(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))"
+            appMenu.addItem(quiet)
+            appMenu.addItem(action("Check for updates…", symbol: "arrow.down.circle",
+                                   selector: "appMenuCheckForUpdates:"))
+            appMenu.addItem(action("Settings…", symbol: "gearshape",
+                                   selector: "appMenuSettings:", shortcut: ","))
+
+            let legend = NSMenuItem(title: settings.t("🎨  Colour legend"), action: nil, keyEquivalent: "")
+            let legendMenu = NSMenu()
+            [
+                ("🔵", "Printing (live data)"),
+                ("🟢", "Ready / finished"),
+                ("🟠", "Attention: stale data, paused, or AMS humidity"),
+                ("🔴", "Printer error"),
+                ("⚪", "Offline / none / neutral")
+            ].forEach { dot, key in
+                let row = NSMenuItem(title: "\(dot)  \(settings.t(key))", action: nil, keyEquivalent: "")
+                row.isEnabled = true
+                legendMenu.addItem(row)
+            }
+            legend.submenu = legendMenu
+            appMenu.addItem(legend)
+            appMenu.addItem(action("Buy me a coffee ☕️", symbol: "cup.and.saucer.fill",
+                                   selector: "appMenuBuyCoffee:"))
+            appMenu.addItem(.separator())
+            appMenu.addItem(action("Quit Gantry", symbol: "power",
+                                   selector: "appMenuQuit:", shortcut: "q"))
+            appRoot.submenu = appMenu
+            mainMenu.addItem(appRoot)
+        }
+
         let editRoot = NSMenuItem()
         let editMenu = NSMenu(title: "Edycja")
 
@@ -108,7 +187,23 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         NotificationService.configure()
         if LaunchAtLoginManager.isEnabled { try? LaunchAtLoginManager.setEnabled(true) }
         let store = PrinterStore()
-        menuBarController = MenuBarController(store: store)
+        let controller = MenuBarController(store: store)
+        menuBarController = controller
+        NSApp.mainMenu = Self.makeMainMenu(target: controller)
+        mainMenuSub = AppSettings.shared.objectWillChange
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    guard let controller = self?.menuBarController else { return }
+                    NSApp.mainMenu = Self.makeMainMenu(target: controller)
+                }
+            }
+        activationPolicySub = AppSettings.shared.$floatingWindowEnabled
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { enabled in
+                NSApp.setActivationPolicy(enabled ? .regular : .accessory)
+                if enabled { NSApp.activate(ignoringOtherApps: true) }
+            }
         store.reconnectAll()
         // Read-only web dashboard on the LAN (http://<host>.local:8787), toggled in Settings.
         webServer = GantryWebServer(store: store)
@@ -131,5 +226,11 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         UpdateChecker.start()
         // After the BambuBar → Gantry rename, offer to remove a leftover old app (once, with consent).
         LegacyAppCleanup.offerRemovalIfNeeded()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard AppSettings.shared.floatingWindowEnabled else { return false }
+        menuBarController?.restoreFloatingDashboardFromDock()
+        return true
     }
 }

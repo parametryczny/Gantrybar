@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
     public Action? OnThemeChanged;
     /// Raised when any edge-dock setting changes, so the tray owner can re-pin the strip live.
     public Action? OnEdgeDockChanged;
+    public Action? OnWindowModeChanged;
 
     public SettingsWindow(PrinterStore? store = null)
     {
@@ -25,6 +26,20 @@ public partial class SettingsWindow : Window
         ApplyThemeVisuals();
         ApplyLanguage();
         LoadSettings();
+        FloatingWindowCheckBox.Content = AppSettings.T("Show Gantry in a floating window");
+        AlwaysOnTopCheckBox.Content = AppSettings.T("Always on top");
+        FloatingWindowCheckBox.IsChecked = Defaults.GetBool("floating-window-enabled");
+        AlwaysOnTopCheckBox.IsChecked = Defaults.GetBool("floating-window-always-on-top", true);
+        FloatingWindowCheckBox.Click += (_, _) =>
+        {
+            Defaults.SetBool("floating-window-enabled", FloatingWindowCheckBox.IsChecked == true);
+            OnWindowModeChanged?.Invoke();
+        };
+        AlwaysOnTopCheckBox.Click += (_, _) =>
+        {
+            Defaults.SetBool("floating-window-always-on-top", AlwaysOnTopCheckBox.IsChecked == true);
+            OnWindowModeChanged?.Invoke();
+        };
 
         TabGeneral.Checked += (_, _) => ShowPage(PageGeneral);
         TabAppearance.Checked += (_, _) => ShowPage(PageAppearance);
@@ -86,6 +101,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.Click += (_, _) => AppSettings.CardShowTemperatures = CardTempsCheckBox.IsChecked == true;
         CardFilamentsCheckBox.Click += (_, _) => AppSettings.CardShowFilaments = CardFilamentsCheckBox.IsChecked == true;
         CardSpoolGramsCheckBox.Click += (_, _) => AppSettings.CardShowSpoolGrams = CardSpoolGramsCheckBox.IsChecked == true;
+        CardDetailsChipCheckBox.Click += (_, _) => AppSettings.CardShowDetailsChip = CardDetailsChipCheckBox.IsChecked == true;
         MonochromeCheckBox.Click += (_, _) => AppSettings.Monochrome = MonochromeCheckBox.IsChecked == true;
         CheckUpdatesButton.Click += async (_, _) => await CheckUpdatesAsync();
         TelegramEnableCheckBox.Click += (_, _) =>
@@ -232,6 +248,8 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.Content = AppSettings.T("Temperatures");
         CardFilamentsCheckBox.Content = AppSettings.T("Filaments / AMS");
         CardSpoolGramsCheckBox.Content = AppSettings.T("Grams on spool (AMS NFC / Spoolbase)");
+        CardDetailsChipCheckBox.Content = AppSettings.T("Details chip on the card");
+        CardDetailsChipCheckBox.ToolTip = AppSettings.T("Shortcut to the detail view; the ⋯ menu always has it");
         MonochromeCheckBox.Content = AppSettings.T("Monochrome colours");
 
         NotificationsHeading.Text = AppSettings.T("NOTIFICATIONS");
@@ -345,6 +363,7 @@ public partial class SettingsWindow : Window
         CardTempsCheckBox.IsChecked = AppSettings.CardShowTemperatures;
         CardFilamentsCheckBox.IsChecked = AppSettings.CardShowFilaments;
         CardSpoolGramsCheckBox.IsChecked = AppSettings.CardShowSpoolGrams;
+        CardDetailsChipCheckBox.IsChecked = AppSettings.CardShowDetailsChip;
         MonochromeCheckBox.IsChecked = AppSettings.Monochrome;
         QuietHoursCheckBox.IsChecked = QuietHours.Enabled;
         QuietStartBox.Text = MinutesToText(QuietHours.StartMinutes);

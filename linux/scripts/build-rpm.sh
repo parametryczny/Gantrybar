@@ -21,6 +21,7 @@ mkdir -p "$SOURCE/linux"
 # Translation catalog, shared verbatim with the macOS and Windows builds.
 mkdir -p "$ROOT/linux/gantry/data/i18n"
 cp "$ROOT"/i18n/*.json "$ROOT/linux/gantry/data/i18n/"
+cp "$ROOT/Resources/web-dashboard.html" "$ROOT/linux/gantry/data/web-dashboard.html"
 cp -a "$ROOT/linux/gantry" "$SOURCE/linux/gantry"
 cp -a "$ROOT/linux/assets" "$SOURCE/linux/assets"
 cp -a "$ROOT/linux/packaging" "$SOURCE/linux/packaging"

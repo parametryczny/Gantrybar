@@ -27,13 +27,12 @@ def panel_width(compact: bool, columns: int) -> int:
 
 
 def needs_wide(telemetry: Telemetry) -> bool:
-    dual_nozzle = any(nozzle.position == "right" for nozzle in telemetry.nozzles)
     ams_count = sum(1 for group in telemetry.filament_groups if not group.external)
-    return dual_nozzle or ams_count >= 2
+    return ams_count >= 2
 
 
 def place_cards(serials: list[str], telemetry: dict[str, Telemetry], columns: int,
-                compact: bool = False) -> list[Placement]:
+                compact: bool = False, stretch_last: bool = True) -> list[Placement]:
     columns = 1 if compact else max(1, min(2, columns))
     result: list[Placement] = []
     row = column = 0
@@ -42,7 +41,7 @@ def place_cards(serials: list[str], telemetry: dict[str, Telemetry], columns: in
         if column + span > columns:
             row += 1
             column = 0
-        if not compact and index == len(serials) - 1 and column == 0:
+        if stretch_last and not compact and index == len(serials) - 1 and column == 0:
             span = columns
         result.append(Placement(serial, row, column, span))
         column += span

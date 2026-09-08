@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'windows/**'
+      - 'Resources/web-dashboard.html'
       - 'Sources/Gantry/App/GantryTheme.swift'
       - 'Sources/Gantry/Views/PrinterDashboardViewController.swift'
       - 'linux/gantry/dashboard.py'
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - 'windows/**'
+      - 'Resources/web-dashboard.html'
       - 'Sources/Gantry/App/GantryTheme.swift'
       - 'Sources/Gantry/Views/PrinterDashboardViewController.swift'
       - 'linux/gantry/dashboard.py'
@@ -72,6 +74,8 @@ jobs:
         run: dotnet restore Gantry.Windows/Gantry.Windows.csproj
       - name: Build
         run: dotnet build Gantry.Windows/Gantry.Windows.csproj -c Release --no-restore
+      - name: Test startup presentation policy
+        run: dotnet run --project Tests/PresentationTests.csproj -c Release
       - name: Test Bambu Studio config import
         shell: pwsh
         # TFM-independent: find the built Gantry.exe regardless of the net8.0-windows(10.0.x) folder.

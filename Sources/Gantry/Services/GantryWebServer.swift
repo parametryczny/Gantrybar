@@ -134,7 +134,7 @@ final class GantryWebServer {
     /// open, read-only view of the fleet; the server accepts nothing that changes state.
     private func route(_ request: ParsedRequest) -> (Int, Data, String) {
         if request.path.hasPrefix("/api/printers") { return (200, fleetJSON(), "application/json") }
-        return (200, Data(Self.html.utf8), "text/html; charset=utf-8")
+        return (200, Data(Self.dashboardHTML.utf8), "text/html; charset=utf-8")
     }
 
     // MARK: WebSocket (server -> client push, view-only)
@@ -213,12 +213,16 @@ final class GantryWebServer {
                     // Spoolbase off no assigned roll is consulted and the raw AMS reading is served.
                     let spool = AppSettings.shared.spoolbaseEnabled ? SpoolbaseShared.spools.spool(at: loc) : nil
                     let def = spool.flatMap { s in SpoolbaseShared.filaments.filaments.first { $0.id == s.filamentDefinitionID } }
+                    let effectiveGrams: Int? = AppSettings.shared.cardShowSpoolGrams
+                        ? (spool.map { Int($0.remainingWeightGrams) }
+                           ?? slot.remainingWeightGrams.map { Int($0) })
+                        : nil
                     slots.append([
                         "label": slot.label,
                         "material": slot.isPresent ? (slot.material ?? "") : (def?.type ?? ""),
                         "colorHex": def?.colorHex ?? slot.colorHex ?? "8E8E93",
                         "percent": spool?.percent ?? slot.remainingPercent as Any,
-                        "grams": spool.map { Int($0.remainingWeightGrams) } as Any,
+                        "grams": effectiveGrams as Any,
                         "active": slot.isActive
                     ])
                 }
@@ -232,6 +236,7 @@ final class GantryWebServer {
             let activeJob = (t.state == .printing || t.state == .paused) ? (t.jobName ?? "") : ""
             printers.append([
                 "name": printer.name, "state": t.state.rawValue, "progress": t.progress,
+                "protocol": Self.protocolName(printer.kind),
                 "remainingMinutes": t.remainingMinutes as Any, "job": activeJob,
                 "nozzle": t.nozzleTemperature as Any, "bed": t.bedTemperature as Any, "chamber": t.chamberTemperature as Any,
                 "layer": t.currentLayer as Any, "totalLayers": t.totalLayers as Any,
@@ -306,6 +311,30 @@ final class GantryWebServer {
 
     // MARK: The (single-file) web UI — same neutral look as the app, read-only, live via WebSocket.
 
+    /// One canonical dashboard is shared by all three platform packages. During `swift run` the
+    /// repository resource is used; a packaged .app reads the copy in Contents/Resources.
+    private static let dashboardHTML: String = {
+        let packaged = Bundle.main.resourceURL?.appendingPathComponent("web-dashboard.html")
+        let checkout = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Resources/web-dashboard.html")
+        for url in [packaged, checkout].compactMap({ $0 }) {
+            if let html = try? String(contentsOf: url, encoding: .utf8) { return html }
+        }
+        return html
+    }()
+
+    private static func protocolName(_ kind: PrinterKind) -> String {
+        switch kind {
+        case .bambu: "MQTT"
+        case .klipper: "KLIPPER"
+        case .prusa: "PRUSALINK"
+        case .snapmaker: "HTTP"
+        case .elegooCC1: "SDCP"
+        case .elegooCC2, .anycubicKobraS1: "MQTT LAN"
+        }
+    }
+
+    /// Emergency fallback for development builds that do not carry the shared resource yet.
     private static let html = """
     <!doctype html><html><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">

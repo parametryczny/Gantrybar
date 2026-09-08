@@ -37,6 +37,9 @@
     <Content Include="Assets\filament-catalog.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\..\Resources\web-dashboard.html" Link="Assets\web-dashboard.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- Gantry wordmark logo (embedded resource, used in the dashboard header). -->
     <Resource Include="Assets\wordmark.png" />
     <!-- Translation catalog, shared verbatim with the macOS and Linux builds. -->
@@ -50,6 +53,9 @@
   <ItemGroup>
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+    <!-- Local duplicate backups are not source files; retain them on disk without compiling twice. -->
+    <Compile Remove="Services\HmsResolver 2.cs" />
+    <Compile Remove="UI\MaintenanceWindow 2.cs" />
   </ItemGroup>
 
 </Project>

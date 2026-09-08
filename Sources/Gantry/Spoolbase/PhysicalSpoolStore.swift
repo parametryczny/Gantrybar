@@ -1,5 +1,11 @@
 import Foundation
 
+extension Notification.Name {
+    /// Broadcast as well as calling the legacy single callback, because the menu popover and the
+    /// optional floating dashboard can both be visible and must update after one spool assignment.
+    static let gantryPhysicalSpoolsDidChange = Notification.Name("pl.gantry.physical-spools-did-change")
+}
+
 /// Shared Spoolbase stores so the inventory window, the dashboard AMS popover and (later) the
 /// consumption tracker all read/write one source of truth.
 @MainActor
@@ -217,6 +223,7 @@ final class PhysicalSpoolStore {
     private func changed() {
         save()
         onChange?()
+        NotificationCenter.default.post(name: .gantryPhysicalSpoolsDidChange, object: self)
     }
 
     private func save() { Self.write(spools, to: spoolsURL) }

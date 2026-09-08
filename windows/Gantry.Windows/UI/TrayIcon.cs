@@ -48,6 +48,7 @@ public sealed class TrayIcon : IDisposable
         });
         AnnounceInstalledIfPending();
         _ = RunUpdateChecksAsync();
+        if (Defaults.GetBool("floating-window-enabled")) ShowDashboard();
     }
 
     private string? _pendingUpdateUrl;
@@ -131,9 +132,11 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Diagnostic Center…"), null,
-            (_, _) => new DiagnosticsWindow(_store).Show()));
+            (_, _) => ShowAuxiliary(new DiagnosticsWindow(_store))));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Fleet statistics…"), null,
-            (_, _) => new FleetStatsWindow(_store).Show()));
+            (_, _) => ShowAuxiliary(new FleetStatsWindow(_store))));
+        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("How to read Gantry"), null,
+            (_, _) => { ShowDashboard(); _dashboard?.ShowOnboarding(); }));
         menu.Items.Add(new ToolStripSeparator());
 
         var language = new ToolStripMenuItem(AppSettings.T("Language: EN"));
@@ -218,6 +221,7 @@ public sealed class TrayIcon : IDisposable
         if (_dashboard is null)
         {
             _dashboard = new DashboardWindow(_store);
+            _dashboard.SettingsRequested = ShowSettings;
             _dashboard.Closed += (_, _) => _dashboard = null;
         }
         return _dashboard;
@@ -233,6 +237,7 @@ public sealed class TrayIcon : IDisposable
 
     private void ToggleSpoolbase()
     {
+        if (Defaults.GetBool("floating-window-enabled")) { ShowAuxiliary(new SpoolbaseWindow()); return; }
         if (_spoolbase is null)
         {
             _spoolbase = new SpoolbaseWindow();
@@ -246,6 +251,7 @@ public sealed class TrayIcon : IDisposable
         if (_settings is null)
         {
             _settings = new SettingsWindow(_store);
+            _settings.OnWindowModeChanged = () => { EnsureDashboard().ApplyWindowMode(); ShowDashboard(); };
             // Live-refresh the flyout's acrylic tint the moment Transparency changes (no restart).
             _settings.OnTransparencyChanged = () => _dashboard?.ApplyPanelTransparency();
             _settings.OnThemeChanged = () =>
@@ -254,11 +260,20 @@ public sealed class TrayIcon : IDisposable
                 if (_spoolbase is not null) { _spoolbase.Close(); _spoolbase = null; }
             };
             _settings.OnEdgeDockChanged = () => _edgeDock?.Refresh();
-            _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); };
+            _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); _dashboard?.RefreshTheme(); };
         }
         _settings.Show();
         _settings.Activate();
         _settings.WindowState = System.Windows.WindowState.Normal;
+    }
+
+    private void ShowAuxiliary(System.Windows.Window controller)
+    {
+        if (Defaults.GetBool("floating-window-enabled"))
+        {
+            ShowDashboard(); EnsureDashboard().EmbedWindow(controller);
+        }
+        else controller.Show();
     }
 
     private async void ShowUpdateChecker()

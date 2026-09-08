@@ -1,4 +1,5 @@
 using System.Net;
+using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -100,7 +101,7 @@ public sealed class GantryWebServer
 
         if (path.StartsWith("/api/printers"))
             return (200, Encoding.UTF8.GetBytes(FleetJson()), "application/json");
-        return (200, Encoding.UTF8.GetBytes(Html), "text/html; charset=utf-8");
+        return (200, Encoding.UTF8.GetBytes(DashboardHtml()), "text/html; charset=utf-8");
     }
 
     private string FleetJson()
@@ -126,13 +127,16 @@ public sealed class GantryWebServer
                         // off no assigned roll is consulted and the raw AMS reading is served.
                         var sp = AppSettings.SpoolbaseEnabled ? SpoolbaseShared.Spools.SpoolAt(loc) : null;
                         var def = sp != null ? SpoolbaseShared.Filaments.Filaments.FirstOrDefault(f => f.Id == sp.FilamentDefinitionId) : null;
+                        double? effectiveGrams = sp?.RemainingWeightGrams ?? s.RemainingWeightGrams;
+                        int? shownGrams = AppSettings.CardShowSpoolGrams && effectiveGrams is { } gramsValue
+                            ? (int)gramsValue : null;
                         slots.Add(new
                         {
                             label = s.Label,
                             material = s.IsPresent ? (s.Material ?? "") : (def?.Type ?? ""),
                             colorHex = def?.ColorHex ?? s.ColorHex ?? "8E8E93",
                             percent = (int?)(sp?.Percent ?? s.RemainingPercent),
-                            grams = sp != null ? (int?)sp.RemainingWeightGrams : null,
+                            grams = shownGrams,
                             active = s.IsActive,
                         });
                     }
@@ -140,7 +144,7 @@ public sealed class GantryWebServer
                 }
                 list.Add(new
                 {
-                    name = p.Name, state, progress = t.Progress, remainingMinutes = t.RemainingMinutes,
+                    name = p.Name, state, protocol = ProtocolName(p.Kind), progress = t.Progress, remainingMinutes = t.RemainingMinutes,
                     job = active ? (t.JobName ?? "") : "", nozzle = t.NozzleTemperature, bed = t.BedTemperature,
                     chamber = t.ChamberTemperature, layer = t.CurrentLayer, totalLayers = t.TotalLayers, groups
                 });
@@ -151,6 +155,27 @@ public sealed class GantryWebServer
     }
 
     // MARK: helpers
+
+    private static string ProtocolName(PrinterKind kind) => kind switch
+    {
+        PrinterKind.Bambu => "MQTT",
+        PrinterKind.Klipper => "KLIPPER",
+        PrinterKind.Prusa => "PRUSALINK",
+        PrinterKind.Snapmaker => "HTTP",
+        PrinterKind.ElegooCc1 => "SDCP",
+        _ => "MQTT LAN"
+    };
+
+    private static string DashboardHtml()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", "web-dashboard.html");
+            if (File.Exists(path)) return File.ReadAllText(path);
+        }
+        catch { }
+        return Html;
+    }
 
     public static string? LocalIPv4()
     {

@@ -125,12 +125,12 @@ class EdgeDock:
                 return f"{entry['progress']}% · {minutes // 60}:{minutes % 60:02d}"
             return f"{entry['progress']}%"
         if state == "finished":
-            returni18n.t("done")
+            return i18n.t("done")
         if state == "idle":
-            returni18n.t("idle")
+            return i18n.t("idle")
         if state == "error":
-            returni18n.t("error")
-        returni18n.t("offline")
+            return i18n.t("error")
+        return i18n.t("offline")
 
     # ------------------------------------------------------------ geometry
 

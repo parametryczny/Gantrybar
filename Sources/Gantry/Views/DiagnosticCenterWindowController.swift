@@ -34,6 +34,13 @@ final class DiagnosticCenterViewController: NSViewController {
     static func show(store: PrinterStore, in host: NSView) {
         dismiss()
         let controller = DiagnosticCenterViewController(store: store)
+        if host.window?.windowController is FloatingDashboardWindowController {
+            activeController = controller
+            activeBackdrop = EmbeddedPanelView.show(controller.view, in: host,
+                size: NSSize(width: 470, height: 560), fillsViewport: true, showsCloseButton: false,
+                onDismiss: { Self.dismiss() })
+            return
+        }
         let backdrop = DiagnosticBackdropView(frame: host.bounds)
         backdrop.autoresizingMask = [.width, .height]
         backdrop.wantsLayer = true

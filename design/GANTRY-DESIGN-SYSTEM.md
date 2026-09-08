@@ -474,7 +474,7 @@ Nie trzeba współdzielić kodu renderującego Swift, C# i Python. Współdzielo
 
 ### Dashboard
 
-- macOS: wybierana siatka jednej lub dwóch kolumn, pełny span dla X2D/dual-nozzle/multi-AMS oraz zwykłej ostatniej karty rozpoczynającej pusty rząd, segmentowany postęp oraz neutralne płaskie sekcje;
+- macOS: wybierana siatka jednej lub dwóch kolumn, zwykły swobodnie przenoszony kafel dla X2D/dual-nozzle, pełny span tylko dla multi-AMS oraz — wyłącznie w dymku — ostatniej karty rozpoczynającej pusty rząd; segmentowany postęp oraz neutralne płaskie sekcje;
 - Windows: `WrapPanel` został zastąpiony deterministycznym `Grid`, z tymi samymi regułami spanów i akcentów co macOS;
 - Linux: dashboard został napisany od nowa z aktualnych klas Swift; używa szerokości 380/563 px, reguł 1/2 kolumny, spanu zależnego od wyposażenia drukarki, listy kompaktowej z akordeonem i tych samych sekcji karty.
 

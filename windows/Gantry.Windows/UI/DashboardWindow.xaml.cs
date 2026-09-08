@@ -47,6 +47,7 @@ public partial class DashboardWindow : Window
         // but stay open while one of our own dialogs (add printer) sits on top.
         Deactivated += (_, _) =>
         {
+            if (WindowMode || _boundedLayer is not null) return;
             foreach (Window owned in OwnedWindows)
                 if (owned.IsVisible) return;
             _lastHidden = DateTime.Now;
@@ -57,18 +58,13 @@ public partial class DashboardWindow : Window
         // over gaps between cards (drops still reorder via each card's own Drop handler).
         PanelBody.AllowDrop = true;
         ApplyThemeVisuals();
+        SetupPresentation();
         Rebuild();
     }
 
     private DateTime _lastHidden = DateTime.MinValue;
     private FrameworkElement? _cardMenu;
 
-    private Grid? _spoolLayer;
-    private Grid? _maintenanceLayer;
-    // While the slot-assignment overlay is open the window is grown to a comfortable height so plenty of
-    // rolls/filaments show even for a single short printer card — and the per-tick content-fit is
-    // suspended so it doesn't shrink the window back under the open panel (parity with macOS).
-    private bool _spoolOverlayActive;
     private DispatcherTimer? _transparencyRefreshTimer;
     private DateTime _transparencyRefreshUntil;
     private double? _transparencyPulseWidth;
@@ -92,74 +88,13 @@ public partial class DashboardWindow : Window
     private void OnSpoolsChanged() => Dispatcher.Invoke(Rebuild);
     private void OnInsightsChanged() => Dispatcher.Invoke(Rebuild);
 
-    /// <summary>Shows the spool-assignment panel for a slot as a dimmed in-window overlay.</summary>
+    /// <summary>Bounded in-window assignment and maintenance panels, shared with window mode.</summary>
     internal void ShowSpoolAssign(SpoolLocation location, string title, string? material, string? colorHex)
-    {
-        if (MenuLayer.Parent is not Grid host) return;
-        CloseSpoolAssign();
-        var backdrop = new Border { Background = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)) };
-        backdrop.MouseLeftButtonDown += (_, _) => CloseSpoolAssign();
-        var layer = new Grid();
-        layer.Children.Add(backdrop);
-        var panel = SpoolAssignPanel.Build(location, title, material, colorHex, CloseSpoolAssign);
-        layer.Children.Add(panel);
-        _spoolLayer = layer;
-        host.Children.Add(layer);
-
-        // Grow the window (a short single-printer window must not squeeze the add list), then let the
-        // panel fill most of that height with its own list scrolling inside.
-        _spoolOverlayActive = true;
-        double maxH = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
-        double target = Math.Min(maxH, Math.Max(Height, 780));
-        if (target > Height + 1)
-        {
-            Height = target;
-            var area = SystemParameters.WorkArea;
-            Left = area.Right - Width - 8;
-            Top = area.Bottom - Height - 8;
-        }
-        panel.MaxHeight = Height - 40;
-    }
-
-    internal void CloseSpoolAssign()
-    {
-        if (_spoolLayer is not null && MenuLayer.Parent is Grid host) host.Children.Remove(_spoolLayer);
-        _spoolLayer = null;
-        if (_spoolOverlayActive)
-        {
-            _spoolOverlayActive = false;
-            FitHeightToContent();   // restore the natural, content-driven height
-        }
-    }
+        => ShowPanel(SpoolAssignPanel.Build(location, title, material, colorHex, ClosePanel), 470, 650);
 
     internal void ShowMaintenance(SavedPrinter printer, PrinterTelemetry telemetry)
-    {
-        if (MenuLayer.Parent is not Grid host) return;
-        CloseMaintenance();
-        var backdrop = new Border { Background = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)) };
-        backdrop.MouseLeftButtonDown += (_, _) => CloseMaintenance();
-        var layer = new Grid();
-        layer.Children.Add(backdrop);
-        var panel = MaintenancePanel.Build(printer, telemetry, CloseMaintenance,
-            () => Dispatcher.BeginInvoke(new Action(Rebuild)));
-        layer.Children.Add(panel);
-        _maintenanceLayer = layer;
-        host.Children.Add(layer);
-        _spoolOverlayActive = true;
-        panel.MaxHeight = Math.Max(420, ActualHeight - 24);
-        panel.MaxWidth = Math.Max(420, ActualWidth - 24);
-    }
-
-    internal void CloseMaintenance()
-    {
-        if (_maintenanceLayer is not null && MenuLayer.Parent is Grid host) host.Children.Remove(_maintenanceLayer);
-        _maintenanceLayer = null;
-        if (_spoolOverlayActive && _spoolLayer is null)
-        {
-            _spoolOverlayActive = false;
-            FitHeightToContent();
-        }
-    }
+        => ShowPanel(MaintenancePanel.Build(printer, telemetry, ClosePanel,
+            () => Dispatcher.BeginInvoke(new Action(Rebuild))), 470, 570);
 
     private void ShowCardMenu(FrameworkElement anchor, FrameworkElement menu)
     {
@@ -222,6 +157,11 @@ public partial class DashboardWindow : Window
     /// instead of opening a separate window. The Back button restores the list.</summary>
     internal void ShowDetail(string serial)
     {
+        if (WindowMode)
+        {
+            ShowPanel(new DetailView(_store, serial, ClosePanel), 500, 720);
+            return;
+        }
         HideCardMenu();
         DetailLayer.Child = new DetailView(_store, serial, HideDetail);
         DetailLayer.Visibility = Visibility.Visible;
@@ -312,6 +252,7 @@ public partial class DashboardWindow : Window
     /// or hides it if already visible — so a tray click toggles it like a popover.</summary>
     public void TogglePopover()
     {
+        if (WindowMode) { ShowPopover(); return; }
         if (IsVisible)
         {
             Hide();
@@ -326,6 +267,12 @@ public partial class DashboardWindow : Window
     /// <summary>Positions and shows the panel unconditionally (used by menu items).</summary>
     public void ShowPopover()
     {
+        if (WindowMode)
+        {
+            Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate(); UpdateStartup(); return;
+        }
         var area = SystemParameters.WorkArea;
         Left = area.Right - Width - 8;
         Top = area.Bottom - Height - 8;
@@ -336,6 +283,7 @@ public partial class DashboardWindow : Window
         // back opaque after the first open (issue #28). Re-applying after Show keeps it frosted.
         ApplyModernChrome();
         Activate();
+        UpdateStartup();
         FitHeightToContent();   // size to content now that it's visible
     }
 
@@ -382,7 +330,8 @@ public partial class DashboardWindow : Window
             source.CompositionTarget.BackgroundColor = Colors.Transparent;
 
         // Extend the DWM frame across the entire client area (sheet of glass) so acrylic fills the window.
-        var margins = new MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
+        int inset = WindowMode ? 0 : -1;
+        var margins = new MARGINS { cxLeftWidth = inset, cxRightWidth = inset, cyTopHeight = inset, cyBottomHeight = inset };
         try { DwmExtendFrameIntoClientArea(hwnd, ref margins); } catch { }
 
         int dark = GTheme.IsLight ? 0 : 1, round = 2;
@@ -563,6 +512,7 @@ public partial class DashboardWindow : Window
     // toggle overrides and is remembered.
     private bool UseCompactMode()
     {
+        if (WindowMode) return false; // desktop window grows by full card tiles; compact rows remain a popover choice
         if (_store.Printers.Count < 4) return false;
         return AppSettings.CompactModeChosen ? AppSettings.CompactMode : _store.Printers.Count > 8;
     }
@@ -578,19 +528,21 @@ public partial class DashboardWindow : Window
             : (_store.GlobalMessage ?? string.Format(AppSettings.T("{0} printers · {1} working"), _store.Printers.Count, _store.ActivePrintCount));
 
         bool compact = UseCompactMode();
-        CompactButton.Visibility = _store.Printers.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
+        var dashboardPrinters = _store.DashboardPrinters;
+        int layoutColumns = LayoutColumns;
+        CompactButton.Visibility = !WindowMode && _store.Printers.Count >= 4 ? Visibility.Visible : Visibility.Collapsed;
         CompactButton.Content = compact ? AppSettings.T("Expand") : AppSettings.T("Collapse");
         // Columns toggle (1 ↔ 2) only makes sense in the card view; the icon shows the current layout.
-        ColumnsButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ColumnsButton.Visibility = compact || WindowMode ? Visibility.Collapsed : Visibility.Visible;
         ColumnsButton.Content = AppSettings.DashboardColumns == 2 ? "▥" : "▭";
         ColumnsButton.ToolTip = AppSettings.DashboardColumns == 2
             ? AppSettings.T("One column")
             : AppSettings.T("Two columns");
 
-        var serials = _store.Printers.Select(p => p.Serial).ToList();
-        var wideSerials = _store.Printers.Where(NeedsWideSpan).Select(p => p.Serial).ToHashSet();
+        var serials = dashboardPrinters.Select(p => p.Serial).ToList();
+        var wideSerials = dashboardPrinters.Where(NeedsWideSpan).Select(p => p.Serial).ToHashSet();
         if (!serials.SequenceEqual(_renderedSerials) || _renderedCompact != compact ||
-            !_renderedWideSerials.SetEquals(wideSerials) || _renderedColumns != AppSettings.DashboardColumns)
+            !_renderedWideSerials.SetEquals(wideSerials) || _renderedColumns != layoutColumns)
         {
             HideCardMenu();
             CardsPanel.Children.Clear();
@@ -604,11 +556,13 @@ public partial class DashboardWindow : Window
                     Margin = new Thickness(8)
                 });
                 _renderedSerials = serials; _renderedWideSerials = wideSerials; _renderedCompact = compact;
+                _renderedColumns = layoutColumns;
+                UpdateStartup();
                 FitHeightToContent();
                 return;
             }
             var live = new Dictionary<string, ICardView>();
-            foreach (var printer in _store.Printers)
+            foreach (var printer in dashboardPrinters)
             {
                 _views.TryGetValue(printer.Serial, out var existing);
                 ICardView view = compact
@@ -619,18 +573,18 @@ public partial class DashboardWindow : Window
             _views.Clear();
             foreach (var kv in live) _views[kv.Key] = kv.Value;
             _renderedSerials = serials; _renderedWideSerials = wideSerials; _renderedCompact = compact;
-            _renderedColumns = AppSettings.DashboardColumns;
+            _renderedColumns = layoutColumns;
 
             CardsPanel.ColumnDefinitions.Clear();
             CardsPanel.RowDefinitions.Clear();
             if (compact)
             {
-                Width = 512;
+                if (!WindowMode) Width = 512;
                 CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                for (int row = 0; row < _store.Printers.Count; row++)
+                for (int row = 0; row < dashboardPrinters.Count; row++)
                 {
                     CardsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                    var root = live[_store.Printers[row].Serial].Root;
+                    var root = live[dashboardPrinters[row].Serial].Root;
                     root.Width = double.NaN;
                     Grid.SetRow(root, row);
                     CardsPanel.Children.Add(root);
@@ -638,20 +592,20 @@ public partial class DashboardWindow : Window
             }
             else
             {
-                // macOS contract: user picks 1 or 2 columns. A wide card (dual-nozzle / multi-AMS)
-                // spans the full width; the last card also fills an otherwise empty final row.
-                int cols = AppSettings.DashboardColumns;
-                Width = cols == 1 ? 380 : 563;
+                // macOS contract: multi-nozzle printers remain freely placeable one-cell cards.
+                // Only multi-AMS cards are wide; an odd final card stretches in popover mode only.
+                int cols = layoutColumns;
+                if (!WindowMode) Width = cols == 1 ? 380 : 563;
                 for (int i = 0; i < cols; i++)
                     CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 int row = 0, column = 0;
-                var printers = _store.Printers;
+                var printers = dashboardPrinters;
                 for (int idx = 0; idx < printers.Count; idx++)
                 {
                     var printer = printers[idx];
                     int span = wideSerials.Contains(printer.Serial) ? cols : 1;
                     if (column + span > cols) { row++; column = 0; }
-                    if (idx == printers.Count - 1 && column == 0) span = cols;
+                    if (!WindowMode && idx == printers.Count - 1 && column == 0) span = cols;
                     while (CardsPanel.RowDefinitions.Count <= row)
                         CardsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                     var root = live[printer.Serial].Root;
@@ -668,7 +622,7 @@ public partial class DashboardWindow : Window
             }
         }
 
-        foreach (var printer in _store.Printers)
+        foreach (var printer in dashboardPrinters)
             if (_views.TryGetValue(printer.Serial, out var view))
             {
                 var t = _store.Telemetry.TryGetValue(printer.Serial, out var tel) ? tel : new PrinterTelemetry();
@@ -684,15 +638,15 @@ public partial class DashboardWindow : Window
 
         // Fit the window to the cards' real height — cards vary (multiple AMS units wrap onto extra
         // rows, expanded accordion cards), so a fixed per-card estimate clipped tall cards.
+        UpdateStartup();
         FitHeightToContent();
     }
 
     private bool NeedsWideSpan(SavedPrinter printer)
     {
         if (!_store.Telemetry.TryGetValue(printer.Serial, out var telemetry)) return false;
-        bool dualNozzle = telemetry.Nozzles.Any(n => n.Position == NozzlePosition.Right);
         int moduleCount = telemetry.FilamentGroups.Count(group => !group.IsExternal);
-        return dualNozzle || moduleCount >= 2;
+        return moduleCount >= 2;
     }
 
     private void ToggleCompact()
@@ -709,11 +663,10 @@ public partial class DashboardWindow : Window
     // hidden/minimized panel never resizes.
     internal void FitHeightToContent()
     {
-        if (!IsVisible) return;
-        if (_spoolOverlayActive) return;   // keep the grown height while the slot overlay is open
+        if (!IsVisible || WindowMode || _boundedLayer != null) return;
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (!IsVisible) return;
+            if (!IsVisible || WindowMode || _boundedLayer != null) return;
             // Measure the whole panel (header + cards + footer) at the current width to get the exact
             // height it needs, so the window fits without a scrollbar until it hits the work-area cap.
             // Measuring DesiredSize (not ActualHeight) avoids the feedback loop that grew the window.
@@ -721,7 +674,7 @@ public partial class DashboardWindow : Window
             double desired = PanelBody.DesiredSize.Height + 2;   // tiny buffer so Auto never adds a bar
             if (desired <= 0) return;
             double max = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
-            double target = Math.Min(max, desired);
+            double target = Math.Min(max, Math.Max(_store.Startup.Loading ? 350 : 150, desired));
             if (Math.Abs(target - Height) < 1) return;
             Height = target;
             var area = SystemParameters.WorkArea;
@@ -751,17 +704,21 @@ public partial class DashboardWindow : Window
         private readonly DashboardWindow _owner;
         private Point _dragStart;
         private readonly TextBlock _name, _connection, _pillText, _job, _jobSeparator, _percent, _eta, _layers, _message;
+        private readonly Button _details;
         private readonly Button _printerAlert, _maintenance;
         private readonly Border _noticeBanner;
         private readonly TextBlock _noticeText;
         private Action? _onDismissNotice;
         private readonly Grid _bar;
-        private readonly StackPanel _progressRow;
+        private readonly Grid _progressRow;
         // Signature of the last-rendered filament dock, so it's only rebuilt when something actually
         // changed (rebuilding every tick made the AMS chips flicker).
         private string? _lastAmsSig;
+        private bool _knownDualNozzle;
         // Flat layout: thin rules separate the sections; an offline scrim dims the card.
-        private readonly Border _tempDivider, _amsDivider, _offlineOverlay;
+        private readonly Border _tempDivider, _amsDivider, _offlineOverlay, _printErrorPanel;
+        private readonly TextBlock _printErrorText;
+        private readonly Grid _filamentSection;
         private readonly TextBlock _offlineText;
         // Temperature rows (nozzle(s)/bed/chamber) and the filament dock are rebuilt per update.
         private readonly StackPanel _temps;
@@ -771,6 +728,8 @@ public partial class DashboardWindow : Window
         {
             _owner = owner;
             Serial = printer.Serial;
+            var identity = (printer.Model + " " + printer.Name).ToUpperInvariant();
+            _knownDualNozzle = identity.Contains("H2D") || identity.Contains("X2D");
             var stack = new StackPanel();
             var jobStack = new StackPanel();
 
@@ -785,10 +744,10 @@ public partial class DashboardWindow : Window
             // Left cluster (macOS layout): printer glyph + name + MQTT pill + a small line-chart icon
             // for the details view - same order and grouping as the macOS card header.
             var printerIcon = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, Foreground = GTheme.Brush(GTheme.Accent), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 150 };
+            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 14, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 150 };
             _connection = new TextBlock
             {
-                FontFamily = new FontFamily("Segoe UI"), FontSize = 9, FontWeight = FontWeights.SemiBold,
+                FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.Normal,
                 Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center
             };
             var connectionPill = new Border
@@ -803,19 +762,19 @@ public partial class DashboardWindow : Window
                 Points = new PointCollection { new Point(0, 8), new Point(3, 4), new Point(6, 5.5), new Point(10, 1) },
                 Stroke = Muted(), StrokeThickness = 1.4, StrokeLineJoin = PenLineJoin.Round, VerticalAlignment = VerticalAlignment.Center
             };
-            var details = new Button
+            _details = new Button
             {
-                Content = detailsIcon, Width = 24, Height = 18, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0),
+                Content = detailsIcon, Width = 20, Height = 20, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
                 Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0),
                 ToolTip = AppSettings.T("Details")
             };
-            details.Click += (_, _) => _owner.ShowDetail(Serial);
+            _details.Click += (_, _) => _owner.ShowDetail(Serial);
             var leftCluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             leftCluster.Children.Add(printerIcon);
             leftCluster.Children.Add(_name);
             leftCluster.Children.Add(connectionPill);
-            leftCluster.Children.Add(details);
+            leftCluster.Children.Add(_details);
             Grid.SetColumn(leftCluster, 0);
             header.Children.Add(leftCluster);
 
@@ -855,7 +814,7 @@ public partial class DashboardWindow : Window
             header.Children.Add(more);
             jobStack.Children.Add(header);
 
-            // Status line (macOS layout): state text on the left, time + layers on the right.
+            // Current macOS layout: state and job on the left, compact percentage on the right.
             var statusLine = new Grid { Margin = new Thickness(0, 1, 0, 0) };
             statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             statusLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -868,30 +827,37 @@ public partial class DashboardWindow : Window
             Grid.SetColumn(_jobSeparator, 1); statusLine.Children.Add(_jobSeparator);
             // Full-width file name now that layers moved to the progress row — no more truncation race.
             _job = new TextBlock { Foreground = GTheme.Brush(GTheme.Text), FontSize = 10, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(_job, 2); Grid.SetColumnSpan(_job, 2); statusLine.Children.Add(_job);
+            Grid.SetColumn(_job, 2); statusLine.Children.Add(_job);
+            _percent = new TextBlock { FontSize = 14, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+            Typography.SetNumeralAlignment(_percent, FontNumeralAlignment.Tabular);
+            Grid.SetColumn(_percent, 3); statusLine.Children.Add(_percent);
             jobStack.Children.Add(statusLine);
 
-            _progressRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+            // Bar, ETA and layers share one line. The bar takes the flexible width just like the
+            // low-hugging progress view in the macOS card.
+            _progressRow = new Grid { Margin = new Thickness(0, 3, 0, 2) };
+            _progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            _progressRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             _bar = new Grid { Height = 8 };
             for (int i = 0; i < 32; i++)
             {
                 _bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                var segment = new Border { CornerRadius = new CornerRadius(1), Margin = new Thickness(i == 0 ? 0 : 1, 0, 0, 0) };
+                var segment = new Border { CornerRadius = new CornerRadius(1), Margin = new Thickness(i == 0 ? 0 : 1, 2, 0, 2) };
                 Grid.SetColumn(segment, i); _bar.Children.Add(segment);
             }
-            _percent = new TextBlock { FontSize = 22, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-            Typography.SetNumeralAlignment(_percent, FontNumeralAlignment.Tabular);
-            _progressRow.Children.Add(_percent);
             _eta = new TextBlock { FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Padding = new Thickness(0), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(_bar, 0); _progressRow.Children.Add(_bar);
+            Grid.SetColumn(_eta, 1);
             _progressRow.Children.Add(_eta);
             // Layers ride the progress line next to ETA (macOS layout) — dead space put to use.
             var layersCluster = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             layersCluster.Children.Add(new TextBlock { Text = "⧉ ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center });
             _layers = new TextBlock { FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
             layersCluster.Children.Add(_layers);
+            Grid.SetColumn(layersCluster, 2);
             _progressRow.Children.Add(layersCluster);
             jobStack.Children.Add(_progressRow);
-            jobStack.Children.Add(_bar);
             // Flat: no box around the job section; long thin rules separate the sections instead.
             stack.Children.Add(new Border { Background = System.Windows.Media.Brushes.Transparent, Padding = new Thickness(2, 2, 2, 2), Child = jobStack });
             _tempDivider = SectionDivider();
@@ -901,18 +867,53 @@ public partial class DashboardWindow : Window
             _amsDivider = SectionDivider();
             stack.Children.Add(_amsDivider);
             _ams = new StackPanel();
-            stack.Children.Add(_ams);
+            _printErrorText = new TextBlock
+            {
+                FontSize = 11, FontWeight = FontWeights.Medium,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xEF, 0x96, 0x90)),
+                TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxHeight = 32, VerticalAlignment = VerticalAlignment.Center
+            };
+            _printErrorPanel = new Border
+            {
+                Height = 44, Background = new SolidColorBrush(Color.FromArgb(0x21, 0xFF, 0x5A, 0x4E)),
+                CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 5, 8, 5),
+                Visibility = Visibility.Collapsed, Cursor = Cursors.Hand, Child = _printErrorText
+            };
+            _printErrorPanel.MouseLeftButtonUp += (_, _) => OpenMaintenance();
+            _filamentSection = new Grid();
+            _filamentSection.Children.Add(_ams);
+            _filamentSection.Children.Add(_printErrorPanel);
+            stack.Children.Add(_filamentSection);
 
             _message = new TextBlock { FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
             stack.Children.Add(_message);
 
-            // Offline scrim (dims the card + shows the connection error), on top of the content.
+            // Offline scrim begins below the header, so the printer name and the ⋯ menu stay visible
+            // and usable when a printer is unreachable. The message itself sits on a quiet inner tile.
             _offlineText = new TextBlock { FontSize = 11, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Secondary), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(16) };
+            var offlineContent = new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = "⚠", FontSize = 16, Foreground = GTheme.Brush(GTheme.Secondary), HorizontalAlignment = HorizontalAlignment.Center },
+                    _offlineText
+                }
+            };
+            var offlineMessage = new Border
+            {
+                Background = GTheme.Brush(GTheme.With(GTheme.Card, 0.88)),
+                BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12), Padding = new Thickness(0, 8, 0, 8),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                Child = offlineContent
+            };
             _offlineOverlay = new Border
             {
-                Background = new SolidColorBrush(Color.FromArgb(0xA8, 0x0C, 0x0D, 0x0E)),
-                CornerRadius = new CornerRadius(GTheme.CardRadius), Visibility = Visibility.Collapsed,
-                Child = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Children = { new TextBlock { Text = "⚠", FontSize = 16, Foreground = GTheme.Brush(GTheme.Secondary), HorizontalAlignment = HorizontalAlignment.Center }, _offlineText } }
+                Background = new SolidColorBrush(Color.FromArgb(0xB8, 0x0C, 0x0D, 0x0E)),
+                CornerRadius = new CornerRadius(0, 0, GTheme.CardRadius, GTheme.CardRadius),
+                Margin = new Thickness(0, 28, 0, 0), Visibility = Visibility.Collapsed,
+                Child = offlineMessage
             };
             // Small dismissible notice at the bottom of the card (e.g. a Spoolbase spool auto-detached
             // because an NFC roll was inserted into its slot).
@@ -1022,8 +1023,9 @@ public partial class DashboardWindow : Window
             // Only a running/paused print has a job to show; finished/idle still echoes the last file
             // name, so treat those as "no active job" (matches macOS).
             bool hasActiveJob = (t.State is PrinterState.Printing or PrinterState.Paused) && !string.IsNullOrEmpty(t.JobName);
-            _job.Text = hasActiveJob ? t.JobName! : AppSettings.T("NO ACTIVE JOB");
-            _job.ToolTip = hasActiveJob ? t.JobName : null;
+            bool keepErrorJob = t.State == PrinterState.Error && !string.IsNullOrEmpty(t.JobName);
+            _job.Text = hasActiveJob || keepErrorJob ? t.JobName! : AppSettings.T("NO ACTIVE JOB");
+            _job.ToolTip = hasActiveJob || keepErrorJob ? t.JobName : null;
             SetSegments(_bar, t.Progress, accent);
             _percent.Text = $"{t.Progress}%";
             _percent.Foreground = GTheme.Brush(accent);
@@ -1032,13 +1034,16 @@ public partial class DashboardWindow : Window
             Root.BorderBrush = GTheme.Brush(GTheme.Line);
             Root.Background = GTheme.Brush(GTheme.CardTranslucent);
 
-            // Temperature rows: single nozzle → [Nozzle, Bed, Chamber?]; dual nozzle → [L, P] + [Bed, Chamber?].
+            // Temperature row: icons + current/target stay on one line, matching macOS.
             // Neutral tiles — the hue lives ONLY on the value (nozzle warm, bed gold, chamber violet).
             _temps.Children.Clear();
             var nozzles = t.Nozzles.Count > 0
                 ? t.Nozzles
                 : new List<NozzleTelemetry> { new() { Position = NozzlePosition.Single, CurrentTemperature = t.NozzleTemperature, TargetTemperature = t.NozzleTargetTemperature } };
-            bool dual = nozzles.Any(n => n.Position == NozzlePosition.Right);
+            _knownDualNozzle = _knownDualNozzle
+                || nozzles.Any(n => n.Position == NozzlePosition.Right)
+                || t.NozzleTemperature2.HasValue;
+            bool dual = _knownDualNozzle;
             string bedLabel = AppSettings.T("Bed");
             string chamberLabel = AppSettings.T("Chamber");
             // Temperature value colour follows STATE (design/kolorystyka.md §3), the same map for nozzle,
@@ -1048,31 +1053,34 @@ public partial class DashboardWindow : Window
             bool printing = t.State == PrinterState.Printing;
             bool error = t.State == PrinterState.Error;
             bool mono = AppSettings.Monochrome;
-            (string, string, Brush?, bool) Cell(string label, double? cur, double? tgt)
+            (string, string, string, Brush?, bool) Cell(string icon, string label, double? cur, double? tgt)
             {
                 // Only the nozzle/bed (which carry a target) surface the printer's thermal alarm here.
                 var st = TempStyle.Of(cur, tgt, printing, error && tgt.HasValue);
                 var val = FormatTemp(cur, tgt);
                 if (mono) val = TempStyle.Symbol(st) + " " + val;
-                return (label, val, TempStyle.BrushFor(st, mono), TempStyle.Bold(st));
+                return (icon, label, val, TempStyle.BrushFor(st, mono), TempStyle.Bold(st));
             }
-            var cells = new List<(string, string, Brush?, bool)>();
+            var cells = new List<(string, string, string, Brush?, bool)>();
             if (dual)
             {
                 var left = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Left) ?? nozzles[0];
                 var right = nozzles.FirstOrDefault(n => n.Position == NozzlePosition.Right);
-                cells.Add(Cell(AppSettings.T("Nozzles L"), left.CurrentTemperature, left.TargetTemperature));
-                cells.Add(Cell("P", right?.CurrentTemperature, right?.TargetTemperature));
+                cells.Add(Cell("nozzle", "L", left.CurrentTemperature, left.TargetTemperature));
+                cells.Add(Cell("nozzle", "R", right?.CurrentTemperature, right?.TargetTemperature));
             }
             else
             {
                 var single = nozzles[0];
-                cells.Add(Cell(AppSettings.T("Nozzle"), single.CurrentTemperature, single.TargetTemperature));
+                cells.Add(Cell("nozzle", AppSettings.T("Nozzle"), single.CurrentTemperature, single.TargetTemperature));
             }
-            cells.Add(Cell(bedLabel, t.BedTemperature, t.BedTargetTemperature));
-            // Chamber tile only when there is an actual reading (no empty "— / —" tile).
-            if (t.ChamberTemperature is { } ch)
-                cells.Add(Cell(chamberLabel, ch, null));
+            cells.Add(Cell("bed", bedLabel, t.BedTemperature, t.BedTargetTemperature));
+            // Keep the chamber column reserved even during partial reports, otherwise the bed
+            // visibly jumps sideways. The unavailable cell is transparent but still participates.
+            var chamberCell = Cell("chamber", chamberLabel, t.ChamberTemperature, null);
+            cells.Add(t.ChamberTemperature.HasValue
+                ? chamberCell
+                : ("spacer", "", "", (Brush?)Brushes.Transparent, false));
             _temps.Children.Add(TempRow(cells.ToArray()));
 
             // Filament modules laid out in rows of up to two, side by side (macOS layout): an AMS is
@@ -1113,14 +1121,26 @@ public partial class DashboardWindow : Window
             var collapse = Visibility.Collapsed;
             var show = Visibility.Visible;
             _job.Visibility = _jobSeparator.Visibility = AppSettings.CardShowFileName ? show : collapse;
-            _progressRow.Visibility = _bar.Visibility = AppSettings.CardShowProgress ? show : collapse;
+            _percent.Visibility = _progressRow.Visibility = AppSettings.CardShowProgress ? show : collapse;
+            _details.Visibility = AppSettings.CardShowDetailsChip ? show : collapse;
             _temps.Visibility = AppSettings.CardShowTemperatures ? show : collapse;
-            _ams.Visibility = hasGroups && AppSettings.CardShowFilaments ? show : collapse;
+            bool showPrintError = t.State == PrinterState.Error;
+            bool showFilaments = hasGroups && AppSettings.CardShowFilaments;
+            _filamentSection.Visibility = showFilaments || showPrintError ? show : collapse;
+            _ams.Visibility = showPrintError ? Visibility.Hidden : showFilaments ? show : collapse;
+            _printErrorPanel.Visibility = showPrintError ? show : collapse;
+            if (showPrintError)
+            {
+                _printErrorText.Text = HmsResolver.Description(t.HmsCodes, Serial, pl)
+                    ?? (t.ErrorCode != 0 ? string.Format(AppSettings.T("Error code: 0x{0:X}"), t.ErrorCode)
+                                         : AppSettings.T("Printer reported an error"));
+                _printErrorPanel.ToolTip = _printErrorText.Text;
+            }
             // Section rules only show when their section does (no orphan lines).
             _tempDivider.Visibility = _temps.Visibility;
-            _amsDivider.Visibility = _ams.Visibility;
+            _amsDivider.Visibility = _filamentSection.Visibility;
 
-            // Offline: dim the whole card and surface the connection error over it.
+            // Offline: dim the body while leaving the header and its actions visible.
             bool offline = t.State == PrinterState.Offline;
             _offlineOverlay.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
             if (offline) _offlineText.Text = string.IsNullOrEmpty(message)
@@ -1287,26 +1307,45 @@ public partial class DashboardWindow : Window
         return Color.FromArgb(c.A, Mix(c.R), Mix(c.G), Mix(c.B));
     }
 
-    private static UIElement TempRow(params (string Label, string Value, Brush? Colour, bool Bold)[] cells)
+    private static UIElement TempRow(params (string Icon, string Label, string Value, Brush? Colour, bool Bold)[] cells)
     {
         var row = new Grid();
         for (int i = 0; i < cells.Length; i++)
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (int i = 0; i < cells.Length; i++)
         {
-            var (label, value, colour, bold) = cells[i];
-            var cell = new Grid { Height = 34 };
+            var (icon, label, value, colour, bold) = cells[i];
+            var cell = new StackPanel
+            {
+                Orientation = Orientation.Horizontal, Height = 22,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = icon == "spacer" ? 0 : 1
+            };
+            var iconPath = new Path
+            {
+                Data = Geometry.Parse(icon switch
+                {
+                    "nozzle" => "M1,1 L11,1 L8,6 L8,11 L4,11 L4,6 Z",
+                    "bed" => "M1,4 L6,1 L11,4 L6,7 Z M1,7 L6,10 L11,7",
+                    _ => "M6,1 L11,4 L11,10 L6,13 L1,10 L1,4 Z M1,4 L6,7 L11,4 M6,7 L6,13"
+                }),
+                Stroke = GTheme.Brush(GTheme.Secondary), StrokeThickness = 1.2,
+                Fill = Brushes.Transparent, Width = 12, Height = 14, Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 4, 0),
+                ToolTip = label
+            };
+            cell.Children.Add(iconPath);
             cell.Children.Add(new TextBlock
             {
-                Text = label.ToUpperInvariant(), FontFamily = new FontFamily("Segoe UI"), FontSize = 7,
-                FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Margin = new Thickness(6, 3, 4, 0),
-                VerticalAlignment = VerticalAlignment.Top, TextTrimming = TextTrimming.CharacterEllipsis
+                Text = label is "L" or "R" ? label : "", FontFamily = new FontFamily("Segoe UI"), FontSize = 9,
+                FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Secondary), Margin = new Thickness(0, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
             });
             var valueBlock = new TextBlock
             {
                 FontFamily = new FontFamily("Segoe UI"), FontSize = 14,
-                FontWeight = bold ? FontWeights.Bold : FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 6, 3, 0)
+                FontWeight = bold ? FontWeights.Bold : FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 3, 0)
             };
             // The one spot of colour per zone is the live value; the target "/ X°" stays small and faint.
             int slash = value.IndexOf('/');
@@ -1321,12 +1360,11 @@ public partial class DashboardWindow : Window
                 valueBlock.Foreground = colour ?? GTheme.Brush(GTheme.Text);
             }
             cell.Children.Add(valueBlock);
-            // Neutral tile with a faint top-light; a thin line separates zones (no coloured washes).
+            // Current macOS variant is completely flat: no tile and no vertical separators.
             var zone = new Border
             {
                 Background = GTheme.Brush(GTheme.W(0.012)), Child = cell,
-                BorderBrush = GTheme.Brush(i == 0 ? Colors.Transparent : GTheme.Line),
-                BorderThickness = new Thickness(i == 0 ? 0 : 1, 0, 0, 0)
+                BorderThickness = new Thickness(0)
             };
             Grid.SetColumn(zone, i); row.Children.Add(zone);
         }
@@ -1711,9 +1749,9 @@ public partial class DashboardWindow : Window
     {
         if (current is not { } c) return "—";
         string value = c.ToString("0", CultureInfo.InvariantCulture) + "°";
-        // Always show the target slot, with "/ —" when there is no target reading — matches macOS,
-        // where chamber and the right (idle) nozzle read e.g. "39° / —" rather than a bare "39°".
-        value += "/" + (target is { } t && t > 0 ? t.ToString("0", CultureInfo.InvariantCulture) + "°" : "—");
+        // macOS omits an unavailable target (notably chamber) to keep every zone on one line.
+        if (target is { } t && t > 0)
+            value += "/" + t.ToString("0", CultureInfo.InvariantCulture) + "°";
         return value;
     }
 

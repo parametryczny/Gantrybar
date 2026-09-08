@@ -66,6 +66,8 @@ cp "Resources/Info.plist" "$APP_PATH/Contents/Info.plist"
 cp "Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
 # Embedded Spoolbase filament catalog (loaded via Bundle.main at runtime).
 cp "Resources/filament-catalog.json" "$APP_PATH/Contents/Resources/filament-catalog.json"
+# Canonical read-only LAN dashboard shared with Windows and Linux.
+cp "Resources/web-dashboard.html" "$APP_PATH/Contents/Resources/web-dashboard.html"
 # Translation catalog, shared verbatim with the Windows and Linux builds.
 mkdir -p "$APP_PATH/Contents/Resources/i18n"
 cp "i18n/pl.json" "$APP_PATH/Contents/Resources/i18n/pl.json"

@@ -1,6 +1,6 @@
 # Gantry — kontrakt layoutu karty drukarki (port na Windows / Linux)
 
-**Wersja:** 1.0 · **Data:** 2026-08-24 · **Źródło prawdy:** shipped macOS (`Sources/Gantry/App/GantryTheme.swift` + `Sources/Gantry/Views/PrinterDashboardViewController.swift`)
+**Wersja:** 1.2 · **Data:** 2026-09-04 · **Źródło prawdy:** shipped macOS (`Sources/Gantry/App/GantryTheme.swift` + `Sources/Gantry/Views/PrinterDashboardViewController.swift`)
 
 Ten dokument opisuje **dokładne** wartości i reguły, które wersja macOS ma **teraz** (po sesji zagęszczania i neutralizacji koloru). Windows (WPF/C#) i Linux (GTK/Python) mają odtworzyć to 1:1. Gdzie ten dokument różni się od starszego `gantry-design-tokens.json` (v0.2.0), **obowiązuje ten dokument** — tamten opisuje wcześniejszy zamysł, ten opisuje stan wdrożony.
 
@@ -72,7 +72,7 @@ Sterowana **liczbą kolumn** (1 lub 2), którą wybiera user (przełącznik), or
 | odstęp pionowy między rzędami kart | **8** (compact: 3) |
 | wysokość nagłówka panelu | 36 |
 
-**Reguła spanu:** zwykła karta zawsze zajmuje jedną kolumnę, również gdy jest ostatnia w niepełnym rzędzie. Pełną szerokość dostaje wyłącznie wariant szeroki (podwójna dysza albo co najmniej dwa niezewnętrzne moduły AMS). Pusty „spacer" w rzędzie ma szerokość `unit*remaining + gap*(remaining−1)`.
+**Reguła spanu:** drukarka wielodyszowa pozostaje zwykłym kaflem jednego pola i można ją swobodnie ustawić przeciąganiem. Wariant szeroki jest zarezerwowany dla co najmniej dwóch niezewnętrznych modułów AMS. Przy dwóch kolumnach ostatnia zwykła karta rozciąga się na pełną szerokość wyłącznie w dymku; w oknie systemowym zachowuje jedno pole.
 
 **Wysokość panelu:** `min(maxHeight, chrome + zmierzona treść)`, gdzie `maxHeight = ekran.visibleFrame.height − 24`. Nagłówek nie może „uciec" nad pasek menu.
 
@@ -82,15 +82,16 @@ Sterowana **liczbą kolumn** (1 lub 2), którą wybiera user (przełącznik), or
 
 Karta = warstwa `card` α 0.5 + ramka `line` 1px + `cardRadius` 16, `masksToBounds`.
 
-**Wewnętrzny stack pionowy** (3 sekcje): `[jobSurface, tempBento, filamentDock]`
-- odstęp między sekcjami: **3**
+**Wewnętrzny stack pionowy**: `[jobSurface, separator, tempBento, separator, filamentSection]`, gdzie
+`filamentSection` pokazuje `filamentDock` albo nakładkę błędu w tym samym miejscu.
+- odstęp między sekcjami: **6**
 - insety treści: lewy/prawy **10**, góra/dół **6**
 - min. wysokość karty: **90**
 
-### 3a. jobSurface (bento „zadanie")
-Warstwa `surface` + ramka `line` 1px + `tileRadius` 10.5. Wewnątrz stack pionowy:
-`[header, statusRow, flexibleJobSpace, progressSummary, progress]`
-- insety: lewy/prawy **9**, góra **6**, dół **5**
+### 3a. jobSurface
+Sekcja jest płaska: przezroczysta, bez dodatkowej ramki i bez promienia. Wewnątrz stack pionowy:
+`[header, statusRow, flexibleJobSpace, progressSummary]`
+- insety: **2** z każdej strony
 - odstęp elementów: **1**
 - `flexibleJobSpace` = elastyczny rozpychacz (spycha progress na dół, gdy karta jest wyższa od sąsiada w rzędzie o równej wysokości)
 
@@ -107,7 +108,7 @@ Stack poziomy, `centerY`, spacing **7**:
 | `titleCluster` | `[nameLabel, manufacturerLabel]`, poziomy, **centerY**, spacing 5 |
 | `nameLabel` | 14 pt semibold, `text` |
 | `manufacturerLabel` (pill „MQTT" itd.) | 10 pt regular, tło biel α 0.025, radius 5 |
-| `detailsChip` (ikona wykresu → Szczegóły) | 20×20, radius 10, tło biel α 0.065, ikona `chart.xyaxis.line` 11px |
+| `detailsChip` (ikona wykresu → Szczegóły) | 20×20, radius 10, tło biel α 0.065, ikona `chart.xyaxis.line` 11px; **domyślnie ukryty**, włączany w Ustawieniach |
 | `dragHandle` (⠿) | 20×20, radius 10, tło biel α 0.065, siatka kropek 2 kol × 3 rz (Ø 2.4, krok 6) |
 | `actionsButton` (⋯) | 20×20, radius 10, tło biel α 0.065, ikona `ellipsis` |
 
@@ -118,7 +119,7 @@ Stack poziomy, `centerY`, spacing **7**:
 ## 5. Linia statusu (statusRow)
 
 Stack poziomy, `centerY`, spacing **5**:
-`[jobStateDot, statusLabel, jobSeparator, jobLabel, ↔spacer]`
+`[jobStateDot, statusLabel, jobSeparator, jobLabel, ↔spacer, percentLabel]`
 
 | element | wartość |
 |---|---|
@@ -126,19 +127,19 @@ Stack poziomy, `centerY`, spacing **5**:
 | `statusLabel` | 10 pt medium; kolor: stale→systemOrange, else neutralny (`accent`); hug required |
 | `jobSeparator` (`·`) | 10 pt semibold, tertiary |
 | `jobLabel` (nazwa pliku) | 10 pt semibold, `text`, **marquee** (scroll na hover), niski hug/compression → bierze wolną szerokość |
+| `percentLabel` | **14 pt** mono bold, neutralny; wyrównany do prawej |
 
 **Licznik warstw NIE jest tu** — przeniesiony do rzędu postępu (§6).
 
 ---
 
-## 6. Rząd postępu (progressSummary) + pasek
+## 6. Rząd postępu (progressSummary)
 
-Stack poziomy, `centerY`, spacing **7**:
-`[percentLabel, etaMetric, layerMetric, ↔spacer]`
+Stack poziomy, `centerY`, spacing **8**:
+`[progressBar (elastyczny), etaMetric, layerMetric]`
 
 | element | wartość |
 |---|---|
-| `percentLabel` (duże %) | **22 pt** mono semibold, kolor neutralny; hug/compression required (nie ucinać „100%") |
 | `etaMetric` | chip: ikona `clock` + „`3h 16m · 12:06`" (czas pozostały · godzina końca) |
 | `layerMetric` | ikona `square.3.layers.3d` + „`6/377`" (bez chipa) |
 
@@ -157,25 +158,31 @@ Stack poziomy, `centerY`, spacing **7**:
 
 ## 7. Bento temperatur (tempBento)
 
-Kontener: `surface` + ramka `line` 1px, **wysokość 34**, radius `tileRadius`. Wewnątrz rząd stref `fillEqually`, spacing 0.
+Kontener płaski, bez osobnej ramki, **wysokość 22**. Wewnątrz rząd stref `fillEqually`, spacing 0.
 
 **Strefy (kolejność):**
-- 1 dysza: `[DYSZA, STÓŁ, KOMORA?]`
-- 2 dysze: `[DYSZE L, P, STÓŁ, KOMORA?]` — **L przed P** (lewa, potem prawa)
+- 1 dysza: `[ikona dyszy, ikona stołu, ikona komory?]`
+- 2 dysze: `[ikona dyszy L, ikona dyszy R, ikona stołu, ikona komory?]` — **L przed R**
 - **KOMORA pokazywana tylko gdy jest odczyt** (chamber ≠ null). Brak czujnika → kafla nie ma, dysza+stół się rozszerzają.
 
 **Kafel strefy (neutralny — kolor tylko na wartości):**
 | element | wartość |
 |---|---|
-| tło kafla | biel α 0.012 |
-| „ambient" (delikatny top-light) | gradient biel α 0.03 → 0.008 → 0 (pion) |
-| górna linia (accent) | `line` (neutralna, 1px) |
-| separator między strefami | `line` 1px (pionowy, od 2. strefy) |
-| etykieta | 7 pt mono semibold, `tertiary`, tracking; top 3, lewa 6 |
+| tło kafla | przezroczyste |
+| separator między strefami | brak |
+| układ | poziomy: ikona, wartość bieżąca i zadana bez zawijania |
+| ikona | dysza / stół / komora, 12–13 pt, tooltip z pełną nazwą |
+| etykieta | tylko `L` / `R` dla podwójnej dyszy, 9 pt mono semibold, `secondary` |
 | **wartość bieżąca** | 14 pt mono semibold, **kolor = token strefy** (nozzle/bed/chamber) |
-| wartość docelowa | 8 pt mono regular, tertiary, „`/ 70°`" (jeśli 0/brak → „`/ —`") |
+| wartość docelowa | 9 pt mono regular, secondary, „`/ 70°`"; brak wartości → ukryta |
 
 To jedyny kolor w bento temperatur: **liczba** niesie hue, reszta kafla szara.
+
+### 7a. Błąd wydruku
+
+Błąd zastępuje wizualnie `filamentDock`, ale dok pozostaje w layoucie niewidoczny, dlatego wysokość
+karty nie skacze. Gdy drukarka nie ma modułu filamentu, panel błędu ma minimum **44**. Tekst ma maksymalnie
+dwie linie, tooltip zachowuje pełny opis, a kliknięcie otwiera konserwację/diagnostykę drukarki.
 
 ---
 
@@ -269,7 +276,7 @@ Stosowane do procentu w swatchu (przy fill ≥ 50%). Przy fill < 50% pomiń regu
 - Płótno: `canvas` `#0C0D0E`.
 - Sekcje jako karty: `card` α 0.5 + ramka `line` 1px + `cardRadius` 16, inset 14/12.
 - Nagłówek sekcji: 10 pt semibold, `muted`, WIELKIE LITERY (`WYGLĄD`, `OGÓLNE`, `KARTY DRUKAREK`, `POWIADOMIENIA`, `AKTUALIZACJE`).
-- Cała treść w pionowym scrollu; okno 460×640, resizable, min 440×360.
+- Cała treść w pionowym scrollu; okno **640×720**, resizable, min. **600×520**.
 - Typografia: tytuł `text`, etykiety `secondary`, wersja `muted`.
 
 ---
@@ -295,15 +302,27 @@ Dashboard, tryb listy, Szczegóły i osadzona kamera są zaimplementowane w `lin
 
 ---
 
-## 14. Checklista portu (Definition of Done)
+## 14. Skalowanie trybu okna
+
+Zmiana rozmiaru jest skokowa: pełna karta ma **285 × 174**, a odstęp **8**. Podczas przeciągania
+okno porusza się płynnie, a po puszczeniu myszy wybiera najbliższą liczbę całych kolumn i widocznych
+rzędów; nie rozciąga kart do pośredniej szerokości. Dozwolone jest pozostawienie pustego pola siatki.
+Nadmiar rzędów pozostaje dostępny przez przewijanie. Tryb kompaktowej listy dotyczy popovera i nie
+włącza się automatycznie przy zwężaniu okna.
+
+---
+
+## 15. Checklista portu (Definition of Done)
 
 - [ ] Tokeny (§1) wpięte jako jedno źródło kolorów/promieni.
 - [ ] Siatka 1/2 kolumny + span zależny od wyposażenia + szerokości panelu (§2).
 - [ ] Karta: sekcje/insety/odstępy/min-height (§3), header centerY (§4), status line z marquee (§5).
 - [ ] Rząd postępu z warstwami + segmentowy pasek 32/wys.8 (§6).
-- [ ] Bento temp: neutralne kafle, kolor na wartości, ukrycie KOMORA, L→P (§7).
+- [ ] Bento temp: ikony, jeden wiersz, mniejsza zadana, ukrycie KOMORA, L→R (§7).
+- [ ] Błąd zastępuje AMS bez zmiany wysokości i otwiera konserwację (§7a).
 - [ ] Status neutralny wg kontraktu (§8).
 - [ ] Dok filamentów: proporcje capacity, minima, krótkie nazwy, 1-slot wyśrodkowany (§9).
 - [ ] Procent w swatchu z regułą kontrastu 50% + kropka <15% (§9b, §10).
 - [ ] Tryb listy neutralny (§11).
 - [ ] Okno ustawień: karty-sekcje + scroll (§12).
+- [ ] Tryb okna skaluje się wyłącznie całymi kaflami; nadmiar przewija się (§14).

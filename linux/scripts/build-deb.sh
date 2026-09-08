@@ -44,6 +44,7 @@ EOF
 # Translation catalog, shared verbatim with the macOS and Windows builds.
 mkdir -p "$ROOT/linux/gantry/data/i18n"
 cp "$ROOT"/i18n/*.json "$ROOT/linux/gantry/data/i18n/"
+cp "$ROOT/Resources/web-dashboard.html" "$ROOT/linux/gantry/data/web-dashboard.html"
 cp -a "$ROOT/linux/gantry/." "$BUILD/usr/lib/python3/dist-packages/gantry/"
 find "$BUILD/usr/lib/python3/dist-packages/gantry" -type d -name __pycache__ -prune -exec rm -rf {} +
 install -m 0755 "$ROOT/linux/packaging/gantry" "$BUILD/usr/bin/gantry"

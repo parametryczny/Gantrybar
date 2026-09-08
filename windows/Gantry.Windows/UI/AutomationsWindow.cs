@@ -23,6 +23,8 @@ public sealed class AutomationsWindow : Window
         { ("Światło wł.", "Light on"), ("Światło wył.", "Light off"), ("Pauza", "Pause"), ("Wznów", "Resume"),
           ("Stop", "Stop"), ("Powiadomienie", "Notification"), ("Własna komenda", "Custom command"), ("Skrypt", "Script") };
     private static readonly string[] ActionKinds = { "lightOn", "lightOff", "pause", "resume", "stop", "notify", "command", "script" };
+    private static readonly string[] ActionSummaryKeys =
+        { "light on", "light off", "pause", "resume", "stop", "notification", "custom command", "script" };
     private static readonly PrinterState[] StateOptions =
         { PrinterState.Printing, PrinterState.Paused, PrinterState.Finished, PrinterState.Error, PrinterState.Idle };
 
@@ -70,6 +72,7 @@ public sealed class AutomationsWindow : Window
         public string Id = "";
         public CheckBox Enabled = null!;
         public TextBox Name = null!;
+        public TextBlock Summary = null!;
         public ComboBox Trigger = null!;
         public TextBox TriggerValue = null!;
         public ComboBox State = null!;
@@ -110,6 +113,13 @@ public sealed class AutomationsWindow : Window
         topRow.Children.Add(deleteButton);
         stack.Children.Add(topRow);
 
+        row.Summary = new TextBlock
+        {
+            FontSize = 11, Foreground = Muted(), TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        stack.Children.Add(row.Summary);
+
         row.Trigger = Combo(TriggerNames, Array.IndexOf(TriggerKinds, auto.TriggerKind));
         row.TriggerValue = new TextBox { Text = auto.TriggerValue.ToString(), Width = 70, VerticalAlignment = VerticalAlignment.Center };
         row.State = Combo(StateOptions.Select(s => (s.Label(_pl), s.Label(false))).ToArray(), Math.Max(0, Array.IndexOf(StateOptions.Select(s => s.ToString()).ToArray(), auto.TriggerState)));
@@ -131,10 +141,32 @@ public sealed class AutomationsWindow : Window
         row.ActionText = new TextBox { Text = auto.ActionText, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 44, MaxHeight = 120, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 6, 0, 0), FontFamily = new FontFamily("Consolas") };
         stack.Children.Add(row.ActionText);
 
+        void RefreshSummary(object? _ = null, EventArgs? __ = null) => UpdateSummary(row);
+        row.Trigger.SelectionChanged += (_, _) => RefreshSummary();
+        row.TriggerValue.TextChanged += (_, _) => RefreshSummary();
+        row.State.SelectionChanged += (_, _) => RefreshSummary();
+        row.Action.SelectionChanged += (_, _) => RefreshSummary();
+        UpdateSummary(row);
+
         row.Root = new Border { Background = GTheme.Brush(GTheme.Surface), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 12), Child = stack };
         GTheme.ApplyWindowTheme(this);
         _rows.Add(row);
         _list.Children.Add(row.Root);
+    }
+
+    private void UpdateSummary(Row row)
+    {
+        int triggerIndex = Math.Max(0, row.Trigger.SelectedIndex);
+        string trigger = triggerIndex switch
+        {
+            1 => string.Format(AppSettings.T("at layer {0}"), row.TriggerValue.Text),
+            2 => string.Format(AppSettings.T("at {0}%"), row.TriggerValue.Text),
+            3 => string.Format(AppSettings.T("on state: {0}"),
+                StateOptions[Math.Max(0, row.State.SelectedIndex)].Label(_pl)),
+            _ => AppSettings.T("manually")
+        };
+        string action = AppSettings.T(ActionSummaryKeys[Math.Max(0, row.Action.SelectedIndex)]);
+        row.Summary.Text = $"{trigger}  →  {action}";
     }
 
     private void RunRow(Row row)

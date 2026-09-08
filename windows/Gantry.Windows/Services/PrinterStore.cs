@@ -13,6 +13,8 @@ public sealed class PrinterStore
     private readonly Action<Action> _post;
 
     public List<SavedPrinter> Printers { get; private set; }
+    public StartupState Startup { get; }
+    public List<SavedPrinter> DashboardPrinters => Printers.Where(p => Startup.Received.Contains(p.Serial)).ToList();
     public Dictionary<string, PrinterTelemetry> Telemetry { get; } = new();
     // Rolling temperature history per printer, drawn by the detail window's graph.
     public Dictionary<string, List<TemperatureSample>> TemperatureHistory { get; } = new();
@@ -42,6 +44,8 @@ public sealed class PrinterStore
     {
         _post = post;
         Printers = SavedPrinterStore.Load();
+        Startup = new StartupState(Printers.Select(p => p.Serial));
+        _ = Task.Delay(TimeSpan.FromSeconds(15)).ContinueWith(_ => _post(() => { Startup.Finish(); RaiseUpdated(); }));
         MigratePlaintextApiKeys();
         foreach (var printer in Printers) Telemetry[printer.Serial] = new PrinterTelemetry();
     }
@@ -380,6 +384,8 @@ public sealed class PrinterStore
         if (_clients.Remove(originalSerial, out var existing)) existing.Stop();
         if (originalSerial != cleanSerial)
         {
+            Startup.Remove(originalSerial);
+            _printersWithTelemetry.Remove(originalSerial);
             Printers.RemoveAll(p => p.Serial == originalSerial);
             Telemetry.Remove(originalSerial);
             ConnectionMessages.Remove(originalSerial);
@@ -399,6 +405,8 @@ public sealed class PrinterStore
 
     public void Remove(SavedPrinter printer)
     {
+        Startup.Remove(printer.Serial);
+        _printersWithTelemetry.Remove(printer.Serial);
         if (_reconnectTasks.Remove(printer.Serial, out var task)) task.Cancel();
         if (_clients.Remove(printer.Serial, out var client)) client.Stop();
         _sessionCodes.Remove(printer.Serial);
@@ -535,6 +543,7 @@ public sealed class PrinterStore
                 else if (value.JobName != (_dismissedJobs.TryGetValue(serial, out var d) ? d : null))
                     _dismissedJobs.Remove(serial);
                 Telemetry[serial] = value;
+                if (value.State != PrinterState.Offline) Startup.Report(serial);
                 // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment;
                 // surface a dismissible notice on the card so the change is not silent. Skipped entirely
                 // when Spoolbase is off: the switch stops the feature from touching stored rolls at all.

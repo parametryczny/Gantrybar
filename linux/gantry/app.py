@@ -295,6 +295,8 @@ class Gantry:
         i18n.set_language(self.language)
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
+        from .startup import StartupState
+        self.startup = StartupState([p.serial for p in self.printers])
         self.connection_reasons: dict[str, str] = {}
         self.connections: dict[str, object] = {}; self.cards: dict[str, PrinterCard] = {}
         self.indicator_available = AppIndicator is not None
@@ -304,6 +306,7 @@ class Gantry:
         self.detail_window: Any | None = None
         self.expanded_compact_serial: str | None = None
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
+        GLib.timeout_add_seconds(15, self._finish_startup)
         self.reconnect_all()
         # Read-only LAN web dashboard.
         from .webserver import GantryWebServer
@@ -326,8 +329,13 @@ class Gantry:
         self.edge_dock.refresh()
         GLib.timeout_add_seconds(8, self._initial_update_check)
         GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
-        if AppIndicator is None and not background:
-            self.window.show_all()
+        if (AppIndicator is None or not self.window.tray_mode) and not background:
+            self.show()
+
+    def _finish_startup(self) -> bool:
+        self.startup.finish()
+        self.window.update_startup()
+        return False
 
     def _spoolbase_active(self) -> bool:
         """Spoolbase is both switched on and actually loaded. Every roll-touching side effect keys off
@@ -458,6 +466,8 @@ class Gantry:
         diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
         stats = Gtk.MenuItem(label=i18n.t("Fleet statistics…"))
         stats.connect("activate", lambda *_: self.open_fleet_stats()); menu.append(stats)
+        guide = Gtk.MenuItem(label=i18n.t("How to read Gantry"))
+        guide.connect("activate", lambda *_: (self.show(), self.window.show_onboarding())); menu.append(guide)
         menu.append(Gtk.SeparatorMenuItem())
 
         language = Gtk.MenuItem(label=i18n.t("Language: EN"))
@@ -701,6 +711,10 @@ class Gantry:
     def open_fleet_stats(self) -> None:
         from .fleetstats import FleetStatsDialog
         dialog = FleetStatsDialog(self)
+        if not self.window.tray_mode:
+            self.show()
+            self.window.embed_dialog(dialog)
+            return
         dialog.run()
         dialog.destroy()
 
@@ -713,6 +727,14 @@ class Gantry:
         self.window.show_detail(panel)
 
     def toggle_spoolbase(self) -> None:
+        if not self.window.tray_mode:
+            from .spoolbase import SpoolbaseWindow
+            self.show()
+            window = SpoolbaseWindow(self)
+            child = window.get_child()
+            window.remove(child)
+            self.window.show_panel(child, 520, 620, cleanup=window.destroy)
+            return
         window = getattr(self, "spoolbase_window", None)
         if window is None:
             from .spoolbase import SpoolbaseWindow
@@ -725,6 +747,8 @@ class Gantry:
 
     def show(self) -> None:
         self.window.show_all()
+        self.window.deiconify()
+        self.window.update_startup()
         if self.window.tray_mode:
             self.window.position_top_right()
         self.window.present()
@@ -737,6 +761,9 @@ class Gantry:
         return False
 
     def toggle_panel(self) -> None:
+        if not self.window.tray_mode:
+            self.show()
+            return
         if self.window.get_visible():
             self.window.hide()
         else:
@@ -746,9 +773,13 @@ class Gantry:
         for child in self.window.grid.get_children(): self.window.grid.remove(child)
         self.cards = {}
         compact = self.is_compact()
-        columns = 1 if compact else max(1, min(2, int(self.config.data.get("dashboard_columns", 2))))
-        placements = place_cards([printer.serial for printer in self.printers], self.telemetry, columns, compact)
-        for printer, placement in zip(self.printers, placements):
+        columns = 1 if compact else self.window.layout_columns()
+        visible = [p for p in self.printers if p.serial in self.startup.received]
+        placements = place_cards(
+            [printer.serial for printer in visible], self.telemetry, columns, compact,
+            stretch_last=self.window.tray_mode,
+        )
+        for printer, placement in zip(visible, placements):
             card = (CompactPrinterRow(self, printer, self.expanded_compact_serial == printer.serial)
                     if compact else PrinterCard(self, printer))
             card.set_hexpand(True)
@@ -759,6 +790,7 @@ class Gantry:
             if printer.serial in self.telemetry: card.update(self.telemetry[printer.serial])
         # Show the card widgets, but don't force the popover window open on every rebuild.
         self.window.update_header(); self.window.grid.show_all(); self.window.resize_for_content()
+        self.window.update_startup()
 
     @staticmethod
     def _needs_wide(telemetry: Telemetry) -> bool:
@@ -771,6 +803,8 @@ class Gantry:
         self.rebuild_cards()
 
     def is_compact(self) -> bool:
+        if not getattr(self.window, "tray_mode", True):
+            return False  # desktop window grows by full card tiles; compact rows remain a tray choice
         selected = (bool(self.config.data.get("collapsed")) if self.config.data.get("collapsed_chosen")
                     else len(self.printers) > 8)
         return selected and len(self.printers) >= 4
@@ -887,6 +921,7 @@ class Gantry:
         if connection: connection.stop()
         self.printers = [value for value in self.printers if value.serial != printer.serial]
         self.telemetry.pop(printer.serial, None)
+        self.startup.remove(printer.serial)
         try: self.secrets.delete(printer.serial)
         except SecretStoreError: pass
         if printer.kind == PrinterKind.BAMBU: self.config.remove_pin(printer.serial)
@@ -942,9 +977,16 @@ class Gantry:
         self.connections[printer.serial] = connection; connection.start()
 
     def on_event(self, serial: str, event: str, value: object | None) -> bool:
+        # Kiosk and headless integration harnesses share the transport handler, not the desktop host.
+        if not hasattr(self, "startup"):
+            from .startup import StartupState
+            self.startup = StartupState([p.serial for p in self.printers])
+        first_report = serial not in self.startup.received
         previous = self.telemetry.get(serial, Telemetry())
         if event == "telemetry" and isinstance(value, Telemetry):
             self.telemetry[serial] = value; self.connection_reasons.pop(serial, None)
+            if value.state != PrinterState.OFFLINE:
+                self.startup.report(serial)
         elif event == "disconnected":
             self.telemetry[serial] = Telemetry(state=PrinterState.OFFLINE)
             self.connection_reasons[serial] = str(value or (i18n.t("Disconnected")))
@@ -968,11 +1010,13 @@ class Gantry:
                 card = self.cards.get(serial)
                 if card is not None:
                     card.show_notice(msg)
-        if self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact():
+        if (first_report and serial in self.startup.received) or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()):
             self.rebuild_cards()
         elif card := self.cards.get(serial):
             card.update(current, str(value) if event == "disconnected" else None)
         self.window.update_header()
+        if hasattr(self.window, "update_startup"):
+            self.window.update_startup()
         self._refresh_progress_indicators()
         dock = getattr(self, "edge_dock", None)
         if dock is not None:
@@ -1106,7 +1150,12 @@ class Gantry:
 
     def open_diagnostics(self) -> None:
         from .diagnostics import DiagnosticsDialog
-        DiagnosticsDialog(self).present()
+        dialog = DiagnosticsDialog(self)
+        if not self.window.tray_mode:
+            self.show()
+            self.window.embed_dialog(dialog)
+        else:
+            dialog.present()
 
     def open_settings(self) -> None:
         existing = getattr(self, "settings_dialog", None)

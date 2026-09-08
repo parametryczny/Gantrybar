@@ -280,6 +280,9 @@
                                 </Grid>
                                 <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="MonochromeCheckBox"/>
+                                <Border Style="{StaticResource RowSeparator}"/>
+                                <CheckBox x:Name="FloatingWindowCheckBox"/>
+                                <CheckBox x:Name="AlwaysOnTopCheckBox"/>
                             </StackPanel>
                         </Border>
 
@@ -295,6 +298,8 @@
                                 <CheckBox x:Name="CardFilamentsCheckBox"/>
                                 <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="CardSpoolGramsCheckBox"/>
+                                <Border Style="{StaticResource RowSeparator}"/>
+                                <CheckBox x:Name="CardDetailsChipCheckBox"/>
                             </StackPanel>
                         </Border>
 

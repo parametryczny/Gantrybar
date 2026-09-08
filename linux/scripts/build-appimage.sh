@@ -52,6 +52,7 @@ mkdir -p "$APPDIR/usr/lib/gantry" \
 # before PyInstaller runs so --collect-data picks it up wherever that version puts collected data.
 mkdir -p "$ROOT/linux/gantry/data/i18n"
 cp "$ROOT"/i18n/*.json "$ROOT/linux/gantry/data/i18n/"
+cp "$ROOT/Resources/web-dashboard.html" "$ROOT/linux/gantry/data/web-dashboard.html"
 
 # PyInstaller provides the private Python runtime. Hidden GI repositories are loaded dynamically
 # by Gantry and therefore must be declared explicitly for a reproducible portable build.

@@ -13,6 +13,7 @@ final class PrinterStore: ObservableObject {
     @Published private(set) var discovered: [DiscoveredPrinter] = []
     @Published var isScanning = false
     @Published var globalMessage: String?
+    @Published private(set) var startupProgress = StartupConnectionProgress(serials: [])
 
     /// Rolling temperature history per printer, drawn by the detail window's graph. Deliberately not
     /// @Published — the detail view already redraws on the store's telemetry change, so publishing it
@@ -32,12 +33,37 @@ final class PrinterStore: ObservableObject {
     private var sessionCodes: [String: String] = [:]
     private var dismissedJobs: [String: String] = [:]
     private var printersWithTelemetry = Set<String>()
+    private var onboardingPresentedThisSession = false
+
+    /// Never show a made-up offline card before the first report. Once seen, keep the card visible
+    /// even after a disconnect, so a real loss of connection is not silently hidden.
+    var dashboardPrinters: [SavedPrinter] {
+        printers.filter { printersWithTelemetry.contains($0.serial) }
+    }
+
+    func claimAutomaticOnboarding() -> Bool {
+        guard !onboardingPresentedThisSession,
+              !BambuDefaults.shared.bool(forKey: "gantry.onboarding.v1.seen") else { return false }
+        onboardingPresentedThisSession = true
+        return true
+    }
+
+    func markOnboardingSeen() {
+        onboardingPresentedThisSession = true
+        BambuDefaults.shared.set(true, forKey: "gantry.onboarding.v1.seen")
+    }
     private var firedAutomations: [String: Set<UUID>] = [:]
     private var scanToken: UUID?
 
     init() {
         AccessCodeStore.migrateLegacyPlaintextCodes()
         printers = persistence.load()
+        startupProgress = StartupConnectionProgress(serials: printers.map(\.serial))
+        if startupProgress.isLoading {
+            DispatchQueue.main.asyncAfter(deadline: .now() + StartupConnectionProgress.timeout) { [weak self] in
+                self?.finishStartupLoading()
+            }
+        }
         migratePlaintextApiKeys()
         for printer in printers { telemetry[printer.serial] = PrinterTelemetry() }
         Task { @MainActor [weak self] in
@@ -45,8 +71,25 @@ final class PrinterStore: ObservableObject {
         }
     }
 
+    #if GANTRY_RENDER
+    /// Offline-only input for the source-render harness; excluded from shipped builds.
+    init(renderPrinters: [SavedPrinter], renderTelemetry: [String: PrinterTelemetry]) {
+        printers = renderPrinters
+        telemetry = renderTelemetry
+        printersWithTelemetry = Set(renderTelemetry.keys)
+        startupProgress = StartupConnectionProgress(serials: renderPrinters.map(\.serial))
+        startupProgress.finish()
+        onboardingPresentedThisSession = true
+    }
+    #endif
+
     var activePrintCount: Int {
         telemetry.values.filter { $0.state == .printing }.count
+    }
+
+    func finishStartupLoading() {
+        guard startupProgress.isLoading else { return }
+        startupProgress.finish()
     }
 
     /// Access code for a Bambu printer, used by the detail window's camera stream. Prefers the
@@ -437,6 +480,8 @@ final class PrinterStore: ObservableObject {
         clients.removeValue(forKey: printer.serial)?.stop()
         sessionCodes.removeValue(forKey: printer.serial)
         printers.removeAll { $0.serial == printer.serial }
+        printersWithTelemetry.remove(printer.serial)
+        startupProgress.remove(printer.serial)
         telemetry.removeValue(forKey: printer.serial)
         temperatureHistory.removeValue(forKey: printer.serial)
         connectionMessages.removeValue(forKey: printer.serial)
@@ -612,6 +657,9 @@ final class PrinterStore: ObservableObject {
                 dismissedJobs.removeValue(forKey: serial)
             }
             telemetry[serial] = value
+            if startupProgress.isLoading, value.state != .offline {
+                startupProgress.receivedTelemetry(from: serial)
+            }
             // Inserting an RFID/NFC spool into a slot supersedes a stale manual Spoolbase assignment;
             // surface a dismissible notice on the card so the change is not silent. Skipped entirely
             // when Spoolbase is off: the switch stops the feature from touching stored rolls at all.

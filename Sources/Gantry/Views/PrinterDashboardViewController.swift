@@ -22,6 +22,11 @@ private final class SpoolBackdropView: NSView {
     override func mouseDown(with event: NSEvent) { onClickOutside?() }
 }
 
+enum DashboardPresentation {
+    case popover
+    case floatingWindow
+}
+
 @MainActor
 final class PrinterDashboardViewController: NSViewController {
     private let store: PrinterStore
@@ -29,7 +34,9 @@ final class PrinterDashboardViewController: NSViewController {
     private let onEdit: (SavedPrinter) -> Void
     private let onReconnect: (SavedPrinter) -> Void
     private let onShowDetails: (String) -> Void
+    private let onShowSettings: () -> Void
     private let onPreferredContentSize: (NSSize) -> Void
+    private let presentation: DashboardPresentation
     private let cardsStack = NSStackView()
     private let summaryLabel = NSTextField(labelWithString: "")
     private let footerLabel = NSTextField(labelWithString: "")
@@ -39,6 +46,12 @@ final class PrinterDashboardViewController: NSViewController {
     private let resetButton = NSButton()
     private let compactButton = NSButton()
     private let columnsButton = NSButton()
+    private let alwaysOnTopButton = NSButton()
+    private let settingsButton = NSButton()
+    private let presentationModeButton = NSButton()
+    private var dashboardWordmark: NSImageView?
+    private let titleDot = NSTextField(labelWithString: "·")
+    private var footerHeightConstraint: NSLayoutConstraint?
     private var renderedColumnCount = 0
     /// User-chosen number of card columns (1 = one per row / "pionowo", 2 = two per row). Persisted.
     private var preferredColumns: Int {
@@ -49,6 +62,7 @@ final class PrinterDashboardViewController: NSViewController {
     private var settingsSubscription: AnyCancellable?
     private var insightsSubscription: AnyCancellable?
     private var timerSubscription: AnyCancellable?
+    private var spoolSubscription: AnyCancellable?
     private var cardsBySerial: [String: PrinterCardView] = [:]
     private var compactRowsBySerial: [String: CompactPrinterRowView] = [:]
     private var expandedCardsBySerial: [String: PrinterCardView] = [:]
@@ -56,10 +70,20 @@ final class PrinterDashboardViewController: NSViewController {
     private var renderedSerials: [String] = []
     private var renderedWideSerials: Set<String> = []
     private var renderedCompactMode: Bool?
+    private var renderedContentWidth: CGFloat = 0
     private var refreshWorkItem: DispatchWorkItem?
+    private var responsiveLayoutWorkItem: DispatchWorkItem?
+    /// Width-only resize callbacks for the rows currently on screen. Keeping the views attached makes
+    /// live resizing cheap; the grid is rebuilt only when a breakpoint changes its structure.
+    private var responsiveWidthUpdaters: [(CGFloat) -> Void] = []
     private let dashboardDefaults = BambuDefaults.shared
     private var prefersCompactMode: Bool
     private var compactModeChosen: Bool
+    private var lastAdaptiveViewSize: NSSize = .zero
+    private var startupOverlay: DashboardStartupView?
+    private var onboardingController: DashboardOnboardingViewController?
+    private var onboardingPanel: EmbeddedPanelView?
+    private var onboardingButton: NSButton?
 
     init(
         store: PrinterStore,
@@ -67,6 +91,8 @@ final class PrinterDashboardViewController: NSViewController {
         onEdit: @escaping (SavedPrinter) -> Void,
         onReconnect: @escaping (SavedPrinter) -> Void,
         onShowDetails: @escaping (String) -> Void,
+        onShowSettings: @escaping () -> Void = {},
+        presentation: DashboardPresentation = .popover,
         onPreferredContentSize: @escaping (NSSize) -> Void
     ) {
         self.store = store
@@ -74,6 +100,8 @@ final class PrinterDashboardViewController: NSViewController {
         self.onEdit = onEdit
         self.onReconnect = onReconnect
         self.onShowDetails = onShowDetails
+        self.onShowSettings = onShowSettings
+        self.presentation = presentation
         self.onPreferredContentSize = onPreferredContentSize
         prefersCompactMode = BambuDefaults.shared.bool(forKey: "dashboard-compact-mode")
         compactModeChosen = BambuDefaults.shared.bool(forKey: "dashboard-compact-mode-set")
@@ -89,14 +117,20 @@ final class PrinterDashboardViewController: NSViewController {
         timerSubscription = Timer.publish(every: 15, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.refreshDashboard() }
-        // A spool assignment (Spoolbase) should reflect on the cards immediately.
-        SpoolbaseShared.spools.onChange = { [weak self] in self?.refreshDashboard() }
+        // There can be two dashboard instances (menu popover + floating window), so use a broadcast
+        // instead of PhysicalSpoolStore's legacy single `onChange` callback.
+        spoolSubscription = NotificationCenter.default
+            .publisher(for: .gantryPhysicalSpoolsDidChange, object: SpoolbaseShared.spools)
+            .sink { [weak self] _ in self?.refreshDashboard() }
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 650))
+        let initialSize = presentation == .floatingWindow
+            ? NSSize(width: 470, height: 400)
+            : NSSize(width: 480, height: 650)
+        let root = NSView(frame: NSRect(origin: .zero, size: initialSize))
         root.wantsLayer = true
         root.layer?.backgroundColor = GantryTheme.canvas.cgColor
         // The vibrancy backdrop fills the panel behind everything; its material/alpha come from the
@@ -120,9 +154,9 @@ final class PrinterDashboardViewController: NSViewController {
         summaryLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         // One-line header: GANTRY · N drukarek · M pracuje
         let wordmark = NSImageView(image: GantryLogo.wordmarkImage(height: 13))
+        dashboardWordmark = wordmark
         wordmark.setContentHuggingPriority(.required, for: .horizontal)
         wordmark.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let titleDot = NSTextField(labelWithString: "·")
         titleDot.font = .systemFont(ofSize: 12, weight: .semibold)
         titleDot.textColor = GantryTheme.muted
         let titleStack = NSStackView(views: [wordmark, titleDot, summaryLabel])
@@ -155,10 +189,54 @@ final class PrinterDashboardViewController: NSViewController {
         columnsButton.target = self
         columnsButton.action = #selector(toggleColumns)
 
-        let controls = NSStackView(views: [columnsButton, compactButton, resetButton, refreshButton, addButton])
+        alwaysOnTopButton.imagePosition = .imageOnly
+        alwaysOnTopButton.isBordered = false
+        alwaysOnTopButton.contentTintColor = GantryTheme.secondary
+        alwaysOnTopButton.target = self
+        alwaysOnTopButton.action = #selector(toggleAlwaysOnTop)
+        alwaysOnTopButton.setButtonType(.toggle)
+        alwaysOnTopButton.isHidden = presentation != .floatingWindow
+
+        settingsButton.imagePosition = .imageOnly
+        settingsButton.isBordered = false
+        settingsButton.contentTintColor = GantryTheme.secondary
+        settingsButton.target = self
+        settingsButton.action = #selector(settingsPressed)
+        settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        settingsButton.toolTip = AppSettings.shared.t("Settings")
+        settingsButton.isHidden = presentation != .floatingWindow
+
+        presentationModeButton.imagePosition = .imageOnly
+        presentationModeButton.isBordered = false
+        presentationModeButton.contentTintColor = GantryTheme.secondary
+        presentationModeButton.setButtonType(.toggle)
+        presentationModeButton.target = self
+        presentationModeButton.action = #selector(togglePresentationMode)
+        presentationModeButton.setAccessibilityIdentifier("dashboard.presentation-mode")
+        updatePresentationModeButton()
+
+        // Keep window-level actions and printer actions readable as two groups instead of one dense
+        // run of symbols. Each group uses an 8 pt rhythm; the hairline adds a stronger 10 pt break.
+        let windowControls = NSStackView(views: [alwaysOnTopButton, settingsButton, presentationModeButton])
+        windowControls.orientation = .horizontal
+        windowControls.alignment = .centerY
+        windowControls.spacing = 8
+        let controlDivider = NSView()
+        controlDivider.wantsLayer = true
+        controlDivider.layer?.backgroundColor = GantryTheme.line.cgColor
+        controlDivider.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        controlDivider.heightAnchor.constraint(equalToConstant: 16).isActive = true
+        let guideButton = iconButton("questionmark.circle", tooltip: AppSettings.shared.t("How to read Gantry"), action: #selector(showOnboarding))
+        onboardingButton = guideButton
+        let printerControls = NSStackView(views: [guideButton, columnsButton, compactButton,
+                                                  resetButton, refreshButton, addButton])
+        printerControls.orientation = .horizontal
+        printerControls.alignment = .centerY
+        printerControls.spacing = 8
+        let controls = NSStackView(views: [windowControls, controlDivider, printerControls])
         controls.orientation = .horizontal
         controls.alignment = .centerY
-        controls.spacing = 2
+        controls.spacing = 10
 
         let headerInner = NSStackView(views: [titleStack, NSView(), controls])
         headerInner.orientation = .horizontal
@@ -175,7 +253,8 @@ final class PrinterDashboardViewController: NSViewController {
         header.layer?.borderColor = GantryTheme.line.cgColor
         header.addSubview(headerInner)
         NSLayoutConstraint.activate([
-            headerInner.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
+            headerInner.leadingAnchor.constraint(equalTo: header.leadingAnchor,
+                                                 constant: 12),
             headerInner.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -8),
             headerInner.topAnchor.constraint(equalTo: header.topAnchor, constant: 6),
             headerInner.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -6)
@@ -184,7 +263,9 @@ final class PrinterDashboardViewController: NSViewController {
         cardsStack.orientation = .vertical
         cardsStack.alignment = .leading
         cardsStack.spacing = 8
-        cardsStack.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        cardsStack.edgeInsets = presentation == .floatingWindow
+            ? NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
+            : NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
         cardsStack.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedDocumentView()
@@ -201,6 +282,8 @@ final class PrinterDashboardViewController: NSViewController {
         footerLabel.textColor = .tertiaryLabelColor
         footerLabel.alignment = .center
         footerLabel.translatesAutoresizingMaskIntoConstraints = false
+        footerHeightConstraint = footerLabel.heightAnchor.constraint(equalToConstant: 14)
+        footerHeightConstraint?.isActive = true
 
         header.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -208,9 +291,14 @@ final class PrinterDashboardViewController: NSViewController {
         view.addSubview(scroll)
         view.addSubview(footerLabel)
         NSLayoutConstraint.activate([
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 14),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
-            header.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor,
+                                            constant: presentation == .floatingWindow ? 10 : 14),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor,
+                                             constant: presentation == .floatingWindow ? -10 : -14),
+            // Keep the native macOS traffic lights in their own title-bar strip. The previous
+            // full-size header ran underneath them, making the close button look like a stray light.
+            header.topAnchor.constraint(equalTo: view.topAnchor,
+                                        constant: presentation == .floatingWindow ? 34 : 12),
             header.heightAnchor.constraint(equalToConstant: 36),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -227,6 +315,16 @@ final class PrinterDashboardViewController: NSViewController {
         ])
         refreshLocalization()
         refreshDashboard()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        guard presentation == .floatingWindow else { return }
+        let size = view.bounds.size
+        guard abs(size.width - lastAdaptiveViewSize.width) > 0.5
+                || abs(size.height - lastAdaptiveViewSize.height) > 0.5 else { return }
+        lastAdaptiveViewSize = size
+        scheduleResponsiveLayout(for: size)
     }
 
     /// Height the popover should take so it fits the printer cards (or compact rows) without
@@ -256,58 +354,228 @@ final class PrinterDashboardViewController: NSViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: item)
     }
 
+    /// Coalesces AppKit's many layout callbacks to one update per display frame. Most frames only
+    /// adjust existing width constraints; telemetry, filament chips and card contents are untouched.
+    private func scheduleResponsiveLayout(for size: NSSize) {
+        responsiveLayoutWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.refreshResponsiveLayout(for: size) }
+        responsiveLayoutWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0, execute: item)
+    }
+
+    private func refreshResponsiveLayout(for size: NSSize) {
+        guard presentation == .floatingWindow, isViewLoaded else { return }
+        let width = max(190, size.width)
+        let height = max(120, size.height)
+        let compact = false
+        let minimumItemWidth: CGFloat = 285
+        let columns = max(1, Int(floor((width - 20 + 8) / (minimumItemWidth + 8))))
+        let contentWidth = width - 20
+        updateFloatingChrome(width: width, height: height)
+
+        // Crossing either breakpoint changes the hierarchy (cards ↔ compact rows, or grid columns),
+        // so that rare transition still needs a rebuild. Every ordinary drag frame stays on the fast path.
+        guard renderedCompactMode == compact, renderedColumnCount == columns,
+              !responsiveWidthUpdaters.isEmpty else {
+            refreshDashboard()
+            return
+        }
+        guard abs(renderedContentWidth - contentWidth) > 0.5 else { return }
+        renderedContentWidth = contentWidth
+        responsiveWidthUpdaters.forEach { $0(contentWidth) }
+        view.needsLayout = true
+    }
+
+    /// Quantizes the floating dashboard to whole card columns and rows. The cards keep the exact
+    /// geometry used by the popover; resizing decides how many tiles are visible instead of stretching
+    /// every card to an arbitrary intermediate width.
+    func snappedFloatingContentSize(for proposed: NSSize) -> NSSize {
+        guard presentation == .floatingWindow else { return proposed }
+        let columnPitch: CGFloat = 293       // card 285 + gap 8
+        let widthBase: CGFloat = 12          // 20 outer inset - trailing gap
+        let proposedColumns = Int(((proposed.width - widthBase) / columnPitch).rounded())
+        let columns = max(1, proposedColumns)
+        let rowPitch: CGFloat = 182          // card 174 + gap 8
+        let heightBase: CGFloat = 108        // floating chrome + card insets - trailing gap
+        let proposedRows = Int(((proposed.height - heightBase) / rowPitch).rounded())
+        let visibleRows = max(1, proposedRows)
+        return NSSize(width: widthBase + CGFloat(columns) * columnPitch,
+                      height: heightBase + CGFloat(visibleRows) * rowPitch)
+    }
+
+    private func updateFloatingChrome(width: CGFloat, height: CGFloat) {
+        guard presentation == .floatingWindow else { return }
+        summaryLabel.isHidden = width < 450
+        titleDot.isHidden = summaryLabel.isHidden
+        dashboardWordmark?.isHidden = width < 240
+        alwaysOnTopButton.isHidden = width < 360
+        settingsButton.isHidden = width < 280
+        resetButton.isHidden = width < 270
+        onboardingButton?.isHidden = width < 360
+        footerLabel.isHidden = height < 170
+        footerHeightConstraint?.constant = footerLabel.isHidden ? 0 : 14
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        refreshDashboard()
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        if onboardingPanel != nil { dismissOnboarding() }
+    }
+
+    @objc func showOnboarding() {
+        guard onboardingPanel == nil else { return }
+        store.markOnboardingSeen()
+        let controller = DashboardOnboardingViewController(store: store) { [weak self] in
+            self?.dismissOnboarding()
+        }
+        onboardingController = controller
+        addChild(controller)
+        if presentation == .popover {
+            let screenHeight = (view.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
+            let size = NSSize(width: max(480, preferredContentSize.width), height: min(680, screenHeight - 24))
+            preferredContentSize = size
+            onPreferredContentSize(size)
+        }
+        onboardingPanel = EmbeddedPanelView.show(controller.view, in: view,
+            size: NSSize(width: 460, height: 590), showsCloseButton: false,
+            onDismiss: { [weak self] in self?.dismissOnboarding() })
+    }
+
+    func dismissOnboarding() {
+        guard onboardingPanel != nil else { return }
+        onboardingPanel?.removeFromSuperview()
+        onboardingPanel = nil
+        onboardingController?.removeFromParent()
+        onboardingController = nil
+        lastReportedContentSize = .zero
+        refreshDashboard()
+    }
+
+    private func updateStartupPresentation(settings: AppSettings) {
+        if store.startupProgress.isLoading {
+            if startupOverlay == nil {
+                let overlay = DashboardStartupView(frame: view.bounds, onGuide: { [weak self] in
+                    self?.showOnboarding()
+                }) { [weak self] in
+                    self?.store.finishStartupLoading()
+                }
+                cardsStack.alphaValue = 0.16
+                if let onboardingPanel {
+                    view.addSubview(overlay, positioned: .below, relativeTo: onboardingPanel)
+                } else {
+                    view.addSubview(overlay)
+                }
+                startupOverlay = overlay
+            }
+            startupOverlay?.update(store.startupProgress, settings: settings)
+        } else if let overlay = startupOverlay {
+            startupOverlay = nil
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.25
+                overlay.animator().alphaValue = 0
+                cardsStack.animator().alphaValue = 1
+            } completionHandler: {
+                overlay.removeFromSuperview()
+            }
+        }
+        if !store.startupProgress.isLoading, !store.dashboardPrinters.isEmpty,
+           onboardingPanel == nil, view.window?.isVisible == true, store.claimAutomaticOnboarding() {
+            showOnboarding()
+        }
+    }
+
     private func refreshDashboard() {
         guard isViewLoaded else { return }
-        let online = store.telemetry.values.filter { $0.state != .offline }.count
         let settings = AppSettings.shared
+        updateStartupPresentation(settings: settings)
+        let visiblePrinters = store.dashboardPrinters
+        let waitingPrinters = store.printers.filter { printer in !visiblePrinters.contains(where: { $0.serial == printer.serial }) }
+        if !waitingPrinters.isEmpty {
+            footerLabel.stringValue = settings.t("{0} printers awaiting data", waitingPrinters.count)
+            footerLabel.toolTip = waitingPrinters.map(\.name).joined(separator: ", ")
+        } else {
+            footerLabel.toolTip = nil
+            refreshLocalization()
+        }
         summaryLabel.stringValue = settings.isPolish
             ? "\(store.printers.count) drukarek · \(store.activePrintCount) pracuje"
             : "\(store.printers.count) printers · \(store.activePrintCount) printing"
-        let supportsCompactMode = store.printers.count >= 4
+        let floating = presentation == .floatingWindow
+        let adaptivePanelWidth = floating ? max(190, view.bounds.width) : CGFloat.zero
+        let panelHeight = floating ? max(120, view.bounds.height) : CGFloat.zero
+        let supportsCompactMode = !floating && store.printers.count >= 4
         // Full view fits up to 8 printers; above 8 default to compact. A manual toggle overrides.
-        let useCompactMode = supportsCompactMode && (compactModeChosen ? prefersCompactMode : store.printers.count > 8)
-        // The reference dashboard is 840 px / three columns. Geometry no longer depends on printer
-        // count: each normal card spans one column and a dual-nozzle or multi-AMS card spans two.
-        // User-chosen 1 or 2 card columns; only telemetry-driven wide cards span the full row.
-        let expandedColumnCount = useCompactMode ? 1 : preferredColumns
+        let useCompactMode = floating
+            ? false
+            : supportsCompactMode && (compactModeChosen ? prefersCompactMode : store.printers.count > 8)
+        // Geometry no longer depends on printer count: normal and multi-nozzle cards span one
+        // column; only multi-AMS cards span two. The floating window itself snaps to this grid.
+        let minimumItemWidth: CGFloat = useCompactMode ? 210 : 285
+        let responsiveColumns = max(1, Int(floor((adaptivePanelWidth - 20 + 8) / (minimumItemWidth + 8))))
+        let expandedColumnCount = floating ? responsiveColumns : (useCompactMode ? 1 : preferredColumns)
         let panelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 380 : 563)
+        let effectivePanelWidth: CGFloat = floating
+            ? adaptivePanelWidth
+            : panelWidth
+        let contentWidth = effectivePanelWidth - (floating ? 20 : 24)
         let wideSerials = Set(store.printers.compactMap { printer in
             cardNeedsWideSpan(printer) ? printer.serial : nil
         })
         // The popover size is reported once at the end of render() from the cards' real measured
         // height — reporting an estimate here too made the popover oscillate between the two values.
-        compactButton.isHidden = !supportsCompactMode
+        compactButton.isHidden = floating || !supportsCompactMode
         // Layout toggle icon: in card mode show a "list" icon (tap → list); in list mode a "grid" icon.
         compactButton.image = NSImage(systemSymbolName: useCompactMode ? "square.grid.2x2" : "list.bullet",
                                       accessibilityDescription: nil)
         compactButton.toolTip = settings.t(useCompactMode ? "Layout: cards" : "Layout: list")
         // Column-count toggle only makes sense in card mode; hide it in the compact list.
-        columnsButton.isHidden = useCompactMode
+        columnsButton.isHidden = floating || useCompactMode
         columnsButton.image = NSImage(systemSymbolName: preferredColumns == 2 ? "rectangle.portrait" : "square.split.2x1",
                                       accessibilityDescription: nil)
         columnsButton.toolTip = settings.t(preferredColumns == 2 ? "One column" : "Two columns")
-        cardsStack.spacing = useCompactMode ? 3 : 6
-        if store.printers.isEmpty {
+        if floating { updateFloatingChrome(width: adaptivePanelWidth, height: panelHeight) }
+        updateAlwaysOnTopButton()
+        updatePresentationModeButton()
+        cardsStack.spacing = floating ? 8 : (useCompactMode ? 3 : 6)
+        if visiblePrinters.isEmpty {
             detachCardRows()
             cardsBySerial.removeAll()
             compactRowsBySerial.removeAll()
             renderedSerials.removeAll()
             renderedWideSerials.removeAll()
-            renderedCompactMode = nil
-            let empty = NSTextField(wrappingLabelWithString: settings.t("No printers. Click + to find devices on your network."))
+            renderedCompactMode = useCompactMode
+            renderedColumnCount = expandedColumnCount
+            renderedContentWidth = contentWidth
+            let empty = NSTextField(wrappingLabelWithString: settings.t(store.printers.isEmpty
+                ? "No printers. Click + to find devices on your network."
+                : store.startupProgress.isLoading ? "Connecting to printers…" : "No printer data yet. Check power and network, or reconnect."))
             empty.alignment = .center
             empty.textColor = .secondaryLabelColor
-            empty.widthAnchor.constraint(equalToConstant: 440).isActive = true
+            let emptyWidth = empty.widthAnchor.constraint(equalToConstant: floating ? max(120, contentWidth) : 440)
+            emptyWidth.isActive = true
             empty.heightAnchor.constraint(equalToConstant: 120).isActive = true
             cardsStack.addArrangedSubview(empty)
+            if floating {
+                responsiveWidthUpdaters = [{ width in emptyWidth.constant = max(120, width) }]
+            } else if onboardingPanel == nil {
+                let size = NSSize(width: 480, height: 350)
+                preferredContentSize = size
+                onPreferredContentSize(size)
+            }
             return
         }
 
-        let desiredSerials = store.printers.map(\.serial)
+        let desiredSerials = visiblePrinters.map(\.serial)
         // Drop expansion state for printers that no longer exist, so a removed-while-expanded row
         // doesn't keep inflating the popover height.
         expandedCompactSerials.formIntersection(desiredSerials)
-        if desiredSerials != renderedSerials || renderedCompactMode != useCompactMode || renderedWideSerials != wideSerials || renderedColumnCount != expandedColumnCount {
+        let structureChanged = desiredSerials != renderedSerials || renderedCompactMode != useCompactMode
+            || renderedWideSerials != wideSerials || renderedColumnCount != expandedColumnCount
+        if structureChanged {
             detachCardRows()
             if renderedCompactMode != useCompactMode {
                 cardsBySerial.removeAll()
@@ -318,50 +586,70 @@ final class PrinterDashboardViewController: NSViewController {
             renderedCompactMode = useCompactMode
             renderedWideSerials = wideSerials
             renderedColumnCount = expandedColumnCount
+            renderedContentWidth = contentWidth
 
             if useCompactMode {
                 compactRowsBySerial = compactRowsBySerial.filter { desiredSerials.contains($0.key) }
                 expandedCardsBySerial = expandedCardsBySerial.filter { desiredSerials.contains($0.key) }
-                let contentWidth = panelWidth - 24
-                for printer in store.printers {
+                var rows: [CompactPrinterRowView] = []
+                for printer in visiblePrinters {
                     let row = compactRowsBySerial[printer.serial] ?? CompactPrinterRowView(
                         printer: printer,
                         onMove: { [weak self] sourceSerial, targetSerial, insertAfter in
                             self?.store.movePrinter(serial: sourceSerial, relativeTo: targetSerial, insertAfter: insertAfter)
                         },
-                        onSelect: { [weak self] in self?.toggleCompactExpansion(printer.serial) }
+                        onSelect: { [weak self] in
+                            guard let self else { return }
+                            if self.presentation == .floatingWindow {
+                                self.onShowDetails(printer.serial)
+                            } else {
+                                self.toggleCompactExpansion(printer.serial)
+                            }
+                        }
                     )
                     compactRowsBySerial[printer.serial] = row
-                    row.setLayoutWidth(contentWidth)
-                    cardsStack.addArrangedSubview(row)
-                    if expandedCompactSerials.contains(printer.serial) {
-                        let card = expandedCardsBySerial[printer.serial] ?? makeCard(for: printer)
-                        expandedCardsBySerial[printer.serial] = card
-                        card.setLayoutWidth(contentWidth)
-                        cardsStack.addArrangedSubview(card)
+                    if floating {
+                        rows.append(row)
+                    } else {
+                        row.setLayoutWidth(contentWidth)
+                        cardsStack.addArrangedSubview(row)
+                        if expandedCompactSerials.contains(printer.serial) {
+                            let card = expandedCardsBySerial[printer.serial] ?? makeCard(for: printer)
+                            expandedCardsBySerial[printer.serial] = card
+                            card.setLayoutWidth(contentWidth)
+                            cardsStack.addArrangedSubview(card)
+                        }
                     }
+                }
+                if floating {
+                    addCompactRows(rows, contentWidth: contentWidth, columns: expandedColumnCount)
                 }
             } else {
                 cardsBySerial = cardsBySerial.filter { desiredSerials.contains($0.key) }
                 var cards: [PrinterCardView] = []
-                for printer in store.printers {
+                for printer in visiblePrinters {
                     let card = cardsBySerial[printer.serial] ?? makeCard(for: printer)
                     cardsBySerial[printer.serial] = card
                     cards.append(card)
                 }
-                addExpandedRows(cards, printers: store.printers, contentWidth: panelWidth - 24,
+                addExpandedRows(cards, printers: visiblePrinters,
+                                contentWidth: contentWidth,
                                 columns: expandedColumnCount)
             }
+        } else if abs(renderedContentWidth - contentWidth) > 0.5 {
+            // Same hierarchy, different width: this is the hot path while the user drags a window edge.
+            renderedContentWidth = contentWidth
+            responsiveWidthUpdaters.forEach { $0(contentWidth) }
         }
 
-        for printer in store.printers {
+        for printer in visiblePrinters {
             let telemetry = store.telemetry[printer.serial] ?? .init()
             let message = store.connectionMessages[printer.serial]
             if useCompactMode {
-                compactRowsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings)
-                expandedCardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings)
+                compactRowsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
+                expandedCardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
             } else {
-                cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings)
+                cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
             }
             let serial = printer.serial
             cardsBySerial[serial]?.showNotices(store.spoolNotices[serial] ?? []) { [weak self] in
@@ -374,14 +662,15 @@ final class PrinterDashboardViewController: NSViewController {
         // popover's bottom edge visibly pulse on every telemetry tick.
         view.layoutSubtreeIfNeeded()
         let measuredContent = cardsStack.fittingSize.height
-        if measuredContent > 1 && !spoolOverlaySizingActive {
+        if !floating && measuredContent > 1 && !spoolOverlaySizingActive && onboardingPanel == nil {
             // header(12+36) + gap(6) + footer block(scroll→footer 6 + footer 14 + bottom 8), plus a
             // 4 px hairline so rounding never leaves a scrollbar — otherwise the panel hugs its content.
             let chromeAndInsets: CGFloat = 12 + 36 + 6 + 6 + 14 + 8 + 4
             // Cap to the screen so a tall (e.g. 1-column) fleet doesn't push the popover up behind the
             // menu bar and clip the header — the excess scrolls inside instead.
             let maxHeight = ((view.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900) - 24
-            let size = NSSize(width: panelWidth, height: min(maxHeight, chromeAndInsets + measuredContent))
+            let size = NSSize(width: effectivePanelWidth, height: min(maxHeight,
+                max(store.startupProgress.isLoading ? 350 : 0, chromeAndInsets + measuredContent)))
             if abs(size.width - lastReportedContentSize.width) > 0.5
                 || abs(size.height - lastReportedContentSize.height) > 0.5 {
                 lastReportedContentSize = size
@@ -404,6 +693,7 @@ final class PrinterDashboardViewController: NSViewController {
     /// Grow the popover to a tall, comfortable size for the open assignment overlay (spec: a small app
     /// window must not squeeze the filament list). Keeps the current height if it is already taller.
     func beginSpoolOverlaySizing() {
+        guard presentation == .popover else { return }
         spoolOverlaySizingActive = true
         PrinterDashboardViewController.overlaySizingHost = self
         let screenH = (view.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
@@ -431,10 +721,10 @@ final class PrinterDashboardViewController: NSViewController {
 
     private func cardNeedsWideSpan(_ printer: SavedPrinter) -> Bool {
         let telemetry = store.telemetry[printer.serial] ?? .init()
-        let dualNozzle = telemetry.nozzles.contains { $0.position == .right }
-            || telemetry.nozzleTemperature2 != nil
         let amsCount = telemetry.filamentGroups.filter { !$0.isExternal }.count
-        return dualNozzle || amsCount >= 2
+        // A multi-nozzle printer is still a normal, freely placeable tile. Reserve the wide
+        // presentation for genuinely wider filament setups with multiple AMS modules.
+        return amsCount >= 2
     }
 
     /// Packs cards into the six-column contract represented here as three printer columns. A wide
@@ -444,26 +734,28 @@ final class PrinterDashboardViewController: NSViewController {
                                  contentWidth: CGFloat, columns: Int) {
         guard columns > 0 else { return }
         let gap: CGFloat = 10
-        let unit = (contentWidth - CGFloat(columns - 1) * gap) / CGFloat(columns)
+        let effectiveGap: CGFloat = presentation == .floatingWindow ? 8 : gap
         var rowItems: [(card: PrinterCardView, span: Int)] = []
         var used = 0
 
         func flushRow() {
             guard !rowItems.isEmpty else { return }
+            let laidOutItems = rowItems
             let row = NSStackView()
             row.orientation = .horizontal
             row.alignment = .top
-            row.spacing = gap
+            row.spacing = effectiveGap
             var rowCards: [PrinterCardView] = []
-            for item in rowItems {
-                item.card.setLayoutWidth(unit * CGFloat(item.span) + gap * CGFloat(item.span - 1))
+            for item in laidOutItems {
                 row.addArrangedSubview(item.card)
                 rowCards.append(item.card)
             }
             let remaining = columns - used
+            var spacerWidth: NSLayoutConstraint?
             if remaining > 0 {
                 let spacer = NSView()
-                spacer.widthAnchor.constraint(equalToConstant: unit * CGFloat(remaining) + gap * CGFloat(remaining - 1)).isActive = true
+                spacerWidth = spacer.widthAnchor.constraint(equalToConstant: 1)
+                spacerWidth?.isActive = true
                 row.addArrangedSubview(spacer)
             }
             if let first = rowCards.first {
@@ -474,6 +766,17 @@ final class PrinterDashboardViewController: NSViewController {
                 }
             }
             cardsStack.addArrangedSubview(row)
+            let updateWidths: (CGFloat) -> Void = { width in
+                let currentUnit = (width - CGFloat(columns - 1) * effectiveGap) / CGFloat(columns)
+                for item in laidOutItems {
+                    item.card.setLayoutWidth(currentUnit * CGFloat(item.span)
+                                             + effectiveGap * CGFloat(item.span - 1))
+                }
+                spacerWidth?.constant = currentUnit * CGFloat(remaining)
+                    + effectiveGap * CGFloat(max(0, remaining - 1))
+            }
+            responsiveWidthUpdaters.append(updateWidths)
+            updateWidths(contentWidth)
             rowItems.removeAll(keepingCapacity: true)
             used = 0
         }
@@ -482,7 +785,7 @@ final class PrinterDashboardViewController: NSViewController {
             var span = min(columns, cardNeedsWideSpan(printer) ? 2 : 1)
             if used + span > columns { flushRow() }
             // The last card, alone on a fresh row (odd count), stretches to the full width at the bottom.
-            if index == cards.count - 1, used == 0 { span = columns }
+            if presentation == .popover, index == cards.count - 1, used == 0 { span = columns }
             rowItems.append((card, span))
             used += span
             if used == columns { flushRow() }
@@ -490,7 +793,42 @@ final class PrinterDashboardViewController: NSViewController {
         flushRow()
     }
 
+    /// Compact rows use the same responsive grid as full cards. In a wide, low window this turns the
+    /// dashboard into a horizontal status strip, while a narrow window naturally falls back to one row.
+    private func addCompactRows(_ rows: [CompactPrinterRowView], contentWidth: CGFloat, columns: Int) {
+        let count = max(1, columns)
+        let gap: CGFloat = 8
+        for start in stride(from: 0, to: rows.count, by: count) {
+            let rowStack = NSStackView()
+            rowStack.orientation = .horizontal
+            rowStack.alignment = .top
+            rowStack.spacing = gap
+            let end = min(start + count, rows.count)
+            let laidOutRows = Array(rows[start..<end])
+            for row in laidOutRows {
+                rowStack.addArrangedSubview(row)
+            }
+            let missing = count - (end - start)
+            var spacerWidth: NSLayoutConstraint?
+            if missing > 0 {
+                let spacer = NSView()
+                spacerWidth = spacer.widthAnchor.constraint(equalToConstant: 1)
+                spacerWidth?.isActive = true
+                rowStack.addArrangedSubview(spacer)
+            }
+            cardsStack.addArrangedSubview(rowStack)
+            let updateWidths: (CGFloat) -> Void = { width in
+                let unit = (width - CGFloat(count - 1) * gap) / CGFloat(count)
+                laidOutRows.forEach { $0.setLayoutWidth(unit) }
+                spacerWidth?.constant = unit * CGFloat(missing) + gap * CGFloat(max(0, missing - 1))
+            }
+            responsiveWidthUpdaters.append(updateWidths)
+            updateWidths(contentWidth)
+        }
+    }
+
     private func detachCardRows() {
+        responsiveWidthUpdaters.removeAll(keepingCapacity: true)
         NSLayoutConstraint.deactivate(rowHeightConstraints)
         rowHeightConstraints.removeAll()
         for arrangedView in cardsStack.arrangedSubviews {
@@ -531,7 +869,28 @@ final class PrinterDashboardViewController: NSViewController {
         // Reset/clear is icon-only (a broom-like ✨); don't set a title or it takes header width.
         resetButton.imagePosition = .imageOnly
         resetButton.toolTip = settings.t("Clear completed jobs and old file names")
+        updateAlwaysOnTopButton()
         // The layout-toggle button is icon-only; its image + tooltip are refreshed in refreshDashboard.
+    }
+
+    private func updateAlwaysOnTopButton() {
+        guard presentation == .floatingWindow else { return }
+        let pinned = AppSettings.shared.floatingWindowAlwaysOnTop
+        alwaysOnTopButton.state = pinned ? .on : .off
+        alwaysOnTopButton.image = NSImage(systemSymbolName: pinned ? "pin.fill" : "pin",
+                                          accessibilityDescription: nil)
+        alwaysOnTopButton.toolTip = AppSettings.shared.t(pinned ? "Allow other windows above" : "Always on top")
+        alwaysOnTopButton.setAccessibilityLabel(AppSettings.shared.t("Always on top"))
+    }
+
+    private func updatePresentationModeButton() {
+        let windowMode = AppSettings.shared.floatingWindowEnabled
+        presentationModeButton.state = windowMode ? .on : .off
+        let label = AppSettings.shared.t(windowMode ? "Switch to popover" : "Switch to window")
+        presentationModeButton.image = NSImage(systemSymbolName: windowMode ? "menubar.rectangle" : "macwindow",
+                                               accessibilityDescription: label)
+        presentationModeButton.toolTip = label
+        presentationModeButton.setAccessibilityLabel(label)
     }
 
     private func iconButton(_ symbol: String, tooltip: String, action: Selector) -> NSButton {
@@ -585,6 +944,20 @@ final class PrinterDashboardViewController: NSViewController {
         store.refreshPrinterNames()
     }
     @objc private func resetPressed() { store.resetCompletedStatuses() }
+    @objc private func settingsPressed() { onShowSettings() }
+    @objc private func togglePresentationMode() {
+        dismissOnboarding()
+        AppSettings.shared.floatingWindowEnabled.toggle()
+        updatePresentationModeButton()
+        // Reuse the existing presenter, after settings observers finish switching window/Dock mode.
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .gantryShowDashboard, object: nil)
+        }
+    }
+    @objc private func toggleAlwaysOnTop() {
+        AppSettings.shared.floatingWindowAlwaysOnTop.toggle()
+        updateAlwaysOnTopButton()
+    }
     @objc private func toggleColumns() {
         preferredColumns = preferredColumns == 2 ? 1 : 2
         refreshDashboard()
@@ -654,6 +1027,7 @@ final class PrinterDashboardViewController: NSViewController {
 
 @MainActor
 private final class CompactPrinterRowView: NSView, NSDraggingSource {
+    override var mouseDownCanMoveWindow: Bool { false }
     let serial: String
     /// macOS 26 "liquid glass" where available, a standard translucent material on older systems.
     private let backdrop: NSView
@@ -662,15 +1036,25 @@ private final class CompactPrinterRowView: NSView, NSDraggingSource {
     private let statusLabel = NSTextField(labelWithString: "")
     private let dropIndicatorLayer = CALayer()
     private var dragHandle: PrinterDragHandle?
+    private var nameWidthConstraint: NSLayoutConstraint?
     private let onMove: (_ sourceSerial: String, _ targetSerial: String, _ insertAfter: Bool) -> Void
     private let onSelect: (() -> Void)?
     private var layoutWidthConstraint: NSLayoutConstraint?
 
     /// Match the collapsed row to the current panel content width so it lines up with an expanded card.
     func setLayoutWidth(_ width: CGFloat) {
-        layoutWidthConstraint?.isActive = false
-        layoutWidthConstraint = widthAnchor.constraint(equalToConstant: width)
-        layoutWidthConstraint?.isActive = true
+        if let layoutWidthConstraint {
+            layoutWidthConstraint.constant = width
+        } else {
+            let constraint = widthAnchor.constraint(equalToConstant: width)
+            constraint.isActive = true
+            layoutWidthConstraint = constraint
+        }
+        // At the demo's 190 pt minimum window width the 210 pt reference row cannot fit with its drag
+        // grip and 128 pt name. Collapse only that secondary affordance and let the name truncate.
+        let extraNarrow = width < 230
+        dragHandle?.isHidden = extraNarrow
+        nameWidthConstraint?.constant = extraNarrow ? max(44, min(128, width - 100)) : 128
     }
 
     init(
@@ -730,7 +1114,8 @@ private final class CompactPrinterRowView: NSView, NSDraggingSource {
         nameLabel.font = .systemFont(ofSize: 11, weight: .semibold)
         nameLabel.textColor = GantryTheme.text
         nameLabel.lineBreakMode = .byTruncatingTail
-        nameLabel.widthAnchor.constraint(equalToConstant: 128).isActive = true
+        nameWidthConstraint = nameLabel.widthAnchor.constraint(equalToConstant: 128)
+        nameWidthConstraint?.isActive = true
         statusLabel.font = .systemFont(ofSize: 10, weight: .medium)
         statusLabel.alignment = .right
         statusLabel.lineBreakMode = .byTruncatingTail
@@ -761,10 +1146,13 @@ private final class CompactPrinterRowView: NSView, NSDraggingSource {
         }
     }
 
-    func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings) {
+    func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings,
+                isStartingUp: Bool = false) {
         nameLabel.stringValue = printer.name
         nameLabel.toolTip = printer.name
-        let baseStatus = message ?? settings.activityLabel(stage: telemetry.currentStage, state: telemetry.state)
+        let baseStatus = isStartingUp && telemetry.state == .offline
+            ? settings.t("Connecting…")
+            : message ?? settings.activityLabel(stage: telemetry.currentStage, state: telemetry.state)
         if message == nil, telemetry.state == .printing || telemetry.state == .paused {
             statusLabel.stringValue = "\(baseStatus) · \(telemetry.progress)%"
         } else {
@@ -773,7 +1161,8 @@ private final class CompactPrinterRowView: NSView, NSDraggingSource {
         statusLabel.toolTip = statusLabel.stringValue
         let stale = telemetry.lastUpdated.map { Date().timeIntervalSince($0) > 90 } ?? false
         statusLabel.textColor = stale ? .systemOrange : (telemetry.state == .error ? GantryTheme.statusPrinting : GantryTheme.secondary)
-        stateIcon.image = NSImage(systemSymbolName: telemetry.state.symbol, accessibilityDescription: baseStatus)
+        stateIcon.image = NSImage(systemSymbolName: isStartingUp && telemetry.state == .offline
+            ? "ellipsis" : telemetry.state.symbol, accessibilityDescription: baseStatus)
         stateIcon.contentTintColor = stateColor(telemetry.state)
 
         // Neutral glass to match the flat translucent cards; only an error carries a faint warm wash.
@@ -876,7 +1265,22 @@ private final class CompactPrinterRowView: NSView, NSDraggingSource {
 }
 
 @MainActor
-private final class PrinterCardView: NSView, NSDraggingSource {
+final class PrinterCardView: NSView, NSDraggingSource {
+    override var mouseDownCanMoveWindow: Bool { false }
+    var isGuidePreview = false
+
+    /// Guide highlights the production widgets, never a second interpretation of progress or AMS.
+    func onboardingFocusRect(step: Int) -> NSRect? {
+        let targets: [NSView]
+        switch step {
+        case 0: targets = [progress, percentLabel, etaMetric, layerMetric]
+        case 1: targets = [tempBento]
+        case 2: targets = [filamentDock]
+        default: targets = [nameLabel.superview ?? nameLabel]
+        }
+        let rects = targets.filter { !$0.isHiddenOrHasHiddenAncestor }.map { convert($0.bounds, from: $0) }
+        return rects.reduce(nil as NSRect?) { result, rect in result.map { $0.union(rect) } ?? rect }
+    }
     let serial: String
     private let onShowDetails: () -> Void
     private let onShowMaintenance: () -> Void
@@ -914,10 +1318,14 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     private let envRow = NSStackView()
     private let tempBento = TemperatureBentoView()
     private let filamentDock = FilamentDockView()
+    private let filamentSection = NSView()
+    private let printErrorPanel = NSView()
+    private let printErrorLabel = NSTextField(wrappingLabelWithString: "")
+    private var emptyErrorHeight: NSLayoutConstraint?
     // Flat-card prototype: thin full-width rules separate the sections instead of nested bento boxes.
     private let tempDivider = PrinterCardView.makeDivider()
     private let amsDivider = PrinterCardView.makeDivider()
-    // Disconnect scrim: dims the whole card and shows the connection error when the printer is offline.
+    // Disconnect scrim: covers the body below the header and shows the connection error when offline.
     private let disconnectOverlay = PassthroughView()
     private let disconnectLabel = NSTextField(labelWithString: "")
     // Small dismissible notice at the bottom of the card (e.g. a Spoolbase spool auto-detached by an NFC roll).
@@ -943,6 +1351,7 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     private var lastFilamentSignature: String?
     private var lastMetricsKey: String?
     private var lastDual = false
+    private static var knownDualNozzleSerials = Set<String>()
     private var currentLayoutWidth: CGFloat = 456
     private var displayedRemainingMinutes: Int?
     private var etaUpdatedAt: Date?
@@ -1186,7 +1595,37 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             progressSummary.widthAnchor.constraint(equalTo: jobStack.widthAnchor)
         ])
 
-        let stack = NSStackView(views: [jobSurface, tempDivider, tempBento, amsDivider, filamentDock])
+        // Keep the dock in layout while an error covers it: telemetry must not move neighbouring cards.
+        filamentDock.translatesAutoresizingMaskIntoConstraints = false
+        printErrorPanel.translatesAutoresizingMaskIntoConstraints = false
+        printErrorPanel.wantsLayer = true
+        printErrorPanel.layer?.cornerRadius = 8
+        printErrorPanel.layer?.backgroundColor = GantryTheme.statusError.withAlphaComponent(0.13).cgColor
+        printErrorPanel.isHidden = true
+        printErrorPanel.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(maintenancePressed)))
+        printErrorLabel.translatesAutoresizingMaskIntoConstraints = false
+        printErrorLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        printErrorLabel.textColor = GantryTheme.statusError
+        printErrorLabel.maximumNumberOfLines = 2
+        printErrorLabel.lineBreakMode = .byTruncatingTail
+        printErrorPanel.addSubview(printErrorLabel)
+        filamentSection.addSubview(filamentDock)
+        filamentSection.addSubview(printErrorPanel)
+        NSLayoutConstraint.activate([
+            filamentDock.leadingAnchor.constraint(equalTo: filamentSection.leadingAnchor),
+            filamentDock.trailingAnchor.constraint(equalTo: filamentSection.trailingAnchor),
+            filamentDock.topAnchor.constraint(equalTo: filamentSection.topAnchor),
+            filamentDock.bottomAnchor.constraint(equalTo: filamentSection.bottomAnchor),
+            printErrorPanel.leadingAnchor.constraint(equalTo: filamentSection.leadingAnchor),
+            printErrorPanel.trailingAnchor.constraint(equalTo: filamentSection.trailingAnchor),
+            printErrorPanel.topAnchor.constraint(equalTo: filamentSection.topAnchor),
+            printErrorPanel.bottomAnchor.constraint(equalTo: filamentSection.bottomAnchor),
+            printErrorLabel.leadingAnchor.constraint(equalTo: printErrorPanel.leadingAnchor, constant: 8),
+            printErrorLabel.trailingAnchor.constraint(equalTo: printErrorPanel.trailingAnchor, constant: -8),
+            printErrorLabel.centerYAnchor.constraint(equalTo: printErrorPanel.centerYAnchor)
+        ])
+        emptyErrorHeight = filamentSection.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        let stack = NSStackView(views: [jobSurface, tempDivider, tempBento, amsDivider, filamentSection])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -1201,12 +1640,12 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -6),
             jobSurface.widthAnchor.constraint(equalTo: stack.widthAnchor),
             tempBento.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            filamentDock.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            filamentSection.widthAnchor.constraint(equalTo: stack.widthAnchor),
             tempDivider.widthAnchor.constraint(equalTo: stack.widthAnchor),
             amsDivider.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
 
-        // Disconnect scrim on top of everything (click-through, so ⋯/details still work).
+        // Disconnect scrim over the body (click-through, so header actions remain usable).
         // Frosted glass, not a flat grey wash: the same material the panel itself uses, so an offline
         // card reads as the rest of the app rather than as a bug. The message sits in its own small
         // panel, because loose text floating on a dimmed card looked unfinished.
@@ -1341,9 +1780,13 @@ private final class PrinterCardView: NSView, NSDraggingSource {
     private var onMove: ((_ sourceSerial: String, _ targetSerial: String, _ insertAfter: Bool) -> Void)?
 
     func setLayoutWidth(_ width: CGFloat) {
-        layoutWidthConstraint?.isActive = false
-        layoutWidthConstraint = widthAnchor.constraint(equalToConstant: width)
-        layoutWidthConstraint?.isActive = true
+        if let layoutWidthConstraint {
+            layoutWidthConstraint.constant = width
+        } else {
+            let constraint = widthAnchor.constraint(equalToConstant: width)
+            constraint.isActive = true
+            layoutWidthConstraint = constraint
+        }
         // A wider card can collapse a dual-nozzle printer's two temperature rows into one, so
         // re-evaluate the layout whenever the width changes.
         currentLayoutWidth = width
@@ -1413,7 +1856,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         return .move
     }
 
-    func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings) {
+    func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings,
+                isStartingUp: Bool = false) {
         nameLabel.stringValue = printer.name
         manufacturerLabel.stringValue = switch printer.kind {
         case .bambu: " MQTT "
@@ -1476,8 +1920,11 @@ private final class PrinterCardView: NSView, NSDraggingSource {
                 ?? (telemetry.errorCode != 0
                     ? settings.t("Error code: 0x{0}", telemetry.errorCode)
                     : settings.t("Printer reported an error"))
-            jobLabel.stringValue = errorDescription
-            jobLabel.toolTip = errorDescription
+            printErrorLabel.stringValue = errorDescription
+            printErrorPanel.toolTip = errorDescription
+            printErrorPanel.setAccessibilityLabel(errorDescription)
+            jobLabel.stringValue = telemetry.jobName ?? settings.t("NO ACTIVE JOB")
+            jobLabel.toolTip = telemetry.jobName
         } else {
             // Only an actively running/paused print has a job to show. On finished/idle the printer
             // still echoes the last filename, so we treat those as "no active job" and hide the name.
@@ -1523,7 +1970,16 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             ? [NozzleTelemetry(position: .single, currentTemperature: telemetry.nozzleTemperature,
                                targetTemperature: telemetry.nozzleTargetTemperature)]
             : telemetry.nozzles
-        let dual = nozzles.contains { $0.position == .right }
+        // Once a printer has identified a second nozzle, keep that capability across partial MQTT
+        // reports and card rebuilds. Older saved printers can lack an exact model, hence the name hint.
+        let modelHint = [printer.model, printer.name].contains {
+            let value = $0.uppercased()
+            return value.contains("H2D") || value.contains("X2D")
+        }
+        let reportedDual = nozzles.contains { $0.position == .right }
+            || telemetry.nozzleTemperature2 != nil
+        if modelHint || reportedDual { Self.knownDualNozzleSerials.insert(printer.serial) }
+        let dual = lastDual || Self.knownDualNozzleSerials.contains(printer.serial)
         configureMetricsLayout(dual: dual, settings: settings)
 
         let bed = temperature(telemetry.bedTemperature, telemetry.bedTargetTemperature)
@@ -1547,7 +2003,8 @@ private final class PrinterCardView: NSView, NSDraggingSource {
             chamberMetric.value = chamber ?? ""
             chamberMetric.isHidden = chamber == nil
         }
-        tempBento.update(nozzles: nozzles,
+        tempBento.update(nozzles: nozzles, dual: dual,
+                         showTargets: !dual || currentLayoutWidth >= 360,
                          bedCurrent: telemetry.bedTemperature,
                          bedTarget: telemetry.bedTargetTemperature,
                          chamberCurrent: telemetry.chamberTemperature,
@@ -1572,12 +2029,20 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         filamentDock.setGroups(groups, settings: settings, showRemaining: true,
                                printerSerial: printer.serial,
                                onSlotTapped: { [weak self] location, title, material, colorHex, anchor in
-            guard let self, let host = self.window?.contentView else { return }
+            guard let self, !self.isGuidePreview, let host = self.window?.contentView else { return }
             PrinterCardView.dismissSpoolOverlay()
             let vc = SpoolAssignPopoverViewController(printerSerial: printer.serial, location: location,
                                                       slotTitle: title, amsMaterial: material,
                                                       amsColorHex: colorHex, onChange: {})
             vc.onClose = { PrinterCardView.dismissSpoolOverlay() }
+            if self.window?.windowController is FloatingDashboardWindowController {
+                PrinterCardView.activeSpoolVC = vc
+                PrinterCardView.activeSpoolBackdrop = EmbeddedPanelView.show(vc.view, in: host,
+                    size: NSSize(width: 460, height: 560),
+                    fillsViewport: true, showsCloseButton: false,
+                    onDismiss: { PrinterCardView.dismissSpoolOverlay() })
+                return
+            }
             let backdrop = SpoolBackdropView(frame: host.bounds)
             backdrop.autoresizingMask = [.width, .height]
             backdrop.wantsLayer = true
@@ -1608,17 +2073,23 @@ private final class PrinterCardView: NSView, NSDraggingSource {
         jobLabel.isHidden = !settings.cardShowFileName
         jobSeparator.isHidden = !settings.cardShowFileName
         progressSummary.isHidden = !settings.cardShowProgress
-        progress.isHidden = !settings.cardShowProgress
+        percentLabel.isHidden = !settings.cardShowProgress
         tempBento.isHidden = !settings.cardShowTemperatures
-        filamentDock.isHidden = groups.isEmpty || !settings.cardShowFilaments
+        let showPrintError = telemetry.state == .error
+        let hasFilaments = !groups.isEmpty && settings.cardShowFilaments
+        filamentSection.isHidden = !hasFilaments && !showPrintError
+        // Hidden, not removed: its constraints retain the normal AMS/EXT height.
+        filamentDock.isHidden = showPrintError || !hasFilaments
+        printErrorPanel.isHidden = !showPrintError
+        emptyErrorHeight?.isActive = showPrintError && !hasFilaments
         detailsChip.isHidden = !settings.cardShowDetailsChip
         // A section rule only shows when its section is visible (no orphan lines).
         tempDivider.isHidden = tempBento.isHidden
-        amsDivider.isHidden = filamentDock.isHidden
+        amsDivider.isHidden = filamentSection.isHidden
 
-        // Offline: dim the whole card and surface the connection error over it.
+        // Offline: keep the printer header visible and cover only the card body with the error tile.
         let disconnected = telemetry.state == .offline
-        disconnectOverlay.isHidden = !disconnected
+        disconnectOverlay.isHidden = !disconnected || isStartingUp
         if disconnected {
             disconnectLabel.stringValue = message
                 ?? settings.t("No connection to the printer")
@@ -1775,7 +2246,10 @@ private final class PrinterCardView: NSView, NSDraggingSource {
 }
 
 @MainActor
-private final class PrinterDragHandle: NSView {
+final class PrinterDragHandle: NSView {
+    // AppKit must deliver mouseDragged to this view, even in a transparent/full-size-content window.
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     private let onDrag: (NSEvent) -> Void
     private var didBeginDrag = false
 
@@ -1996,7 +2470,8 @@ private final class TemperatureBentoView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    func update(nozzles: [NozzleTelemetry], bedCurrent: Double?, bedTarget: Double?,
+    func update(nozzles: [NozzleTelemetry], dual: Bool, showTargets: Bool,
+                bedCurrent: Double?, bedTarget: Double?,
                 chamberCurrent: Double?, chamberTarget: Double?,
                 printing: Bool, error: Bool, settings: AppSettings) {
         row.arrangedSubviews.forEach {
@@ -2004,7 +2479,6 @@ private final class TemperatureBentoView: NSView {
             $0.removeFromSuperview()
         }
 
-        let dual = nozzles.contains { $0.position == .right }
         var zones: [(String, Double?, Double?, NSColor)] = []
         if dual {
             let left = nozzles.first { $0.position == .left } ?? nozzles.first
@@ -2035,14 +2509,24 @@ private final class TemperatureBentoView: NSView {
             // carry the printer's error state here.
             let zoneError = error && zone.2 != nil
             let state = GantryTheme.tempState(current: zone.1, target: zone.2, printing: printing, error: zoneError)
+            let nozzleCount = dual ? 2 : 1
+            let icon = index < nozzleCount ? "line.3.horizontal.decrease" : index == nozzleCount ? "square.3.layers.3d" : "cube"
             row.addArrangedSubview(ThermalZoneView(label: zone.0,
+                                                   icon: icon,
+                                                   side: dual && index < 2 ? (index == 0 ? "L" : "R") : nil,
                                                    current: Self.value(zone.1),
-                                                   target: Self.target(zone.2),
+                                                   target: showTargets
+                                                       ? (zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "")
+                                                       : "",
+                                                   tooltipTarget: zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "",
                                                    tint: GantryTheme.tempColor(state, mono: mono),
                                                    separated: index > 0,
                                                    symbol: mono ? GantryTheme.tempSymbol(state) : nil,
                                                    bold: GantryTheme.tempBold(state)))
         }
+        // Preserve the chamber's grid cell even when telemetry omits it. The spacer is invisible,
+        // but prevents the bed from sliding sideways as partial MQTT reports arrive.
+        if chamberCurrent == nil { row.addArrangedSubview(NSView()) }
     }
 
     private static func value(_ value: Double?) -> String {
@@ -2061,7 +2545,8 @@ private final class ThermalZoneView: NSView {
     private let separator = CALayer()
     private let ambient = CAGradientLayer()
 
-    init(label: String, current: String, target: String, tint: NSColor, separated: Bool,
+    init(label: String, icon: String, side: String?, current: String, target: String,
+         tooltipTarget: String? = nil, tint: NSColor, separated: Bool,
          symbol: String? = nil, bold: Bool = false) {
         super.init(frame: .zero)
         wantsLayer = true
@@ -2078,7 +2563,15 @@ private final class ThermalZoneView: NSView {
         layer?.addSublayer(accent)
         layer?.addSublayer(separator)
 
-        let labelField = NSTextField(labelWithString: label)
+        toolTip = label + ": " + current + " " + (tooltipTarget ?? target)
+        setAccessibilityLabel(toolTip)
+        let iconView = NSImageView(image: NSImage(systemSymbolName: icon, accessibilityDescription: label) ?? NSImage())
+        iconView.contentTintColor = GantryTheme.secondary
+        iconView.symbolConfiguration = .init(pointSize: 12, weight: .regular)
+        iconView.widthAnchor.constraint(equalToConstant: 12).isActive = true
+        iconView.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        let labelField = NSTextField(labelWithString: side ?? "")
+        labelField.isHidden = side == nil
         labelField.font = .monospacedSystemFont(ofSize: 7, weight: .semibold)
         labelField.textColor = .tertiaryLabelColor
         labelField.lineBreakMode = .byTruncatingTail
@@ -2091,26 +2584,29 @@ private final class ThermalZoneView: NSView {
         currentField.textColor = tint
         let targetField = NSTextField(labelWithString: target)
         // Quiet target: small and faint so the eye catches the big current value, the target just hints.
-        targetField.font = .monospacedDigitSystemFont(ofSize: 7, weight: .regular)
-        targetField.textColor = .quaternaryLabelColor
+        targetField.font = .monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+        targetField.textColor = GantryTheme.secondary
+        targetField.isHidden = target.isEmpty
+        currentField.maximumNumberOfLines = 1
+        targetField.maximumNumberOfLines = 1
         let values = NSStackView(views: [currentField, targetField])
         values.orientation = .horizontal
         values.alignment = .firstBaseline
-        values.spacing = 3
+        values.spacing = 2
 
         // Label and value share one baseline instead of stacking. Two lines per reading cost 12 points
         // a card row for a caption that reads just as well beside the number.
         labelField.setContentHuggingPriority(.required, for: .horizontal)
         labelField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let line = NSStackView(views: [labelField, values])
+        let line = NSStackView(views: [iconView, labelField, values])
         line.orientation = .horizontal
-        line.alignment = .firstBaseline
-        line.spacing = 5
+        line.alignment = .centerY
+        line.spacing = 2
         line.translatesAutoresizingMaskIntoConstraints = false
         addSubview(line)
         NSLayoutConstraint.activate([
-            line.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            line.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            line.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            line.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
             line.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
     }

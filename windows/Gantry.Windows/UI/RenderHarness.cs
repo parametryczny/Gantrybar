@@ -66,6 +66,10 @@ internal static class RenderHarness
                     Slots = { S("EXT", "PETG", "161616", 100, false) } },
             },
         };
+        // This harness injects telemetry directly rather than through transport events.
+        foreach (var printer in store.Printers) store.Startup.Report(printer.Serial);
+        store.Startup.Finish();
+        store.Startup.ClaimGuide(false);
         RenderWindow(new DashboardWindow(store), path);
     }
 

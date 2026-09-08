@@ -16,21 +16,22 @@ class DashboardLayoutTests(unittest.TestCase):
             Placement("a", 0, 0, 1), Placement("b", 0, 1, 1), Placement("c", 1, 0, 2),
         ])
 
-    def test_dual_nozzle_and_multiple_ams_are_wide(self) -> None:
+    def test_multi_nozzle_is_free_but_multiple_ams_are_wide(self) -> None:
         dual = Telemetry(nozzles=[NozzleTelemetry("left"), NozzleTelemetry("right")])
         groups = [
             FilamentGroup("a", "ams", "AMS A", 4),
             FilamentGroup("b", "ams", "AMS B", 4),
         ]
         multiple_ams = Telemetry(filament_groups=groups)
-        self.assertTrue(needs_wide(dual))
+        self.assertFalse(needs_wide(dual))
         self.assertTrue(needs_wide(multiple_ams))
         placed = place_cards(["normal", "dual", "normal2"],
-                             {"dual": dual, "normal": Telemetry(), "normal2": Telemetry()}, 2)
+                             {"dual": dual, "normal": Telemetry(), "normal2": Telemetry()}, 2,
+                             stretch_last=False)
         self.assertEqual(placed, [
             Placement("normal", 0, 0, 1),
-            Placement("dual", 1, 0, 2),
-            Placement("normal2", 2, 0, 2),
+            Placement("dual", 0, 1, 1),
+            Placement("normal2", 1, 0, 1),
         ])
 
     def test_compact_mode_is_one_column(self) -> None:

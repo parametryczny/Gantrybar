@@ -2,10 +2,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from gantry.physicalspool import PhysicalSpoolStore, same_slot, location_for
-from gantry.webserver import fleet_snapshot
+from gantry.webserver import WEB_HTML, fleet_snapshot
 from gantry.core import Printer, PrinterKind, Telemetry, FilamentGroup, FilamentSlot, PrinterState, parse_telemetry
 
 
@@ -68,6 +69,11 @@ except Exception:
 
 
 class WebFleetTests(unittest.TestCase):
+    def test_canonical_dashboard_matches_compact_macos_card(self):
+        self.assertIn('class="status-row"', WEB_HTML)
+        self.assertIn('class="offline-layer"', WEB_HTML)
+        self.assertIn("grid-template-columns:minmax(72px,1fr) auto auto", WEB_HTML)
+
     def test_fleet_snapshot_shape(self):
         printer = Printer("X1", "X1", "192.168.1.9", model="Bambu Lab", port=8883, kind=PrinterKind.BAMBU)
         tel = Telemetry(state=PrinterState.PRINTING, progress=42, job_name="vase.3mf", nozzle=210.0, bed=60.0)
@@ -88,6 +94,30 @@ class WebFleetTests(unittest.TestCase):
         tel = Telemetry(state=PrinterState.FINISHED, progress=100, job_name="vase.3mf")
         snap = fleet_snapshot([printer], {"X1": tel})
         self.assertEqual(snap["printers"][0]["job"], "")
+
+    def test_spoolbase_assignment_overrides_raw_ams_and_respects_switches(self):
+        printer = Printer("X1", "X1", "192.168.1.9", model="Bambu Lab", port=8883,
+                          kind=PrinterKind.BAMBU)
+        tel = Telemetry(state=PrinterState.PRINTING, progress=25)
+        tel.filament_groups = [FilamentGroup(
+            group_id="ams-0", source_type="ams", display_name="AMS A", declared_capacity=4,
+            external=False, slots=[FilamentSlot(
+                slot_id="a1", label="A1", material="PLA", color="111111FF", remaining=90,
+                active=True, remaining_weight_g=900.0)])]
+        spools = _store()
+        spools.create_spool("def-1", 1000, 250, location_for("X1", False, 0, 0))
+        catalogue = SimpleNamespace(filaments=[SimpleNamespace(
+            id="def-1", colorHex="E89CC6", type="PETG", name="PETG Basic")])
+
+        assigned = fleet_snapshot([printer], {"X1": tel}, spools, catalogue, True, True)
+        slot = assigned["printers"][0]["groups"][0]["slots"][0]
+        self.assertEqual((slot["colorHex"], slot["percent"], slot["grams"]),
+                         ("E89CC6", 25, 250))
+
+        disabled = fleet_snapshot([printer], {"X1": tel}, spools, catalogue, False, False)
+        slot = disabled["printers"][0]["groups"][0]["slots"][0]
+        self.assertEqual((slot["colorHex"], slot["percent"], slot["grams"]),
+                         ("111111", 90, None))
 
 
 class CameraSplitTests(unittest.TestCase):

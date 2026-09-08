@@ -21,6 +21,16 @@ final class MaintenancePanelViewController: NSViewController {
                      onDismiss: (() -> Void)? = nil) {
         dismiss()
         let controller = MaintenancePanelViewController(printer: printer, telemetry: telemetry)
+        if host.window?.windowController is FloatingDashboardWindowController {
+            activeController = controller
+            activeOnDismiss = onDismiss
+            let panel = controller.view
+            panel.layoutSubtreeIfNeeded()
+            activeBackdrop = EmbeddedPanelView.show(panel, in: host,
+                size: NSSize(width: 470, height: max(200, controller.body.fittingSize.height + 36)),
+                showsCloseButton: false, onDismiss: { Self.dismiss() })
+            return
+        }
         let backdrop = MaintenanceBackdropView(frame: host.bounds)
         backdrop.autoresizingMask = [.width, .height]
         backdrop.wantsLayer = true
@@ -424,7 +434,11 @@ final class MaintenancePanelViewController: NSViewController {
         let alert = NSAlert()
         alert.messageText = s.t("Maintenance instructions")
         alert.informativeText = s.t("Power off and cool the printer. Clean guide rods, use manufacturer-approved lubricant, then inspect belts and nozzle. The manufacturer guide always takes precedence.")
-        alert.runModal()
+        if let window = view.window, window.windowController is FloatingDashboardWindowController {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
 }

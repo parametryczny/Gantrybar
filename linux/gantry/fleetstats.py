@@ -31,6 +31,7 @@ class FleetStatsDialog(Gtk.Dialog):
         self.set_size_request(420, 420)
 
         self.add_button(i18n.t("Done"), Gtk.ResponseType.OK)
+        self.connect("response", lambda dialog, response: dialog.destroy() if response != Gtk.ResponseType.APPLY else None)
         export = self.add_button(i18n.t("Export to file…"),
                                  Gtk.ResponseType.APPLY)
         export.connect("clicked", self._export)
@@ -53,18 +54,18 @@ class FleetStatsDialog(Gtk.Dialog):
         self.get_content_area().pack_start(root, True, True, 0)
 
         self._render()
-        self.show_all()
+        self.get_child().show_all()
 
     # ------------------------------------------------------------------ data
 
     def _period_label(self, days: int) -> str:
         if days == 7:
-            returni18n.t("last 7 days")
+            return i18n.t("last 7 days")
         if days == 30:
-            returni18n.t("last 30 days")
+            return i18n.t("last 30 days")
         if days == 365:
-            returni18n.t("last year")
-        returni18n.t("all time")
+            return i18n.t("last year")
+        return i18n.t("all time")
 
     def _period_changed(self, combo: Gtk.ComboBoxText) -> None:
         self.period_days = int(combo.get_active_id() or "30")
@@ -185,7 +186,7 @@ class FleetStatsDialog(Gtk.Dialog):
     def _export(self, *_args: object) -> None:
         chooser = Gtk.FileChooserDialog(
             title=i18n.t("Export statistics"),
-            transient_for=self, action=Gtk.FileChooserAction.SAVE)
+            transient_for=self if self.get_visible() else self.app.window, action=Gtk.FileChooserAction.SAVE)
         chooser.add_buttons(i18n.t("Cancel"), Gtk.ResponseType.CANCEL,
 i18n.t("Save"), Gtk.ResponseType.ACCEPT)
         chooser.set_current_name("gantry-statystyki.txt")

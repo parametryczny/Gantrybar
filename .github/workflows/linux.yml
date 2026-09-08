@@ -10,6 +10,8 @@ on:
       - 'Sources/Gantry/Views/PrinterDashboardViewController.swift'
       - 'design/gantry-card-layout.impl.json'
       - 'scripts/check_ui_parity.py'
+      - 'scripts/check_linux_presentation.py'
+      - 'Resources/web-dashboard.html'
       - '.github/workflows/linux.yml'
   pull_request:
     paths:
@@ -20,6 +22,8 @@ on:
       - 'Sources/Gantry/Views/PrinterDashboardViewController.swift'
       - 'design/gantry-card-layout.impl.json'
       - 'scripts/check_ui_parity.py'
+      - 'scripts/check_linux_presentation.py'
+      - 'Resources/web-dashboard.html'
       - '.github/workflows/linux.yml'
   workflow_dispatch:
 
@@ -51,6 +55,8 @@ jobs:
         run: xvfb-run -a env PYTHONPATH=linux python3 -c "import gantry.app"
       - name: Desktop integration self-test
         run: xvfb-run -a env PYTHONPATH=linux python3 -m gantry --diagnose
+      - name: Test window, launch screen and embedded panels
+        run: xvfb-run -a env PYTHONPATH=linux python3 scripts/check_linux_presentation.py
       - name: Build Debian package
         run: sh linux/scripts/build-deb.sh
       - name: Inspect and install Debian package

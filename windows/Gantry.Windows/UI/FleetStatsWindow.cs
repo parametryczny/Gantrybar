@@ -201,7 +201,7 @@ public sealed class FleetStatsWindow : Window
             FileName = "gantry-statystyki.txt",
             Filter = AppSettings.T("Text file|*.txt"),
         };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(Owner ?? this) != true) return;
         try { File.WriteAllText(dialog.FileName, _renderedText, Encoding.UTF8); }
         catch (Exception ex) { Gantry.App.LogError("FleetStatsExport", ex); }
     }

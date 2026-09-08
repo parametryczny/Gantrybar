@@ -25,6 +25,13 @@ final class FleetStatsViewController: NSViewController {
     static func show(store: PrinterStore, in host: NSView) {
         dismiss()
         let controller = FleetStatsViewController(store: store)
+        if host.window?.windowController is FloatingDashboardWindowController {
+            activeController = controller
+            activeBackdrop = EmbeddedPanelView.show(controller.view, in: host,
+                size: NSSize(width: 470, height: 560), fillsViewport: true, showsCloseButton: false,
+                onDismiss: { Self.dismiss() })
+            return
+        }
         let backdrop = FleetStatsBackdropView(frame: host.bounds)
         backdrop.autoresizingMask = [.width, .height]
         backdrop.wantsLayer = true

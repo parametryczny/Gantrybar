@@ -11,25 +11,42 @@ import json
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 PORT = 8787
 
 
-def _printer_dict(printer: Any, telemetry: Any) -> dict[str, Any]:
+def _printer_dict(printer: Any, telemetry: Any, physical_spools: Any = None,
+                  filament_store: Any = None, spoolbase_enabled: bool = True,
+                  show_spool_grams: bool = True) -> dict[str, Any]:
     active = getattr(telemetry.state, "value", "") in {"printing", "paused"}
     groups = []
-    for group in telemetry.filament_groups:
+    for group_index, group in enumerate(telemetry.filament_groups):
         slots = []
-        for slot in group.slots:
+        for slot_index, slot in enumerate(group.slots):
             present = getattr(slot, "present", False)
-            color = (slot.color or "8E8E93").lstrip("#")[:6] if slot.color else "8E8E93"
-            grams = int(slot.remaining_weight_g) if getattr(slot, "remaining_weight_g", None) else None
+            assigned = None
+            if spoolbase_enabled and physical_spools is not None:
+                from .physicalspool import location_for
+                assigned = physical_spools.spool_at(
+                    location_for(printer.serial, group.external, group_index, slot_index))
+            definition = None
+            if assigned is not None and filament_store is not None:
+                definition = next((item for item in filament_store.filaments
+                                   if item.id == assigned.get("filamentDefinitionID")), None)
+            color = (str(definition.colorHex) if definition is not None else
+                     (slot.color or "8E8E93")).lstrip("#")[:6]
+            material = slot.material if present else (
+                (definition.type or definition.name) if definition is not None else "")
+            percent = (physical_spools.percent(assigned) if assigned is not None else slot.remaining)
+            raw_grams = assigned.get("remainingWeightGrams") if assigned is not None else getattr(slot, "remaining_weight_g", None)
+            grams = int(raw_grams) if show_spool_grams and raw_grams is not None else None
             slots.append({
                 "label": slot.label,
-                "material": slot.material if present else "",
+                "material": material,
                 "colorHex": color,
-                "percent": slot.remaining,
+                "percent": percent,
                 "grams": grams,
                 "active": slot.active,
             })
@@ -42,6 +59,10 @@ def _printer_dict(printer: Any, telemetry: Any) -> dict[str, Any]:
         })
     return {
         "name": printer.name,
+        "protocol": {
+            "bambu": "MQTT", "klipper": "KLIPPER", "prusa": "PRUSALINK", "snapmaker": "HTTP",
+            "elegoo_cc1": "SDCP", "elegoo_cc2": "MQTT LAN", "anycubic_kobra_s1": "MQTT LAN",
+        }.get(getattr(getattr(printer, "kind", None), "value", ""), "LAN"),
         "state": getattr(telemetry.state, "value", "offline"),
         "progress": telemetry.progress,
         "remainingMinutes": telemetry.remaining_minutes,
@@ -55,14 +76,17 @@ def _printer_dict(printer: Any, telemetry: Any) -> dict[str, Any]:
     }
 
 
-def fleet_snapshot(printers: list[Any], telemetry: dict[str, Any]) -> dict[str, Any]:
+def fleet_snapshot(printers: list[Any], telemetry: dict[str, Any], physical_spools: Any = None,
+                   filament_store: Any = None, spoolbase_enabled: bool = True,
+                   show_spool_grams: bool = True) -> dict[str, Any]:
     """Pure builder (unit-testable): the fleet payload the dashboard JS renders."""
     out = []
     for printer in printers:
         tel = telemetry.get(printer.serial)
         if tel is None:
             continue
-        out.append(_printer_dict(printer, tel))
+        out.append(_printer_dict(printer, tel, physical_spools, filament_store, spoolbase_enabled,
+                                 show_spool_grams))
     return {"printers": out}
 
 
@@ -106,10 +130,14 @@ class GantryWebServer:
 
             def do_GET(self) -> None:
                 if self.path.startswith("/api/printers"):
-                    data = fleet_snapshot(list(app.printers), dict(app.telemetry))
+                    data = fleet_snapshot(
+                        list(app.printers), dict(app.telemetry),
+                        getattr(app, "physical_spools", None), getattr(app, "filament_store", None),
+                        bool(app.config.data.get("spoolbase_enabled", True)),
+                        bool(app.config.data.get("card_show_spool_grams", False)))
                     self._send(200, json.dumps(data).encode(), "application/json")
                     return
-                self._send(200, HTML.encode(), "text/html; charset=utf-8")
+                self._send(200, WEB_HTML.encode(), "text/html; charset=utf-8")
 
             def do_POST(self) -> None:
                 self._send(404, b"not found", "text/plain")
@@ -168,3 +196,20 @@ const off=p.state==='offline';return '<div class="card'+(off?' off':'')+'"><div 
 function poll(){fetch('/api/printers').then(r=>r.json()).then(render).catch(()=>{document.getElementById('sub').textContent='Brak połączenia z Gantry';});}
 poll();setInterval(poll,2000);
 </script></body></html>"""
+
+
+def _load_dashboard_html() -> str:
+    """Load the canonical macOS-style dashboard copied into every platform package."""
+    candidates = (
+        Path(__file__).with_name("data") / "web-dashboard.html",
+        Path(__file__).resolve().parents[2] / "Resources" / "web-dashboard.html",
+    )
+    for path in candidates:
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return HTML
+
+
+WEB_HTML = _load_dashboard_html()

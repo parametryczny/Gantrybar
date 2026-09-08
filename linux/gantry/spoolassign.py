@@ -303,7 +303,10 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         dialog.destroy()
 
     dialog.connect("response", on_response)
-    dialog.show_all()
+    if not app.window.tray_mode:
+        app.window.embed_dialog(dialog)
+    else:
+        dialog.show_all()
 
 
 def _refresh(app: Any, serial: str) -> None:

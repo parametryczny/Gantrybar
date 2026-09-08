@@ -51,12 +51,14 @@ public sealed class SpoolbaseWindow : Window
         Deactivated += (_, _) => { if (!_modalOpen) Hide(); };
 
         Content = BuildChrome();
-        _store.Changed += (_, _) => Dispatcher.Invoke(Render);
+        _store.Changed += OnInventoryChanged;
+        Closed += (_, _) => _store.Changed -= OnInventoryChanged;
         SourceInitialized += (_, _) => ApplyModernChrome();
         Render();
     }
 
     private bool Pl => AppSettings.Polish;
+    private void OnInventoryChanged(object? sender, EventArgs e) => Dispatcher.Invoke(Render);
 
     private Border BuildChrome()
     {
@@ -430,20 +432,20 @@ public sealed class SpoolbaseWindow : Window
     private void OpenCatalog()
     {
         _modalOpen = true;
-        try { new SpoolbaseCatalogWindow(_store) { Owner = this }.ShowDialog(); }
-        finally { _modalOpen = false; Activate(); }
+        try { new SpoolbaseCatalogWindow(_store) { Owner = Owner ?? this }.ShowDialog(); }
+        finally { _modalOpen = false; (Owner ?? this).Activate(); }
     }
 
     private void OpenEditor(Filament item, bool countOnly)
     {
         _modalOpen = true;
-        try { new SpoolbaseEditWindow(_store, item, countOnly) { Owner = this }.ShowDialog(); }
-        finally { _modalOpen = false; Activate(); }
+        try { new SpoolbaseEditWindow(_store, item, countOnly) { Owner = Owner ?? this }.ShowDialog(); }
+        finally { _modalOpen = false; (Owner ?? this).Activate(); }
     }
 
     private void ConfirmDelete(Filament item)
     {
-        var result = MessageBox.Show(this,
+        var result = MessageBox.Show(Owner ?? this,
             $"{item.Brand} • {item.Name} • {item.ColorName}\n" + (AppSettings.T("The product stays in the catalog.")),
             AppSettings.T("Remove from my filaments?"),
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);

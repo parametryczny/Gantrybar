@@ -1,0 +1,13 @@
+# Gantry — two modes, accuracy pass
+
+Generator: built-in imagegen. Base prompt: gantry-two-modes-v1-prompt.md.
+
+Edit reference image 1, the Gantry campaign collage. Preserve its excellent panel composition, black/ivory surfaces, orange ring on the correct mode-switch icon immediately right of the gear, all major headlines, native OS-specific titlebar controls and warm photography. Reference image 2 is the authoritative current actual printer card; use only the card in the middle, not its tutorial text or highlight.
+
+Make one essential product-accuracy correction THROUGHOUT: every POPOVER must contain the SAME REAL PRINTER CARDS as desktop window mode, not a different five-row mini status list. Replace the miniature list-only popovers (upper-right ivory panel, bottom macOS panel, bottom Windows panel, bottom Linux panel) with compact one-column TWO-CARD Gantry dashboards, visibly including printer name + MQTT + status and right aligned percentage + segmented progress + nozzle and bed temperature row + A1-A4 rounded AMS capsules at bottom. Show P1S 42% and X1 70% in these small popovers, with modest real header controls including the outlined mode-switch rectangle beside the settings gear. At small scales focus on recognizable correct card structure, not excessive tiny text. Make these popovers wide enough to contain proper cards (approx 160-200px within each bottom panel), and adjust each neighboring native window slightly smaller to leave space WITHOUT overlapping, clipping or leaving its panel. Clearly attach popover to the menu bar/tray icon by a small pointer. Mac anchor at top menu bar, Windows at bottom taskbar tray, Linux at top system panel. Do not add native window traffic light buttons to a popover.
+
+Keep the desktop windows visually the same but consistently four printer cards X1 70%, P2S 67%, P1S 42%, MINI Ready where space allows. No extra X2D or five-printer summary if showing this four-printer example; use small "4 printers · 3 printing" in headers.
+
+Correct the central macro card: temperatures 220° and 60° belong to a compact row labeled NOZZLE and BED, NOT inside the AMS row. AMS row only has label AMS, humidity 32%, and four bottom-filled/hatched slots A1 PLA 27% lavender, A2-A4 empty. Keep the 42% status and segmented progress, and the caption SAME DASHBOARD. YOUR WAY.
+
+Ensure bottom labels read "WINDOW" and "POPOVER" under both examples in ALL THREE panels, including Windows where POPOVER was missing. Add discreet "macOS" label to first bottom panel to match Windows and Linux titles. Preserve all other visual qualities. No UI redesign, no simplified list popovers, no phones, no new marketing text.

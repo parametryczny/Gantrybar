@@ -1,8 +1,8 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.1.0",
-    "date": "2026-08-31",
+  "version": "1.5.2",
+    "date": "2026-09-07",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
 
@@ -40,8 +40,39 @@
     "columnGap": 10,
     "rowGap": { "cards": 8, "list": 3 },
     "headerHeight": 36,
-    "lastOddCardSpansFullWidth": true,
+    "lastOddCardSpansFullWidth": "popoverOnly",
+    "wideCardWhen": "twoOrMoreNonExternalFilamentModules",
     "maxPanelHeight": "screen.visibleFrame.height - 24"
+  },
+
+  "floatingWindow": {
+    "platform": "macOS",
+    "enabledByDefault": false,
+    "alwaysOnTopDefault": true,
+    "initialSize": { "width": 470, "height": 400 },
+    "minimumSize": { "width": 305, "height": 290 },
+    "tileResize": {
+      "card": { "width": 285, "height": 174 },
+      "gap": 8,
+      "contentSize": { "width": "12 + columns * 293", "height": "108 + visibleRows * 182" },
+      "windowsFrameSize": { "width": "24 + columns * 293", "height": "140 + visibleRows * 182" },
+      "compactRowsInWindowMode": false,
+      "snapTiming": "afterLiveResize",
+      "allowsEmptyGridSpace": true,
+      "overflow": "scroll"
+    },
+    "responsive": {
+      "compactWhen": "popover only",
+      "contentWidthInset": 20,
+      "gap": 8,
+      "cardMinimumWidth": 285,
+      "compactRowMinimumWidth": 210,
+      "columns": "max(1, floor((windowWidth - 20 + 8) / (minimumItemWidth + 8)))",
+      "maximumColumns": null
+    },
+    "frameAutosaveName": "GantryFloatingDashboardWindow",
+    "usesFleetCardImplementation": true,
+    "alwaysOnTopControl": "pin in dashboard header"
   },
 
   "card": {
@@ -49,18 +80,18 @@
     "border": "line 1px",
     "radius": 16,
     "minHeight": 90,
-    "sectionSpacing": 3,
+    "sectionSpacing": 6,
     "contentInset": { "left": 10, "right": 10, "top": 6, "bottom": 6 },
     "sections": ["jobSurface", "tempBento", "filamentDock"]
   },
 
   "jobSurface": {
-    "background": "surface",
-    "border": "line 1px",
-    "radius": 10.5,
-    "inset": { "left": 9, "right": 9, "top": 6, "bottom": 5 },
+    "background": "clear",
+    "border": "none",
+    "radius": 0,
+    "inset": { "left": 2, "right": 2, "top": 2, "bottom": 2 },
     "itemSpacing": 1,
-    "order": ["header", "statusRow", "flexibleJobSpace", "progressSummary", "progress"]
+    "order": ["header", "statusRow", "flexibleJobSpace", "progressSummary"]
   },
 
   "header": {
@@ -71,7 +102,7 @@
     "titleCluster": { "align": "centerY", "spacing": 5 },
     "nameLabel": { "size": 14, "weight": "semibold", "color": "text" },
     "manufacturerPill": { "size": 10, "weight": "regular", "bg": "rgba(255,255,255,0.025)", "radius": 5 },
-    "detailsChip": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "icon": "chart.xyaxis.line", "iconSize": 11 },
+    "detailsChip": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "icon": "chart.xyaxis.line", "iconSize": 11, "visibleByDefault": false, "settingsKey": "card-show-details-chip" },
     "maintenanceSignal": { "states": ["hidden", "planned", "due", "urgent"], "planned": "wrench", "due": "wrench + yellow count", "urgent": "red exclamation + count" },
     "dragHandle": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "dots": "2x3", "dotDiameter": 2.4, "dotStep": 6 },
     "actionsButton": { "size": 20, "radius": 10, "bg": "rgba(255,255,255,0.065)", "icon": "ellipsis" }
@@ -80,18 +111,18 @@
   "statusRow": {
     "spacing": 5,
     "align": "centerY",
-    "order": ["jobStateDot", "statusLabel", "jobSeparator", "jobLabel", "spacer"],
+    "order": ["jobStateDot", "statusLabel", "jobSeparator", "jobLabel", "spacer", "percentLabel"],
     "jobStateDot": { "size": 6, "radius": 3, "color": "accent" },
     "statusLabel": { "size": 10, "weight": "medium", "colorStale": "systemOrange", "color": "accent" },
     "jobSeparator": { "size": 10, "weight": "semibold", "color": "tertiary" },
-    "jobLabel": { "size": 10, "weight": "semibold", "color": "text", "marquee": true }
+    "jobLabel": { "size": 10, "weight": "semibold", "color": "text", "marquee": true },
+    "percentLabel": { "size": 14, "mono": true, "weight": "bold", "color": "accent" }
   },
 
   "progressSummary": {
-    "spacing": 7,
+    "spacing": 8,
     "align": "centerY",
-    "order": ["percentLabel", "etaMetric", "layerMetric", "spacer"],
-    "percentLabel": { "size": 22, "mono": true, "weight": "semibold", "color": "accent" },
+    "order": ["progressBar", "etaMetric", "layerMetric"],
     "etaMetric": { "icon": "clock", "chip": true, "format": "Xh Ym · HH:MM" },
     "layerMetric": { "icon": "square.3.layers.3d", "chip": false, "format": "current/total" }
   },
@@ -107,10 +138,10 @@
   },
 
   "tempBento": {
-    "height": 34,
-    "background": "surface",
-    "border": "line 1px",
-    "radius": 10.5,
+    "height": 22,
+    "background": "clear",
+    "border": "none",
+    "radius": 0,
     "distribution": "fillEqually",
     "zoneOrderSingle": ["DYSZA", "STOL", "KOMORA?"],
     "zoneOrderDual": ["DYSZE L", "P", "STOL", "KOMORA?"],
@@ -119,17 +150,35 @@
       "bg": "rgba(255,255,255,0.012)",
       "ambientGradient": ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.008)", "rgba(255,255,255,0)"],
       "accentLine": "line",
-      "separator": "line 1px (from 2nd zone)",
-      "label": { "size": 7, "mono": true, "weight": "semibold", "color": "tertiary", "insetTop": 3, "insetLeft": 6 },
+      "separator": "none",
+      "layout": "horizontal, icon + current + smaller target on one line",
+      "icons": { "nozzle": "funnel", "bed": "layers", "chamber": "cube", "tooltipUsesLocalizedName": true },
+      "dualNozzleSuffixes": ["L", "R"],
+      "label": { "visible": "dual-nozzle suffix only", "size": 9, "mono": true, "weight": "semibold", "color": "secondary", "insetLeft": 2 },
       "value": { "size": 14, "mono": true, "weight": "semibold", "color": "zone-token" },
-      "target": { "size": 8, "mono": true, "weight": "regular", "color": "tertiary", "emptyText": "/ —" }
+      "target": { "size": 9, "mono": true, "weight": "regular", "color": "secondary", "emptyText": "hidden" }
     }
+  },
+
+  "printError": {
+    "placement": "replaces filamentDock",
+    "preservesFilamentDockHeight": true,
+    "minimumHeightWithoutFilaments": 44,
+    "maximumLines": 2,
+    "opensMaintenance": true
   },
 
   "statusColorContract": {
     "card": "always accent (neutral); state read from text + icon",
     "listRow": "neutral; error -> statusPrinting on icon + wash 0.08; stale -> systemOrange",
     "printingColorApplied": false
+  },
+
+  "offlineOverlay": {
+    "covers": "card body below header",
+    "headerRemainsInteractive": true,
+    "background": "canvas @0.76 with blur where supported",
+    "messageTile": { "background": "card @0.88", "border": "line 1px", "radius": 12 }
   },
 
   "filamentDock": {

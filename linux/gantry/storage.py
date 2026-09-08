@@ -36,6 +36,9 @@ DEFAULTS: dict[str, Any] = {
     "theme": "dark",
     "panel_transparency": "low",
     "dashboard_columns": 2,
+    "floating-window-enabled": False,
+    "floating-window-always-on-top": True,
+    "gantry.onboarding.v1.seen": False,
     "collapsed": False,
     "scan_targets": "",
     "notify_finished": True,
@@ -58,6 +61,7 @@ DEFAULTS: dict[str, Any] = {
     "card_show_temperatures": True,
     "card_show_filaments": True,
     "card_show_spool_grams": False,
+    "card_show_details_chip": False,
     "monochrome": False,
     "web_dashboard_enabled": True,
     # Linux keeps package installation under the desktop package manager's control. This setting

@@ -23,6 +23,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var notificationObserver: Any?
     private var updateNotificationObserver: Any?
     private var edgeDock: EdgeDockWindowController?
+    private var floatingDashboard: FloatingDashboardWindowController?
 
     init(store: PrinterStore) {
         self.store = store
@@ -74,6 +75,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async {
+                if AppSettings.shared.floatingWindowEnabled { self?.closePopover() }
+                else { self?.spoolbase.dismissEmbedded() }
                 self?.popover.appearance = AppSettings.shared.appearance
                 self?.popover.contentViewController?.view.appearance = AppSettings.shared.appearance
                 self?.applyPanelStyle()
@@ -86,6 +89,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         edgeDock = EdgeDockWindowController(store: store) { [weak self] serial in
             self?.revealDetails(serial: serial)
         }
+        floatingDashboard = FloatingDashboardWindowController(
+            store: store,
+            onAdd: { [weak self] in self?.showAddPrinter() },
+            onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
+            onReconnect: { [weak store] printer in store?.reconnect(printer) },
+            onShowDetails: { [weak self] serial in self?.revealDetails(serial: serial) },
+            onShowSettings: { [weak self] in self?.showSettings() }
+        )
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .gantryShowDashboard, object: nil, queue: .main
         ) { [weak self] _ in
@@ -105,12 +116,73 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     func showDashboard() {
+        if AppSettings.shared.floatingWindowEnabled {
+            floatingDashboard?.restoreFromDock()
+            return
+        }
         guard let button = anchorButton, !popover.isShown else { return }
         NSApp.activate(ignoringOtherApps: true)
         popover.appearance = AppSettings.shared.appearance
         popover.contentViewController?.view.appearance = AppSettings.shared.appearance
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
+
+    /// Called when the user clicks Gantry in the Dock while the detached-window mode is active.
+    func restoreFloatingDashboardFromDock() {
+        floatingDashboard?.restoreFromDock()
+    }
+
+    // Native application-menu equivalents of the status item's right-click menu. These are kept on
+    // the controller so both entry points use exactly the same stores, windows and popover flows.
+    @objc func appMenuShowPrinters(_ sender: Any?) {
+        if AppSettings.shared.floatingWindowEnabled { floatingDashboard?.restoreFromDock() }
+        else { showPopoverFromMenu() }
+    }
+    @objc func appMenuShowSpoolbase(_ sender: Any?) {
+        showSpoolbase()
+    }
+
+    private func showSpoolbase() {
+        guard AppSettings.shared.spoolbaseEnabled else { return }
+        if AppSettings.shared.floatingWindowEnabled {
+            closePopover()
+            floatingDashboard?.restoreFromDock()
+            if let host = floatingDashboard?.window?.contentView { spoolbase.show(in: host) }
+        } else if let button = anchorButton {
+            spoolbase.toggle(from: button)
+        }
+    }
+    @objc func appMenuSearchPrinters(_ sender: Any?) { store.scan() }
+    @objc func appMenuAddPrinter(_ sender: Any?) { showAddPrinter() }
+    @objc func appMenuReconnectAll(_ sender: Any?) { store.reconnectAll() }
+    @objc func appMenuDiagnostics(_ sender: Any?) { showDiagnostics() }
+    @objc func appMenuFleetStats(_ sender: Any?) { showFleetStats() }
+    @objc func appMenuCycleLanguage(_ sender: Any?) {
+        let codes = Localization.available().map(\.code)
+        guard !codes.isEmpty else { return }
+        let next = codes.firstIndex(of: AppSettings.shared.language).map { ($0 + 1) % codes.count } ?? 0
+        AppSettings.shared.language = codes[next]
+    }
+    @objc func appMenuToggleQuietHours(_ sender: Any?) {
+        QuietHours.isEnabled.toggle()
+        AppSettings.shared.objectWillChange.send()
+    }
+    @objc func appMenuCheckForUpdates(_ sender: Any?) { UpdatePresenter.checkAndPresent(from: nil) }
+    @objc func appMenuSettings(_ sender: Any?) { showSettings() }
+    @objc func appMenuOnboarding(_ sender: Any?) {
+        if AppSettings.shared.floatingWindowEnabled {
+            floatingDashboard?.restoreFromDock()
+            floatingDashboard?.showOnboarding()
+        } else {
+            returnToFleet()
+            showDashboard()
+            (dashboardViewController as? PrinterDashboardViewController)?.showOnboarding()
+        }
+    }
+    @objc func appMenuBuyCoffee(_ sender: Any?) {
+        if let url = URL(string: "https://buycoffee.to/parametryczny") { NSWorkspace.shared.open(url) }
+    }
+    @objc func appMenuQuit(_ sender: Any?) { NSApplication.shared.terminate(nil) }
 
     /// Pinned printers, in the dashboard's order. The first one rides on the MAIN status item (so it
     /// replaces the Gantry icon in place, near the clock); any others get their own extra items.
@@ -215,6 +287,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             showContextMenu(relativeTo: sender)
             return
         }
+        if AppSettings.shared.floatingWindowEnabled { showDashboard(); return }
         if popover.isShown { closePopover(); return }
         popover.appearance = AppSettings.shared.appearance
         popover.contentViewController?.view.appearance = AppSettings.shared.appearance
@@ -230,6 +303,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             showContextMenu(relativeTo: button)
             return
         }
+        if AppSettings.shared.floatingWindowEnabled { showDashboard(); return }
         if popover.isShown {
             closePopover()
         } else {
@@ -250,12 +324,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          title: settings.t("Show printers")) { [weak self] in
             self?.showPopoverFromMenu()
         })
+        menu.addItem(row(icon: "questionmark.circle", title: settings.t("How to read Gantry")) { [weak self] in
+            self?.appMenuOnboarding(nil)
+        })
 
         if settings.spoolbaseEnabled {
             menu.addItem(row(icon: "shippingbox.fill",
                              title: settings.t("Spoolbase — filament stock")) { [weak self] in
-                guard let button = self?.anchorButton else { return }
-                self?.spoolbase.toggle(from: button)
+                self?.showSpoolbase()
             })
         }
 
@@ -380,6 +456,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
 
     @objc private func showPopoverFromMenu() {
+        if AppSettings.shared.floatingWindowEnabled { showDashboard(); return }
         guard let button = anchorButton else { return }
         popover.appearance = AppSettings.shared.appearance
         popover.contentViewController?.view.appearance = AppSettings.shared.appearance
@@ -393,22 +470,33 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         settingsWindow?.presentCentered()
     }
 
-    /// Diagnostics rides inside the popover, so open it first when the menu was used with the panel
-    /// closed. The overlay is added on the next runloop pass, once the popover content has a size.
-    /// Same overlay treatment as diagnostics: open the popover first when the menu was used with the
-    /// panel closed, then add the panel once the content has a size.
+    /// Resolve the presentation mode at execution time, including actions from the Dock or menu.
+    private func withDashboardHost(_ present: @escaping (NSView) -> Void) {
+        if AppSettings.shared.floatingWindowEnabled {
+            closePopover()
+            floatingDashboard?.restoreFromDock()
+            if let host = floatingDashboard?.window?.contentView { present(host) }
+        } else {
+            if !popover.isShown { showPopoverFromMenu() }
+            DispatchQueue.main.async { [weak self] in
+                guard let host = self?.popover.contentViewController?.view else { return }
+                present(host)
+            }
+        }
+    }
+
     @objc private func showFleetStats() {
-        if !popover.isShown { showPopoverFromMenu() }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let host = self.popover.contentViewController?.view else { return }
+        withDashboardHost { [weak self] host in
+            guard let self else { return }
+            DiagnosticCenterViewController.dismiss()
             FleetStatsViewController.show(store: self.store, in: host)
         }
     }
 
     @objc private func showDiagnostics() {
-        if !popover.isShown { showPopoverFromMenu() }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let host = self.popover.contentViewController?.view else { return }
+        withDashboardHost { [weak self] host in
+            guard let self else { return }
+            FleetStatsViewController.dismiss()
             DiagnosticCenterViewController.show(store: self.store, in: host)
         }
     }
@@ -438,6 +526,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         removeOutsideClickMonitor()
+        if !suppressFleetReset {
+            (dashboardViewController as? PrinterDashboardViewController)?.dismissOnboarding()
+        }
         // Reset to the fleet list so reopening never lands back in a stale detail view — but not while
         // we're intentionally closing to swap content in a new size.
         if detailViewController != nil, !suppressFleetReset { returnToFleet() }
@@ -474,6 +565,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Opens the popover on the given printer's details from outside the popover itself (the edge
     /// dock). The popover anchors to the status item, so it has to be shown before the content swap.
     private func revealDetails(serial: String) {
+        if AppSettings.shared.floatingWindowEnabled { showDetails(serial: serial); return }
         guard let button = anchorButton else { return }
         if !popover.isShown {
             popover.appearance = AppSettings.shared.appearance
@@ -488,6 +580,17 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Swaps the popover's content to the in-bubble detail view for one printer, keeping everything
     /// inside the popover instead of opening a separate window.
     private func showDetails(serial: String) {
+        if AppSettings.shared.floatingWindowEnabled {
+            closePopover()
+            let detail = PrinterDetailViewController(
+                store: store, serial: serial,
+                onBack: { [weak self] in self?.floatingDashboard?.dismissEmbeddedPanel() },
+                onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
+                onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) },
+                presentation: .floatingWindow)
+            floatingDashboard?.present(detail, size: NSSize(width: 480, height: 700))
+            return
+        }
         let detail = PrinterDetailViewController(
             store: store, serial: serial,
             onBack: { [weak self] in self?.returnToFleet() },

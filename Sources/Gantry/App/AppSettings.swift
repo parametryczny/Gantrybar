@@ -154,6 +154,11 @@ final class AppSettings: ObservableObject {
     @Published var finishingSoonMinutes: Int { didSet { defaults.set(finishingSoonMinutes, forKey: "notify-finishing-soon-minutes") } }
     @Published var notifyHumidity: Bool { didSet { defaults.set(notifyHumidity, forKey: "notify-humidity") } }
 
+    // Optional second fleet surface: the same Gantry dashboard in a freely resizable window. The
+    // separate pin preference is controlled from that window's own top bar.
+    @Published var floatingWindowEnabled: Bool { didSet { defaults.set(floatingWindowEnabled, forKey: "floating-window-enabled") } }
+    @Published var floatingWindowAlwaysOnTop: Bool { didSet { defaults.set(floatingWindowAlwaysOnTop, forKey: "floating-window-always-on-top") } }
+
     // Edge dock: the narrow always-on-top strip pinned to a screen edge. Off by default — it is an
     // opt-in second surface, not a replacement for the menu-bar popover.
     @Published var edgeDockEnabled: Bool { didSet { defaults.set(edgeDockEnabled, forKey: "edge-dock-enabled") } }
@@ -219,6 +224,8 @@ final class AppSettings: ObservableObject {
         notifyFinishingSoon = defaults.object(forKey: "notify-finishing-soon") as? Bool ?? false
         finishingSoonMinutes = defaults.object(forKey: "notify-finishing-soon-minutes") as? Int ?? 10
         notifyHumidity = defaults.object(forKey: "notify-humidity") as? Bool ?? true
+        floatingWindowEnabled = defaults.object(forKey: "floating-window-enabled") as? Bool ?? false
+        floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? true
         edgeDockEnabled = defaults.object(forKey: "edge-dock-enabled") as? Bool ?? false
         edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
         edgeDockOnlyPrinting = defaults.object(forKey: "edge-dock-only-printing") as? Bool ?? false

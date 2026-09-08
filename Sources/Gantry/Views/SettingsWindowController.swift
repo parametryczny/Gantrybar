@@ -94,6 +94,9 @@ final class SettingsWindowController: NSWindowController {
     private lazy var cardSpoolGramsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardDetailsChipRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
 
+    private let floatingWindowGroupLabel = NSTextField(labelWithString: "")
+    private lazy var floatingWindowEnableRow = SettingsToggleRow(target: self, action: #selector(floatingWindowToggled))
+
     private let dockGroupLabel = NSTextField(labelWithString: "")
     private lazy var dockEnableRow = SettingsToggleRow(target: self, action: #selector(dockEnableToggled))
     private let dockEdgeControl = NSSegmentedControl(labels: ["L", "R"], trackingMode: .selectOne, target: nil, action: nil)
@@ -425,6 +428,7 @@ final class SettingsWindowController: NSWindowController {
             makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
             makeGroup(cardsGroupLabel, [cardFileNameRow, cardProgressRow, cardTempsRow,
                                         cardFilamentsRow, cardSpoolGramsRow, cardDetailsChipRow]),
+            makeGroup(floatingWindowGroupLabel, [floatingWindowEnableRow]),
             dockGroup
         ]
     }
@@ -601,6 +605,11 @@ final class SettingsWindowController: NSWindowController {
         cardDetailsChipRow.titleLabel.stringValue = settings.t("Details chip on the card")
         cardDetailsChipRow.setSubtitle(settings.t("Shortcut to the detail view; the ⋯ menu always has it"))
         cardDetailsChipRow.isOn = settings.cardShowDetailsChip
+
+        floatingWindowGroupLabel.stringValue = settings.t("FLOATING WINDOW")
+        floatingWindowEnableRow.titleLabel.stringValue = settings.t("Show Gantry in a floating window")
+        floatingWindowEnableRow.setSubtitle(settings.t("Resize it freely; use the pin in its top bar to keep it above other windows"))
+        floatingWindowEnableRow.isOn = settings.floatingWindowEnabled
 
         dockGroupLabel.stringValue = settings.t("EDGE DOCK")
         dockEnableRow.titleLabel.stringValue = settings.t("Show the strip on top")
@@ -782,6 +791,10 @@ final class SettingsWindowController: NSWindowController {
         settings.cardShowSpoolGrams = cardSpoolGramsRow.isOn
         settings.cardShowDetailsChip = cardDetailsChipRow.isOn
         settings.monochrome = monochromeRow.isOn
+    }
+
+    @objc private func floatingWindowToggled() {
+        AppSettings.shared.floatingWindowEnabled = floatingWindowEnableRow.isOn
     }
 
     // MARK: Edge dock

@@ -19,6 +19,8 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     private var lowStockOnly = false
     private var filterPanel: NSVisualEffectView?
     private var quickStockPopover: NSPopover?
+    private var embeddedQuickStock: NSView?
+    private var embeddedQuickStockController: QuickStockViewController?
     private var editorController: FilamentEditorWindowController?
     private var catalogController: CatalogPickerWindowController?
     private var auxiliaryCloseObserver: NSObjectProtocol?
@@ -435,8 +437,16 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     }
 
     private func presentQuickStock(_ filament: Filament, from anchor: NSView) {
+        dismissEmbeddedQuickStock()
         quickStockPopover?.performClose(nil)
         let controller = QuickStockViewController(filament: filament)
+        if let host = view.window?.contentView,
+           view.window?.windowController is FloatingDashboardWindowController {
+            embeddedQuickStockController = controller
+            embeddedQuickStock = EmbeddedPanelView.show(controller.view, in: host,
+                size: NSSize(width: 190, height: 104)) { [weak self] in self?.dismissEmbeddedQuickStock() }
+            return
+        }
         let popover = NSPopover()
         popover.contentViewController = controller
         popover.behavior = .transient
@@ -452,6 +462,16 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
               let controller = popover.contentViewController as? QuickStockViewController else { return }
         let delta = controller.currentValue - controller.initialValue
         quickStockPopover = nil
+        if delta != 0 { store.adjust(id: controller.filamentID, spools: delta) }
+    }
+
+    func dismissEmbeddedQuickStock() {
+        guard let controller = embeddedQuickStockController else { return }
+        view.window?.makeFirstResponder(nil)
+        embeddedQuickStock?.removeFromSuperview()
+        embeddedQuickStock = nil
+        embeddedQuickStockController = nil
+        let delta = controller.currentValue - controller.initialValue
         if delta != 0 { store.adjust(id: controller.filamentID, spools: delta) }
     }
 

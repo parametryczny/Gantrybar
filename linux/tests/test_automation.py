@@ -1,6 +1,6 @@
 import unittest
 
-from gantry.automation import AutomationEngine, AutomationStore, new_rule, should_fire
+from gantry.automation import AutomationEngine, AutomationStore, new_rule, should_fire, trigger_summary
 from gantry.core import PrinterKind, Printer, Telemetry, PrinterState
 
 
@@ -41,6 +41,9 @@ class _App:
 
 
 class ShouldFireTests(unittest.TestCase):
+    def test_manual_trigger_has_a_summary(self):
+        self.assertTrue(trigger_summary({"trigger": {"type": "manual"}}, False))
+
     def test_at_layer_edge(self):
         rule = {"trigger": {"type": "at_layer", "value": 5}}
         prev = Telemetry(current_layer=4)

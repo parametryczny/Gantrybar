@@ -89,6 +89,8 @@ class SpoolbaseWindow(Gtk.Window):
         self.app = app
         self.store = getattr(app, "filament_store", None) or FilamentStore()
         self.store.on_change = self._render
+        self.connect("destroy", lambda *_: setattr(self.store, "on_change", None)
+                     if self.store.on_change == self._render else None)
         self._suppress_hide = False
         self._just_shown = False
         self._query = ""

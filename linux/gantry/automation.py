@@ -44,8 +44,12 @@ def trigger_summary(rule: dict[str, Any], pl: bool) -> str:
     if kind == "at_progress":
         return i18n.t("at {0}%").format(value)
     if kind == "on_state":
-        return i18n.t("on state: {0}").format(value)
-    returni18n.t("manually")
+        state_key = {
+            "idle": "Ready", "ready": "Ready", "printing": "Printing", "paused": "Paused",
+            "finished": "Finished", "error": "Error", "offline": "Offline",
+        }.get(str(value).lower(), str(value))
+        return i18n.t("on state: {0}").format(i18n.t(state_key))
+    return i18n.t("manually")
 
 
 def action_summary(rule: dict[str, Any], pl: bool) -> str:
