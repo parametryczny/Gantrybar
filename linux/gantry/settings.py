@@ -213,11 +213,15 @@ i18n.t("Only printing"),
             widgets.append(check)
         self.spool_grams = self._check(i18n.t("Grams on spool (AMS NFC / Spoolbase)"),
             bool(self.app.config.data.get("card_show_spool_grams", False)))
+        self.details_chip = self._check(i18n.t("Details chip on the card"),
+            bool(self.app.config.data.get("card_show_details_chip", False)))
+        self.details_chip.set_tooltip_text(
+i18n.t("Shortcut to the detail view; the ⋯ menu always has it"))
         self.monochrome = self._check(
 i18n.t("Monochrome colours"),
             bool(self.app.config.data.get("monochrome", False)))
         self.monochrome.set_tooltip_text(i18n.t("Grey temperatures, calmer AMS colours"))
-        widgets.extend((self.spool_grams, self.monochrome))
+        widgets.extend((self.spool_grams, self.details_chip, self.monochrome))
         return self._section(i18n.t("PRINTER CARDS"), widgets)
 
     def _notifications(self) -> Gtk.Widget:
@@ -499,6 +503,7 @@ i18n.t("☕  Support the project"))
             quiet_hours_end=self.quiet_end.get_text().strip(),
             spoolbase_enabled=self.spoolbase.get_active(),
             card_show_spool_grams=self.spool_grams.get_active(),
+            card_show_details_chip=self.details_chip.get_active(),
             monochrome=self.monochrome.get_active(),
             developer_mode=self.developer.get_active(),
             allow_script_actions=self.allow_scripts.get_active(),
@@ -526,7 +531,8 @@ i18n.t("☕  Support the project"))
         # whether the slot is clickable at all, so the cards have to be rebuilt when it flips.
         card_changed = appearance_changed or any(before.get(key) != self.app.config.data.get(key)
                                                   for key in (*self.card_options.keys(),
-                                                              "card_show_spool_grams", "monochrome",
+                                                              "card_show_spool_grams",
+                                                              "card_show_details_chip", "monochrome",
                                                               "spoolbase_enabled"))
         menu_changed = language_changed or before.get("spoolbase_enabled") != self.app.config.data.get("spoolbase_enabled")
         if language_changed:

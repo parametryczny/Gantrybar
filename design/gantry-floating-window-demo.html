@@ -1,0 +1,521 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gantry · pływające okno</title>
+<style>
+  :root{
+    --bg:#08090A; --card:#151719; --line:rgba(255,255,255,.09);
+    --tx:#F2F3F1; --sec:#A7AAA6; --mut:#6D716E; --metric:#D4D7D3;
+    --printing:#FF6857; --ok:#8FD69B; --warn:#FFD60A; --idle:#8E8E93; --chamber:#BBA5EF;
+    --ui:-apple-system,'SF Pro Text','Segoe UI Variable','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--tx);font-family:var(--ui);padding:24px 28px 60px;
+       -webkit-font-smoothing:antialiased}
+  h1{font-size:19px;font-weight:700;letter-spacing:-.2px}
+  .lead{font-size:12.5px;color:var(--sec);line-height:1.65;max-width:840px;margin-top:8px}
+  .lead b{color:var(--tx)}
+
+  /* ---------- pasek sterowania makietą ---------- */
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0 12px}
+  .grp{display:flex;align-items:center;gap:5px;background:#141618;border:1px solid var(--line);
+       border-radius:10px;padding:5px 8px}
+  .grp>span{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);
+            font-weight:700;margin-right:2px}
+  .bar button{font:inherit;font-size:11px;font-weight:600;color:var(--sec);background:transparent;
+    border:1px solid transparent;border-radius:7px;padding:4px 9px;cursor:pointer}
+  .bar button:hover{color:var(--tx)}
+  .bar button.on{color:var(--tx);background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.16)}
+  .bar input[type=range]{width:90px;accent-color:#FF6857}
+
+  /* ---------- pulpit ---------- */
+  .desk{position:relative;height:600px;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+        background:
+          radial-gradient(120% 90% at 10% 0%, #2b3550 0%, transparent 58%),
+          radial-gradient(90% 80% at 95% 100%, #4a2f3d 0%, transparent 55%),
+          linear-gradient(150deg,#11151d,#1b1a20);
+        user-select:none}
+  .desk.light{background:
+          radial-gradient(120% 90% at 10% 0%, #ccd8ef 0%, transparent 58%),
+          radial-gradient(90% 80% at 95% 100%, #f0d5de 0%, transparent 55%),
+          linear-gradient(150deg,#e9edf4,#dee0e7)}
+
+  /* udawane okna, żeby było widać co znaczy „na wierzchu" */
+  .fake{position:absolute;border-radius:11px;overflow:hidden;z-index:5;background:#1C1F24;
+        border:1px solid rgba(255,255,255,.10);box-shadow:0 18px 44px rgba(0,0,0,.45)}
+  .desk.light .fake{background:#fbfbfd;border-color:rgba(0,0,0,.10);
+        box-shadow:0 18px 40px rgba(20,25,40,.18)}
+  .fake .tb{height:26px;background:rgba(255,255,255,.05);display:flex;align-items:center;gap:5px;
+            padding:0 9px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .desk.light .fake .tb{background:rgba(0,0,0,.035);border-bottom-color:rgba(0,0,0,.07)}
+  .fake .tb i{width:8px;height:8px;border-radius:99px;background:rgba(255,255,255,.16)}
+  .desk.light .fake .tb i{background:rgba(0,0,0,.14)}
+  .fake .tb span{font-size:9.5px;color:var(--mut);margin-left:5px}
+  .fake .fb{padding:11px;display:flex;flex-direction:column;gap:6px}
+  .fake .fb i{display:block;height:6px;border-radius:3px;background:rgba(255,255,255,.07)}
+  .desk.light .fake .fb i{background:rgba(0,0,0,.06)}
+  #fakeA{left:24px;top:34px;width:480px;height:330px}
+  #fakeB{right:30px;bottom:34px;width:280px;height:190px}
+
+  /* ---------- pływające okno = panel Gantry odpięty od menu ---------- */
+  #w{position:absolute;left:392px;top:120px;width:470px;height:400px;z-index:20;
+     background:rgba(12,13,14,.86);border:1px solid rgba(255,255,255,.11);border-radius:16px;
+     backdrop-filter:blur(28px) saturate(160%);overflow:hidden;
+     box-shadow:0 20px 52px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.06);
+     display:flex;flex-direction:column;min-width:190px;min-height:120px}
+  #w.below{z-index:1}
+  .desk.light #w{background:rgba(246,247,249,.88);border-color:rgba(0,0,0,.10);color:#15181C;
+     box-shadow:0 20px 46px rgba(20,25,40,.22), inset 0 1px 0 rgba(255,255,255,.95)}
+
+  /* pasek tytułu Gantry: uchwyt do przeciągania */
+  .hdrbar{display:flex;align-items:center;gap:7px;padding:8px 11px 7px;flex:none;cursor:grab;
+          border-bottom:1px solid rgba(255,255,255,.07)}
+  .hdrbar:active{cursor:grabbing}
+  #w.locked .hdrbar{cursor:default}
+  .desk.light .hdrbar{border-bottom-color:rgba(0,0,0,.07)}
+  .wordmark{font-size:12px;font-weight:700;letter-spacing:-.2px}
+  .hcount{font-size:9.5px;color:var(--mut);font-weight:600}
+  .hdrbar .sp{flex:1}
+  .hdrbar .act{font-size:12px;color:var(--sec);opacity:0;transition:opacity .14s;letter-spacing:1px}
+  #w:hover .hdrbar .act{opacity:.85}
+
+  .scroll{flex:1;min-height:0;overflow:auto;padding:9px 10px 10px;display:flex;
+          flex-direction:column;gap:8px}
+  .scroll::-webkit-scrollbar{width:6px}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:99px}
+  .scroll.grid{display:grid;align-content:start}
+
+  /* ================= PRAWDZIWA KARTA GANTRY, WARIANT B ================= */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 10px}
+  .desk.light .card{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.08)}
+  .job{padding:2px}
+  .hdr{display:flex;align-items:center;gap:7px;height:24px}
+  .pico{opacity:.75;font-size:11px}
+  .name{font-size:13px;font-weight:700}
+  .badge{font-size:8.5px;font-weight:700;color:var(--mut);border:1px solid var(--line);
+         border-radius:5px;padding:1px 4px}
+  .desk.light .badge{border-color:rgba(0,0,0,.14)}
+  .chip{width:20px;height:20px;border-radius:10px;background:rgba(255,255,255,.065);
+        display:grid;place-items:center;font-size:10px;color:var(--sec)}
+  .desk.light .chip{background:rgba(0,0,0,.05)}
+  .spacer{flex:1}
+  .dots{color:var(--sec);font-size:14px;letter-spacing:1px}
+
+  .status{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;height:15px}
+  .sdot{width:6px;height:6px;border-radius:99px;flex:none}
+  .sep{color:rgba(255,255,255,.25)}
+  .desk.light .sep{color:rgba(0,0,0,.22)}
+  .file{color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        min-width:0}
+  .desk.light .file{color:#15181C}
+  .bigpct{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;flex:none}
+
+  .prow{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .bar{display:flex;gap:2px;height:8px;flex:1}
+  .bar i{flex:1;height:8px;border-radius:2px;background:rgba(255,255,255,.10)}
+  .desk.light .bar i{background:rgba(0,0,0,.09)}
+  .bar i.on{background:var(--metric)}
+  .desk.light .bar i.on{background:#5c6167}
+  .meta{font-size:10px;color:var(--sec);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .rule{height:1px;background:var(--line);margin:6px 0}
+  .desk.light .rule{background:rgba(0,0,0,.08)}
+
+  .temps1{display:flex;height:22px;align-items:center}
+  .t1{flex:1;display:flex;align-items:baseline;gap:5px;padding-left:6px;min-width:0}
+  .t1 .lab{font-size:8px;letter-spacing:.6px;color:var(--mut);font-weight:700}
+  .t1 .val{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .t1 .tgt{font-size:7px;color:rgba(255,255,255,.28);margin-left:2px}
+  .desk.light .t1 .tgt{color:rgba(0,0,0,.30)}
+
+  .ams{display:flex;gap:10px}
+  .grp2{flex:1;min-width:0}
+  .ams .head{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--sec);height:14px;
+             white-space:nowrap;overflow:hidden}
+  .slots{display:flex;gap:5px;margin-top:3px}
+  .slot{flex:1;text-align:center;min-width:0}
+  .pill{height:18px;border-radius:9px;border:1px solid rgba(255,255,255,.14);display:grid;
+        place-items:center;font-size:9px;font-weight:700}
+  .desk.light .pill{border-color:rgba(0,0,0,.14)}
+  .slot small{display:block;font-size:8px;color:var(--mut);margin-top:2px;overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap}
+  .vline{width:1px;background:var(--line);flex:none}
+  .desk.light .vline{background:rgba(0,0,0,.08)}
+
+  /* ================= PRAWDZIWY WIERSZ ZWINIĘTY (tryb kompaktowy) ================= */
+  .crow{height:31px;border-radius:12px;background:rgba(255,255,255,.055);
+        border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:7px;
+        padding:0 10px 0 9px;flex:none}
+  .desk.light .crow{background:rgba(0,0,0,.045);border-color:rgba(0,0,0,.06)}
+  .crow .ci{font-size:11px;opacity:.8}
+  .crow .cn{font-size:11px;font-weight:600;flex:none}
+  .crow .cs{font-size:10px;font-weight:500;color:var(--sec);overflow:hidden;
+            text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .crow .cp{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;flex:none}
+
+  /* uchwyty zmiany rozmiaru */
+  .rz{position:absolute;z-index:3}
+  .rz-r{right:0;top:12px;bottom:12px;width:6px;cursor:ew-resize}
+  .rz-b{left:12px;right:12px;bottom:0;height:6px;cursor:ns-resize}
+  .rz-c{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
+  .rz-c::after{content:"";position:absolute;right:3px;bottom:3px;width:8px;height:8px;
+    border-right:2px solid currentColor;border-bottom:2px solid currentColor;opacity:0;
+    transition:opacity .14s}
+  #w:hover .rz-c::after{opacity:.4}
+  #w.locked .rz{display:none}
+  .sizetag{position:absolute;right:9px;top:-23px;font-size:10px;color:var(--mut);
+        font-variant-numeric:tabular-nums;background:rgba(0,0,0,.55);border-radius:6px;
+        padding:2px 6px;opacity:0;transition:opacity .14s;pointer-events:none;white-space:nowrap}
+  #w.sizing .sizetag{opacity:1}
+
+  .hint{font-size:11.5px;color:var(--mut);line-height:1.65;margin-top:12px;max-width:840px}
+  .hint b{color:var(--sec)}
+  h2{font-size:11px;letter-spacing:1.1px;text-transform:uppercase;color:var(--mut);
+     margin:34px 0 8px;font-weight:700}
+  table{border-collapse:collapse;width:100%;max-width:900px;font-size:12px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);font-weight:700}
+  code{font-family:ui-monospace,'SF Mono',monospace;font-size:11px;color:var(--metric)}
+  .note{font-size:11.5px;color:var(--sec);line-height:1.65;max-width:880px;margin-top:14px;
+        border-left:2px solid rgba(255,255,255,.14);padding-left:12px}
+  .note b{color:var(--tx)}
+</style>
+
+<h1>Gantry odpięty od paska menu</h1>
+<p class="lead">
+  To nie jest osobny, uproszczony widget. To <b>ten sam panel i ta sama karta</b>, którą masz dziś
+  w popoverze, tylko we własnym oknie bez ramki systemowej: zawsze na wierzchu, przesuwane
+  i skalowane. Karta jest w wariancie B, tym co wszedł do aplikacji: status, plik i procent w jednej
+  linii, pasek z metrykami obok, temperatury w jednej linii, pod spodem moduły filamentu.
+  Progi układu to <b>te same wartości co w</b> <code>design/gantry-design-tokens.json</code>.
+</p>
+
+<div class="bar">
+  <div class="grp"><span>Rozmiar</span>
+    <button data-size="240,150">Zwinięty</button>
+    <button data-size="880,104">Pasek</button>
+    <button data-size="380,330">Wąski</button>
+    <button data-size="470,400" class="on">Panel</button>
+    <button data-size="760,430">2 kolumny</button>
+    <button data-size="1060,440">3 kolumny</button>
+  </div>
+  <div class="grp"><span>Flota</span>
+    <button data-n="1">1</button>
+    <button data-n="2">2</button>
+    <button data-n="4" class="on">4</button>
+    <button data-n="6">6</button>
+  </div>
+  <div class="grp"><span>Warstwa</span>
+    <button id="onTop" class="on">Na wierzchu</button>
+    <button id="below">Na tapecie</button>
+  </div>
+  <div class="grp"><span>Karta</span>
+    <button data-opt="temps" class="on">Temperatury</button>
+    <button data-opt="ams" class="on">Filamenty</button>
+    <button data-opt="chip" class="on">Szczegóły</button>
+  </div>
+  <div class="grp"><span>Krycie</span><input type="range" id="op" min="35" max="100" value="86"></div>
+  <div class="grp">
+    <button id="lock">Zablokuj</button>
+    <button id="theme">Jasny</button>
+  </div>
+</div>
+
+<div class="desk" id="desk">
+  <div class="fake" id="fakeA">
+    <div class="tb"><i></i><i></i><i></i><span>Slicer</span></div>
+    <div class="fb"><i style="width:80%"></i><i style="width:55%"></i><i style="width:70%"></i>
+      <i style="width:40%"></i><i style="width:62%"></i><i style="width:74%"></i>
+      <i style="width:36%"></i><i style="width:58%"></i><i style="width:66%"></i></div>
+  </div>
+  <div class="fake" id="fakeB">
+    <div class="tb"><i></i><i></i><i></i><span>Przeglądarka</span></div>
+    <div class="fb"><i style="width:70%"></i><i style="width:48%"></i><i style="width:60%"></i></div>
+  </div>
+
+  <div id="w">
+    <div class="sizetag" id="sizeTag">470 × 400</div>
+    <div class="hdrbar" id="hdr">
+      <span class="pico">🖨</span>
+      <span class="wordmark">Gantry</span>
+      <span class="hcount" id="count"></span>
+      <span class="sp"></span>
+      <span class="act">⋯</span>
+    </div>
+    <div class="scroll" id="scroll"></div>
+    <div class="rz rz-r" data-rz="r"></div>
+    <div class="rz rz-b" data-rz="b"></div>
+    <div class="rz rz-c" data-rz="c"></div>
+  </div>
+</div>
+
+<p class="hint">
+  <b>Spróbuj:</b> ciągnij prawą krawędź w prawo i patrz na plakietkę nad oknem. Kolumny dochodzą
+  same, jedna po drugiej, bez sufitu na dwóch. Zwęź poniżej 340 px, a panel przechodzi w
+  <b>tryb zwinięty</b>, ten sam wiersz 31 px, który aplikacja ma dziś pod przełącznikiem trybu
+  kompaktowego. Spłaszcz okno poniżej 170 px wysokości i rozciągnij w bok, a dostaniesz
+  <b>pasek przez ekran</b>: zwinięte wiersze też układają się w kolumny. Wyłącz „Temperatury"
+  albo „Filamenty", to są prawdziwe przełączniki z Ustawień, sekcja Karty drukarek.
+</p>
+
+<h2>Jak wypada liczba kolumn</h2>
+<table>
+  <tr><th style="width:210px">Warunek</th><th style="width:170px">Co robi panel</th><th>Skąd to</th></tr>
+  <tr><td>szerokość <code>&lt; 340 px</code><br>albo wysokość <code>&lt; 170 px</code></td>
+      <td>wiersze zwinięte</td>
+      <td>istniejący tryb kompaktowy, <code>CompactPrinterRowView</code>, wysokość 31 pt.
+          Niskie i szerokie okno to pasek przez ekran, więc wiersze też idą w kolumny
+          (najwęższy wiersz 210 px)</td></tr>
+  <tr><td>reszta</td><td>karty, liczba kolumn z szerokości</td>
+      <td><code>kolumny = floor((szerokość − 20 + 8) / (285 + 8))</code>, gdzie 285 px to najwęższa
+          karta, przy której moduły filamentu i temperatury jeszcze się czytają</td></tr>
+</table>
+
+<table style="margin-top:10px;max-width:560px">
+  <tr><th>Szerokość okna</th><th>Kolumny</th><th>Zgodność z tokenami</th></tr>
+  <tr><td><code>340 do 599 px</code></td><td>1</td><td><code>perRow.medium = 1</code></td></tr>
+  <tr><td><code>600 do 892 px</code></td><td>2</td><td><code>perRow.wide = 2</code> przy 600 px</td></tr>
+  <tr><td><code>893 do 1185 px</code></td><td>3</td><td>poza tokenami, wynika ze wzoru</td></tr>
+  <tr><td><code>1186 do 1478 px</code></td><td>4</td><td>poza tokenami, wynika ze wzoru</td></tr>
+  <tr><td><code>≥ 1479 px</code></td><td>5 i dalej</td><td>bez sufitu</td></tr>
+</table>
+
+<p class="hint" style="margin-top:12px">
+  Wzór jest tak dobrany, że <b>trafia w istniejące progi</b>: pierwsza kolumna kończy się przy
+  600 px, czyli dokładnie tam, gdzie <code>grid.breakpoints.wide.minWidth</code>. Powyżej tokeny
+  po prostu nie miały co opisywać, bo popover nigdy nie był szerszy. Jeżeli to wchodzi,
+  <code>gantry-design-tokens.json</code> dostanie <code>printerCard.minWidth = 285</code>
+  i <code>perRow</code> przestanie być listą progów.
+</p>
+
+<p class="note">
+  <b>Co realnie dochodzi w kodzie:</b> nic z rysowania. Karta, wiersz zwinięty, przełączniki
+  zawartości i motyw są już napisane na trzech systemach. Nowe jest wyłącznie okno:
+  swobodna pozycja z zapamiętaniem, przeciąganie za pasek, zmiana rozmiaru i wybór progu kolumn.
+  Mechanika always-on-top też stoi, bo używa jej panel krawędziowy: macOS <code>NSPanel</code>
+  na poziomie <code>.statusBar</code>, Windows <code>Topmost</code> z <code>WS_EX_NOACTIVATE</code>
+  i <code>WS_EX_TOOLWINDOW</code>, Linux <code>set_keep_above</code> plus <code>stick</code>.
+  Na GNOME z Waylandem nie ma protokołu always-on-top, tam będzie zwykłe okno. Na X11, Sway,
+  Hyprland, Windows i macOS działa.
+</p>
+
+<script>
+const FLEET = [
+  {n:'X1', model:'MQTT', state:'print', pct:98, file:'SPIRO 125 MM', eta:'6m · 13:58',
+   layer:'103/105', noz:[255,255], bed:[65,65], cham:[50,null],
+   ams:[{name:'AMS', env:'🌡 33° · 💧 34%', slots:[
+          {c:'#E8E4DC', t:'PETG', p:'0%', active:true},
+          {c:null, t:'A2 —'},{c:null, t:'A3 —'},{c:null, t:'A4 —'}]},
+        {name:'EXT', ext:true, slots:[{c:'#2E3B1E', t:'TPU', p:'0%'}]}]},
+
+  {n:'P1S', model:'MQTT', state:'print', pct:73, file:'vase_v3.3mf', eta:'1 h 12 · 15:42',
+   layer:'184/251', noz:[221,220], bed:[60,60], cham:[38,null],
+   ams:[{name:'AMS A', env:'🌡 31° · 💧 29%', slots:[
+          {c:'#9DA0A1', t:'PLA'},{c:'#F4D45A', t:'PLA', p:'62%', active:true},
+          {c:'#D52F08', t:'PLA'},{c:'#846F62', t:'PETG'}]},
+        {name:'EXT', ext:true, slots:[{c:'#3B7900', t:'PLA'}]}]},
+
+  {n:'A1', model:'MQTT', state:'pause', pct:62, file:'clip_x4.3mf', eta:'wstrzymana',
+   layer:'96/233', noz:[42,0], bed:[60,60], cham:[null,null],
+   ams:[{name:'AMS Lite', env:'🌡 28°', slots:[
+          {c:'#1B6CA8', t:'PLA', p:'8%', active:true},
+          {c:null, t:'A2 —'},{c:'#E0E0E0', t:'PLA'},{c:null, t:'A4 —'}]}]},
+
+  {n:'X2D', model:'MQTT', state:'idle', pct:0, file:'', eta:'', layer:'',
+   noz:[24,0], bed:[23,0], cham:[28,null],
+   ams:[{name:'AMS HT', env:'🌡 32° · 💧 40%', slots:[{c:'#080909', t:'PA-CF', p:'44%'}]},
+        {name:'EXT', ext:true, slots:[{c:null, t:'—'}]}]},
+
+  {n:'A1 mini', model:'MQTT', state:'done', pct:100, file:'bracket.3mf', eta:'odbierz wydruk',
+   layer:'233/233', noz:[58,0], bed:[35,0], cham:[null,null],
+   ams:[{name:'AMS Lite', env:'🌡 27°', slots:[
+          {c:'#7A4FCF', t:'PLA', p:'71%'},{c:null, t:'A2 —'},
+          {c:null, t:'A3 —'},{c:null, t:'A4 —'}]}]},
+
+  {n:'CC2', model:'SDCP', state:'idle', pct:0, file:'', eta:'', layer:'',
+   noz:[25,0], bed:[24,0], cham:[null,null],
+   ams:[{name:'CFS', env:'💧 21%', slots:[
+          {c:'#C8442E', t:'PLA'},{c:null, t:'2 —'},{c:null, t:'3 —'},{c:null, t:'4 —'}]}]},
+];
+
+const LABEL = {print:'Drukuje', pause:'Wstrzymana', idle:'Bezczynna', done:'Skończone'};
+const COLOR = {print:'var(--printing)', pause:'var(--warn)', idle:'var(--idle)', done:'var(--ok)'};
+const ICON  = {print:'🖨', pause:'⏸', idle:'○', done:'✓'};
+
+const w = document.getElementById('w'), desk = document.getElementById('desk');
+const scroll = document.getElementById('scroll'), count = document.getElementById('count');
+const sizeTag = document.getElementById('sizeTag');
+let fleetN = 4;
+const opt = {temps:true, ams:true, chip:true};
+
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+/** The 15 segment bar the card actually draws. */
+function segBar(pct){
+  let out = '';
+  for (let i = 0; i < 15; i++) out += `<i class="${i < Math.round(pct/100*15) ? 'on' : ''}"></i>`;
+  return `<div class="bar">${out}</div>`;
+}
+
+function temps(p){
+  const cell = (lab, v, tint) => {
+    if (v[0] === null) return '';
+    return `<div class="t1"><span class="lab">${lab}</span>
+      <span class="val"${tint ? ' style="color:var(--chamber)"' : ''}>${v[0]}°${
+        v[1] ? `<span class="tgt">/${v[1]}°</span>` : ''}</span></div>`;
+  };
+  return `<div class="temps1">${cell('DYSZA', p.noz)}${cell('STÓŁ', p.bed)}${cell('KOM.', p.cham, true)}</div>`;
+}
+
+function amsBlock(groups){
+  return `<div class="ams">${groups.map((g, i) => `
+    ${i ? '<div class="vline"></div>' : ''}
+    <div class="grp2"${g.ext ? ' style="max-width:104px"' : ''}>
+      <div class="head">${esc(g.name)}${g.env ? ` <span class="sep">·</span> ${g.env}` : ''}</div>
+      <div class="slots">${g.slots.map(s => `
+        <div class="slot">
+          <div class="pill" style="${s.c ? `background:${s.c};` : 'background:rgba(255,255,255,.05);'}${
+            s.active ? 'border-color:#fff;' : ''}">${s.p || ''}</div>
+          <small>${esc(s.t)}</small>
+        </div>`).join('')}</div>
+    </div>`).join('')}</div>`;
+}
+
+function cardHTML(p){
+  const printing = p.state === 'print' || p.state === 'pause';
+  return `<div class="card">
+    <div class="job">
+      <div class="hdr">
+        <span class="pico">🖨</span><span class="name">${esc(p.n)}</span>
+        <span class="badge">${p.model}</span>
+        ${opt.chip ? '<span class="chip">📈</span>' : ''}
+        <span class="spacer"></span><span class="dots">⋯</span>
+      </div>
+      <div class="status">
+        <span class="sdot" style="background:${COLOR[p.state]}"></span>
+        <span style="color:${COLOR[p.state]}">${LABEL[p.state]}</span>
+        ${p.file ? `<span class="sep">·</span><span class="file">${esc(p.file)}</span>` : ''}
+        <span class="spacer"></span>
+        ${p.state === 'idle' ? '' : `<span class="bigpct">${p.pct}%</span>`}
+      </div>
+      ${p.state === 'idle' ? '' : `<div class="prow">${segBar(p.pct)}
+        <span class="meta">⏱ ${esc(p.eta)}${p.layer ? ' · ' + p.layer : ''}</span></div>`}
+    </div>
+    ${opt.temps ? '<div class="rule"></div>' + temps(p) : ''}
+    ${opt.ams ? '<div class="rule"></div>' + amsBlock(p.ams) : ''}
+  </div>`;
+}
+
+function compactHTML(p){
+  const sub = p.state === 'idle' ? LABEL[p.state]
+            : p.file ? `${LABEL[p.state]} · ${p.file}` : LABEL[p.state];
+  return `<div class="crow">
+    <span class="ci" style="color:${COLOR[p.state]}">${ICON[p.state]}</span>
+    <span class="cn">${esc(p.n)}</span>
+    <span class="cs">${esc(sub)}</span>
+    ${p.state === 'idle' ? '' : `<span class="cp">${p.pct}%</span>`}
+  </div>`;
+}
+
+// Najwęższa karta, przy której moduły filamentu i temperatury jeszcze się czytają, oraz najwęższy
+// wiersz zwinięty. Liczba kolumn wypada z tych dwóch liczb, więc panel nie ma sufitu na dwóch
+// kolumnach: im szersze okno, tym więcej kart obok siebie.
+const CARD_MIN = 285, ROW_MIN = 210, GAP = 8, PAD = 20;
+
+const columnsFor = min => Math.max(1, Math.floor((w.clientWidth - PAD + GAP) / (min + GAP)));
+
+function render(){
+  const W = w.clientWidth, H = w.clientHeight;
+  const list = FLEET.slice(0, fleetN);
+  count.textContent = `${list.filter(p => p.state === 'print').length} z ${list.length} drukują`;
+
+  // Zwinięte wiersze, gdy okno jest wąskie albo za niskie na kartę. Niskie i szerokie okno to
+  // pasek przez cały ekran, więc wiersze też układają się w kolumny.
+  const compact = W < 340 || H < 170;
+  const cols = columnsFor(compact ? ROW_MIN : CARD_MIN);
+
+  scroll.classList.toggle('grid', cols > 1);
+  scroll.style.gridTemplateColumns = cols > 1 ? `repeat(${cols},minmax(0,1fr))` : '';
+  scroll.innerHTML = list.map(compact ? compactHTML : cardHTML).join('');
+
+  sizeTag.textContent = `${Math.round(W)} × ${Math.round(H)} · ${
+    compact ? 'zwinięte' : 'karty'} · ${cols} ${cols === 1 ? 'kolumna' : cols < 5 ? 'kolumny' : 'kolumn'}`;
+}
+
+/* ---------- przeciąganie ---------- */
+let drag = null, size = null;
+document.getElementById('hdr').addEventListener('pointerdown', e => {
+  if (w.classList.contains('locked')) return;
+  drag = {x:e.clientX, y:e.clientY, l:w.offsetLeft, t:w.offsetTop};
+  e.currentTarget.setPointerCapture(e.pointerId);
+});
+document.addEventListener('pointermove', e => {
+  if (drag){
+    w.style.left = Math.min(Math.max(0, drag.l + e.clientX - drag.x),
+                            desk.clientWidth - w.offsetWidth) + 'px';
+    w.style.top  = Math.min(Math.max(0, drag.t + e.clientY - drag.y),
+                            desk.clientHeight - w.offsetHeight) + 'px';
+  }
+  if (size){
+    if (size.dir !== 'b')
+      w.style.width  = Math.max(190, Math.min(size.w + e.clientX - size.x,
+                        desk.clientWidth - w.offsetLeft)) + 'px';
+    if (size.dir !== 'r')
+      w.style.height = Math.max(120, Math.min(size.h + e.clientY - size.y,
+                        desk.clientHeight - w.offsetTop)) + 'px';
+    render();
+  }
+});
+document.addEventListener('pointerup', () => {
+  drag = null;
+  if (size){ size = null; w.classList.remove('sizing'); }
+});
+w.querySelectorAll('.rz').forEach(h => h.addEventListener('pointerdown', e => {
+  size = {dir:h.dataset.rz, x:e.clientX, y:e.clientY, w:w.offsetWidth, h:w.offsetHeight};
+  w.classList.add('sizing');
+  h.setPointerCapture(e.pointerId);
+  e.stopPropagation();
+}));
+
+/* ---------- pasek sterowania ---------- */
+const pick = b => [...b.parentNode.querySelectorAll('button')]
+  .forEach(x => x.classList.toggle('on', x === b));
+
+document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => {
+  let [x,y] = b.dataset.size.split(',').map(Number);
+  x = Math.min(x, desk.clientWidth);  y = Math.min(y, desk.clientHeight);
+  w.style.width = x + 'px'; w.style.height = y + 'px';
+  w.style.left = Math.max(0, Math.min(w.offsetLeft, desk.clientWidth - x)) + 'px';
+  w.style.top  = Math.max(0, Math.min(w.offsetTop,  desk.clientHeight - y)) + 'px';
+  pick(b); w.classList.add('sizing'); render();
+  setTimeout(() => w.classList.remove('sizing'), 900);
+});
+document.querySelectorAll('[data-n]').forEach(b => b.onclick = () => {
+  fleetN = Number(b.dataset.n); pick(b); render();
+});
+document.querySelectorAll('[data-opt]').forEach(b => b.onclick = () => {
+  opt[b.dataset.opt] = !opt[b.dataset.opt];
+  b.classList.toggle('on', opt[b.dataset.opt]);
+  render();
+});
+document.getElementById('onTop').onclick = e => { w.classList.remove('below'); pick(e.target); };
+document.getElementById('below').onclick = e => { w.classList.add('below'); pick(e.target); };
+document.getElementById('op').oninput = e => {
+  const v = e.target.value / 100;
+  w.style.background = desk.classList.contains('light')
+    ? `rgba(246,247,249,${v})` : `rgba(12,13,14,${v})`;
+};
+document.getElementById('lock').onclick = e => {
+  const on = w.classList.toggle('locked');
+  e.target.classList.toggle('on', on);
+  e.target.textContent = on ? 'Odblokuj' : 'Zablokuj';
+};
+document.getElementById('theme').onclick = e => {
+  const light = desk.classList.toggle('light');
+  e.target.textContent = light ? 'Ciemny' : 'Jasny';
+  e.target.classList.toggle('on', light);
+  document.getElementById('op').dispatchEvent(new Event('input'));
+};
+
+new ResizeObserver(render).observe(w);
+render();
+</script>
