@@ -16,6 +16,8 @@ Gantry nadal działa wyłącznie lokalnie. Nie ma konta, chmury ani serwera poś
 - **Alert przed końcem druku**, domyślnie wyłączony, do włączenia w ustawieniach.
 - **Pasek krawędziowy**: wąski panel przyklejony do krawędzi ekranu, zawsze na wierzchu, z pierścieniem postępu na drukarkę. Domyślnie wyłączony.
 - **Nowe okno ustawień**: trzy zakładki zamiast jednej długiej listy.
+- **Tryb okna**: ten sam pulpit floty odpięty od paska menu jako zwykłe okno pulpitu, z własnym rozmiarem, pinezką „zawsze na wierzchu" i obecnością w pasku zadań. Domyślnie wyłączony.
+- **Ekran łączenia przy starcie i przewodnik** przy pierwszym uruchomieniu.
 - **Tłumaczenia w osobnym pliku**: nowy język to jeden plik wrzucony do katalogu `i18n/`, bez dotykania kodu i bez nowego wydania.
 - **Karta drukarki krótsza o 32 punkty na rząd** na macOS i o 29 pikseli na GNU/Linuksie, bez utraty żadnej informacji, na trzech systemach naraz.
 - **Przełącznik Spoolbase gasi teraz całą funkcję**, a nie tylko pozycję w menu.
@@ -147,6 +149,42 @@ Dwukierunkowa synchronizacja Spoolbase, listy drukarek i ustawień między włas
 Znikają usługi synchronizacji, sekcja „Synchronizacja między komputerami" w Ustawieniach, wpisy w konfiguracji (token parowania, identyfikator urządzenia, lista sparowanych maszyn) oraz cały ruch sieciowy. Serwer podglądu floty zostaje, ale przestaje przyjmować jakiekolwiek zapisy: endpoint `/api/sync` i autoryzacja tokenem znikają na wszystkich trzech systemach, więc **każda ścieżka serwera jest teraz tylko do odczytu**.
 
 Co to znaczy przy aktualizacji: dane lokalne zostają nietknięte, nic nie jest kasowane. Przestaje działać wyłącznie przenoszenie ich między maszynami. Jeżeli używałeś synchronizacji, po aktualizacji każdy komputer trzyma swoją kopię magazynu i listy drukarek, tak jak przed 0.9.0.
+
+## Tryb okna: Gantry odpięty od paska menu
+
+![Gantry jako zwykłe okno pulpitu: przełącznik dymek i okno w nagłówku](https://raw.githubusercontent.com/parametryczny/gantrybar/23f841c5357da33fa579dc9a3419f42007d896d9/docs/renders/readme-window-mode.png)
+
+Dymek przy ikonie jest wygodny do rzutu oka, ale znika po kliknięciu obok i nie da się go
+odłożyć na drugi ekran. Ten sam pulpit floty można teraz **odpiąć jako zwykłe okno**.
+
+Przełącznik siedzi w nagłówku panelu, jedno kliknięcie w obie strony. Wybór jest zapamiętywany,
+więc Gantry wraca w tym trybie, w którym go zostawiłeś. Okno ma **własny rozmiar i pozycję**,
+zapamiętywane osobno, natywną ramę systemu i normalne zachowanie: jest w pasku zadań i w
+przełączniku okien, zamknięcie go **chowa Gantry zamiast kończyć program**, a kliknięcie ikony
+przywraca je z powrotem. Liczba kolumn dobiera się sama do szerokości, tak jak w dymku.
+
+W górnym pasku okna jest **pinezka**: włączona trzyma Gantry nad innymi oknami, wyłączona pozwala
+je zasłaniać. Domyślnie włączona. Całość steruje się też z Ustawień, sekcja **Pływające okno**.
+
+Wewnątrz okna działają te same panele co w dymku: szczegóły drukarki, konserwacja, przypisanie
+rolki, diagnostyka, statystyki floty i Spoolbase. Nie ma osobnej ścieżki dla trybu okna, więc nic
+nie zachowuje się w nim inaczej.
+
+**Domyślnie wyłączony**, bo Gantry zostaje aplikacją paska menu i zasobnika. Tryb okna jest dla
+tych, którzy wolą trzymać flotę na drugim ekranie.
+
+Na GNU/Linuksie dekoracje, pozycjonowanie i wymuszanie okna na wierzchu zależą od menedżera okien.
+Na Wayland pod GNOME nie ma protokołu trzymania okna na wierzchu, więc pinezka tam nie zadziała.
+
+## Start aplikacji i przewodnik
+
+Przy starcie karty nie pojawiają się od razu z pustymi wartościami. Gantry pokazuje **ekran
+łączenia**, dopóki nie odezwie się większość floty, i schodzi z niego po piętnastu sekundach albo
+na Twoje kliknięcie, żeby jedna niedostępna drukarka nie trzymała reszty.
+
+Przy pierwszym uruchomieniu wchodzi **krótki przewodnik** po karcie: co znaczy pierścień postępu,
+sloty AMS i metryki temperatur. Pokazuje się raz i zapamiętuje, że go widziałeś; można go otworzyć
+ponownie z nagłówka.
 
 ## Anycubic Kobra S1
 
