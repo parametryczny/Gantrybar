@@ -645,11 +645,18 @@ class PrinterCard(Gtk.Frame):
                             or telemetry.nozzle2 is not None)
         dual = self._known_dual
         if dual:
-            left = next((n for n in nozzles if n.position == "left"), nozzles[0])
+            # _known_dual is sticky on purpose, so a partial packet does not collapse a dual-nozzle
+            # card back to one zone. That also means we land here with an empty nozzle list (a fresh
+            # card built before the first telemetry, or a packet carrying only the bed), so every
+            # lookup has to survive that and fall back to the flat fields.
+            left = next((n for n in nozzles if n.position == "left"), nozzles[0] if nozzles else None)
             right = next((n for n in nozzles if n.position == "right"), None)
-            self.temps.pack_start(zone("nozzle", "L", left.current, left.target), True, True, 0)
-            self.temps.pack_start(zone("nozzle", "R", right.current if right else None,
-                                       right.target if right else None), True, True, 0)
+            self.temps.pack_start(zone("nozzle", "L",
+                                       left.current if left else telemetry.nozzle,
+                                       left.target if left else telemetry.nozzle_target), True, True, 0)
+            self.temps.pack_start(zone("nozzle", "R",
+                                       right.current if right else telemetry.nozzle2,
+                                       right.target if right else telemetry.nozzle2_target), True, True, 0)
         else:
             nozzle = nozzles[0] if nozzles else None
             self.temps.pack_start(zone("nozzle", i18n.t("Nozzle"),

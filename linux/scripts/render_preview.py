@@ -76,6 +76,12 @@ class StubApp:
         self.telemetry = telemetry
         self.cards: dict[str, gapp.PrinterCard] = {}
         self.window = None
+        # The dashboard asks the app how far the startup handshake got, to decide whether to show
+        # the connecting screen. The preview renders the finished state: every printer has data.
+        from gantry.startup import StartupState
+        self.startup = StartupState([p.serial for p in printers])
+        self.startup.received = {p.serial for p in printers}
+        self.startup.finish()
 
     def is_compact(self) -> bool:
         return False
