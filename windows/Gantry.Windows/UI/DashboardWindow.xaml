@@ -49,7 +49,7 @@
     <Border x:Name="PanelBody" CornerRadius="12" Background="#40242426" SnapsToDevicePixels="True">
         <Grid>
             <DockPanel Margin="2">
-                <Grid DockPanel.Dock="Top" Margin="16,14,12,8">
+                <Grid x:Name="HeaderBar" DockPanel.Dock="Top" Margin="16,14,12,8" Background="Transparent">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -63,6 +63,7 @@
                         <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="WindowModeButton" Style="{StaticResource FlatIconButton}" Width="24" Height="24" Margin="2,0" FontSize="12"/>
                         <Button x:Name="ColumnsButton" Style="{StaticResource FlatIconButton}" Width="24" Height="24" Margin="2,0" FontSize="12" ToolTip="Kolumny / Columns"/>
                         <Button x:Name="CompactButton" Style="{StaticResource FlatIconButton}" MinWidth="52" Height="24" Margin="2,0" Padding="6,0" FontSize="11" Visibility="Collapsed"/>
                         <Button x:Name="ClearButton" Style="{StaticResource FlatIconButton}" Content="✕" Width="24" Height="24" Margin="2,0" FontSize="12" ToolTip="Wyczyść zakończone / Clear finished"/>

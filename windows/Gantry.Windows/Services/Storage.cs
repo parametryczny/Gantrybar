@@ -237,6 +237,21 @@ public static class AppSettings
         get => Defaults.GetBool("card-show-spool-grams", false);
         set => Defaults.SetBool("card-show-spool-grams", value);
     }
+    /// <summary>Fleet panel detached from the tray as a normal desktop window: it keeps its own
+    /// position and size, appears in the taskbar and Alt+Tab, and does not vanish on focus loss.
+    /// Off by default, so a fresh install still behaves like a tray flyout.</summary>
+    public static bool DashboardWindowMode
+    {
+        get => Defaults.GetBool("dashboard-window-mode", false);
+        set => Defaults.SetBool("dashboard-window-mode", value);
+    }
+    /// <summary>Remembered geometry of the detached window, "left,top,width,height" in DIP.
+    /// Empty until the user moves or resizes it once.</summary>
+    public static string DashboardWindowBounds
+    {
+        get => Defaults.GetString("dashboard-window-bounds") ?? "";
+        set => Defaults.SetString("dashboard-window-bounds", value);
+    }
     /// <summary>Small chart chip beside the printer name, a shortcut to the detail view (off by
     /// default). The card's ⋯ menu always carries Details, so the chip is a shortcut, not the only way.</summary>
     public static bool CardShowDetailsChip

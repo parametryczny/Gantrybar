@@ -47,11 +47,34 @@ public partial class DashboardWindow : Window
         // but stay open while one of our own dialogs (add printer) sits on top.
         Deactivated += (_, _) =>
         {
+            // A detached window is a normal window: clicking away must not make it disappear.
+            if (AppSettings.DashboardWindowMode) return;
             foreach (Window owned in OwnedWindows)
                 if (owned.IsVisible) return;
             _lastHidden = DateTime.Now;
             Hide();
         };
+        // The tray owns the app's lifetime, so the window's close box hides it instead of quitting.
+        Closing += (_, e) =>
+        {
+            if (!AppSettings.DashboardWindowMode) return;
+            e.Cancel = true;
+            RememberBounds();
+            Hide();
+        };
+        LocationChanged += (_, _) => ScheduleRememberBounds();
+        SizeChanged += (_, _) => ScheduleRememberBounds();
+        WindowModeButton.Click += (_, _) => SetWindowMode(!AppSettings.DashboardWindowMode);
+        // WindowStyle=None means there is no title bar to grab, so the header is the drag handle.
+        // Only in window mode: dragging a tray flyout would just fight its fixed corner position.
+        HeaderBar.MouseLeftButtonDown += (_, e) =>
+        {
+            if (!AppSettings.DashboardWindowMode) return;
+            if (e.ButtonState != MouseButtonState.Pressed) return;
+            DragMove();
+            RememberBounds();   // the drag has ended here, so write it out at once
+        };
+        ApplyWindowMode();
         MenuBackdrop.MouseLeftButtonDown += (_, _) => HideCardMenu();
         // Accept drag-over across the whole panel so the drag "ghost" keeps following the cursor even
         // over gaps between cards (drops still reorder via each card's own Drop handler).
@@ -308,10 +331,106 @@ public partial class DashboardWindow : Window
         }
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Window mode: the same fleet panel, detached from the tray as an ordinary desktop window.
+    // Nothing about the cards changes; only the window's manners do.
+
+    /// <summary>Switches between tray flyout and detached window, and remembers the choice.</summary>
+    public void SetWindowMode(bool on)
+    {
+        if (AppSettings.DashboardWindowMode == on) return;
+        if (!on) RememberBounds();          // save where the window stood before it becomes a flyout
+        AppSettings.DashboardWindowMode = on;
+        ApplyWindowMode();
+        if (on) RestoreBounds(); else { Hide(); ShowPopover(); }
+    }
+
+    /// <summary>Applies the manners of the current mode: taskbar presence, resizing and topmost.</summary>
+    private void ApplyWindowMode()
+    {
+        bool on = AppSettings.DashboardWindowMode;
+        ShowInTaskbar = on;                 // a detached window belongs in the taskbar and Alt+Tab
+        Topmost = !on;                      // the flyout floats; a window behaves like every other
+        ResizeMode = on ? ResizeMode.CanResizeWithGrip : ResizeMode.NoResize;
+        WindowModeButton.Content = on ? "▭" : "❐";
+        WindowModeButton.ToolTip = on
+            ? AppSettings.T("Back to the tray panel")
+            : AppSettings.T("Detach as a window");
+    }
+
+    /// <summary>Coalesces a burst of move/resize events into one write. Every settings change
+    /// rewrites the whole JSON file, and dragging a window raises LocationChanged continuously, so
+    /// writing on each event would hammer the disk for the length of the drag.</summary>
+    private void ScheduleRememberBounds()
+    {
+        if (!AppSettings.DashboardWindowMode) return;
+        _boundsWriter ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(600)
+        };
+        _boundsWriter.Tick -= OnBoundsWriterTick;
+        _boundsWriter.Tick += OnBoundsWriterTick;
+        _boundsWriter.Stop();
+        _boundsWriter.Start();
+    }
+
+    private void OnBoundsWriterTick(object? sender, EventArgs e)
+    {
+        _boundsWriter?.Stop();
+        RememberBounds();
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _boundsWriter;
+
+    /// <summary>Stores the window's geometry so it comes back where the user left it.</summary>
+    private void RememberBounds()
+    {
+        if (!AppSettings.DashboardWindowMode || !IsVisible) return;
+        if (WindowState != WindowState.Normal) return;      // never persist a maximised frame
+        AppSettings.DashboardWindowBounds = string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "{0},{1},{2},{3}", Left, Top, Width, Height);
+    }
+
+    /// <summary>Restores the remembered geometry, clamped to a monitor that actually exists now.
+    /// A window saved on a second screen that has since been unplugged would otherwise open
+    /// off-screen, with no way to drag it back.</summary>
+    private void RestoreBounds()
+    {
+        var parts = AppSettings.DashboardWindowBounds.Split(',');
+        var area = SystemParameters.WorkArea;
+        if (parts.Length == 4
+            && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var l)
+            && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var t)
+            && double.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w)
+            && double.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var h))
+        {
+            Width = Math.Max(MinWidth > 0 ? MinWidth : 360, Math.Min(w, area.Width));
+            Height = Math.Max(220, Math.Min(h, area.Height));
+            Left = Math.Max(area.Left, Math.Min(l, area.Right - Width));
+            Top = Math.Max(area.Top, Math.Min(t, area.Bottom - Height));
+        }
+        else
+        {
+            Left = area.Left + (area.Width - Width) / 2;
+            Top = area.Top + (area.Height - Height) / 3;
+        }
+        Show();
+        ApplyModernChrome();
+        Activate();
+    }
+
     /// <summary>Positions the panel above the tray (bottom-right of the work area) and shows it,
-    /// or hides it if already visible — so a tray click toggles it like a popover.</summary>
+    /// or hides it if already visible — so a tray click toggles it like a popover.
+    /// In window mode a tray click just brings the existing window forward instead.</summary>
     public void TogglePopover()
     {
+        if (AppSettings.DashboardWindowMode)
+        {
+            if (IsVisible && IsActive) { RememberBounds(); Hide(); return; }
+            if (!IsVisible) RestoreBounds(); else Activate();
+            return;
+        }
         if (IsVisible)
         {
             Hide();
@@ -326,6 +445,7 @@ public partial class DashboardWindow : Window
     /// <summary>Positions and shows the panel unconditionally (used by menu items).</summary>
     public void ShowPopover()
     {
+        if (AppSettings.DashboardWindowMode) { RestoreBounds(); return; }
         var area = SystemParameters.WorkArea;
         Left = area.Right - Width - 8;
         Top = area.Bottom - Height - 8;
@@ -710,6 +830,9 @@ public partial class DashboardWindow : Window
     internal void FitHeightToContent()
     {
         if (!IsVisible) return;
+        // In window mode the size belongs to the user, not to the content: a card appearing or an
+        // expanded detail must never resize or re-park the window under their hands.
+        if (AppSettings.DashboardWindowMode) return;
         if (_spoolOverlayActive) return;   // keep the grown height while the slot overlay is open
         Dispatcher.BeginInvoke(new Action(() =>
         {
