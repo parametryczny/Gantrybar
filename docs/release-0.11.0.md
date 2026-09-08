@@ -152,7 +152,7 @@ Co to znaczy przy aktualizacji: dane lokalne zostają nietknięte, nic nie jest 
 
 ## Tryb okna: Gantry odpięty od paska menu
 
-![Gantry jako zwykłe okno pulpitu: przełącznik dymek i okno w nagłówku](https://raw.githubusercontent.com/parametryczny/gantrybar/23f841c5357da33fa579dc9a3419f42007d896d9/docs/renders/readme-window-mode.png)
+![Gantry jako zwykłe okno pulpitu: przełącznik dymek i okno w nagłówku](https://raw.githubusercontent.com/parametryczny/gantrybar/71992feb766d0b636e2a6e7150925b5f8a7d2476/docs/renders/readme-window-mode.png)
 
 Dymek przy ikonie jest wygodny do rzutu oka, ale znika po kliknięciu obok i nie da się go
 odłożyć na drugi ekran. Ten sam pulpit floty można teraz **odpiąć jako zwykłe okno**.
