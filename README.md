@@ -1,17 +1,29 @@
+<div align="center">
+
+<img src="docs/branding/gantry-appicon.png" width="168" alt="Gantry">
+
 # Gantry
+
+A local, cross-platform monitor for your 3D printer fleet.
+
+Watch every printer from the menu bar, the system tray or the panel:
+live state, progress, layers, temperatures, filament and notifications.
+
+[![CI](https://github.com/parametryczny/gantrybar/actions/workflows/ci.yml/badge.svg)](https://github.com/parametryczny/gantrybar/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/parametryczny/gantrybar?label=release&color=blue)](https://github.com/parametryczny/gantrybar/releases/latest)
+[![License](https://img.shields.io/github/license/parametryczny/gantrybar?label=license&color=blue)](LICENSE)
+[![Platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-supported-black)](#downloads--pobieranie)
+[![Downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total?label=downloads&color=orange)](https://github.com/parametryczny/gantrybar/releases)
 
 **[English](#english)** · **[Polski](#polski)**
 
-[![Latest release](https://img.shields.io/github/v/release/parametryczny/gantrybar)](https://github.com/parametryczny/gantrybar/releases/latest)
-[![Total downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total)](https://github.com/parametryczny/gantrybar/releases)
-[![License: MIT](https://img.shields.io/github/license/parametryczny/gantrybar)](LICENSE)
+</div>
 
-A lightweight 3D‑printer fleet monitor for the **macOS menu bar**, **Windows system tray** and **GNU/Linux**. One click on the tray icon shows every printer at once — progress, ETA, layers, temperatures and filament — for **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) and Snapmaker**.
+<img src="docs/renders/readme-dashboard.png" alt="Gantry: all your printers in one view, on macOS, Windows and GNU/Linux">
 
-*Lekki monitor farmy drukarek 3D w **pasku menu macOS**, **zasobniku Windows** i **GNU/Linux**. Jedno kliknięcie ikony pokazuje wszystkie drukarki naraz — postęp, czas, warstwy, temperatury i filament — dla **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) i Snapmaker**.*
+Gantry watches **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) and Snapmaker** printers over your own network. No account, no cloud, no middleman server.
 
-<img width="1448" height="1086" alt="gantry" src="https://github.com/user-attachments/assets/397337e3-21d0-4849-a357-061d8f533d98" />
-
+*Gantry obserwuje drukarki **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) i Snapmaker** po Twojej własnej sieci. Bez konta, bez chmury, bez serwera pośredniczącego.*
 
 ---
 
@@ -62,6 +74,35 @@ A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers 
 <p align="center">
   <img src="docs/renders/gantry-linux-cards.png" width="70%" alt="Gantry cards on GNU/Linux (GTK)">
 </p>
+
+### Telegram: your fleet in your pocket
+
+![Gantry on Telegram: notifications, printer control and camera photos](docs/renders/readme-telegram.png)
+
+Print alerts reach your phone and the bot answers back. `/status` picks a printer and gives you its
+job, progress, layers, ETA, temperatures, AMS humidity and loaded slots, plus buttons for pause,
+resume, stop, chamber light and a camera photo. `/all` summarises the fleet, `/spools` lists rolls
+running low, `/history` the recent prints, `/watch 10m` sends a photo on a timer and `/mute 2h`
+silences alerts.
+
+**The bridge is your own computer.** There is no Gantry server: you create your **own bot** with
+BotFather and paste the token into Settings, where it stays. The bot replies only to your configured
+chat. A sleeping laptop means a silent bot, and everything resumes by itself once it wakes.
+Step by step: **[docs/telegram-setup.md](docs/telegram-setup.md)**.
+
+### Edge panel: always on top, never in the way
+
+![The Gantry edge panel: 22 points wide at rest, unfolding on hover](docs/renders/readme-edge-panel.png)
+
+A strip 22 points wide, pinned to the left or right edge of the screen, carrying one progress ring
+per printer. At rest it shows only the status colour and how full each ring is. Hovering unfolds it
+into names, percentages and remaining time; clicking a row opens that printer's details. It rides
+above other windows and across every desktop, and a click never steals focus from what you are
+typing in. **Off by default**, because it is a second surface next to the popover, not a replacement.
+
+One caveat on GNU/Linux: **Wayland has no protocol for keeping a window on top**. It works normally
+on X11 and on wlroots compositors (Sway, Hyprland); under GNOME's Wayland session another window can
+cover the strip.
 
 ### Requirements
 
@@ -143,6 +184,36 @@ Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa druk
 - **Bezpieczne domyślnie** — kody dostępu / klucze API w pęku kluczy macOS, DPAPI Windows lub Secret Service na Linuksie; wyłącznie lokalnie, bez chmury; przypinanie certyfikatu TLS po pierwszym zaufanym połączeniu
 - **Znajduje drukarki za Ciebie** — wykrywanie Bambu przez multicast SSDP i unicastowy skan podsieci (VPN jak Tailscale nie przenosi multicastu — dodaj jego IP/CIDR/zakres jako dodatkowy cel skanu)
 - Trwałe porządkowanie kart przeciągnij‑i‑upuść, kompaktowy tryb jednoliniowy przy czterech i więcej drukarkach, automatyczne łączenie ponowne i odświeżanie adresów
+
+### Telegram: flota w kieszeni
+
+![Gantry na Telegramie: powiadomienia, sterowanie drukarką i zdjęcia z kamery](docs/renders/readme-telegram.png)
+
+Alerty o wydrukach trafiają na telefon, a bot odpowiada. `/status` wybiera drukarkę i pokazuje
+zadanie, postęp, warstwy, czas do końca, temperatury, wilgotność AMS i załadowane sloty, plus
+przyciski pauzy, wznowienia, stopu, światła komory i zdjęcia z kamery. `/all` streszcza flotę,
+`/spools` wypisuje kończące się rolki, `/history` ostatnie wydruki, `/watch 10m` wysyła zdjęcie
+cyklicznie, a `/mute 2h` wycisza alerty.
+
+**Mostkiem jest Twój komputer.** Nie ma serwera Gantry: zakładasz **własnego bota** u BotFather
+i wklejasz token w Ustawieniach, gdzie zostaje. Bot odpowiada wyłącznie na skonfigurowany czat.
+Uśpiony laptop oznacza milczącego bota, a po wybudzeniu wszystko wraca samo.
+Krok po kroku: **[docs/telegram-setup.md](docs/telegram-setup.md)**.
+
+### Panel krawędziowy: zawsze na wierzchu, nigdy na drodze
+
+![Panel krawędziowy Gantry: 22 punkty w spoczynku, rozsuwa się po najechaniu](docs/renders/readme-edge-panel.png)
+
+Pasek szeroki na 22 punkty, przyklejony do lewej albo prawej krawędzi ekranu, z jednym pierścieniem
+postępu na drukarkę. W spoczynku niesie tylko kolor statusu i wypełnienie pierścienia. Najechanie
+kursorem rozsuwa go do nazw, procentów i pozostałego czasu, a kliknięcie wiersza otwiera szczegóły
+tej drukarki. Widać go nad innymi oknami i na każdym pulpicie, a kliknięcie nie zabiera fokusu temu,
+w czym akurat piszesz. **Domyślnie wyłączony**, bo to druga powierzchnia obok popovera, a nie jego
+zamiennik.
+
+Jedno zastrzeżenie na GNU/Linuksie: **Wayland nie ma protokołu trzymania okna na wierzchu**.
+Na X11 i na kompozytorach wlroots (Sway, Hyprland) działa normalnie; w sesji Wayland pod GNOME pasek
+da się przykryć innym oknem.
 
 ### Wymagania
 
