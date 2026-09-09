@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
@@ -20,12 +21,15 @@ public partial class DashboardWindow
     private readonly DispatcherTimer _geometryTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool _changingMode;
     private bool _reflowPending;
+    private bool _nativeUserResize;
+    private const int WmEnterSizeMove = 0x0231, WmExitSizeMove = 0x0232;
     private int LayoutColumns => WindowMode
         ? Math.Max(1, (int)Math.Round(((ActualWidth > 0 ? ActualWidth : Width) - 24) / 293))
         : AppSettings.DashboardColumns;
 
     private void SetupPresentation()
     {
+        SourceInitialized += (_, _) => (PresentationSource.FromVisual(this) as HwndSource)?.AddHook(PresentationWindowProc);
         SettingsButton.ToolTip = AppSettings.T("Settings…");
         SettingsButton.Click += (_, _) => SettingsRequested?.Invoke();
         // macOS carries this switch in the panel header, so Windows does too. Settings alone was not
@@ -113,8 +117,21 @@ public partial class DashboardWindow
         MinWidth = enabled ? 317 : 0; MinHeight = enabled ? 322 : 0;
         if (changed && enabled)
         {
-            Width = Math.Clamp(Defaults.GetInt("floating-window-width", 610), 317, Math.Max(317, SystemParameters.WorkArea.Width));
-            Height = Math.Clamp(Defaults.GetInt("floating-window-height", 504), 322, Math.Max(322, SystemParameters.WorkArea.Height));
+            int savedWidth = Defaults.GetInt("floating-window-width", -1);
+            int savedHeight = Defaults.GetInt("floating-window-height", -1);
+            bool sizeMarkerExists = Defaults.ContainsKey("floating-window-size-user-set");
+            bool explicitSize = savedWidth > 0 && savedHeight > 0
+                && (sizeMarkerExists
+                    ? Defaults.GetBool("floating-window-size-user-set")
+                    : savedWidth != 610 || savedHeight != 504);
+            Defaults.SetBool("floating-window-size-user-set", explicitSize);
+            int printerCount = Math.Max(1, _store.DashboardPrinters.Count);
+            int automaticColumns = Math.Min(2, printerCount);
+            int automaticRows = Math.Max(1, (int)Math.Ceiling(printerCount / (double)automaticColumns));
+            int initialWidth = explicitSize ? savedWidth : 24 + automaticColumns * 293;
+            int initialHeight = explicitSize ? savedHeight : 140 + automaticRows * 182;
+            Width = Math.Clamp(initialWidth, 317, Math.Max(317, SystemParameters.WorkArea.Width));
+            Height = Math.Clamp(initialHeight, 322, Math.Max(322, SystemParameters.WorkArea.Height));
             Left = Math.Clamp(Left, SystemParameters.WorkArea.Left, SystemParameters.WorkArea.Right - Width);
             Top = Math.Clamp(Top, SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - Height);
             Dispatcher.BeginInvoke(new Action(SnapWindowToTiles), DispatcherPriority.Loaded);
@@ -122,6 +139,21 @@ public partial class DashboardWindow
         _changingMode = false;
         ApplyModernChrome();
         if (changed) { _renderedColumns = -1; Rebuild(); }
+    }
+
+    private IntPtr PresentationWindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam,
+                                          ref bool handled)
+    {
+        if (message == WmEnterSizeMove && WindowMode) _nativeUserResize = true;
+        else if (message == WmExitSizeMove && WindowMode && _nativeUserResize)
+        {
+            _nativeUserResize = false;
+            SnapWindowToTiles();
+            Defaults.SetBool("floating-window-size-user-set", true);
+            Defaults.SetInt("floating-window-width", (int)Width);
+            Defaults.SetInt("floating-window-height", (int)Height);
+        }
+        return IntPtr.Zero;
     }
 
     /// Snap the desktop window to whole 285×174 card tiles. The grid changes its number of visible

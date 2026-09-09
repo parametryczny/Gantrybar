@@ -136,7 +136,7 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Fleet statistics…"), null,
             (_, _) => ShowAuxiliary(new FleetStatsWindow(_store))));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("How to read Gantry"), null,
-            (_, _) => { ShowDashboard(); _dashboard?.ShowOnboarding(); }));
+            (_, _) => ShowOnboardingAfterMenuCloses(menu)));
         menu.Items.Add(new ToolStripSeparator());
 
         var language = new ToolStripMenuItem(AppSettings.T("Language: EN"));
@@ -168,6 +168,27 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Quit Gantry"), null, (_, _) => Application.Current.Shutdown()));
         _ = pl;
         return menu;
+    }
+
+    /// The WinForms tray menu still owns mouse capture inside its item callback. Wait for Closed,
+    /// then open and activate the WPF guide so its controls work on the first presentation.
+    private void ShowOnboardingAfterMenuCloses(ContextMenuStrip menu)
+    {
+        void ShowGuide() => Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            ShowDashboard();
+            _dashboard?.ShowOnboarding();
+            _dashboard?.Activate();
+        }));
+
+        if (!menu.Visible) { ShowGuide(); return; }
+        ToolStripDropDownClosedEventHandler? closed = null;
+        closed = (_, _) =>
+        {
+            menu.Closed -= closed;
+            ShowGuide();
+        };
+        menu.Closed += closed;
     }
 
     /// <summary>Non-interactive legend explaining the status colours on the cards. Emoji dots keep

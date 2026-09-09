@@ -73,6 +73,8 @@ public static class Defaults
     private static JsonElement Wrap(object value)
         => JsonSerializer.SerializeToElement(value);
 
+    public static bool ContainsKey(string key) => _store.ContainsKey(key);
+
     public static string? GetString(string key)
         => _store.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 

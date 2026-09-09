@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Gantry.Models;
 using Gantry.Services;
 
@@ -26,10 +27,11 @@ public sealed class EdgeDockWindow : Window
     private readonly Path _shape = new();
     private List<Entry> _entries = new();
     private bool _expanded;
+    private readonly DispatcherTimer _collapseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
 
-    private const double Ring = 14, RingStroke = 2, CollapsedWidth = 22, CollapsedGap = 8;
-    private const double RowHeight = 20, RowGap = 2, PadY = 8, Notch = 11;
-    private const double ExpandedPadX = 11, ExpandedTextGap = 8;
+    private const double Ring = 18, RingStroke = 2.2, CollapsedWidth = 30, CollapsedGap = 10;
+    private const double RowHeight = 26, RowGap = 3, PadY = 10, Notch = 13;
+    private const double ExpandedPadX = 13, ExpandedTextGap = 9;
 
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_NOACTIVATE = 0x08000000;
@@ -56,6 +58,8 @@ public sealed class EdgeDockWindow : Window
         Topmost = true;
         Title = "Gantry";
         Content = _canvas;
+        // Keep the whole window hit-testable while its silhouette changes under the pointer.
+        _canvas.Background = Brushes.Transparent;
         _canvas.Children.Add(_shape);
         _shape.Fill = new SolidColorBrush(Color.FromArgb(0xF5, 0x08, 0x09, 0x0B));
 
@@ -68,9 +72,21 @@ public sealed class EdgeDockWindow : Window
             SetWindowLong(handle, GWL_EXSTYLE, style | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
         };
 
-        MouseEnter += (_, _) => { if (!_expanded) { _expanded = true; Rebuild(); } };
-        MouseLeave += (_, _) => { if (_expanded) { _expanded = false; Rebuild(); } };
+        _collapseTimer.Tick += (_, _) =>
+        {
+            _collapseTimer.Stop();
+            if (_expanded && !IsMouseOver) { _expanded = false; Rebuild(); }
+        };
+        MouseEnter += (_, _) =>
+        {
+            _collapseTimer.Stop();
+            if (!_expanded) { _expanded = true; Rebuild(); }
+        };
+        // Repositioning the transparent window can emit a transient leave event. Verify it only
+        // after the new hit region has settled instead of immediately collapsing and reopening.
+        MouseLeave += (_, _) => { _collapseTimer.Stop(); _collapseTimer.Start(); };
         MouseLeftButtonDown += OnClick;
+        Closed += (_, _) => _collapseTimer.Stop();
 
         _store.Updated += (_, _) => Dispatcher.Invoke(Refresh);
         Refresh();
@@ -113,10 +129,10 @@ public sealed class EdgeDockWindow : Window
         double widest = 0;
         foreach (var entry in _entries)
         {
-            widest = Math.Max(widest, MeasureText(entry.Name, 11, FontWeights.SemiBold)
-                                      + MeasureText(ValueText(entry), 11, FontWeights.Normal));
+            widest = Math.Max(widest, MeasureText(entry.Name, 12, FontWeights.SemiBold)
+                                      + MeasureText(ValueText(entry), 12, FontWeights.Normal));
         }
-        return Math.Min(Math.Max(ExpandedPadX * 2 + Ring + ExpandedTextGap + widest + 14, 150), 260);
+        return Math.Min(Math.Max(ExpandedPadX * 2 + Ring + ExpandedTextGap + widest + 16, 180), 300);
     }
 
     private static double MeasureText(string text, double size, FontWeight weight)
@@ -206,7 +222,9 @@ public sealed class EdgeDockWindow : Window
     private void DrawExpanded(double width, bool left)
     {
         double top = Notch + PadY;
-        double ringX = left ? width - ExpandedPadX - Ring / 2 : ExpandedPadX + Ring / 2;
+        // The progress ring stays at the physical screen edge in both orientations. Previously it
+        // jumped across the expanded window and left the cursor, causing an enter/leave loop.
+        double ringX = left ? ExpandedPadX + Ring / 2 : width - ExpandedPadX - Ring / 2;
         foreach (var entry in _entries)
         {
             double centerY = top + RowHeight / 2;
@@ -216,17 +234,17 @@ public sealed class EdgeDockWindow : Window
             var nameColor = entry.State is PrinterState.Error or PrinterState.Offline
                 ? GTheme.StatusPrinting
                 : (dim ? GTheme.Secondary : GTheme.Text);
-            double textLeft = ringX + Ring / 2 + ExpandedTextGap;
-            double textRight = width - ExpandedPadX;
+            double textLeft = left ? ringX + Ring / 2 + ExpandedTextGap : ExpandedPadX;
+            double textRight = left ? width - ExpandedPadX : ringX - Ring / 2 - ExpandedTextGap;
 
             var value = new TextBlock
             {
-                Text = ValueText(entry), FontSize = 11, Foreground = GTheme.Brush(GTheme.Muted),
+                Text = ValueText(entry), FontSize = 12, Foreground = GTheme.Brush(GTheme.Muted),
             };
             value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var name = new TextBlock
             {
-                Text = entry.Name, FontSize = 11, FontWeight = FontWeights.SemiBold,
+                Text = entry.Name, FontSize = 12, FontWeight = FontWeights.SemiBold,
                 Foreground = GTheme.Brush(nameColor), TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxWidth = Math.Max(0, textRight - value.DesiredSize.Width - 8 - textLeft),
             };

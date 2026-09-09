@@ -263,6 +263,26 @@ require("linux/gantry/app.py", r'p.serial in self.startup.received',
         "Linux must filter cards until telemetry arrives")
 require("linux/gantry/presentation.py", r'gantry\.onboarding\.v1\.seen', "Linux guide is not remembered")
 
+# Windows issue #32: hover ownership, WinForms/WPF focus hand-off and first automatic window size.
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        r"_canvas\.Background = Brushes\.Transparent",
+        "Windows edge dock has transparent hit-test holes")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        r"MouseLeave[\s\S]*?_collapseTimer\.Start",
+        "Windows edge dock collapses synchronously and can enter a hover loop")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        r"double ringX = left \? ExpandedPadX \+ Ring / 2 : width - ExpandedPadX - Ring / 2",
+        "Windows edge dock ring does not stay anchored to its screen edge")
+require("windows/Gantry.Windows/UI/TrayIcon.cs",
+        r"ShowOnboardingAfterMenuCloses[\s\S]*?menu\.Closed \+= closed",
+        "Windows onboarding opens before the tray menu releases mouse capture")
+require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
+        r"floating-window-size-user-set[\s\S]*?automaticColumns[\s\S]*?automaticRows",
+        "Windows untouched floating window does not fit its initial printer grid")
+require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
+        r"WmExitSizeMove[\s\S]*?floating-window-size-user-set",
+        "Windows cannot distinguish manual resize from automatic sizing")
+
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)
     for error in ERRORS:
