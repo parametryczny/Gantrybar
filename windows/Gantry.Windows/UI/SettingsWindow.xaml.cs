@@ -66,6 +66,8 @@ public partial class SettingsWindow : Window
             DockEdgeButton.Content = EdgeName();
             OnEdgeDockChanged?.Invoke();
         };
+        DockSizeMinusButton.Click += (_, _) => ChangeDockScale(-25);
+        DockSizePlusButton.Click += (_, _) => ChangeDockScale(25);
         DockOnlyPrintingCheckBox.Click += (_, _) =>
         {
             AppSettings.EdgeDockOnlyPrinting = DockOnlyPrintingCheckBox.IsChecked == true;
@@ -140,10 +142,21 @@ public partial class SettingsWindow : Window
     {
         bool on = AppSettings.EdgeDockEnabled;
         DockEdgeButton.IsEnabled = on;
+        DockSizeMinusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent > 100;
+        DockSizePlusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent < 150;
+        DockSizeValue.Opacity = on ? 1 : 0.45;
         DockOnlyPrintingCheckBox.IsEnabled = on;
         DockPrintersList.IsEnabled = on;
         DockPrintersList.Opacity = on ? 1 : 0.45;
         DockEdgeButton.Opacity = on ? 1 : 0.45;
+    }
+
+    private void ChangeDockScale(int delta)
+    {
+        AppSettings.EdgeDockScalePercent += delta;
+        DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
+        ApplyDockEnabledState();
+        OnEdgeDockChanged?.Invoke();
     }
 
     /// One switch row per printer. The serial rides in the control's Tag because the list is rebuilt
@@ -301,6 +314,8 @@ public partial class SettingsWindow : Window
         DockEnableCheckBox.IsChecked = AppSettings.EdgeDockEnabled;
         DockEdgeLabel.Text = AppSettings.T("Edge");
         DockEdgeButton.Content = EdgeName();
+        DockSizeLabel.Text = AppSettings.T("Edge dock size");
+        DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
         DockOnlyPrintingCheckBox.Content = AppSettings.T("Only printing");
         DockOnlyPrintingCheckBox.IsChecked = AppSettings.EdgeDockOnlyPrinting;
         DockPrintersCaption.Text = AppSettings.T("WHICH PRINTERS");

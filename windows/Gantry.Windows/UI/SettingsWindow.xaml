@@ -314,6 +314,16 @@
                                     <Button Grid.Column="1" x:Name="DockEdgeButton" MinWidth="96"/>
                                 </Grid>
                                 <Border Style="{StaticResource RowSeparator}"/>
+                                <Grid Style="{StaticResource RowGrid}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="DockSizeLabel" Style="{StaticResource RowLabel}"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button x:Name="DockSizeMinusButton" Content="−" Width="34" Height="26" FontSize="15"/>
+                                        <TextBlock x:Name="DockSizeValue" Width="54" TextAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
+                                        <Button x:Name="DockSizePlusButton" Content="+" Width="34" Height="26" FontSize="15"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="DockOnlyPrintingCheckBox"/>
                             </StackPanel>
                         </Border>

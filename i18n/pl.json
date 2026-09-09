@@ -853,5 +853,6 @@
   "🔧 marks maintenance; ! marks an alert reported by the printer. They appear only when relevant. Open their details on the dashboard; offline means data is no longer arriving.": "🔧 oznacza konserwację, a ! — alert zgłoszony przez drukarkę. Pojawiają się tylko wtedy, gdy jest powód. Szczegóły otworzysz na panelu; offline oznacza brak nowych danych.",
   "🖨 Fleet:": "🖨 Flota:",
   "🖨 Gantry — commands:\n/status — pick a printer + controls\n/all — whole fleet at a glance\n/spools — spools running low\n/history — recent prints\n/watch 10m — a photo every 10 min (/watch off)\n/mute 2h — silence alerts (/mute off)\n/help — this menu": "🖨 Gantry — komendy:\n/status — wybór drukarki + sterowanie\n/all — cała flota w skrócie\n/spools — rolki na wyczerpaniu\n/history — ostatnie wydruki\n/watch 10m — zdjęcia co 10 min (/watch off)\n/mute 2h — wycisz alerty (/mute off)\n/help — to menu",
-  "🧵 Spools running low:": "🧵 Rolki na wyczerpaniu:"
+  "🧵 Spools running low:": "🧵 Rolki na wyczerpaniu:",
+  "Edge dock size": "Rozmiar panelu bocznego"
 }

@@ -309,6 +309,22 @@ public static class AppSettings
         set => Defaults.SetString("edge-dock-edge", value == "left" ? "left" : "right");
     }
 
+    /// <summary>Manual edge-dock scale for large/high-density displays. Three deliberate steps keep
+    /// the strip crisp and predictable instead of accepting arbitrary values.</summary>
+    public static int EdgeDockScalePercent
+    {
+        get
+        {
+            int value = Defaults.GetInt("edge-dock-scale-percent", 100);
+            return value < 113 ? 100 : value < 138 ? 125 : 150;
+        }
+        set
+        {
+            int snapped = value < 113 ? 100 : value < 138 ? 125 : 150;
+            Defaults.SetInt("edge-dock-scale-percent", snapped);
+        }
+    }
+
     /// Hide printers that are neither printing nor paused.
     public static bool EdgeDockOnlyPrinting
     {

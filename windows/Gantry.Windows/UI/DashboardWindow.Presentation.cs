@@ -129,6 +129,8 @@ public partial class DashboardWindow
             int automaticColumns = Math.Min(2, printerCount);
             int automaticRows = Math.Max(1, (int)Math.Ceiling(printerCount / (double)automaticColumns));
             int initialWidth = explicitSize ? savedWidth : 24 + automaticColumns * 293;
+            // Height is only a launch placeholder. Once the cards have their live AMS/error content,
+            // FitHeightToContent replaces it with their measured natural height.
             int initialHeight = explicitSize ? savedHeight : 140 + automaticRows * 182;
             Width = Math.Clamp(initialWidth, 317, Math.Max(317, SystemParameters.WorkArea.Width));
             Height = Math.Clamp(initialHeight, 322, Math.Max(322, SystemParameters.WorkArea.Height));
@@ -156,26 +158,26 @@ public partial class DashboardWindow
         return IntPtr.Zero;
     }
 
-    /// Snap the desktop window to whole 285×174 card tiles. The grid changes its number of visible
-    /// columns/rows; cards never inherit an arbitrary width from a half-finished resize gesture.
+    /// Snap the desktop window to whole card columns. Height is deliberately content-driven: cards
+    /// grow when AMS/filament/error data arrives, so a fixed row pitch clips their bottom edge.
     private void SnapWindowToTiles()
     {
         if (!WindowMode || WindowState != WindowState.Normal || _changingMode) return;
         const double widthBase = 24, columnPitch = 293;   // platform chrome/insets + 285 card + 8 gap
-        const double heightBase = 140, rowPitch = 182;   // title/header/footer + 174 card + 8 gap
         int screenColumns = Math.Max(1, (int)Math.Floor((SystemParameters.WorkArea.Width - widthBase) / columnPitch));
         int columns = Math.Clamp((int)Math.Round((Width - widthBase) / columnPitch), 1,
             screenColumns);
-        int screenRows = Math.Max(1, (int)Math.Floor((SystemParameters.WorkArea.Height - heightBase) / rowPitch));
-        int visibleRows = Math.Clamp((int)Math.Round((Height - heightBase) / rowPitch), 1,
-            screenRows);
         double snappedWidth = widthBase + columns * columnPitch;
-        double snappedHeight = heightBase + visibleRows * rowPitch;
-        if (Math.Abs(Width - snappedWidth) < .5 && Math.Abs(Height - snappedHeight) < .5) return;
-        _changingMode = true;
-        Width = snappedWidth;
-        Height = snappedHeight;
-        _changingMode = false;
+        if (Math.Abs(Width - snappedWidth) >= .5)
+        {
+            _changingMode = true;
+            Width = snappedWidth;
+            _changingMode = false;
+        }
+        // Width may have changed the number of rows. Rebuild first; the deferred measurement then
+        // gives every row the height of its tallest real card and removes the unnecessary scrollbar.
+        if (_renderedColumns != LayoutColumns) Rebuild();
+        else FitHeightToContent();
     }
 
     private double _panelWidth, _panelHeight;

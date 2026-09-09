@@ -656,31 +656,48 @@ public partial class DashboardWindow : Window
         Rebuild();
     }
 
-    // Sizes the window to the cards' content height (capped to the work area, with the ScrollViewer
-    // taking over beyond that). Uses DesiredSize — the content's intrinsic height from the measure
-    // pass — not ActualHeight, which is the arranged height and can stretch to the current viewport,
-    // creating a feedback loop that grew the window on every tick. Only runs while visible, so a
-    // hidden/minimized panel never resizes.
+    // Sizes both the tray popover and desktop window to the cards' real content height. Measuring the
+    // ScrollViewer itself is unreliable after its viewport has already constrained a taller card, so
+    // measure the header, card grid and footer separately with unbounded vertical space.
     internal void FitHeightToContent()
     {
-        if (!IsVisible || WindowMode || _boundedLayer != null) return;
+        if (!IsVisible || _boundedLayer != null || _nativeUserResize) return;
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (!IsVisible || WindowMode || _boundedLayer != null) return;
-            // Measure the whole panel (header + cards + footer) at the current width to get the exact
-            // height it needs, so the window fits without a scrollbar until it hits the work-area cap.
-            // Measuring DesiredSize (not ActualHeight) avoids the feedback loop that grew the window.
-            PanelBody.Measure(new Size(Width, double.PositiveInfinity));
-            double desired = PanelBody.DesiredSize.Height + 2;   // tiny buffer so Auto never adds a bar
+            if (!IsVisible || _boundedLayer != null || _nativeUserResize) return;
+            double innerWidth = Math.Max(1, Width - FleetSurface.Margin.Left - FleetSurface.Margin.Right);
+            double cardsWidth = Math.Max(1, innerWidth - CardsScroll.Padding.Left - CardsScroll.Padding.Right);
+            FleetHeader.InvalidateMeasure();
+            CardsPanel.InvalidateMeasure();
+            FooterText.InvalidateMeasure();
+            FleetHeader.Measure(new Size(innerWidth, double.PositiveInfinity));
+            CardsPanel.Measure(new Size(cardsWidth, double.PositiveInfinity));
+            FooterText.Measure(new Size(innerWidth, double.PositiveInfinity));
+            double desired = FleetSurface.Margin.Top + FleetSurface.Margin.Bottom
+                + FleetHeader.DesiredSize.Height
+                + CardsScroll.Padding.Top + CardsScroll.Padding.Bottom + CardsPanel.DesiredSize.Height
+                + FooterText.DesiredSize.Height + 6;
+            if (WindowMode && DashboardHost.ActualHeight > 0)
+                desired += Math.Max(0, ActualHeight - DashboardHost.ActualHeight);
             if (desired <= 0) return;
-            double max = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
+            double max = Math.Max(322, SystemParameters.WorkArea.Height - 16);
             double target = Math.Min(max, Math.Max(_store.Startup.Loading ? 350 : 150, desired));
             if (Math.Abs(target - Height) < 1) return;
+            _changingMode = true;
             Height = target;
+            _changingMode = false;
             var area = SystemParameters.WorkArea;
-            Left = area.Right - Width - 8;
-            Top = area.Bottom - Height - 8;
-        }), System.Windows.Threading.DispatcherPriority.Loaded);
+            if (!WindowMode)
+            {
+                Left = area.Right - Width - 8;
+                Top = area.Bottom - Height - 8;
+            }
+            else
+            {
+                Left = Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - Width));
+                Top = Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - Height));
+            }
+        }), System.Windows.Threading.DispatcherPriority.ContextIdle);
     }
 
     private interface ICardView

@@ -68,8 +68,8 @@ require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         r"windowDidEndLiveResize[\s\S]*?snapWindowToTiles",
         "macOS does not snap to tiles after native resize")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
-        r"SnapWindowToTiles\(\)[\s\S]*?columnPitch = 293[\s\S]*?rowPitch = 182",
-        "Windows floating window is not snapped to whole card tiles")
+        r"SnapWindowToTiles\(\)[\s\S]*?columnPitch = 293[\s\S]*?FitHeightToContent",
+        "Windows floating window is not snapped to card columns with content-driven height")
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
         r"if \(WindowMode\) return false;.*full card tiles",
         "Windows still switches to compact rows while resizing the window")
@@ -271,7 +271,7 @@ require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
         r"MouseLeave[\s\S]*?_collapseTimer\.Start",
         "Windows edge dock collapses synchronously and can enter a hover loop")
 require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
-        r"double ringX = left \? ExpandedPadX \+ Ring / 2 : width - ExpandedPadX - Ring / 2",
+        r"double ringX = left \? \(ExpandedPadX \+ Ring / 2\) \* scale : width - \(ExpandedPadX \+ Ring / 2\) \* scale",
         "Windows edge dock ring does not stay anchored to its screen edge")
 require("windows/Gantry.Windows/UI/TrayIcon.cs",
         r"ShowOnboardingAfterMenuCloses[\s\S]*?menu\.Closed \+= closed",
@@ -282,6 +282,20 @@ require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r"WmExitSizeMove[\s\S]*?floating-window-size-user-set",
         "Windows cannot distinguish manual resize from automatic sizing")
+
+# Windows issue #33: late AMS content must resize both surfaces; edge dock needs manual DPI relief.
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"FitHeightToContent\(\)[\s\S]*?CardsPanel\.Measure\([\s\S]*?SystemParameters\.WorkArea\.Height - 16",
+        "Windows dashboard height is not measured from the real post-telemetry card grid")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"if \(!WindowMode\)[\s\S]*?Top = area\.Bottom - Height - 8",
+        "Windows content fitting no longer preserves popover anchoring")
+require("windows/Gantry.Windows/Services/Storage.cs",
+        r"EdgeDockScalePercent[\s\S]*?100[\s\S]*?125[\s\S]*?150",
+        "Windows edge dock is missing its three manual size presets")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
+        r"DockSizeMinusButton[\s\S]*?DockSizeValue[\s\S]*?DockSizePlusButton",
+        "Windows settings are missing edge-dock minus/plus controls")
 
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)

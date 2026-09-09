@@ -32,6 +32,7 @@ public sealed class EdgeDockWindow : Window
     private const double Ring = 18, RingStroke = 2.2, CollapsedWidth = 30, CollapsedGap = 10;
     private const double RowHeight = 26, RowGap = 3, PadY = 10, Notch = 13;
     private const double ExpandedPadX = 13, ExpandedTextGap = 9;
+    private static double UiScale => AppSettings.EdgeDockScalePercent / 100.0;
 
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_NOACTIVATE = 0x08000000;
@@ -126,13 +127,15 @@ public sealed class EdgeDockWindow : Window
 
     private double ExpandedWidth()
     {
+        double scale = UiScale;
         double widest = 0;
         foreach (var entry in _entries)
         {
-            widest = Math.Max(widest, MeasureText(entry.Name, 12, FontWeights.SemiBold)
-                                      + MeasureText(ValueText(entry), 12, FontWeights.Normal));
+            widest = Math.Max(widest, MeasureText(entry.Name, 12 * scale, FontWeights.SemiBold)
+                                      + MeasureText(ValueText(entry), 12 * scale, FontWeights.Normal));
         }
-        return Math.Min(Math.Max(ExpandedPadX * 2 + Ring + ExpandedTextGap + widest + 16, 180), 300);
+        return Math.Min(Math.Max((ExpandedPadX * 2 + Ring + ExpandedTextGap + 16) * scale + widest,
+                                 180 * scale), 300 * scale);
     }
 
     private static double MeasureText(string text, double size, FontWeight weight)
@@ -144,19 +147,20 @@ public sealed class EdgeDockWindow : Window
 
     private void Rebuild()
     {
+        double scale = UiScale;
         int count = Math.Max(_entries.Count, 1);
         double width, bodyHeight;
         if (_expanded)
         {
             width = ExpandedWidth();
-            bodyHeight = PadY * 2 + count * RowHeight + (count - 1) * RowGap;
+            bodyHeight = (PadY * 2 + count * RowHeight + (count - 1) * RowGap) * scale;
         }
         else
         {
-            width = CollapsedWidth;
-            bodyHeight = PadY * 2 + count * Ring + (count - 1) * CollapsedGap;
+            width = CollapsedWidth * scale;
+            bodyHeight = (PadY * 2 + count * Ring + (count - 1) * CollapsedGap) * scale;
         }
-        double height = bodyHeight + Notch * 2;
+        double height = bodyHeight + Notch * 2 * scale;
 
         bool left = AppSettings.EdgeDockEdge == "left";
         Width = width;
@@ -171,7 +175,7 @@ public sealed class EdgeDockWindow : Window
 
         _canvas.Width = width;
         _canvas.Height = height;
-        _shape.Data = BuildSilhouette(width, height, left);
+        _shape.Data = BuildSilhouette(width, height, left, Notch * scale);
 
         // Everything except the silhouette is redrawn on each pass; the shape itself is reused.
         for (int i = _canvas.Children.Count - 1; i >= 0; i--)
@@ -183,10 +187,10 @@ public sealed class EdgeDockWindow : Window
 
     /// The silhouette: a rounded body flush against the screen edge, plus a concave fillet at each end
     /// so the strip appears to flow out of the edge rather than sit next to it.
-    private static Geometry BuildSilhouette(double w, double h, bool left)
+    private static Geometry BuildSilhouette(double w, double h, bool left, double notch)
     {
-        double r = Math.Min(Notch, w);
-        double bodyRadius = Math.Min(w / 2, 12);
+        double r = Math.Min(notch, w);
+        double bodyRadius = Math.Min(w / 2, 12 * UiScale);
         double top = r, bottom = h - r;   // WPF y grows downward, so "top" is the small coordinate
 
         var figure = new PathFigure { StartPoint = new Point(w, 0), IsClosed = true, IsFilled = true };
@@ -211,42 +215,44 @@ public sealed class EdgeDockWindow : Window
 
     private void DrawCollapsed(double width)
     {
-        double y = Notch + PadY + Ring / 2;
+        double scale = UiScale;
+        double y = (Notch + PadY + Ring / 2) * scale;
         foreach (var entry in _entries)
         {
             DrawRing(new Point(width / 2, y), entry);
-            y += Ring + CollapsedGap;
+            y += (Ring + CollapsedGap) * scale;
         }
     }
 
     private void DrawExpanded(double width, bool left)
     {
-        double top = Notch + PadY;
+        double scale = UiScale;
+        double top = (Notch + PadY) * scale;
         // The progress ring stays at the physical screen edge in both orientations. Previously it
         // jumped across the expanded window and left the cursor, causing an enter/leave loop.
-        double ringX = left ? ExpandedPadX + Ring / 2 : width - ExpandedPadX - Ring / 2;
+        double ringX = left ? (ExpandedPadX + Ring / 2) * scale : width - (ExpandedPadX + Ring / 2) * scale;
         foreach (var entry in _entries)
         {
-            double centerY = top + RowHeight / 2;
+            double centerY = top + RowHeight * scale / 2;
             DrawRing(new Point(ringX, centerY), entry);
 
             bool dim = entry.State is PrinterState.Idle or PrinterState.Offline or PrinterState.Finished;
             var nameColor = entry.State is PrinterState.Error or PrinterState.Offline
                 ? GTheme.StatusPrinting
                 : (dim ? GTheme.Secondary : GTheme.Text);
-            double textLeft = left ? ringX + Ring / 2 + ExpandedTextGap : ExpandedPadX;
-            double textRight = left ? width - ExpandedPadX : ringX - Ring / 2 - ExpandedTextGap;
+            double textLeft = left ? ringX + (Ring / 2 + ExpandedTextGap) * scale : ExpandedPadX * scale;
+            double textRight = left ? width - ExpandedPadX * scale : ringX - (Ring / 2 + ExpandedTextGap) * scale;
 
             var value = new TextBlock
             {
-                Text = ValueText(entry), FontSize = 12, Foreground = GTheme.Brush(GTheme.Muted),
+                Text = ValueText(entry), FontSize = 12 * scale, Foreground = GTheme.Brush(GTheme.Muted),
             };
             value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var name = new TextBlock
             {
-                Text = entry.Name, FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Text = entry.Name, FontSize = 12 * scale, FontWeight = FontWeights.SemiBold,
                 Foreground = GTheme.Brush(nameColor), TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = Math.Max(0, textRight - value.DesiredSize.Width - 8 - textLeft),
+                MaxWidth = Math.Max(0, textRight - value.DesiredSize.Width - 8 * scale - textLeft),
             };
             name.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
 
@@ -257,7 +263,7 @@ public sealed class EdgeDockWindow : Window
             _canvas.Children.Add(name);
             _canvas.Children.Add(value);
 
-            top += RowHeight + RowGap;
+            top += (RowHeight + RowGap) * scale;
         }
     }
 
@@ -265,10 +271,11 @@ public sealed class EdgeDockWindow : Window
     /// Offline and error draw a broken ring instead, so a dead printer never looks like a stalled one.
     private void DrawRing(Point center, Entry entry)
     {
-        double radius = (Ring - RingStroke) / 2;
+        double scale = UiScale;
+        double radius = (Ring - RingStroke) * scale / 2;
         var track = new Ellipse
         {
-            Width = radius * 2, Height = radius * 2, StrokeThickness = RingStroke,
+            Width = radius * 2, Height = radius * 2, StrokeThickness = RingStroke * scale,
             Stroke = GTheme.Brush(entry.State is PrinterState.Error or PrinterState.Offline
                 ? Color.FromArgb(0x4D, GTheme.StatusPrinting.R, GTheme.StatusPrinting.G, GTheme.StatusPrinting.B)
                 : Color.FromArgb(0x29, 0xFF, 0xFF, 0xFF)),
@@ -279,9 +286,9 @@ public sealed class EdgeDockWindow : Window
 
         if (entry.State is PrinterState.Error or PrinterState.Offline)
         {
-            var dot = new Ellipse { Width = 4, Height = 4, Fill = GTheme.Brush(GTheme.StatusPrinting) };
-            Canvas.SetLeft(dot, center.X - 2);
-            Canvas.SetTop(dot, center.Y - 2);
+            var dot = new Ellipse { Width = 4 * scale, Height = 4 * scale, Fill = GTheme.Brush(GTheme.StatusPrinting) };
+            Canvas.SetLeft(dot, center.X - 2 * scale);
+            Canvas.SetTop(dot, center.Y - 2 * scale);
             _canvas.Children.Add(dot);
             return;
         }
@@ -291,7 +298,7 @@ public sealed class EdgeDockWindow : Window
         if (fraction <= 0) return;
         var arc = new Path
         {
-            StrokeThickness = RingStroke, StrokeStartLineCap = PenLineCap.Round,
+            StrokeThickness = RingStroke * scale, StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             Stroke = GTheme.Brush(entry.State == PrinterState.Paused ? GTheme.StatusPaused : GTheme.StatusPrinting),
             Data = ProgressArc(center, radius, fraction),
@@ -315,9 +322,10 @@ public sealed class EdgeDockWindow : Window
 
     private void OnClick(object sender, MouseButtonEventArgs e)
     {
+        double scale = UiScale;
         var point = e.GetPosition(_canvas);
-        double step = _expanded ? RowHeight + RowGap : Ring + CollapsedGap;
-        double offset = point.Y - (Notch + PadY);
+        double step = (_expanded ? RowHeight + RowGap : Ring + CollapsedGap) * scale;
+        double offset = point.Y - (Notch + PadY) * scale;
         if (offset < 0) return;
         int index = (int)(offset / step);
         if (index >= 0 && index < _entries.Count) _onSelect(_entries[index].Serial);
