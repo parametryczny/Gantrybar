@@ -119,13 +119,16 @@ final class EdgeDockWindowController {
     private func syncCameras(entries: [EdgeDockEntry], settings: AppSettings) {
         var wanted: Set<String> = []
         if Build.hasExtras && settings.edgeDockCamera {
-            let chosen = settings.edgeDockCameraSerials
-            wanted = Set(entries.map(\.serial).filter { serial in
-                // Brands without a stream Gantry can decode would get a black rectangle, so they are
-                // skipped even if ticked; their tick is disabled in Settings for the same reason.
-                chosen.contains(serial)
-                    && CameraFeedController.supportsCamera(store.printers.first(where: { $0.serial == serial })?.kind)
-            })
+            // Brands without a stream Gantry can decode would get a black rectangle, so they are
+            // never candidates; their tick is hidden in Settings for the same reason.
+            let candidates = entries.map(\.serial).filter { serial in
+                CameraFeedController.supportsCamera(store.printers.first(where: { $0.serial == serial })?.kind)
+            }
+            let chosen = candidates.filter(settings.edgeDockCameraSerials.contains)
+            // Nothing ticked yet: follow the print that is actually running, so switching the camera
+            // on does something instead of nothing. Ticking printers replaces this entirely.
+            wanted = chosen.isEmpty ? Set(activePrint(among: candidates, in: entries).map { [$0] } ?? [])
+                                    : Set(chosen)
         }
         guard wanted != Set(cameraFeeds.keys) else { return }
         for (serial, feed) in cameraFeeds where !wanted.contains(serial) {
@@ -139,6 +142,16 @@ final class EdgeDockWindowController {
             feed.start()
         }
         dockView.cameraViews = cameraFeeds.mapValues(\.view)
+    }
+
+    /// The printer worth watching when the user has not named one: printing beats paused, and with a
+    /// single candidate it is simply that one. Several idle machines give nothing, because picking one
+    /// of them silently would be a guess rather than an answer.
+    private func activePrint(among candidates: [String], in entries: [EdgeDockEntry]) -> String? {
+        let live = entries.filter { candidates.contains($0.serial) }
+        if let printing = live.first(where: { $0.state == .printing }) { return printing.serial }
+        if let paused = live.first(where: { $0.state == .paused }) { return paused.serial }
+        return live.count == 1 ? live[0].serial : nil
     }
 
     /// Pins the panel flush to the chosen edge of the screen holding the menu bar, vertically centred.

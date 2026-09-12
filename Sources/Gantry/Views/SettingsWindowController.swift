@@ -697,7 +697,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         dockPinnedRow.isOn = settings.edgeDockPinned
         dockPinnedRow.setEnabled(settings.edgeDockEnabled)
         dockCameraRow.titleLabel.stringValue = settings.t("Camera under the strip")
-        dockCameraRow.setSubtitle(settings.t("Pick the printers below. Each picture sits under its own row."))
+        dockCameraRow.setSubtitle(settings.t("With nothing picked it follows the printer that is printing. Pick printers below and each picture sits under its own row."))
         dockCameraRow.isOn = settings.edgeDockCamera
         dockCameraRow.setEnabled(settings.edgeDockEnabled)
         dockOnlyPrintingRow.titleLabel.stringValue = settings.t("Only printing")
@@ -986,6 +986,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             controls.orientation = .horizontal
             controls.alignment = .centerY
             controls.spacing = 10
+            // A stack view ignores contentHuggingPriority along its own axis, so without this it
+            // stretches to fill the row and squeezes the printer name down to one letter per line.
+            controls.setHuggingPriority(.required, for: .horizontal)
             let row = SettingsRowView(control: controls, minHeight: 40)
             row.titleLabel.stringValue = printer.name
             row.setSubtitle(printer.model)
@@ -1019,7 +1022,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 guard let button = control as? NSButton, name.hasPrefix("camera:") else { continue }
                 let serial = String(name.dropFirst("camera:".count))
                 let kind = store.printers.first(where: { $0.serial == serial })?.kind
-                button.state = withCamera.contains(serial) ? .on : .off
+                let on = withCamera.contains(serial)
+                button.state = on ? .on : .off
+                // The filled glyph alone is a subtle difference at this size; the accent colour makes
+                // "this printer is streaming" readable at a glance.
+                button.contentTintColor = on ? .controlAccentColor : GantryTheme.secondary
                 // A brand with no stream Gantry can decode never gets the choice offered.
                 button.isEnabled = settings.edgeDockEnabled && settings.edgeDockCamera
                     && !hidden.contains(serial) && CameraFeedController.supportsCamera(kind)
