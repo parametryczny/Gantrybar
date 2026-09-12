@@ -94,6 +94,9 @@ require("Sources/Gantry/Views/CameraFeed.swift",
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"dockPinnedRow[\s\S]*?dockCameraRow",
         "macOS settings are missing the edge-dock pin and camera switches")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"pinButtonRect\(\)[\s\S]*?onUnpin\?\(\)",
+        "macOS pinned edge dock cannot be released from the strip itself")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r"CardColumnPitch\s*=>\s*293 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
         "Windows floating window is not snapped to card columns with content-driven height")

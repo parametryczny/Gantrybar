@@ -50,6 +50,10 @@ final class EdgeDockWindowController {
 
         dockView.onSelect = onSelect
         dockView.onLayoutChange = { [weak self] in self?.reposition() }
+        // Releasing the strip belongs on the strip: reaching Settings to undo something you can see
+        // is the long way round. Writing the setting is enough to drive the rest, because the
+        // settings subscription below brings us straight back into refresh().
+        dockView.onUnpin = { AppSettings.shared.edgeDockPinned = false }
 
         // The store publishes on every telemetry packet; throttling keeps the strip from redrawing
         // several times a second for a bar that moves once a minute.
@@ -203,6 +207,7 @@ private final class EdgeDockView: NSView {
     }
     var onSelect: ((String) -> Void)?
     var onLayoutChange: (() -> Void)?
+    var onUnpin: (() -> Void)?
 
     private var isHovering = false
     private var isExpanded: Bool { pinned || isHovering }
@@ -219,6 +224,11 @@ private final class EdgeDockView: NSView {
     private static let notch: CGFloat = 11
     private static let expandedTextGap: CGFloat = 8
     private static let expandedPadX: CGFloat = 11
+    /// Band above the rows holding the release control. Present only while pinned, so the hover
+    /// silhouette keeps exactly the height it always had.
+    private static let pinRow: CGFloat = 14
+    private static let pinGap: CGFloat = 4
+    private static let pinGlyph: CGFloat = 10
     private static let cameraGap: CGFloat = 8
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private static let cameraMinStripWidth: CGFloat = 236
@@ -237,7 +247,8 @@ private final class EdgeDockView: NSView {
                         + CGFloat(count - 1) * Self.rowGap) * scale
             let width = expandedWidth()
             return NSSize(width: width,
-                          height: rows + cameraBlockHeight(stripWidth: width) + Self.notch * 2 * scale)
+                          height: rows + pinBandHeight + cameraBlockHeight(stripWidth: width)
+                                  + Self.notch * 2 * scale)
         }
         let body = (Self.padY * 2 + CGFloat(count) * Self.ring
                     + CGFloat(count - 1) * Self.collapsedGap) * scale
@@ -257,6 +268,36 @@ private final class EdgeDockView: NSView {
         let minimum = (cameraView == nil ? 150 : Self.cameraMinStripWidth) * scale
         let maximum = (cameraView == nil ? 260 : Self.cameraMaxStripWidth) * scale
         return min(max(content, minimum), maximum)
+    }
+
+    /// Height the release control and its gap add to the body, or zero when the strip is not pinned.
+    private var pinBandHeight: CGFloat {
+        pinned ? (Self.pinRow + Self.pinGap) * scale : 0
+    }
+
+    /// The release control: a faint disc with a pin on it, sitting in the ring column so it can never
+    /// collide with a printer name, whatever the name's length.
+    private func pinButtonRect() -> NSRect? {
+        guard pinned, isExpanded else { return nil }
+        let side = Self.pinRow * scale
+        let centerX = edge == .right
+            ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
+            : (Self.expandedPadX + Self.ring / 2) * scale
+        let centerY = bounds.height - (Self.notch + Self.padY) * scale - side / 2
+        return NSRect(x: centerX - side / 2, y: centerY - side / 2, width: side, height: side)
+    }
+
+    private func drawPinButton() {
+        guard let rect = pinButtonRect() else { return }
+        NSColor.white.withAlphaComponent(0.1).setFill()
+        NSBezierPath(ovalIn: rect).fill()
+        let configuration = NSImage.SymbolConfiguration(pointSize: Self.pinGlyph * scale, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [GantryTheme.secondary]))
+        guard let glyph = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return }
+        let size = glyph.size
+        glyph.draw(in: NSRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
+                              width: size.width, height: size.height))
     }
 
     /// Height the picture and its gap add to the body, or zero when there is nothing to show.
@@ -335,7 +376,12 @@ private final class EdgeDockView: NSView {
         Self.shapeColor.setFill()
         shapePath().fill()
         guard !entries.isEmpty else { return }
-        if isExpanded { drawExpanded() } else { drawCollapsed() }
+        if isExpanded {
+            drawPinButton()
+            drawExpanded()
+        } else {
+            drawCollapsed()
+        }
     }
 
     private func drawCollapsed() {
@@ -347,7 +393,7 @@ private final class EdgeDockView: NSView {
     }
 
     private func drawExpanded() {
-        var top = bounds.height - (Self.notch + Self.padY) * scale
+        var top = bounds.height - (Self.notch + Self.padY) * scale - pinBandHeight
         // Keep the ring beside the physical screen edge while the text unfolds inward.
         let ringX = edge == .right
             ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
@@ -454,6 +500,11 @@ private final class EdgeDockView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // The release control wins over the row beneath it.
+        if let pin = pinButtonRect(), pin.contains(point) {
+            onUnpin?()
+            return
+        }
         guard let index = rowIndex(at: point), index < entries.count else { return }
         onSelect?(entries[index].serial)
     }
@@ -462,7 +513,7 @@ private final class EdgeDockView: NSView {
         // A click on the picture is not a click on the row behind it.
         if let cameraView, !cameraView.isHidden, cameraView.frame.contains(point) { return nil }
         let step = (isExpanded ? Self.rowHeight + Self.rowGap : Self.ring + Self.collapsedGap) * scale
-        let top = bounds.height - (Self.notch + Self.padY) * scale
+        let top = bounds.height - (Self.notch + Self.padY) * scale - pinBandHeight
         let offset = top - point.y
         guard offset >= 0 else { return nil }
         let index = Int(offset / step)
