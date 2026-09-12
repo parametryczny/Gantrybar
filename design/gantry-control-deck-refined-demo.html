@@ -1,0 +1,1527 @@
+<!doctype html>
+<html lang="en" data-visualize-standalone>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Gantry Control Deck Refined</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Gantry Control Deck Refined" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot; data-visualize-standalone&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Gantry Control Deck Refined&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --icon-size: 16px;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --corner-shape: round;
+  --radius: var(--border-radius-lg, 10px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: var(--visualize-paint-gutter, 0px);
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: var(--corner-shape);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+hr {
+  width: 100%;
+  height: 1px;
+  margin-block: 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.progress {
+  display: flex;
+  height: 8px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 8px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar:only-child {
+  border-radius: var(--radius-full);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.nav-link,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn,
+.nav-link {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover,
+.nav-link:not(:disabled):not([aria-disabled=&quot;true&quot;]):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.nav-pills .nav-link {
+  min-width: 0;
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.nav-justified .nav-link {
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.nav-pills .nav-link.active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.btn:disabled,
+.nav-link:disabled,
+.nav-link[aria-disabled=&quot;true&quot;] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: var(--corner-shape);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: var(--corner-shape);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: var(--corner-shape);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .btn,
+  .nav-link,
+  .form-control,
+  .form-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Keep small-screen WebKit from zooming when a text field receives focus. */
+  .form-control,
+  .form-select {
+    font-size: max(16px, var(--font-size-normal));
+  }
+
+  .form-control[type=&quot;file&quot;]::file-selector-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .form-control-color[type=&quot;color&quot;] {
+    width: 44px;
+    height: 44px;
+  }
+
+  .form-control:is(
+    [type=&quot;date&quot;],
+    [type=&quot;datetime-local&quot;],
+    [type=&quot;month&quot;],
+    [type=&quot;time&quot;],
+    [type=&quot;week&quot;]
+  ) {
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 8px;
+  }
+
+  .form-check {
+    min-height: 44px;
+    padding-inline: 15px;
+  }
+
+  .form-check-input {
+    position: relative;
+  }
+
+  .form-check-input::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    content: &quot;&quot;;
+    transform: translate(-50%, -50%);
+  }
+
+  .form-check-label {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .form-range {
+    height: 44px;
+    touch-action: pan-y;
+  }
+
+  .form-range::-webkit-slider-runnable-track {
+    height: 44px;
+  }
+
+  .form-range::-moz-range-track {
+    height: 44px;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    margin-top: 12px;
+  }
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: var(--icon-size) !important;
+  height: var(--icon-size) !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;gantry-control-deck-refined&quot; aria-label=&quot;Interaktywne demo sterowania drukarką w Gantry&quot;&gt;
+  &lt;style&gt;
+    #gantry-control-deck-refined{position:relative;color-scheme:light dark;--gc-canvas:light-dark(#dde1e4,#090a0b);--gc-window:light-dark(#f2f3f4,#111315);--gc-top:light-dark(#e7eaec,#17191b);--gc-panel:light-dark(#fff,#17191b);--gc-panel-2:light-dark(#f5f6f7,#1c1e20);--gc-raised:light-dark(#e8ebed,#242729);--gc-track:light-dark(#d5d9dc,#303336);--gc-text:light-dark(#151718,#f1f2f0);--gc-secondary:light-dark(#555b5e,#a8aca8);--gc-muted:light-dark(#7d8386,#717572);--gc-line:light-dark(rgba(18,22,24,.12),rgba(255,255,255,.1));--gc-line-strong:light-dark(rgba(18,22,24,.23),rgba(255,255,255,.19));--gc-orange:#ff8845;--gc-orange-soft:light-dark(rgba(229,104,32,.12),rgba(255,136,69,.14));--gc-green:#35c96d;--gc-red:#f26f6a;--gc-blue:#78a9da;--gc-shadow:light-dark(rgba(20,27,31,.22),rgba(0,0,0,.65));width:100%;padding:18px;background:radial-gradient(circle at 16% 4%,light-dark(#f7f8f9,#252a28),transparent 30%),radial-gradient(circle at 95% 88%,light-dark(#d7dedb,#17221e),transparent 36%),var(--gc-canvas);color:var(--gc-text);font-family:Inter,-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,sans-serif}
+    #gantry-control-deck-refined *{box-sizing:border-box}#gantry-control-deck-refined button,#gantry-control-deck-refined input{font:inherit;color:inherit}#gantry-control-deck-refined button{cursor:pointer}#gantry-control-deck-refined svg{width:17px;height:17px;stroke-width:1.8}
+    #gantry-control-deck-refined .gc-window{width:min(100%,1000px);margin:auto;overflow:hidden;border:1px solid var(--gc-line-strong);border-radius:22px;background:var(--gc-window);box-shadow:0 34px 100px var(--gc-shadow),inset 0 1px rgba(255,255,255,.06)}
+    #gantry-control-deck-refined .gc-titlebar{display:grid;grid-template-columns:92px minmax(0,1fr) auto;align-items:center;min-height:62px;padding:10px 14px;border-bottom:1px solid var(--gc-line);background:var(--gc-top)}
+    #gantry-control-deck-refined .gc-lights{display:flex;gap:8px}#gantry-control-deck-refined .gc-lights i{display:block;width:12px;height:12px;border-radius:50%;background:#ff5f57;box-shadow:inset 0 -1px 2px #0003}#gantry-control-deck-refined .gc-lights i:nth-child(2){background:#febc2e}#gantry-control-deck-refined .gc-lights i:nth-child(3){background:#28c840}
+    #gantry-control-deck-refined .gc-brandline{display:flex;align-items:center;gap:12px;min-width:0}#gantry-control-deck-refined .gc-brand{font-size:1.22rem;font-weight:500;letter-spacing:-.06em}#gantry-control-deck-refined .gc-fleet-state{overflow:hidden;color:var(--gc-muted);text-overflow:ellipsis;white-space:nowrap}
+    #gantry-control-deck-refined .gc-toolbar{display:flex;gap:4px}#gantry-control-deck-refined .gc-icon-button{display:grid;width:34px;height:34px;padding:0;place-items:center;border:0;border-radius:9px;background:transparent;color:var(--gc-secondary)}#gantry-control-deck-refined .gc-icon-button:hover{background:var(--gc-raised);color:var(--gc-text)}
+    #gantry-control-deck-refined .gc-workspace{padding:14px}#gantry-control-deck-refined .gc-printer-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:11px}
+    #gantry-control-deck-refined .gc-printer{min-width:0;padding:10px 11px;border:1px solid var(--gc-line);border-radius:12px;background:transparent;text-align:left}#gantry-control-deck-refined .gc-printer:hover{background:var(--gc-panel-2)}#gantry-control-deck-refined .gc-printer[aria-pressed=&quot;true&quot;]{border-color:var(--gc-line-strong);background:var(--gc-raised)}
+    #gantry-control-deck-refined .gc-printer-top,#gantry-control-deck-refined .gc-statusline,#gantry-control-deck-refined .gc-job-meta,#gantry-control-deck-refined .gc-value-row,#gantry-control-deck-refined .gc-footer,#gantry-control-deck-refined .gc-profile-row{display:flex;align-items:center}#gantry-control-deck-refined .gc-printer-top{gap:6px}#gantry-control-deck-refined .gc-printer-top strong{font-weight:500}#gantry-control-deck-refined .gc-printer-top small{margin-left:auto;color:var(--gc-muted)}#gantry-control-deck-refined .gc-printer-state{display:block;margin:7px 0;color:var(--gc-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #gantry-control-deck-refined .gc-mini-progress,#gantry-control-deck-refined .gc-progress{display:flex;gap:3px}#gantry-control-deck-refined .gc-mini-progress i,#gantry-control-deck-refined .gc-progress i{display:block;flex:1;border-radius:2px;background:var(--gc-track)}#gantry-control-deck-refined .gc-mini-progress i{height:4px}#gantry-control-deck-refined .gc-progress i{height:6px}#gantry-control-deck-refined i.is-filled{background:var(--gc-text)}
+    #gantry-control-deck-refined .gc-focus{display:grid;grid-template-columns:minmax(0,1fr) 264px;gap:10px}#gantry-control-deck-refined .gc-deck,#gantry-control-deck-refined .gc-live-rail{border:1px solid var(--gc-line);border-radius:17px;background:var(--gc-panel);overflow:hidden}
+    #gantry-control-deck-refined .gc-printer-head{padding:14px 15px 12px;border-bottom:1px solid var(--gc-line)}#gantry-control-deck-refined .gc-statusline{gap:8px}#gantry-control-deck-refined .gc-statusline h2{margin:0;font-weight:500;letter-spacing:-.035em}#gantry-control-deck-refined .gc-protocol{padding:2px 5px;border:1px solid var(--gc-line-strong);border-radius:5px;color:var(--gc-muted)}#gantry-control-deck-refined .gc-state{display:flex;align-items:center;gap:6px;color:var(--gc-secondary)}#gantry-control-deck-refined .gc-dot{width:7px;height:7px;border-radius:50%;background:var(--gc-green);box-shadow:0 0 12px color-mix(in srgb,var(--gc-green) 55%,transparent)}#gantry-control-deck-refined .gc-percent{margin-left:auto;font-size:1.7rem;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.06em}#gantry-control-deck-refined .gc-file{margin:8px 0;color:var(--gc-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#gantry-control-deck-refined .gc-job-meta{gap:13px;margin:9px 0;color:var(--gc-secondary);font-variant-numeric:tabular-nums}#gantry-control-deck-refined .gc-job-meta span{display:flex;align-items:center;gap:5px;white-space:nowrap}
+    #gantry-control-deck-refined .gc-tabs{display:flex;flex-wrap:wrap;gap:3px;padding:8px 10px;border-bottom:1px solid var(--gc-line);background:color-mix(in srgb,var(--gc-top) 72%,transparent)}#gantry-control-deck-refined .gc-tab{display:flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--gc-secondary)}#gantry-control-deck-refined .gc-tab:hover{background:var(--gc-raised)}#gantry-control-deck-refined .gc-tab[aria-selected=&quot;true&quot;]{background:var(--gc-raised);color:var(--gc-text)}
+    #gantry-control-deck-refined .gc-stage{min-height:342px;padding:14px}#gantry-control-deck-refined .gc-view[hidden]{display:none}#gantry-control-deck-refined .gc-view-head{display:flex;align-items:flex-end;gap:12px;margin-bottom:12px}#gantry-control-deck-refined .gc-view-head h3{margin:0;font-weight:500}#gantry-control-deck-refined .gc-view-head span{margin-left:auto;color:var(--gc-muted)}
+    #gantry-control-deck-refined .gc-command-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:8px}#gantry-control-deck-refined .gc-command{display:flex;align-items:center;gap:11px;min-height:72px;padding:11px 12px;border:1px solid var(--gc-line);border-radius:12px;background:var(--gc-panel-2);text-align:left}#gantry-control-deck-refined .gc-command:hover{border-color:var(--gc-line-strong);background:var(--gc-raised)}#gantry-control-deck-refined .gc-command.gc-primary{border-color:transparent;background:var(--gc-text);color:var(--gc-window)}#gantry-control-deck-refined .gc-command.gc-accent{border-color:color-mix(in srgb,var(--gc-orange) 32%,transparent);background:var(--gc-orange-soft)}#gantry-control-deck-refined .gc-command-icon{display:grid;width:36px;height:36px;flex:0 0 36px;place-items:center;border-radius:10px;background:color-mix(in srgb,currentColor 10%,transparent)}#gantry-control-deck-refined .gc-command-copy b,#gantry-control-deck-refined .gc-command-copy small{display:block}#gantry-control-deck-refined .gc-command-copy b{font-weight:500}#gantry-control-deck-refined .gc-command-copy small{margin-top:3px;color:var(--gc-secondary)}#gantry-control-deck-refined .gc-primary .gc-command-copy small{color:color-mix(in srgb,var(--gc-window) 68%,transparent)}
+    #gantry-control-deck-refined .gc-section{margin-top:10px;padding:12px;border:1px solid var(--gc-line);border-radius:12px;background:color-mix(in srgb,var(--gc-panel-2) 55%,transparent)}#gantry-control-deck-refined .gc-section-title{display:flex;align-items:center;margin-bottom:10px}#gantry-control-deck-refined .gc-section-title span:last-child{margin-left:auto;color:var(--gc-secondary);font-variant-numeric:tabular-nums}
+    #gantry-control-deck-refined .gc-speed{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}#gantry-control-deck-refined .gc-choice,#gantry-control-deck-refined .gc-small-action{min-height:34px;padding:0 9px;border:1px solid var(--gc-line);border-radius:9px;background:transparent;color:var(--gc-secondary)}#gantry-control-deck-refined .gc-choice:hover,#gantry-control-deck-refined .gc-small-action:hover{background:var(--gc-raised);color:var(--gc-text)}#gantry-control-deck-refined .gc-choice[aria-pressed=&quot;true&quot;]{border-color:var(--gc-line-strong);background:var(--gc-raised);color:var(--gc-text)}
+    #gantry-control-deck-refined .gc-process-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--gc-line)}#gantry-control-deck-refined .gc-process-item{padding:10px;background:var(--gc-panel)}#gantry-control-deck-refined .gc-process-item small,#gantry-control-deck-refined .gc-process-item strong{display:block}#gantry-control-deck-refined .gc-process-item small{color:var(--gc-muted)}#gantry-control-deck-refined .gc-process-item strong{margin-top:4px;font-weight:500;font-variant-numeric:tabular-nums}
+    #gantry-control-deck-refined .gc-live-rail{padding:12px}#gantry-control-deck-refined .gc-rail-head{display:flex;align-items:center;margin-bottom:9px;color:var(--gc-secondary)}#gantry-control-deck-refined .gc-live-pill{display:flex;align-items:center;gap:5px;margin-left:auto;color:var(--gc-green)}
+    #gantry-control-deck-refined .gc-camera{position:relative;aspect-ratio:16/10;overflow:hidden;border-radius:11px;background:radial-gradient(ellipse at 52% 78%,light-dark(#cbd0cd,#303431) 0 4%,transparent 5%),linear-gradient(156deg,light-dark(#b7bebb,#292d2a),light-dark(#dfe3e1,#080909) 62%)}#gantry-control-deck-refined .gc-camera:before{position:absolute;inset:22% 24% 16%;border:1px solid color-mix(in srgb,var(--gc-secondary) 58%,transparent);border-bottom:12px solid color-mix(in srgb,var(--gc-secondary) 30%,transparent);border-radius:5px;content:&quot;&quot;;transform:perspective(230px) rotateX(11deg)}#gantry-control-deck-refined .gc-camera:after{position:absolute;left:31%;right:31%;bottom:23%;height:1px;background:color-mix(in srgb,var(--gc-orange) 50%,transparent);box-shadow:0 0 12px var(--gc-orange);content:&quot;&quot;}
+    #gantry-control-deck-refined .gc-rail-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:7px}#gantry-control-deck-refined .gc-rail-actions button{display:grid;min-height:34px;padding:0;place-items:center;border:1px solid var(--gc-line);border-radius:8px;background:transparent;color:var(--gc-secondary)}
+    #gantry-control-deck-refined .gc-metrics{margin-top:9px;border-top:1px solid var(--gc-line)}#gantry-control-deck-refined .gc-metric{display:grid;grid-template-columns:25px 1fr auto;align-items:center;gap:7px;padding:9px 0;border-bottom:1px solid var(--gc-line)}#gantry-control-deck-refined .gc-metric svg{color:var(--gc-muted)}#gantry-control-deck-refined .gc-metric span{color:var(--gc-secondary)}#gantry-control-deck-refined .gc-metric strong{font-weight:500;font-variant-numeric:tabular-nums}
+    #gantry-control-deck-refined .gc-ams-mini{margin-top:11px}#gantry-control-deck-refined .gc-ams-head{display:flex;align-items:center;margin-bottom:7px}#gantry-control-deck-refined .gc-ams-head small{margin-left:auto;color:var(--gc-muted)}#gantry-control-deck-refined .gc-slot-row{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}#gantry-control-deck-refined .gc-slot-mini{height:31px;padding:3px;border:1px solid var(--gc-line);border-radius:8px;background:transparent}#gantry-control-deck-refined .gc-slot-mini i{display:block;width:100%;height:100%;border-radius:5px;background:var(--slot)}#gantry-control-deck-refined .gc-slot-mini[aria-pressed=&quot;true&quot;]{border-color:var(--gc-text);box-shadow:inset 0 0 0 1px var(--gc-text)}
+    #gantry-control-deck-refined .gc-footer{gap:7px;padding:9px 12px;border-top:1px solid var(--gc-line);background:color-mix(in srgb,var(--gc-top) 72%,transparent)}#gantry-control-deck-refined .gc-safety{display:flex;align-items:center;gap:6px;color:var(--gc-muted)}#gantry-control-deck-refined .gc-footer .gc-small-action:first-of-type{margin-left:auto}#gantry-control-deck-refined .gc-danger{color:var(--gc-red)}
+    #gantry-control-deck-refined .gc-temp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}#gantry-control-deck-refined .gc-temp-control{padding:12px;border:1px solid var(--gc-line);border-radius:12px;background:var(--gc-panel-2)}#gantry-control-deck-refined .gc-value-row{margin:10px 0}#gantry-control-deck-refined .gc-value-row strong{font-size:1.5rem;font-weight:500;font-variant-numeric:tabular-nums}#gantry-control-deck-refined .gc-value-row small{margin-left:5px;color:var(--gc-muted)}#gantry-control-deck-refined .gc-stepper{display:grid;grid-template-columns:34px 1fr 34px;gap:4px}#gantry-control-deck-refined .gc-stepper button,#gantry-control-deck-refined .gc-stepper output{display:grid;min-height:32px;place-items:center;border:1px solid var(--gc-line);border-radius:8px;background:transparent}#gantry-control-deck-refined .gc-profile-row{gap:5px;margin-top:10px}#gantry-control-deck-refined .gc-profile-row .gc-small-action:last-child{margin-left:auto;color:var(--gc-red)}
+    #gantry-control-deck-refined .gc-fan-list{display:grid;gap:13px}#gantry-control-deck-refined .gc-fan{display:grid;grid-template-columns:100px 1fr 44px;align-items:center;gap:9px}#gantry-control-deck-refined .gc-fan output{text-align:right;color:var(--gc-secondary);font-variant-numeric:tabular-nums}#gantry-control-deck-refined input[type=&quot;range&quot;]{width:100%;accent-color:var(--gc-text)}
+    #gantry-control-deck-refined .gc-ams-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}#gantry-control-deck-refined .gc-ams-slot{padding:9px;border:1px solid var(--gc-line);border-radius:11px;background:var(--gc-panel-2);text-align:left}#gantry-control-deck-refined .gc-ams-slot[aria-pressed=&quot;true&quot;]{border-color:var(--gc-text)}#gantry-control-deck-refined .gc-material{height:14px;margin-bottom:8px;border-radius:5px;background:var(--slot)}#gantry-control-deck-refined .gc-ams-slot small,#gantry-control-deck-refined .gc-ams-slot b{display:block}#gantry-control-deck-refined .gc-ams-slot small{color:var(--gc-muted)}#gantry-control-deck-refined .gc-ams-slot b{margin-top:3px;font-weight:500}
+    #gantry-control-deck-refined .gc-motion-layout{display:grid;grid-template-columns:174px 1fr;gap:14px}#gantry-control-deck-refined .gc-jog{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:5px;place-content:center}#gantry-control-deck-refined .gc-jog button{border:1px solid var(--gc-line);border-radius:11px;background:var(--gc-panel-2)}#gantry-control-deck-refined .gc-jog button:disabled{cursor:not-allowed;opacity:.42}#gantry-control-deck-refined .gc-jog button:nth-child(1){grid-column:2}#gantry-control-deck-refined .gc-jog button:nth-child(2){grid-column:1;grid-row:2}#gantry-control-deck-refined .gc-jog button:nth-child(3){grid-column:2;grid-row:2}#gantry-control-deck-refined .gc-jog button:nth-child(4){grid-column:3;grid-row:2}#gantry-control-deck-refined .gc-jog button:nth-child(5){grid-column:2;grid-row:3}#gantry-control-deck-refined .gc-lock{padding:11px;border-radius:10px;background:var(--gc-orange-soft);color:color-mix(in srgb,var(--gc-orange) 75%,var(--gc-text))}#gantry-control-deck-refined .gc-axis{display:flex;padding:10px 0;border-bottom:1px solid var(--gc-line)}#gantry-control-deck-refined .gc-axis span{margin-left:auto;color:var(--gc-muted)}
+    #gantry-control-deck-refined .gc-big-camera{aspect-ratio:16/7;border-radius:12px;background:linear-gradient(154deg,light-dark(#b9c0bc,#2a2f2c),light-dark(#e6e9e7,#070808) 64%);position:relative;overflow:hidden}#gantry-control-deck-refined .gc-big-camera:before{position:absolute;inset:20% 31% 15%;border:1px solid color-mix(in srgb,var(--gc-secondary) 55%,transparent);border-bottom:16px solid color-mix(in srgb,var(--gc-secondary) 28%,transparent);border-radius:6px;content:&quot;&quot;;transform:perspective(260px) rotateX(13deg)}
+    #gantry-control-deck-refined .gc-overlay{position:absolute;inset:0;z-index:4;display:none;place-items:center;padding:20px;background:color-mix(in srgb,var(--gc-canvas) 76%,transparent);backdrop-filter:blur(8px)}#gantry-control-deck-refined .gc-overlay.is-open{display:grid}#gantry-control-deck-refined .gc-dialog{width:min(470px,100%);padding:16px;border:1px solid var(--gc-line-strong);border-radius:17px;background:var(--gc-panel);box-shadow:0 28px 90px var(--gc-shadow)}#gantry-control-deck-refined .gc-dialog h3{margin:0;font-weight:500}#gantry-control-deck-refined .gc-dialog p{color:var(--gc-secondary)}#gantry-control-deck-refined .gc-dialog footer{display:flex;justify-content:flex-end;gap:6px;margin-top:14px}#gantry-control-deck-refined .gc-bed{display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(4,42px);gap:7px;padding:13px;border-radius:12px;background:linear-gradient(135deg,var(--gc-panel-2),var(--gc-top));box-shadow:inset 0 0 0 1px var(--gc-line)}#gantry-control-deck-refined .gc-object{border:1px solid var(--gc-line-strong);border-radius:8px;background:color-mix(in srgb,var(--gc-secondary) 11%,transparent)}#gantry-control-deck-refined .gc-object:nth-child(1){grid-column:1/3;grid-row:1/3}#gantry-control-deck-refined .gc-object:nth-child(2){grid-column:3/5;grid-row:1/2}#gantry-control-deck-refined .gc-object:nth-child(3){grid-column:5/7;grid-row:1/4}#gantry-control-deck-refined .gc-object:nth-child(4){grid-column:2/5;grid-row:3/5}#gantry-control-deck-refined .gc-object[aria-pressed=&quot;true&quot;]{border-color:var(--gc-orange);background:var(--gc-orange-soft);box-shadow:inset 0 0 0 1px var(--gc-orange)}
+    #gantry-control-deck-refined .gc-toast{position:absolute;left:50%;bottom:17px;z-index:6;max-width:calc(100% - 30px);padding:9px 12px;border:1px solid var(--gc-line-strong);border-radius:10px;background:var(--gc-raised);box-shadow:0 18px 55px var(--gc-shadow);opacity:0;transform:translate(-50%,10px);transition:.18s;pointer-events:none}#gantry-control-deck-refined .gc-toast.is-visible{opacity:1;transform:translate(-50%,0)}
+    #gantry-control-deck-refined[data-density=&quot;compact&quot;] .gc-stage{min-height:300px;padding:10px}#gantry-control-deck-refined[data-density=&quot;compact&quot;] .gc-command{min-height:60px}#gantry-control-deck-refined[data-rail=&quot;false&quot;] .gc-focus{grid-template-columns:1fr}#gantry-control-deck-refined[data-rail=&quot;false&quot;] .gc-live-rail{display:none}
+    @media(max-width:820px){#gantry-control-deck-refined{padding:8px}#gantry-control-deck-refined .gc-focus{grid-template-columns:1fr}#gantry-control-deck-refined .gc-live-rail{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.7fr);gap:10px}#gantry-control-deck-refined .gc-rail-head{grid-column:1/-1;margin:0}#gantry-control-deck-refined .gc-metrics{margin-top:0;border-top:0}#gantry-control-deck-refined .gc-ams-mini{grid-column:1/-1;margin-top:0}}
+    @media(max-width:610px){#gantry-control-deck-refined{padding:0}#gantry-control-deck-refined .gc-window{border-radius:0}#gantry-control-deck-refined .gc-titlebar{grid-template-columns:62px minmax(0,1fr) auto}#gantry-control-deck-refined .gc-fleet-state,#gantry-control-deck-refined .gc-toolbar .gc-icon-button:nth-child(-n+2){display:none}#gantry-control-deck-refined .gc-printer-strip{grid-template-columns:repeat(2,minmax(0,1fr))}#gantry-control-deck-refined .gc-command-grid,#gantry-control-deck-refined .gc-temp-grid,#gantry-control-deck-refined .gc-ams-grid{grid-template-columns:1fr 1fr}#gantry-control-deck-refined .gc-live-rail{display:block}#gantry-control-deck-refined .gc-process-grid{grid-template-columns:1fr}#gantry-control-deck-refined .gc-motion-layout{grid-template-columns:1fr}#gantry-control-deck-refined .gc-footer{flex-wrap:wrap}#gantry-control-deck-refined .gc-footer .gc-small-action:first-of-type{margin-left:0}#gantry-control-deck-refined .gc-safety{width:100%}}
+    @media(max-width:390px){#gantry-control-deck-refined .gc-workspace{padding:8px}#gantry-control-deck-refined .gc-brand{font-size:1rem}#gantry-control-deck-refined .gc-command-grid,#gantry-control-deck-refined .gc-temp-grid,#gantry-control-deck-refined .gc-ams-grid{grid-template-columns:1fr}#gantry-control-deck-refined .gc-speed{grid-template-columns:1fr 1fr}#gantry-control-deck-refined .gc-job-meta{flex-wrap:wrap}#gantry-control-deck-refined .gc-tab span{display:none}}
+    @media(prefers-reduced-motion:reduce){#gantry-control-deck-refined .gc-toast{transition:none}}
+  &lt;/style&gt;
+
+  &lt;section class=&quot;gc-window&quot;&gt;
+    &lt;header class=&quot;gc-titlebar&quot;&gt;
+      &lt;div class=&quot;gc-lights&quot; aria-hidden=&quot;true&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;i&gt;&lt;/i&gt;&lt;/div&gt;
+      &lt;div class=&quot;gc-brandline&quot;&gt;&lt;strong class=&quot;gc-brand&quot;&gt;GANTRY&lt;/strong&gt;&lt;span class=&quot;gc-fleet-state&quot;&gt;4 drukarki · 2 pracują&lt;/span&gt;&lt;/div&gt;
+      &lt;nav class=&quot;gc-toolbar&quot; aria-label=&quot;Narzędzia okna&quot;&gt;&lt;button class=&quot;gc-icon-button&quot; type=&quot;button&quot; aria-label=&quot;Zawsze na wierzchu&quot; data-tooltip=&quot;Zawsze na wierzchu&quot;&gt;&lt;i data-lucide=&quot;pin&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button class=&quot;gc-icon-button&quot; type=&quot;button&quot; aria-label=&quot;Ustawienia&quot; data-tooltip=&quot;Ustawienia&quot;&gt;&lt;i data-lucide=&quot;settings&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button class=&quot;gc-icon-button&quot; type=&quot;button&quot; aria-label=&quot;Przełącz tryb okna&quot; data-tooltip=&quot;Przełącz tryb okna&quot;&gt;&lt;i data-lucide=&quot;panel-top&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button class=&quot;gc-icon-button&quot; type=&quot;button&quot; aria-label=&quot;Odśwież&quot; data-tooltip=&quot;Odśwież&quot;&gt;&lt;i data-lucide=&quot;refresh-cw&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;/nav&gt;
+    &lt;/header&gt;
+
+    &lt;div class=&quot;gc-workspace&quot;&gt;
+      &lt;nav class=&quot;gc-printer-strip&quot; aria-label=&quot;Wybierz drukarkę&quot;&gt;
+        &lt;button class=&quot;gc-printer&quot; type=&quot;button&quot; aria-pressed=&quot;true&quot; data-name=&quot;X1C&quot; data-progress=&quot;64&quot; data-state=&quot;Drukowanie&quot; data-job=&quot;modular-lamp.3mf&quot;&gt;&lt;span class=&quot;gc-printer-top&quot;&gt;&lt;strong&gt;X1C&lt;/strong&gt;&lt;small&gt;MQTT&lt;/small&gt;&lt;/span&gt;&lt;span class=&quot;gc-printer-state&quot;&gt;Drukowanie · 64%&lt;/span&gt;&lt;span class=&quot;gc-mini-progress&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;gc-printer&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; data-name=&quot;P1S&quot; data-progress=&quot;47&quot; data-state=&quot;Drukowanie&quot; data-job=&quot;desk-organizer.3mf&quot;&gt;&lt;span class=&quot;gc-printer-top&quot;&gt;&lt;strong&gt;P1S&lt;/strong&gt;&lt;small&gt;MQTT&lt;/small&gt;&lt;/span&gt;&lt;span class=&quot;gc-printer-state&quot;&gt;Drukowanie · 47%&lt;/span&gt;&lt;span class=&quot;gc-mini-progress&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;gc-printer&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; data-name=&quot;A1 mini&quot; data-progress=&quot;100&quot; data-state=&quot;Gotowa&quot; data-job=&quot;Brak aktywnego zadania&quot;&gt;&lt;span class=&quot;gc-printer-top&quot;&gt;&lt;strong&gt;A1 mini&lt;/strong&gt;&lt;small&gt;MQTT&lt;/small&gt;&lt;/span&gt;&lt;span class=&quot;gc-printer-state&quot;&gt;Gotowa&lt;/span&gt;&lt;span class=&quot;gc-mini-progress&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;/button&gt;
+        &lt;button class=&quot;gc-printer&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; data-name=&quot;Voron 2.4&quot; data-progress=&quot;0&quot; data-state=&quot;Offline&quot; data-job=&quot;Brak połączenia&quot;&gt;&lt;span class=&quot;gc-printer-top&quot;&gt;&lt;strong&gt;Voron 2.4&lt;/strong&gt;&lt;small&gt;KLIPPER&lt;/small&gt;&lt;/span&gt;&lt;span class=&quot;gc-printer-state&quot;&gt;Offline&lt;/span&gt;&lt;span class=&quot;gc-mini-progress&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;&lt;/button&gt;
+      &lt;/nav&gt;
+
+      &lt;div class=&quot;gc-focus&quot;&gt;
+        &lt;section class=&quot;gc-deck&quot;&gt;
+          &lt;header class=&quot;gc-printer-head&quot;&gt;
+            &lt;div class=&quot;gc-statusline&quot;&gt;&lt;h2 id=&quot;gc-name&quot;&gt;X1C&lt;/h2&gt;&lt;span class=&quot;gc-protocol&quot;&gt;MQTT&lt;/span&gt;&lt;span class=&quot;gc-state&quot;&gt;&lt;i class=&quot;gc-dot&quot;&gt;&lt;/i&gt;&lt;span id=&quot;gc-state&quot;&gt;Drukowanie&lt;/span&gt;&lt;/span&gt;&lt;strong class=&quot;gc-percent&quot; id=&quot;gc-percent&quot;&gt;64%&lt;/strong&gt;&lt;/div&gt;
+            &lt;div class=&quot;gc-file&quot; id=&quot;gc-file&quot;&gt;modular-lamp.3mf&lt;/div&gt;
+            &lt;div class=&quot;gc-progress&quot; aria-label=&quot;Postęp wydruku 64%&quot;&gt;&lt;/div&gt;
+            &lt;div class=&quot;gc-job-meta&quot;&gt;&lt;span&gt;&lt;i data-lucide=&quot;clock-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;1 godz. 42 min&lt;/span&gt;&lt;span&gt;&lt;i data-lucide=&quot;layers-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;163 / 255&lt;/span&gt;&lt;span&gt;&lt;i data-lucide=&quot;flag&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;koniec 18:34&lt;/span&gt;&lt;/div&gt;
+          &lt;/header&gt;
+
+          &lt;nav class=&quot;gc-tabs&quot; role=&quot;tablist&quot; aria-label=&quot;Sekcje sterowania&quot;&gt;
+            &lt;button class=&quot;gc-tab&quot; id=&quot;gc-tab-print&quot; role=&quot;tab&quot; type=&quot;button&quot; aria-controls=&quot;gc-view-print&quot; aria-selected=&quot;true&quot;&gt;&lt;i data-lucide=&quot;play-circle&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Wydruk&lt;/span&gt;&lt;/button&gt;
+            &lt;button class=&quot;gc-tab&quot; id=&quot;gc-tab-temp&quot; role=&quot;tab&quot; type=&quot;button&quot; aria-controls=&quot;gc-view-temp&quot; aria-selected=&quot;false&quot;&gt;&lt;i data-lucide=&quot;thermometer&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Temperatury&lt;/span&gt;&lt;/button&gt;
+            &lt;button class=&quot;gc-tab&quot; id=&quot;gc-tab-fans&quot; role=&quot;tab&quot; type=&quot;button&quot; aria-controls=&quot;gc-view-fans&quot; aria-selected=&quot;false&quot;&gt;&lt;i data-lucide=&quot;fan&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Chłodzenie&lt;/span&gt;&lt;/button&gt;
+            &lt;button class=&quot;gc-tab&quot; id=&quot;gc-tab-ams&quot; role=&quot;tab&quot; type=&quot;button&quot; aria-controls=&quot;gc-view-ams&quot; aria-selected=&quot;false&quot;&gt;&lt;i data-lucide=&quot;disc-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;AMS&lt;/span&gt;&lt;/button&gt;
+            &lt;button class=&quot;gc-tab&quot; id=&quot;gc-tab-motion&quot; role=&quot;tab&quot; type=&quot;button&quot; aria-controls=&quot;gc-view-motion&quot; aria-selected=&quot;false&quot;&gt;&lt;i data-lucide=&quot;move-3d&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Ruch&lt;/span&gt;&lt;/button&gt;
+            &lt;button class=&quot;gc-tab&quot; id=&quot;gc-tab-camera&quot; role=&quot;tab&quot; type=&quot;button&quot; aria-controls=&quot;gc-view-camera&quot; aria-selected=&quot;false&quot;&gt;&lt;i data-lucide=&quot;camera&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Kamera&lt;/span&gt;&lt;/button&gt;
+          &lt;/nav&gt;
+
+          &lt;div class=&quot;gc-stage&quot;&gt;
+            &lt;section class=&quot;gc-view&quot; id=&quot;gc-view-print&quot; role=&quot;tabpanel&quot; aria-labelledby=&quot;gc-tab-print&quot;&gt;
+              &lt;header class=&quot;gc-view-head&quot;&gt;&lt;h3&gt;Sterowanie wydrukiem&lt;/h3&gt;&lt;span&gt;STANDARD · 100%&lt;/span&gt;&lt;/header&gt;
+              &lt;div class=&quot;gc-command-grid&quot;&gt;&lt;button class=&quot;gc-command gc-primary&quot; type=&quot;button&quot; id=&quot;gc-pause&quot;&gt;&lt;span class=&quot;gc-command-icon&quot;&gt;&lt;i data-lucide=&quot;pause&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;gc-command-copy&quot;&gt;&lt;b&gt;Wstrzymaj&lt;/b&gt;&lt;small&gt;Możesz wznowić później&lt;/small&gt;&lt;/span&gt;&lt;/button&gt;&lt;button class=&quot;gc-command gc-accent&quot; type=&quot;button&quot; id=&quot;gc-skip&quot;&gt;&lt;span class=&quot;gc-command-icon&quot;&gt;&lt;i data-lucide=&quot;scan-line&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;gc-command-copy&quot;&gt;&lt;b&gt;Pomiń obiekt&lt;/b&gt;&lt;small&gt;Wybierz element na stole&lt;/small&gt;&lt;/span&gt;&lt;/button&gt;&lt;/div&gt;
+              &lt;section class=&quot;gc-section&quot;&gt;&lt;div class=&quot;gc-section-title&quot;&gt;&lt;span&gt;Prędkość drukowania&lt;/span&gt;&lt;span id=&quot;gc-speed-label&quot;&gt;100%&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;gc-speed&quot;&gt;&lt;button class=&quot;gc-choice&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; data-speed=&quot;50&quot;&gt;Cicha · 50%&lt;/button&gt;&lt;button class=&quot;gc-choice&quot; type=&quot;button&quot; aria-pressed=&quot;true&quot; data-speed=&quot;100&quot;&gt;Standard · 100%&lt;/button&gt;&lt;button class=&quot;gc-choice&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; data-speed=&quot;124&quot;&gt;Sport · 124%&lt;/button&gt;&lt;button class=&quot;gc-choice&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; data-speed=&quot;166&quot;&gt;Ludicrous · 166%&lt;/button&gt;&lt;/div&gt;&lt;/section&gt;
+              &lt;section class=&quot;gc-section gc-process-grid&quot;&gt;&lt;div class=&quot;gc-process-item&quot;&gt;&lt;small&gt;Czas drukowania&lt;/small&gt;&lt;strong&gt;2 godz. 51 min&lt;/strong&gt;&lt;/div&gt;&lt;div class=&quot;gc-process-item&quot;&gt;&lt;small&gt;Zużyty filament&lt;/small&gt;&lt;strong&gt;147 g&lt;/strong&gt;&lt;/div&gt;&lt;div class=&quot;gc-process-item&quot;&gt;&lt;small&gt;Aktualna warstwa&lt;/small&gt;&lt;strong&gt;163 z 255&lt;/strong&gt;&lt;/div&gt;&lt;/section&gt;
+            &lt;/section&gt;
+
+            &lt;section class=&quot;gc-view&quot; id=&quot;gc-view-temp&quot; role=&quot;tabpanel&quot; aria-labelledby=&quot;gc-tab-temp&quot; hidden&gt;
+              &lt;header class=&quot;gc-view-head&quot;&gt;&lt;h3&gt;Temperatury&lt;/h3&gt;&lt;span&gt;AKTUALNA / ZADANA&lt;/span&gt;&lt;/header&gt;&lt;div class=&quot;gc-temp-grid&quot;&gt;
+                &lt;article class=&quot;gc-temp-control&quot;&gt;&lt;span&gt;Dysza&lt;/span&gt;&lt;div class=&quot;gc-value-row&quot;&gt;&lt;strong&gt;220°&lt;/strong&gt;&lt;small&gt;/ 220°&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;gc-stepper&quot;&gt;&lt;button type=&quot;button&quot; data-temp=&quot;gc-nozzle&quot; data-delta=&quot;-5&quot;&gt;−&lt;/button&gt;&lt;output id=&quot;gc-nozzle&quot;&gt;220°&lt;/output&gt;&lt;button type=&quot;button&quot; data-temp=&quot;gc-nozzle&quot; data-delta=&quot;5&quot;&gt;+&lt;/button&gt;&lt;/div&gt;&lt;/article&gt;
+                &lt;article class=&quot;gc-temp-control&quot;&gt;&lt;span&gt;Stół&lt;/span&gt;&lt;div class=&quot;gc-value-row&quot;&gt;&lt;strong&gt;60°&lt;/strong&gt;&lt;small&gt;/ 60°&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;gc-stepper&quot;&gt;&lt;button type=&quot;button&quot; data-temp=&quot;gc-bed&quot; data-delta=&quot;-5&quot;&gt;−&lt;/button&gt;&lt;output id=&quot;gc-bed&quot;&gt;60°&lt;/output&gt;&lt;button type=&quot;button&quot; data-temp=&quot;gc-bed&quot; data-delta=&quot;5&quot;&gt;+&lt;/button&gt;&lt;/div&gt;&lt;/article&gt;
+                &lt;article class=&quot;gc-temp-control&quot;&gt;&lt;span&gt;Komora&lt;/span&gt;&lt;div class=&quot;gc-value-row&quot;&gt;&lt;strong&gt;38°&lt;/strong&gt;&lt;small&gt;/ 40°&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;gc-stepper&quot;&gt;&lt;button type=&quot;button&quot; data-temp=&quot;gc-chamber&quot; data-delta=&quot;-5&quot;&gt;−&lt;/button&gt;&lt;output id=&quot;gc-chamber&quot;&gt;40°&lt;/output&gt;&lt;button type=&quot;button&quot; data-temp=&quot;gc-chamber&quot; data-delta=&quot;5&quot;&gt;+&lt;/button&gt;&lt;/div&gt;&lt;/article&gt;
+              &lt;/div&gt;&lt;div class=&quot;gc-profile-row&quot;&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Profil PLA ustawiony&quot;&gt;PLA&lt;/button&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Profil PETG ustawiony&quot;&gt;PETG&lt;/button&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Profil ASA ustawiony&quot;&gt;ASA&lt;/button&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Wyłączenie wszystkich grzałek wymaga potwierdzenia&quot;&gt;Wyłącz grzałki&lt;/button&gt;&lt;/div&gt;
+            &lt;/section&gt;
+
+            &lt;section class=&quot;gc-view&quot; id=&quot;gc-view-fans&quot; role=&quot;tabpanel&quot; aria-labelledby=&quot;gc-tab-fans&quot; hidden&gt;
+              &lt;header class=&quot;gc-view-head&quot;&gt;&lt;h3&gt;Wentylatory i oświetlenie&lt;/h3&gt;&lt;span&gt;PRESET · WŁASNY&lt;/span&gt;&lt;/header&gt;&lt;div class=&quot;gc-fan-list&quot;&gt;&lt;label class=&quot;gc-fan&quot;&gt;&lt;span&gt;Wentylator części&lt;/span&gt;&lt;input type=&quot;range&quot; min=&quot;0&quot; max=&quot;100&quot; value=&quot;45&quot;&gt;&lt;output&gt;45%&lt;/output&gt;&lt;/label&gt;&lt;label class=&quot;gc-fan&quot;&gt;&lt;span&gt;Pomocniczy&lt;/span&gt;&lt;input type=&quot;range&quot; min=&quot;0&quot; max=&quot;100&quot; value=&quot;20&quot;&gt;&lt;output&gt;20%&lt;/output&gt;&lt;/label&gt;&lt;label class=&quot;gc-fan&quot;&gt;&lt;span&gt;Komora&lt;/span&gt;&lt;input type=&quot;range&quot; min=&quot;0&quot; max=&quot;100&quot; value=&quot;70&quot;&gt;&lt;output&gt;70%&lt;/output&gt;&lt;/label&gt;&lt;/div&gt;&lt;div class=&quot;gc-command-grid&quot; style=&quot;margin-top:14px&quot;&gt;&lt;button class=&quot;gc-command&quot; type=&quot;button&quot; data-note=&quot;Światło komory wyłączone&quot;&gt;&lt;span class=&quot;gc-command-icon&quot;&gt;&lt;i data-lucide=&quot;lightbulb&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;gc-command-copy&quot;&gt;&lt;b&gt;Światło komory&lt;/b&gt;&lt;small&gt;Włączone&lt;/small&gt;&lt;/span&gt;&lt;/button&gt;&lt;button class=&quot;gc-command&quot; type=&quot;button&quot; data-note=&quot;Zastosowano preset Cichy&quot;&gt;&lt;span class=&quot;gc-command-icon&quot;&gt;&lt;i data-lucide=&quot;moon&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;gc-command-copy&quot;&gt;&lt;b&gt;Preset Cichy&lt;/b&gt;&lt;small&gt;25% · 0% · 35%&lt;/small&gt;&lt;/span&gt;&lt;/button&gt;&lt;/div&gt;
+            &lt;/section&gt;
+
+            &lt;section class=&quot;gc-view&quot; id=&quot;gc-view-ams&quot; role=&quot;tabpanel&quot; aria-labelledby=&quot;gc-tab-ams&quot; hidden&gt;
+              &lt;header class=&quot;gc-view-head&quot;&gt;&lt;h3&gt;AMS A&lt;/h3&gt;&lt;span&gt;34° · WILGOTNOŚĆ 32%&lt;/span&gt;&lt;/header&gt;&lt;div class=&quot;gc-ams-grid&quot;&gt;&lt;button class=&quot;gc-ams-slot&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; style=&quot;--slot:#8e9496&quot;&gt;&lt;i class=&quot;gc-material&quot;&gt;&lt;/i&gt;&lt;small&gt;A1 · 27%&lt;/small&gt;&lt;b&gt;PLA&lt;/b&gt;&lt;/button&gt;&lt;button class=&quot;gc-ams-slot&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; style=&quot;--slot:#e6cb62&quot;&gt;&lt;i class=&quot;gc-material&quot;&gt;&lt;/i&gt;&lt;small&gt;A2 · 61%&lt;/small&gt;&lt;b&gt;PLA Matte&lt;/b&gt;&lt;/button&gt;&lt;button class=&quot;gc-ams-slot&quot; type=&quot;button&quot; aria-pressed=&quot;true&quot; style=&quot;--slot:#c95749&quot;&gt;&lt;i class=&quot;gc-material&quot;&gt;&lt;/i&gt;&lt;small&gt;A3 · 78%&lt;/small&gt;&lt;b&gt;PLA Basic&lt;/b&gt;&lt;/button&gt;&lt;button class=&quot;gc-ams-slot&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; style=&quot;--slot:#34414f&quot;&gt;&lt;i class=&quot;gc-material&quot;&gt;&lt;/i&gt;&lt;small&gt;A4 · 44%&lt;/small&gt;&lt;b&gt;PETG&lt;/b&gt;&lt;/button&gt;&lt;/div&gt;&lt;div class=&quot;gc-command-grid&quot; style=&quot;margin-top:12px&quot;&gt;&lt;button class=&quot;gc-command&quot; type=&quot;button&quot; data-note=&quot;Ładowanie aktywnego slotu&quot;&gt;&lt;span class=&quot;gc-command-icon&quot;&gt;&lt;i data-lucide=&quot;arrow-down-to-line&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;gc-command-copy&quot;&gt;&lt;b&gt;Załaduj A3&lt;/b&gt;&lt;small&gt;PLA Basic · czerwony&lt;/small&gt;&lt;/span&gt;&lt;/button&gt;&lt;button class=&quot;gc-command&quot; type=&quot;button&quot; data-note=&quot;Otwieram przypisanie rolki ze Spoolbase&quot;&gt;&lt;span class=&quot;gc-command-icon&quot;&gt;&lt;i data-lucide=&quot;link-2&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;span class=&quot;gc-command-copy&quot;&gt;&lt;b&gt;Przypisz rolkę&lt;/b&gt;&lt;small&gt;Połącz ze Spoolbase&lt;/small&gt;&lt;/span&gt;&lt;/button&gt;&lt;/div&gt;
+            &lt;/section&gt;
+
+            &lt;section class=&quot;gc-view&quot; id=&quot;gc-view-motion&quot; role=&quot;tabpanel&quot; aria-labelledby=&quot;gc-tab-motion&quot; hidden&gt;
+              &lt;header class=&quot;gc-view-head&quot;&gt;&lt;h3&gt;Ruch drukarki&lt;/h3&gt;&lt;span&gt;KROK · 1 MM&lt;/span&gt;&lt;/header&gt;&lt;div class=&quot;gc-motion-layout&quot;&gt;&lt;div class=&quot;gc-jog&quot;&gt;&lt;button type=&quot;button&quot; disabled&gt;Y+&lt;/button&gt;&lt;button type=&quot;button&quot; disabled&gt;X−&lt;/button&gt;&lt;button type=&quot;button&quot; disabled&gt;&lt;i data-lucide=&quot;home&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button type=&quot;button&quot; disabled&gt;X+&lt;/button&gt;&lt;button type=&quot;button&quot; disabled&gt;Y−&lt;/button&gt;&lt;/div&gt;&lt;div&gt;&lt;div class=&quot;gc-lock&quot;&gt;Sterowanie osiami i ekstruderem jest zablokowane podczas aktywnego wydruku.&lt;/div&gt;&lt;div class=&quot;gc-axis&quot;&gt;&lt;b&gt;Oś Z&lt;/b&gt;&lt;span&gt;142,0 mm&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;gc-axis&quot;&gt;&lt;b&gt;Ekstruder&lt;/b&gt;&lt;span&gt;Dysza 220°&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;
+            &lt;/section&gt;
+
+            &lt;section class=&quot;gc-view&quot; id=&quot;gc-view-camera&quot; role=&quot;tabpanel&quot; aria-labelledby=&quot;gc-tab-camera&quot; hidden&gt;
+              &lt;header class=&quot;gc-view-head&quot;&gt;&lt;h3&gt;Kamera&lt;/h3&gt;&lt;span&gt;LIVE · 12 FPS · 38 MS&lt;/span&gt;&lt;/header&gt;&lt;div class=&quot;gc-big-camera&quot;&gt;&lt;/div&gt;&lt;div class=&quot;gc-profile-row&quot;&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Zdjęcie zapisane&quot;&gt;&lt;i data-lucide=&quot;camera&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; Zdjęcie&lt;/button&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Rozpoczęto nagrywanie klipu&quot;&gt;&lt;i data-lucide=&quot;video&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; Nagraj klip&lt;/button&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Otwieram pełny ekran&quot;&gt;&lt;i data-lucide=&quot;maximize-2&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; Pełny ekran&lt;/button&gt;&lt;/div&gt;
+            &lt;/section&gt;
+          &lt;/div&gt;
+
+          &lt;footer class=&quot;gc-footer&quot;&gt;&lt;span class=&quot;gc-safety&quot;&gt;&lt;i data-lucide=&quot;shield-check&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;Ryzykowne akcje wymagają potwierdzenia&lt;/span&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; data-note=&quot;Światło komory przełączone&quot;&gt;&lt;i data-lucide=&quot;lightbulb&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; Światło&lt;/button&gt;&lt;button class=&quot;gc-small-action gc-danger&quot; type=&quot;button&quot; id=&quot;gc-cancel&quot;&gt;Anuluj wydruk&lt;/button&gt;&lt;/footer&gt;
+        &lt;/section&gt;
+
+        &lt;aside class=&quot;gc-live-rail&quot;&gt;
+          &lt;header class=&quot;gc-rail-head&quot;&gt;&lt;span&gt;Podgląd na żywo&lt;/span&gt;&lt;span class=&quot;gc-live-pill&quot;&gt;&lt;i class=&quot;gc-dot&quot;&gt;&lt;/i&gt;LIVE&lt;/span&gt;&lt;/header&gt;&lt;div class=&quot;gc-camera&quot; aria-label=&quot;Podgląd kamery drukarki&quot;&gt;&lt;/div&gt;&lt;div class=&quot;gc-rail-actions&quot;&gt;&lt;button type=&quot;button&quot; aria-label=&quot;Zrób zdjęcie&quot; data-tooltip=&quot;Zrób zdjęcie&quot; data-note=&quot;Zdjęcie zapisane&quot;&gt;&lt;i data-lucide=&quot;camera&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button type=&quot;button&quot; aria-label=&quot;Nagraj klip&quot; data-tooltip=&quot;Nagraj klip&quot; data-note=&quot;Rozpoczęto nagrywanie&quot;&gt;&lt;i data-lucide=&quot;video&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;button type=&quot;button&quot; aria-label=&quot;Pełny ekran&quot; data-tooltip=&quot;Pełny ekran&quot; data-note=&quot;Otwieram pełny ekran&quot;&gt;&lt;i data-lucide=&quot;maximize-2&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;/div&gt;
+          &lt;div class=&quot;gc-metrics&quot;&gt;&lt;div class=&quot;gc-metric&quot;&gt;&lt;i data-lucide=&quot;wind&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Dysza&lt;/span&gt;&lt;strong&gt;220° / 220°&lt;/strong&gt;&lt;/div&gt;&lt;div class=&quot;gc-metric&quot;&gt;&lt;i data-lucide=&quot;layers-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Stół&lt;/span&gt;&lt;strong&gt;60° / 60°&lt;/strong&gt;&lt;/div&gt;&lt;div class=&quot;gc-metric&quot;&gt;&lt;i data-lucide=&quot;box&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Komora&lt;/span&gt;&lt;strong&gt;38°&lt;/strong&gt;&lt;/div&gt;&lt;div class=&quot;gc-metric&quot;&gt;&lt;i data-lucide=&quot;fan&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;&lt;span&gt;Chłodzenie&lt;/span&gt;&lt;strong&gt;45%&lt;/strong&gt;&lt;/div&gt;&lt;/div&gt;
+          &lt;section class=&quot;gc-ams-mini&quot;&gt;&lt;header class=&quot;gc-ams-head&quot;&gt;&lt;strong&gt;AMS A&lt;/strong&gt;&lt;small&gt;A3 · PLA Basic&lt;/small&gt;&lt;/header&gt;&lt;div class=&quot;gc-slot-row&quot;&gt;&lt;button class=&quot;gc-slot-mini&quot; type=&quot;button&quot; aria-label=&quot;Slot A1&quot; aria-pressed=&quot;false&quot; style=&quot;--slot:#8e9496&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;/button&gt;&lt;button class=&quot;gc-slot-mini&quot; type=&quot;button&quot; aria-label=&quot;Slot A2&quot; aria-pressed=&quot;false&quot; style=&quot;--slot:#e6cb62&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;/button&gt;&lt;button class=&quot;gc-slot-mini&quot; type=&quot;button&quot; aria-label=&quot;Slot A3 aktywny&quot; aria-pressed=&quot;true&quot; style=&quot;--slot:#c95749&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;/button&gt;&lt;button class=&quot;gc-slot-mini&quot; type=&quot;button&quot; aria-label=&quot;Slot A4&quot; aria-pressed=&quot;false&quot; style=&quot;--slot:#34414f&quot;&gt;&lt;i&gt;&lt;/i&gt;&lt;/button&gt;&lt;/div&gt;&lt;/section&gt;
+        &lt;/aside&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;gc-overlay&quot; id=&quot;gc-skip-dialog&quot; aria-hidden=&quot;true&quot;&gt;&lt;section class=&quot;gc-dialog&quot; role=&quot;dialog&quot; aria-modal=&quot;true&quot; aria-labelledby=&quot;gc-skip-title&quot;&gt;&lt;h3 id=&quot;gc-skip-title&quot;&gt;Pomiń obiekt&lt;/h3&gt;&lt;p&gt;Wskaż uszkodzony element. Pozostałe obiekty będą drukowane dalej.&lt;/p&gt;&lt;div class=&quot;gc-bed&quot; aria-label=&quot;Podgląd stołu&quot;&gt;&lt;button class=&quot;gc-object&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; aria-label=&quot;Obiekt 1&quot;&gt;&lt;/button&gt;&lt;button class=&quot;gc-object&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; aria-label=&quot;Obiekt 2&quot;&gt;&lt;/button&gt;&lt;button class=&quot;gc-object&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; aria-label=&quot;Obiekt 3&quot;&gt;&lt;/button&gt;&lt;button class=&quot;gc-object&quot; type=&quot;button&quot; aria-pressed=&quot;false&quot; aria-label=&quot;Obiekt 4&quot;&gt;&lt;/button&gt;&lt;/div&gt;&lt;footer&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; id=&quot;gc-skip-back&quot;&gt;Wróć&lt;/button&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; id=&quot;gc-skip-confirm&quot; disabled&gt;Pomiń wybrany&lt;/button&gt;&lt;/footer&gt;&lt;/section&gt;&lt;/div&gt;
+    &lt;div class=&quot;gc-overlay&quot; id=&quot;gc-cancel-dialog&quot; aria-hidden=&quot;true&quot;&gt;&lt;section class=&quot;gc-dialog&quot; role=&quot;dialog&quot; aria-modal=&quot;true&quot; aria-labelledby=&quot;gc-cancel-title&quot;&gt;&lt;h3 id=&quot;gc-cancel-title&quot;&gt;Anulować wydruk?&lt;/h3&gt;&lt;p&gt;Tej operacji nie można cofnąć. Pozostały czas wynosi około 1 godz. 42 min.&lt;/p&gt;&lt;footer&gt;&lt;button class=&quot;gc-small-action&quot; type=&quot;button&quot; id=&quot;gc-cancel-back&quot;&gt;Kontynuuj druk&lt;/button&gt;&lt;button class=&quot;gc-small-action gc-danger&quot; type=&quot;button&quot; id=&quot;gc-cancel-confirm&quot;&gt;Anuluj wydruk&lt;/button&gt;&lt;/footer&gt;&lt;/section&gt;&lt;/div&gt;
+    &lt;div class=&quot;gc-toast&quot; id=&quot;gc-toast&quot; aria-live=&quot;polite&quot;&gt;&lt;/div&gt;
+  &lt;/section&gt;
+
+  &lt;script&gt;
+    (()=&gt;{const root=document.getElementById(&#x27;gantry-control-deck-refined&#x27;);if(!root)return;const one=s=&gt;root.querySelector(s),all=s=&gt;[...root.querySelectorAll(s)];const segments=(host,p,count)=&gt;{host.innerHTML=Array.from({length:count},(_,i)=&gt;`&lt;i class=&quot;${i/count*100&lt;p?&#x27;is-filled&#x27;:&#x27;&#x27;}&quot;&gt;&lt;/i&gt;`).join(&#x27;&#x27;)};all(&#x27;.gc-printer&#x27;).forEach(card=&gt;segments(card.querySelector(&#x27;.gc-mini-progress&#x27;),Number(card.dataset.progress),18));segments(one(&#x27;.gc-progress&#x27;),64,34);let timer;const note=text=&gt;{const toast=one(&#x27;#gc-toast&#x27;);toast.textContent=text;toast.classList.add(&#x27;is-visible&#x27;);clearTimeout(timer);timer=setTimeout(()=&gt;toast.classList.remove(&#x27;is-visible&#x27;),1700)};all(&#x27;[data-note]&#x27;).forEach(button=&gt;button.addEventListener(&#x27;click&#x27;,()=&gt;note(button.dataset.note)));
+    all(&#x27;.gc-printer&#x27;).forEach(card=&gt;card.addEventListener(&#x27;click&#x27;,()=&gt;{all(&#x27;.gc-printer&#x27;).forEach(item=&gt;item.setAttribute(&#x27;aria-pressed&#x27;,&#x27;false&#x27;));card.setAttribute(&#x27;aria-pressed&#x27;,&#x27;true&#x27;);one(&#x27;#gc-name&#x27;).textContent=card.dataset.name;one(&#x27;#gc-state&#x27;).textContent=card.dataset.state;one(&#x27;#gc-percent&#x27;).textContent=`${card.dataset.progress}%`;one(&#x27;#gc-file&#x27;).textContent=card.dataset.job;segments(one(&#x27;.gc-progress&#x27;),Number(card.dataset.progress),34);note(`Wybrano ${card.dataset.name}`)}));
+    all(&#x27;.gc-tab&#x27;).forEach(tab=&gt;tab.addEventListener(&#x27;click&#x27;,()=&gt;{all(&#x27;.gc-tab&#x27;).forEach(item=&gt;item.setAttribute(&#x27;aria-selected&#x27;,&#x27;false&#x27;));all(&#x27;.gc-view&#x27;).forEach(view=&gt;view.hidden=true);tab.setAttribute(&#x27;aria-selected&#x27;,&#x27;true&#x27;);one(`#${tab.getAttribute(&#x27;aria-controls&#x27;)}`).hidden=false}));
+    let paused=false;one(&#x27;#gc-pause&#x27;).addEventListener(&#x27;click&#x27;,event=&gt;{paused=!paused;const label=event.currentTarget.querySelector(&#x27;b&#x27;),helper=event.currentTarget.querySelector(&#x27;small&#x27;),icon=event.currentTarget.querySelector(&#x27;[data-lucide]&#x27;);label.textContent=paused?&#x27;Wznów&#x27;:&#x27;Wstrzymaj&#x27;;helper.textContent=paused?&#x27;Wydruk jest wstrzymany&#x27;:&#x27;Możesz wznowić później&#x27;;icon.setAttribute(&#x27;data-lucide&#x27;,paused?&#x27;play&#x27;:&#x27;pause&#x27;);one(&#x27;#gc-state&#x27;).textContent=paused?&#x27;Wstrzymano&#x27;:&#x27;Drukowanie&#x27;;if(globalThis.lucide)lucide.createIcons({attrs:{width:17,height:17}});note(paused?&#x27;Wydruk wstrzymany&#x27;:&#x27;Wydruk wznowiony&#x27;)});
+    all(&#x27;[data-speed]&#x27;).forEach(button=&gt;button.addEventListener(&#x27;click&#x27;,()=&gt;{all(&#x27;[data-speed]&#x27;).forEach(item=&gt;item.setAttribute(&#x27;aria-pressed&#x27;,&#x27;false&#x27;));button.setAttribute(&#x27;aria-pressed&#x27;,&#x27;true&#x27;);one(&#x27;#gc-speed-label&#x27;).textContent=`${button.dataset.speed}%`;note(`Prędkość ${button.dataset.speed}%`)}));
+    all(&#x27;[data-temp]&#x27;).forEach(button=&gt;button.addEventListener(&#x27;click&#x27;,()=&gt;{const output=one(`#${button.dataset.temp}`);output.textContent=`${Math.max(0,parseInt(output.textContent,10)+Number(button.dataset.delta))}°`}));all(&#x27;.gc-fan input&#x27;).forEach(input=&gt;input.addEventListener(&#x27;input&#x27;,()=&gt;input.nextElementSibling.textContent=`${input.value}%`));all(&#x27;.gc-ams-slot&#x27;).forEach(slot=&gt;slot.addEventListener(&#x27;click&#x27;,()=&gt;{all(&#x27;.gc-ams-slot&#x27;).forEach(item=&gt;item.setAttribute(&#x27;aria-pressed&#x27;,&#x27;false&#x27;));slot.setAttribute(&#x27;aria-pressed&#x27;,&#x27;true&#x27;);note(`Wybrano ${slot.querySelector(&#x27;small&#x27;).textContent.split(&#x27; · &#x27;)[0]}`)}));
+    const show=id=&gt;{const modal=one(id);modal.classList.add(&#x27;is-open&#x27;);modal.setAttribute(&#x27;aria-hidden&#x27;,&#x27;false&#x27;)},hide=id=&gt;{const modal=one(id);modal.classList.remove(&#x27;is-open&#x27;);modal.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;)};one(&#x27;#gc-skip&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;show(&#x27;#gc-skip-dialog&#x27;));one(&#x27;#gc-skip-back&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;hide(&#x27;#gc-skip-dialog&#x27;));all(&#x27;.gc-object&#x27;).forEach(object=&gt;object.addEventListener(&#x27;click&#x27;,()=&gt;{object.setAttribute(&#x27;aria-pressed&#x27;,object.getAttribute(&#x27;aria-pressed&#x27;)===&#x27;true&#x27;?&#x27;false&#x27;:&#x27;true&#x27;);one(&#x27;#gc-skip-confirm&#x27;).disabled=!all(&#x27;.gc-object&#x27;).some(item=&gt;item.getAttribute(&#x27;aria-pressed&#x27;)===&#x27;true&#x27;)}));one(&#x27;#gc-skip-confirm&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{hide(&#x27;#gc-skip-dialog&#x27;);note(&#x27;Demo nie wysyła komendy do drukarki&#x27;)});one(&#x27;#gc-cancel&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;show(&#x27;#gc-cancel-dialog&#x27;));one(&#x27;#gc-cancel-back&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;hide(&#x27;#gc-cancel-dialog&#x27;));one(&#x27;#gc-cancel-confirm&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{hide(&#x27;#gc-cancel-dialog&#x27;);note(&#x27;Demo nie wysyła komendy do drukarki&#x27;)});all(&#x27;.gc-overlay&#x27;).forEach(modal=&gt;modal.addEventListener(&#x27;click&#x27;,event=&gt;{if(event.target===modal)hide(`#${modal.id}`)}));
+    const state={density:&#x27;balanced&#x27;,rail:true};const render=()=&gt;{root.dataset.density=state.density;root.dataset.rail=String(state.rail)};render();if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:render});tweak.addSelect(state,&#x27;density&#x27;,{label:&#x27;Gęstość sterowania&#x27;,options:[{label:&#x27;Zbalansowana&#x27;,value:&#x27;balanced&#x27;},{label:&#x27;Kompaktowa&#x27;,value:&#x27;compact&#x27;}]});tweak.addToggle(state,&#x27;rail&#x27;,{label:&#x27;Stały podgląd na żywo&#x27;})}})();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+  let lastPointerWasTouch = false;
+  let pinnedByTouch = false;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    pinnedByTouch = false;
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handlePointer = (event) =&gt; {
+    lastPointerWasTouch =
+      event.type === &quot;pointerdown&quot; &amp;&amp; event.pointerType === &quot;touch&quot;;
+  };
+  const handleTouchClick = (event) =&gt; {
+    const isTouch = event.pointerType === &quot;touch&quot; || lastPointerWasTouch;
+    lastPointerWasTouch = false;
+    if (!isTouch || event.detail === 0) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (
+      trigger == null ||
+      !trigger.isConnected ||
+      getContent(trigger).length === 0 ||
+      (pinnedByTouch &amp;&amp; activeTrigger === trigger)
+    ) {
+      if (pinnedByTouch) {
+        closeTooltip();
+      }
+      return;
+    }
+    openTooltip(trigger);
+    pinnedByTouch = activeTrigger === trigger;
+    window.setTimeout(() =&gt; {
+      if (activeTrigger === trigger &amp;&amp; !trigger.isConnected) {
+        closeTooltip(false);
+      }
+    }, 0);
+  };
+  const handleLeave = (event) =&gt; {
+    if (pinnedByTouch) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    lastPointerWasTouch = false;
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    lastPointerWasTouch = false;
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerdown&quot;, handlePointer);
+    document.removeEventListener(&quot;pointercancel&quot;, handlePointer);
+    document.removeEventListener(&quot;click&quot;, handleTouchClick);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerdown&quot;, handlePointer);
+  document.addEventListener(&quot;pointercancel&quot;, handlePointer);
+  document.addEventListener(&quot;click&quot;, handleTouchClick);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-tabs&quot;&gt;
+(() =&gt; {
+  const selector = &#x27;.nav[role=&quot;tablist&quot;] [role=&quot;tab&quot;]&#x27;;
+  const disabled = &#x27;:disabled,[aria-disabled=&quot;true&quot;]&#x27;;
+  const selectTab = (selected) =&gt; {
+    const panelId = selected.getAttribute(&quot;aria-controls&quot;);
+    for (const tab of selected.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;)) {
+      const active = tab === selected;
+      tab.classList.toggle(&quot;active&quot;, active);
+      tab.setAttribute(&quot;aria-selected&quot;, String(active));
+      const id = tab.getAttribute(&quot;aria-controls&quot;);
+      const panel = id &amp;&amp; document.getElementById(id);
+      if (panel != null) {
+        panel.hidden = id !== panelId;
+        if (!panel.hidden &amp;&amp; selected.id) {
+          panel.setAttribute(&quot;aria-labelledby&quot;, selected.id);
+        }
+      }
+    }
+  };
+  const interact = (event) =&gt; {
+    const tab = event.target?.closest?.(selector);
+    if (event.defaultPrevented || tab == null || tab.matches(disabled)) {
+      return;
+    }
+    if (event.type === &quot;click&quot;) {
+      selectTab(tab);
+      return;
+    }
+    const tabs = Array.from(
+      tab.closest(&#x27;[role=&quot;tablist&quot;]&#x27;).querySelectorAll(&#x27;[role=&quot;tab&quot;]&#x27;),
+    ).filter((candidate) =&gt; !candidate.matches(disabled));
+    const current = tabs.indexOf(tab);
+    let next;
+    if (event.key === &quot;ArrowRight&quot; || event.key === &quot;ArrowDown&quot;) {
+      next = (current + 1) % tabs.length;
+    } else if (event.key === &quot;ArrowLeft&quot; || event.key === &quot;ArrowUp&quot;) {
+      next = (current + tabs.length - 1) % tabs.length;
+    } else if (event.key === &quot;Home&quot;) {
+      next = 0;
+    } else if (event.key === &quot;End&quot;) {
+      next = tabs.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    tabs[next].focus();
+    selectTab(tabs[next]);
+  };
+
+  for (const list of document.querySelectorAll(&#x27;.nav[role=&quot;tablist&quot;]&#x27;)) {
+    const selected =
+      list.querySelector(&#x27;[role=&quot;tab&quot;][aria-selected=&quot;true&quot;]&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;].active&#x27;) ??
+      list.querySelector(&#x27;[role=&quot;tab&quot;]&#x27;);
+    if (selected != null) {
+      selectTab(selected);
+    }
+  }
+  document.addEventListener(&quot;click&quot;, interact);
+  document.addEventListener(&quot;keydown&quot;, interact);
+  window.addEventListener(&quot;pagehide&quot;, () =&gt; {
+    document.removeEventListener(&quot;click&quot;, interact);
+    document.removeEventListener(&quot;keydown&quot;, interact);
+  }, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>
