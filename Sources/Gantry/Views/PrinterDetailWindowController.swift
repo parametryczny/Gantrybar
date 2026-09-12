@@ -74,6 +74,15 @@ final class PrinterDetailViewController: NSViewController {
     private lazy var cameraFeed = CameraFeedController(store: store, serial: serial)
     private var cameraCard: NSView?
     private let presentation: DashboardPresentation
+    /// Reported whenever the cards change the height the panel needs, so the popover can follow.
+    var onPreferredContentSize: ((NSSize) -> Void)?
+    private var popoverHeightConstraint: NSLayoutConstraint?
+    private weak var headerRow: NSView?
+    /// The height the panel used to be nailed to. It survives as a floor, so a short detail view
+    /// looks the way it always did, and only a taller one is allowed past it.
+    private static let minimumPopoverHeight: CGFloat = 700
+    /// The width the popover is asked for; kept as it was so only the height changes.
+    private static let popoverReportedWidth: CGFloat = 600
 
     init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
          onOpenAutomations: @escaping () -> Void, onOpenAdvanced: @escaping () -> Void,
@@ -92,18 +101,23 @@ final class PrinterDetailViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 700))
-        // The popover needs a fixed fitting size. In the detached window the host controls both
-        // dimensions, keeping the header visible and the entire vertical scroll within the window.
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: Self.minimumPopoverHeight))
+        // The popover needs a definite fitting size, but the height is no longer a constant: it
+        // follows the cards and stops at the screen, so a tall detail view on a tall display is not
+        // forced to scroll inside a number picked by hand. In the detached window the host controls
+        // both dimensions, keeping the header visible and the entire vertical scroll within it.
         root.translatesAutoresizingMaskIntoConstraints = false
         if presentation == .popover {
+            let height = root.heightAnchor.constraint(equalToConstant: Self.minimumPopoverHeight)
+            popoverHeightConstraint = height
             NSLayoutConstraint.activate([
                 root.widthAnchor.constraint(equalToConstant: 480),
-                root.heightAnchor.constraint(equalToConstant: 700)
+                height
             ])
         }
         let header = makeHeader()
         header.translatesAutoresizingMaskIntoConstraints = false
+        headerRow = header
         root.addSubview(header)
 
         let scroll = NSScrollView()
@@ -211,6 +225,26 @@ final class PrinterDetailViewController: NSViewController {
         let customize = makeCustomizeButton()
         contentStack.addArrangedSubview(customize)
         customize.widthAnchor.constraint(equalTo: contentStack.widthAnchor, constant: -28).isActive = true
+        updatePreferredHeight()
+    }
+
+    /// Height the cards actually need, capped by the screen. Hiding or showing a module changes it, so
+    /// this runs from `rebuildCards` rather than once at load.
+    private func updatePreferredHeight() {
+        guard presentation == .popover, popoverHeightConstraint != nil else { return }
+        // Measure after the new cards have their constraints, otherwise fittingSize is the old stack.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let constraint = self.popoverHeightConstraint else { return }
+            self.view.layoutSubtreeIfNeeded()
+            let header = (self.headerRow?.fittingSize.height ?? 24) + 16   // 8 above, 8 below
+            let content = self.contentStack.fittingSize.height
+            let screen = self.view.window?.screen ?? NSScreen.main
+            let available = (screen?.visibleFrame.height ?? 900) - 40
+            let target = min(max(Self.minimumPopoverHeight, header + content), max(320, available))
+            guard abs(constraint.constant - target) >= 1 else { return }
+            constraint.constant = target
+            self.onPreferredContentSize?(NSSize(width: Self.popoverReportedWidth, height: target))
+        }
     }
 
     private func makeCustomizeButton() -> NSView {

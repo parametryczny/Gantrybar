@@ -633,6 +633,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
             onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) },
             onSkipObjects: { [weak self] in self?.showSkipObjects(serial: serial) })
+        // The detail view reports the height its cards need, capped by the screen, instead of being
+        // nailed to one number: on a tall display it grows rather than scrolling inside 720 points.
+        detail.onPreferredContentSize = { [weak self] size in
+            guard let self, self.detailViewController === detail,
+                  self.popover.contentSize != size else { return }
+            self.popover.contentSize = size
+        }
         detailViewController = detail
         swapPopoverContent(to: detail, size: NSSize(width: 600, height: 720))
     }

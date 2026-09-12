@@ -103,6 +103,16 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"pinButtonRect\(\)[\s\S]*?onUnpin\?\(\)",
         "macOS pinned edge dock cannot be released from the strip itself")
+
+# Issue #34, the second half: the detail panel must take the height its cards need, capped by the
+# screen, instead of the constant it used to be nailed to. GNU/Linux already sizes to content through
+# set_propagate_natural_height, so only the two ports that hard-coded a number are checked here.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"minimumPopoverHeight[\s\S]*?func updatePreferredHeight\(\)[\s\S]*?visibleFrame\.height",
+        "macOS detail popover height is not driven by its cards and the screen")
+require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
+        r"private void FitPanel\(\)[\s\S]*?double\.PositiveInfinity[\s\S]*?WorkArea\.Height",
+        "Windows bounded panel height is not measured from its content and the work area")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r"CardColumnPitch\s*=>\s*293 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
         "Windows floating window is not snapped to card columns with content-driven height")

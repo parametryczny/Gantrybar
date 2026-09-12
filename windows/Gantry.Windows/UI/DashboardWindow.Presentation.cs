@@ -193,6 +193,9 @@ public partial class DashboardWindow
 
     private double _panelWidth, _panelHeight;
     private ScrollViewer? _panelScroll;
+    private bool _fittingPanel;
+    /// Breathing room left around the bounded panel card inside the dashboard host.
+    private const double PanelInsetX = 32, PanelInsetY = 48;
     internal void ShowPanel(FrameworkElement content, double width = 480, double height = 650, Action? cleanup = null)
     {
         ClosePanel(); HideCardMenu();
@@ -227,19 +230,62 @@ public partial class DashboardWindow
         FleetSurface.Effect = new BlurEffect { Radius = 5, RenderingBias = RenderingBias.Performance };
         FleetSurface.IsHitTestVisible = false;
         FleetSurface.IsEnabled = false;
-        if (!WindowMode) Height = Math.Min(SystemParameters.WorkArea.Height - 24, Math.Max(Height, 600));
         FitPanel();
     }
 
+    /// Sizes the bounded panel card. The height a caller passes is a floor, not a ceiling: the card
+    /// takes whatever its content actually needs and only the work area stops it (in desktop mode, the
+    /// window the user sized). Before this, a detail view was pinned to the 720 points it asked for and
+    /// scrolled inside them even on a 1440p screen with a third of the height to spare, which is what
+    /// issue #34 traced: the scrollbar was stock WPF, the panel simply refused to grow.
     private void FitPanel()
     {
-        if (_panelScroll == null) return;
-        // The rounded card owns the size now; the scroller inside just fills it.
-        if (_panelScroll.Parent is Border card)
+        if (_fittingPanel || _panelScroll == null || _panelScroll.Parent is not Border card) return;
+        _fittingPanel = true;
+        try
         {
-            card.Width = Math.Max(1, Math.Min(_panelWidth, DashboardHost.ActualWidth - 32));
-            card.Height = Math.Max(1, Math.Min(_panelHeight, DashboardHost.ActualHeight - 48));
+            double cardWidth = Math.Max(1, Math.Min(_panelWidth, DashboardHost.ActualWidth - PanelInsetX));
+            double wanted = _panelHeight;
+            // Before the host has a width, measuring would happen at one point and report a nonsense
+            // height, so the floor stands until the real width arrives with the next SizeChanged.
+            if (DashboardHost.ActualWidth > PanelInsetX && _panelScroll.Content is FrameworkElement body)
+            {
+                // DesiredSize with unbounded vertical space, so this is the content's own height and
+                // not one the ScrollViewer's viewport has already clipped.
+                body.InvalidateMeasure();
+                body.Measure(new Size(cardWidth, double.PositiveInfinity));
+                wanted = Math.Max(wanted, body.DesiredSize.Height
+                                          + card.BorderThickness.Top + card.BorderThickness.Bottom);
+            }
+            double nonClient = WindowMode && DashboardHost.ActualHeight > 0
+                ? Math.Max(0, ActualHeight - DashboardHost.ActualHeight) : 0;
+            double cardHeight = Math.Max(1, Math.Min(wanted,
+                SystemParameters.WorkArea.Height - 24 - nonClient - PanelInsetY));
+            if (WindowMode)
+            {
+                // The window belongs to the user in desktop mode, so the card fits inside the size
+                // they chose instead of resizing it under them.
+                cardHeight = Math.Max(1, Math.Min(cardHeight, DashboardHost.ActualHeight - PanelInsetY));
+            }
+            else
+            {
+                double target = Math.Min(cardHeight + PanelInsetY, SystemParameters.WorkArea.Height - 24);
+                if (Math.Abs(target - Height) >= 1)
+                {
+                    _changingMode = true;
+                    Height = target;
+                    _changingMode = false;
+                    // The popover hangs off the bottom-right corner, so a taller one has to move up
+                    // rather than run off the screen.
+                    var area = SystemParameters.WorkArea;
+                    Left = area.Right - Width - 8;
+                    Top = area.Bottom - Height - 8;
+                }
+            }
+            card.Width = cardWidth;
+            card.Height = cardHeight;
         }
+        finally { _fittingPanel = false; }
     }
 
     internal void ClosePanel()
