@@ -5,6 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <!-- Only files free of WPF and of application state, so this stays a plain net8.0 console run.
+       The Moonraker parser does not qualify: its signature mentions MoonrakerObjects, which lives
+       next to a store built on Defaults, and that reaches Translations and the i18n files. Compiling
+       the parser here would drag half the app in, so the Windows side of object parsing is left to
+       the build itself and to the parity rules. -->
   <ItemGroup>
     <Compile Include="../Gantry.Windows/Services/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../Gantry.Windows/Services/UpdateAssetSelector.cs" Link="UpdateAssetSelector.cs" />

@@ -117,7 +117,11 @@ public static class StatusParser
         else if (!string.IsNullOrEmpty(reportedFile)) result.GcodeFile = reportedFile;
         else if (!string.IsNullOrEmpty(subtask)) result.GcodeFile = subtask;
         if (report.TryGetProperty("s_obj", out var skipped) && skipped.ValueKind == JsonValueKind.Array)
-            result.SkippedObjectIds = skipped.EnumerateArray().Select(value => IntValue(value)?.ToString()).Where(value => value is not null).Select(value => value!).ToHashSet();
+            result.SkippedObjectIds = skipped.EnumerateArray()
+                .Select(ObjectId)
+                .Where(value => value is not null)
+                .Select(value => value!)
+                .ToHashSet();
         if (UInt64Value(report, "print_error") is { } err) result.ErrorCode = err;
 
         if (report.TryGetProperty("hms", out var hms) && hms.ValueKind == JsonValueKind.Array)
@@ -356,6 +360,18 @@ public static class StatusParser
         var n = Num(obj, key);
         return n.HasValue ? (int)n.Value : null;
     }
+
+    /// <summary>One entry of Bambu's `s_obj` list of already-skipped objects. Unlike <see cref="Int"/>
+    /// the element itself is the value, not a property of an object. Numbers are the normal form, but
+    /// a string is accepted too, so a firmware that quotes them still matches the ids the picker uses.
+    /// </summary>
+    private static string? ObjectId(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Number => value.TryGetInt64(out var number)
+            ? number.ToString(CultureInfo.InvariantCulture) : null,
+        JsonValueKind.String => value.GetString() is { Length: > 0 } text ? text : null,
+        _ => null,
+    };
 
     /// <summary>Slot level, or null when the printer says it cannot measure it. Bambu reports
     /// remain: -1 for a slot with no RFID tag (a third-party spool), and passing that through
