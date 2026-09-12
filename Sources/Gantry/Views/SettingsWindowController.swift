@@ -14,7 +14,7 @@ private enum SettingsTab: Int, CaseIterable {
 }
 
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: PrinterStore
 
     // Chrome
@@ -95,6 +95,8 @@ final class SettingsWindowController: NSWindowController {
     private lazy var cardProgressRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardTempsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardFilamentsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
+    private let cardScaleControl = SettingsScaleControl()
+    private lazy var cardScaleRow = SettingsRowView(control: cardScaleControl)
     private lazy var cardSpoolGramsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardDetailsChipRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
 
@@ -105,6 +107,8 @@ final class SettingsWindowController: NSWindowController {
     private lazy var dockEnableRow = SettingsToggleRow(target: self, action: #selector(dockEnableToggled))
     private let dockEdgeControl = NSSegmentedControl(labels: ["L", "R"], trackingMode: .selectOne, target: nil, action: nil)
     private lazy var dockEdgeRow = SettingsRowView(control: dockEdgeControl)
+    private let dockScaleControl = SettingsScaleControl()
+    private lazy var dockScaleRow = SettingsRowView(control: dockScaleControl)
     private lazy var dockOnlyPrintingRow = SettingsToggleRow(target: self, action: #selector(dockOnlyPrintingToggled))
     private let dockPrintersCaption = NSTextField(labelWithString: "")
     /// The per-printer list is its own card so it can be rebuilt wholesale when printers come and go,
@@ -116,6 +120,7 @@ final class SettingsWindowController: NSWindowController {
     // MARK: Advanced
     private let developerGroupLabel = NSTextField(labelWithString: "")
     private lazy var developerRow = SettingsToggleRow(target: self, action: #selector(developerToggled))
+    private lazy var printerControlRow = SettingsToggleRow(target: self, action: #selector(printerControlToggled))
     private lazy var scriptActionsRow = SettingsToggleRow(target: self, action: #selector(scriptActionsToggled))
 
     private let telegramGroupLabel = NSTextField(labelWithString: "")
@@ -139,6 +144,7 @@ final class SettingsWindowController: NSWindowController {
 
 
     private var settingsSubscription: AnyCancellable?
+    var onClose: (() -> Void)?
 
     init(store: PrinterStore) {
         self.store = store
@@ -153,6 +159,7 @@ final class SettingsWindowController: NSWindowController {
         window.titleVisibility = .hidden
         window.contentMinSize = NSSize(width: 600, height: 520)
         super.init(window: window)
+        window.delegate = self
         buildInterface()
         refresh()
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
@@ -162,12 +169,36 @@ final class SettingsWindowController: NSWindowController {
 
     required init?(coder: NSCoder) { nil }
 
-    func presentCentered() {
+    /// Keeps the dashboard visible as a live preview while appearance settings are edited. The
+    /// settings window uses the dashboard's level (important when "always on top" is enabled) and
+    /// is centered over it without becoming its child, so switching window mode cannot hide both.
+    func presentCentered(over dashboardWindow: NSWindow? = nil) {
         refresh()
         showWindow(nil)
-        window?.center()
-        window?.makeKeyAndOrderFront(nil)
+        guard let window else { return }
+        if let dashboardWindow {
+            window.level = dashboardWindow.level
+            let targetFrame = dashboardWindow.frame
+            var origin = NSPoint(
+                x: targetFrame.midX - window.frame.width / 2,
+                y: targetFrame.midY - window.frame.height / 2
+            )
+            if let visible = dashboardWindow.screen?.visibleFrame {
+                origin.x = min(max(origin.x, visible.minX), visible.maxX - window.frame.width)
+                origin.y = min(max(origin.y, visible.minY), visible.maxY - window.frame.height)
+            }
+            window.setFrameOrigin(origin)
+        } else {
+            window.level = .normal
+            window.center()
+        }
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window?.level = .normal
+        onClose?()
     }
 
     // MARK: Layout helpers
@@ -285,6 +316,8 @@ final class SettingsWindowController: NSWindowController {
         configureSegmented(themeControl, action: #selector(themeChanged), widths: [82, 82])
         configureSegmented(transparencyControl, action: #selector(transparencyChanged), widths: [72, 72, 72])
         configureSegmented(dockEdgeControl, action: #selector(dockEdgeChanged), widths: [78, 78])
+        cardScaleControl.onStep = { [weak self] direction in self?.changeCardScale(direction) }
+        dockScaleControl.onStep = { [weak self] direction in self?.changeDockScale(direction) }
 
         pages[.general] = makePage(buildGeneralGroups())
         pages[.appearance] = makePage(buildAppearanceGroups())
@@ -417,7 +450,8 @@ final class SettingsWindowController: NSWindowController {
         if Build.isLite {
             return [
                 makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
-                makeGroup(cardsGroupLabel, [cardFileNameRow, cardProgressRow, cardTempsRow, cardFilamentsRow])
+                makeGroup(cardsGroupLabel, [cardScaleRow, cardFileNameRow, cardProgressRow,
+                                            cardTempsRow, cardFilamentsRow])
             ]
         }
 
@@ -430,7 +464,7 @@ final class SettingsWindowController: NSWindowController {
         // The dock section is one heading over two cards: the fixed switches, then the printer list.
         dockGroupLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         dockGroupLabel.textColor = GantryTheme.muted
-        let dockSettingsCard = makeCard([dockEnableRow, dockEdgeRow, dockOnlyPrintingRow])
+        let dockSettingsCard = makeCard([dockEnableRow, dockEdgeRow, dockScaleRow, dockOnlyPrintingRow])
         let dockGroup = NSStackView(views: [dockGroupLabel, dockSettingsCard,
                                             dockPrintersCaption, dockPrintersHolder, dockHint])
         dockGroup.orientation = .vertical
@@ -445,7 +479,7 @@ final class SettingsWindowController: NSWindowController {
 
         return [
             makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
-            makeGroup(cardsGroupLabel, [cardFileNameRow, cardProgressRow, cardTempsRow,
+            makeGroup(cardsGroupLabel, [cardScaleRow, cardFileNameRow, cardProgressRow, cardTempsRow,
                                         cardFilamentsRow, cardSpoolGramsRow, cardDetailsChipRow]),
             makeGroup(floatingWindowGroupLabel, [floatingWindowEnableRow]),
             dockGroup
@@ -507,7 +541,7 @@ final class SettingsWindowController: NSWindowController {
 
 
         return [
-            makeGroup(developerGroupLabel, [developerRow, scriptActionsRow]),
+            makeGroup(developerGroupLabel, [printerControlRow, developerRow, scriptActionsRow]),
             makeGroup(telegramGroupLabel, [telegramEnableRow, telegramTokenRow, telegramChatRow,
                                            telegramTestRow, telegramHintRow]),
             makeGroup(webGroupLabel, [webEnableRow, webRow])
@@ -618,6 +652,8 @@ final class SettingsWindowController: NSWindowController {
         monochromeRow.isOn = settings.monochrome
 
         cardsGroupLabel.stringValue = settings.t("PRINTER CARDS")
+        cardScaleRow.titleLabel.stringValue = settings.t("Card size")
+        cardScaleControl.configure(percent: settings.cardScalePercent, steps: AppSettings.cardScaleSteps)
         cardFileNameRow.titleLabel.stringValue = settings.t("File name")
         cardFileNameRow.isOn = settings.cardShowFileName
         cardProgressRow.titleLabel.stringValue = settings.t("Progress")
@@ -649,6 +685,11 @@ final class SettingsWindowController: NSWindowController {
         dockEdgeControl.selectedSegment = settings.edgeDockEdge == .left ? 0 : 1
         dockEdgeControl.isEnabled = settings.edgeDockEnabled
         dockEdgeRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
+        dockScaleRow.titleLabel.stringValue = settings.t("Edge dock size")
+        dockScaleControl.configure(percent: settings.edgeDockScalePercent,
+                                   steps: AppSettings.edgeDockScaleSteps,
+                                   enabled: settings.edgeDockEnabled)
+        dockScaleRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
         dockOnlyPrintingRow.titleLabel.stringValue = settings.t("Only printing")
         dockOnlyPrintingRow.isOn = settings.edgeDockOnlyPrinting
         dockOnlyPrintingRow.setEnabled(settings.edgeDockEnabled)
@@ -659,6 +700,9 @@ final class SettingsWindowController: NSWindowController {
 
     private func refreshAdvanced(_ settings: AppSettings) {
         developerGroupLabel.stringValue = settings.t("DEVELOPER")
+        printerControlRow.titleLabel.stringValue = settings.t("Printer control")
+        printerControlRow.setSubtitle(settings.t("Enables temperature, fan and speed controls in Details. Off by default."))
+        printerControlRow.isOn = settings.printerControlEnabled
         developerRow.titleLabel.stringValue = settings.t("Developer mode")
         developerRow.setSubtitle(settings.t("Reveals control and automations"))
         developerRow.isOn = settings.developerMode
@@ -789,6 +833,10 @@ final class SettingsWindowController: NSWindowController {
         AppSettings.shared.developerMode = developerRow.isOn
     }
 
+    @objc private func printerControlToggled() {
+        AppSettings.shared.printerControlEnabled = printerControlRow.isOn
+    }
+
     @objc private func scriptActionsToggled() {
         AppSettings.shared.allowScriptActions = scriptActionsRow.isOn
     }
@@ -829,6 +877,13 @@ final class SettingsWindowController: NSWindowController {
         AppSettings.shared.floatingWindowEnabled = floatingWindowEnableRow.isOn
     }
 
+    private func changeCardScale(_ direction: Int) {
+        let settings = AppSettings.shared
+        guard let index = AppSettings.cardScaleSteps.firstIndex(of: settings.cardScalePercent) else { return }
+        let target = min(max(0, index + direction), AppSettings.cardScaleSteps.count - 1)
+        settings.cardScalePercent = AppSettings.cardScaleSteps[target]
+    }
+
     // MARK: Edge dock
 
     @objc private func dockEnableToggled() {
@@ -837,6 +892,13 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func dockEdgeChanged() {
         AppSettings.shared.edgeDockEdge = dockEdgeControl.selectedSegment == 0 ? .left : .right
+    }
+
+    private func changeDockScale(_ direction: Int) {
+        let settings = AppSettings.shared
+        guard let index = AppSettings.edgeDockScaleSteps.firstIndex(of: settings.edgeDockScalePercent) else { return }
+        let target = min(max(0, index + direction), AppSettings.edgeDockScaleSteps.count - 1)
+        settings.edgeDockScalePercent = AppSettings.edgeDockScaleSteps[target]
     }
 
     @objc private func dockOnlyPrintingToggled() {

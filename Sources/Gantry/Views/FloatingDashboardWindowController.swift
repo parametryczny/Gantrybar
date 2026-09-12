@@ -12,14 +12,14 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
     private var embeddedController: NSViewController?
     private var embeddedPanel: NSView?
 
-    func present(_ controller: NSViewController, size: NSSize) {
+    func present(_ controller: NSViewController, size: NSSize, fillsViewport: Bool = true) {
         restoreFromDock()
         dismissEmbeddedPanel()
         guard let host = window?.contentView else { return }
         embeddedController = controller
         dashboard.addChild(controller)
         embeddedPanel = EmbeddedPanelView.show(controller.view, in: host, size: size,
-                                               fillsViewport: true) { [weak self] in
+                                               fillsViewport: fillsViewport) { [weak self] in
             self?.dismissEmbeddedPanel()
         }
     }
@@ -40,6 +40,7 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
         onEdit: @escaping (SavedPrinter) -> Void,
         onReconnect: @escaping (SavedPrinter) -> Void,
         onShowDetails: @escaping (String) -> Void,
+        onSkipObjects: @escaping (String) -> Void,
         onShowSettings: @escaping () -> Void
     ) {
         dashboard = PrinterDashboardViewController(
@@ -48,6 +49,7 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
             onEdit: onEdit,
             onReconnect: onReconnect,
             onShowDetails: onShowDetails,
+            onSkipObjects: onSkipObjects,
             onShowSettings: onShowSettings,
             presentation: .floatingWindow,
             onPreferredContentSize: { _ in }
@@ -75,6 +77,9 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
 
         super.init(window: panel)
         panel.delegate = self
+        dashboard.setPreferredContentSizeHandler { [weak self] size in
+            self?.fitHeightToCards(size.height)
+        }
 
         if !panel.setFrameUsingName(Self.frameAutosaveName) {
             panel.center()
@@ -91,6 +96,14 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyWindowLevel() }
+            .store(in: &subscriptions)
+        AppSettings.shared.$cardScalePercent
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.snapWindowToTiles() }
+            }
             .store(in: &subscriptions)
 
         applyWindowLevel()
@@ -153,7 +166,23 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
 
     private func snapWindowToTiles() {
         guard let panel = window, !panel.isZoomed else { return }
-        panel.setContentSize(dashboard.snappedFloatingContentSize(for: panel.contentView?.bounds.size ?? panel.contentRect(forFrameRect: panel.frame).size))
+        let current = panel.contentView?.bounds.size ?? panel.contentRect(forFrameRect: panel.frame).size
+        panel.setContentSize(dashboard.snappedFloatingContentSize(for: current))
+        DispatchQueue.main.async { [weak self] in self?.dashboard.refreshFloatingContentSize() }
+    }
+
+    private func fitHeightToCards(_ requestedHeight: CGFloat) {
+        guard let panel = window, !panel.inLiveResize, !panel.isZoomed else { return }
+        let current = panel.contentView?.bounds.size ?? panel.contentRect(forFrameRect: panel.frame).size
+        guard abs(current.height - requestedHeight) > 0.5 else { return }
+        let oldTop = panel.frame.maxY
+        panel.setContentSize(NSSize(width: current.width, height: requestedHeight))
+        var frame = panel.frame
+        frame.origin.y = oldTop - frame.height
+        if let visible = panel.screen?.visibleFrame {
+            frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
+        }
+        panel.setFrameOrigin(frame.origin)
     }
 }
 

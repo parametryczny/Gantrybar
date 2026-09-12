@@ -85,7 +85,8 @@ public partial class App : Application
         });
 
         _tray = new TrayIcon(_store);
-        WindowsToast.Initialize(() => dispatcher.BeginInvoke(_tray.ShowDashboardFromNotification));
+        WindowsToast.Initialize(arguments => dispatcher.BeginInvoke(() =>
+            _tray.HandleNotificationActivation(arguments)));
         NotificationService.Sink = (title, body, subtitle) =>
         {
             void Show() => _tray?.ShowNotification(title, body, subtitle);

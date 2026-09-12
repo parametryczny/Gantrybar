@@ -96,6 +96,9 @@ public partial class DashboardWindow : Window
         => ShowPanel(MaintenancePanel.Build(printer, telemetry, ClosePanel,
             () => Dispatcher.BeginInvoke(new Action(Rebuild))), 470, 570);
 
+    internal void ShowSkipObjects(string serial)
+        => ShowPanel(new SkipObjectsPanel(_store, serial, ClosePanel), 500, 680);
+
     private void ShowCardMenu(FrameworkElement anchor, FrameworkElement menu)
     {
         HideCardMenu();
@@ -656,31 +659,53 @@ public partial class DashboardWindow : Window
         Rebuild();
     }
 
-    // Sizes the window to the cards' content height (capped to the work area, with the ScrollViewer
-    // taking over beyond that). Uses DesiredSize — the content's intrinsic height from the measure
-    // pass — not ActualHeight, which is the arranged height and can stretch to the current viewport,
-    // creating a feedback loop that grew the window on every tick. Only runs while visible, so a
-    // hidden/minimized panel never resizes.
+    // Sizes both the tray popover and desktop window to the cards' real content height. Measuring the
+    // ScrollViewer itself is unreliable after its viewport has already constrained a taller card, so
+    // measure the header, card grid and footer separately with unbounded vertical space.
     internal void FitHeightToContent()
     {
-        if (!IsVisible || WindowMode || _boundedLayer != null) return;
+        if (!IsVisible || _boundedLayer != null || _nativeUserResize) return;
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (!IsVisible || WindowMode || _boundedLayer != null) return;
-            // Measure the whole panel (header + cards + footer) at the current width to get the exact
-            // height it needs, so the window fits without a scrollbar until it hits the work-area cap.
-            // Measuring DesiredSize (not ActualHeight) avoids the feedback loop that grew the window.
-            PanelBody.Measure(new Size(Width, double.PositiveInfinity));
-            double desired = PanelBody.DesiredSize.Height + 2;   // tiny buffer so Auto never adds a bar
+            if (!IsVisible || _boundedLayer != null || _nativeUserResize) return;
+            double innerWidth = Math.Max(1, Width - FleetSurface.Margin.Left - FleetSurface.Margin.Right);
+            double cardsWidth = Math.Max(1, innerWidth - CardsScroll.Padding.Left - CardsScroll.Padding.Right);
+            FleetHeader.InvalidateMeasure();
+            CardsPanel.InvalidateMeasure();
+            FooterText.InvalidateMeasure();
+            FleetHeader.Measure(new Size(innerWidth, double.PositiveInfinity));
+            CardsPanel.Measure(new Size(cardsWidth, double.PositiveInfinity));
+            FooterText.Measure(new Size(innerWidth, double.PositiveInfinity));
+            double desired = FleetSurface.Margin.Top + FleetSurface.Margin.Bottom
+                + FleetHeader.DesiredSize.Height
+                + CardsScroll.Padding.Top + CardsScroll.Padding.Bottom + CardsPanel.DesiredSize.Height
+                + FooterText.DesiredSize.Height + 12; // DPI rounding guard keeps Auto from adding a bottom bar
+            // In desktop mode Window.Height includes the native title bar and frame, while the values
+            // above describe only the WPF client area. Add that non-client portion or the last few
+            // pixels of the bottom card still land behind a scrollbar.
+            if (WindowMode && DashboardHost.ActualHeight > 0)
+                desired += Math.Max(0, ActualHeight - DashboardHost.ActualHeight);
             if (desired <= 0) return;
-            double max = Math.Min(1000, SystemParameters.WorkArea.Height - 24);
+            double max = Math.Max(322, SystemParameters.WorkArea.Height - 16);
             double target = Math.Min(max, Math.Max(_store.Startup.Loading ? 350 : 150, desired));
             if (Math.Abs(target - Height) < 1) return;
+            _changingMode = true;
             Height = target;
+            _changingMode = false;
             var area = SystemParameters.WorkArea;
-            Left = area.Right - Width - 8;
-            Top = area.Bottom - Height - 8;
-        }), System.Windows.Threading.DispatcherPriority.Loaded);
+            if (!WindowMode)
+            {
+                Left = area.Right - Width - 8;
+                Top = area.Bottom - Height - 8;
+            }
+            else
+            {
+                // Late AMS/error content may make a window grow after it has already been moved.
+                // Keep the enlarged window on-screen instead of letting its bottom edge disappear.
+                Left = Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - Width));
+                Top = Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - Height));
+            }
+        }), System.Windows.Threading.DispatcherPriority.ContextIdle);
     }
 
     private interface ICardView
@@ -705,7 +730,7 @@ public partial class DashboardWindow : Window
         private Point _dragStart;
         private readonly TextBlock _name, _connection, _pillText, _job, _jobSeparator, _percent, _eta, _layers, _message;
         private readonly Button _details;
-        private readonly Button _printerAlert, _maintenance;
+        private readonly Button _printerAlert, _maintenance, _skipObjects;
         private readonly Border _noticeBanner;
         private readonly TextBlock _noticeText;
         private Action? _onDismissNotice;
@@ -717,12 +742,16 @@ public partial class DashboardWindow : Window
         private bool _knownDualNozzle;
         // Flat layout: thin rules separate the sections; an offline scrim dims the card.
         private readonly Border _tempDivider, _amsDivider, _offlineOverlay, _printErrorPanel;
-        private readonly TextBlock _printErrorText;
+        private readonly TextBlock _printErrorText, _printErrorCode;
+        private readonly Button _printErrorDismiss;
         private readonly Grid _filamentSection;
         private readonly TextBlock _offlineText;
         // Temperature rows (nozzle(s)/bed/chamber) and the filament dock are rebuilt per update.
         private readonly StackPanel _temps;
         private readonly StackPanel _ams;
+        private static readonly Dictionary<string, string> DismissedErrorSignatures = new();
+        private string? _currentErrorSignature;
+        private bool _hasVisibleFilaments;
 
         public PrinterCard(DashboardWindow owner, SavedPrinter printer, double width = 290)
         {
@@ -738,6 +767,7 @@ public partial class DashboardWindow : Window
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // gap
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // printer alert
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // maintenance
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // skip objects
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // grip chip
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // more chip
 
@@ -786,6 +816,11 @@ public partial class DashboardWindow : Window
             }
             Grid.SetColumn(_printerAlert, 2); header.Children.Add(_printerAlert);
             Grid.SetColumn(_maintenance, 3); header.Children.Add(_maintenance);
+            _skipObjects = StatusButton(AppSettings.T("Skip object"));
+            _skipObjects.Content = "▱−";
+            _skipObjects.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
+            _skipObjects.Click += (_, _) => _owner.ShowSkipObjects(Serial);
+            Grid.SetColumn(_skipObjects, 4); header.Children.Add(_skipObjects);
 
             // Right cluster (macOS layout): drag grip + "..." menu, each in a faint rounded chip.
             var grip = new TextBlock { Text = "⠿", FontSize = 13, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll };
@@ -805,12 +840,12 @@ public partial class DashboardWindow : Window
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
                 _owner.BeginCardDrag(Root!, Serial);
             };
-            Grid.SetColumn(gripChip, 4);
+            Grid.SetColumn(gripChip, 5);
             header.Children.Add(gripChip);
             var more = new Button { Content = "⋯", FontSize = 13, Width = 24, Height = 20, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = GTheme.Brush(GTheme.W(0.025)), BorderThickness = new Thickness(0), Foreground = Muted() };
             var menu = owner.BuildCardMenu(printer.Serial);
             more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
-            Grid.SetColumn(more, 5);
+            Grid.SetColumn(more, 6);
             header.Children.Add(more);
             jobStack.Children.Add(header);
 
@@ -874,13 +909,31 @@ public partial class DashboardWindow : Window
                 TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxHeight = 32, VerticalAlignment = VerticalAlignment.Center
             };
+            _printErrorCode = new TextBlock
+            {
+                FontFamily = new FontFamily("Consolas"), FontSize = 9,
+                Foreground = GTheme.Brush(GTheme.Secondary), TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            var errorCopy = new StackPanel();
+            errorCopy.Children.Add(_printErrorText);
+            errorCopy.Children.Add(_printErrorCode);
+            _printErrorDismiss = new Button
+            {
+                Content = AppSettings.T("Dismiss"), Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center
+            };
+            _printErrorDismiss.Click += (_, _) => DismissPrintError();
+            var errorRow = new Grid();
+            errorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            errorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(errorCopy, 0); errorRow.Children.Add(errorCopy);
+            Grid.SetColumn(_printErrorDismiss, 1); errorRow.Children.Add(_printErrorDismiss);
             _printErrorPanel = new Border
             {
-                Height = 44, Background = new SolidColorBrush(Color.FromArgb(0x21, 0xFF, 0x5A, 0x4E)),
+                MinHeight = 62, Background = new SolidColorBrush(Color.FromArgb(0x21, 0xFF, 0x5A, 0x4E)),
                 CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 5, 8, 5),
-                Visibility = Visibility.Collapsed, Cursor = Cursors.Hand, Child = _printErrorText
+                Visibility = Visibility.Collapsed, Child = errorRow
             };
-            _printErrorPanel.MouseLeftButtonUp += (_, _) => OpenMaintenance();
             _filamentSection = new Grid();
             _filamentSection.Children.Add(_ams);
             _filamentSection.Children.Add(_printErrorPanel);
@@ -950,6 +1003,8 @@ public partial class DashboardWindow : Window
                 Width = width,
                 Child = rootGrid
             };
+            var cardScale = AppSettings.CardScalePercent / 100.0;
+            Root.LayoutTransform = new ScaleTransform(cardScale, cardScale);
 
             Root.AllowDrop = true;
             Root.DragOver += (_, e) =>
@@ -1009,6 +1064,10 @@ public partial class DashboardWindow : Window
             _printerAlert.Visibility = hasPrinterAlert ? Visibility.Visible : Visibility.Collapsed;
             _printerAlert.Content = actionable.Count > 1 ? $"! {actionable.Count}" : "!";
             _printerAlert.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x4E));
+            var currentPrinter = _owner._store.Printers.FirstOrDefault(value => value.Serial == Serial);
+            _skipObjects.Visibility = Build.HasExtras && (t.State is PrinterState.Printing or PrinterState.Paused)
+                && (currentPrinter?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
+                ? Visibility.Visible : Visibility.Collapsed;
             _connection.Text = printer.Kind switch
             {
                 PrinterKind.Bambu => "MQTT",
@@ -1129,16 +1188,32 @@ public partial class DashboardWindow : Window
             _percent.Visibility = _progressRow.Visibility = AppSettings.CardShowProgress ? show : collapse;
             _details.Visibility = AppSettings.CardShowDetailsChip ? show : collapse;
             _temps.Visibility = AppSettings.CardShowTemperatures ? show : collapse;
-            bool showPrintError = t.State == PrinterState.Error;
+            string errorSignature = HmsResolver.FormatErrorCode(t.ErrorCode) + "|" + string.Join("|", t.HmsCodes);
+            if (t.State != PrinterState.Error)
+            {
+                DismissedErrorSignatures.Remove(Serial);
+                _currentErrorSignature = null;
+            }
+            else _currentErrorSignature = errorSignature;
+            bool errorDismissed = t.State == PrinterState.Error
+                && DismissedErrorSignatures.TryGetValue(Serial, out var dismissedSignature)
+                && dismissedSignature == errorSignature;
+            bool showPrintError = t.State == PrinterState.Error && !errorDismissed;
             bool showFilaments = hasGroups && AppSettings.CardShowFilaments;
+            _hasVisibleFilaments = showFilaments;
             _filamentSection.Visibility = showFilaments || showPrintError ? show : collapse;
             _ams.Visibility = showPrintError ? Visibility.Hidden : showFilaments ? show : collapse;
             _printErrorPanel.Visibility = showPrintError ? show : collapse;
             if (showPrintError)
             {
                 _printErrorText.Text = HmsResolver.Description(t.HmsCodes, Serial, pl)
-                    ?? (t.ErrorCode != 0 ? string.Format(AppSettings.T("Error code: 0x{0:X}"), t.ErrorCode)
-                                         : AppSettings.T("Printer reported an error"));
+                    ?? HmsResolver.Description(t.ErrorCode, Serial, pl)
+                    ?? AppSettings.T("Printer reported an error");
+                _printErrorCode.Text = t.ErrorCode != 0
+                    ? string.Format(AppSettings.T("Diagnostic code: 0x{0}"), HmsResolver.FormatErrorCode(t.ErrorCode))
+                    : t.HmsCodes.FirstOrDefault() is { } hms
+                        ? string.Format(AppSettings.T("Diagnostic code: {0}"), hms) : "";
+                _printErrorDismiss.Content = AppSettings.T("Dismiss");
                 _printErrorPanel.ToolTip = _printErrorText.Text;
             }
             // Section rules only show when their section does (no orphan lines).
@@ -1155,6 +1230,16 @@ public partial class DashboardWindow : Window
             // the orange in-card line (that duplicated the text on the offline card).
             if (offline || string.IsNullOrEmpty(message)) _message.Visibility = Visibility.Collapsed;
             else { _message.Text = message; _message.Visibility = Visibility.Visible; }
+        }
+
+        private void DismissPrintError()
+        {
+            if (string.IsNullOrEmpty(_currentErrorSignature)) return;
+            DismissedErrorSignatures[Serial] = _currentErrorSignature;
+            _printErrorPanel.Visibility = Visibility.Collapsed;
+            _ams.Visibility = _hasVisibleFilaments ? Visibility.Visible : Visibility.Collapsed;
+            _filamentSection.Visibility = _hasVisibleFilaments ? Visibility.Visible : Visibility.Collapsed;
+            _amsDivider.Visibility = _filamentSection.Visibility;
         }
 
         private static void SetSegments(Grid bar, int progress, Color accent)
@@ -1616,14 +1701,15 @@ public partial class DashboardWindow : Window
         if (AppSettings.CardShowSpoolGrams)
         {
             double? grams = assignedSpool?.RemainingWeightGrams ?? slot.RemainingWeightGrams;
-            if (grams is { } g && g > 0)
-                panel.Children.Add(new TextBlock
-                {
-                    Text = $"{(int)g} g",
-                    FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.SemiBold,
-                    Foreground = GTheme.Brush(GTheme.Accent),
-                    HorizontalAlignment = HorizontalAlignment.Center
-                });
+            bool showGrams = present && grams is { } g && g > 0;
+            panel.Children.Add(new TextBlock
+            {
+                Text = showGrams ? $"{(int)(grams ?? 0)} g" : "0 g",
+                FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.SemiBold,
+                Foreground = GTheme.Brush(GTheme.Accent), Opacity = showGrams ? 1 : 0,
+                IsHitTestVisible = false, Focusable = false,
+                HorizontalAlignment = HorizontalAlignment.Center
+            });
         }
         // Click a slot to open its spool-assignment panel (Spoolbase).
         if (onClick is not null && location is not null)
@@ -1707,6 +1793,8 @@ public partial class DashboardWindow : Window
         // LITE keeps the menu to what a monitor needs: reconnect, copy IP, edit, remove. No detail
         // view, no slicer hand-offs.
         if (Build.HasExtras) Item(AppSettings.T("Details"), () => ShowDetail(serial));
+        if (Build.HasExtras && (printer.Kind is PrinterKind.Bambu or PrinterKind.Klipper))
+            Item(AppSettings.T("Skip object"), () => ShowSkipObjects(serial));
         Item(AppSettings.T("Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 
         if (Build.HasExtras)

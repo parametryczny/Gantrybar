@@ -56,7 +56,9 @@ public static class UpdateChecker
                 foreach (var asset in assets.EnumerateArray())
                 {
                     var name = asset.TryGetProperty("name", out var n) ? n.GetString() : null;
-                    if (name is null || !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
+                    // The release also contains Gantry LITE. Never select "the first exe": GitHub
+                    // currently returns the LITE installer before the full one.
+                    if (!UpdateAssetSelector.IsFullInstaller(name)) continue;
                     setupUrl = asset.TryGetProperty("browser_download_url", out var u) ? u.GetString() : null;
                     // GitHub reports a per-asset digest like "sha256:abc123…" — used to verify the download.
                     if (asset.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String
@@ -83,13 +85,13 @@ public static class UpdateChecker
 
     public static void MarkNotified(string version) => Defaults.SetString(NotifiedKey, version);
 
-    /// <summary>Downloads the setup .exe, verifies its SHA-256 against the release digest (when
-    /// present), then launches a detached PowerShell helper that waits for this app to exit, installs
+    /// <summary>Downloads the setup .exe, verifies its SHA-256 against the required release digest,
+    /// then launches a detached PowerShell helper that waits for this app to exit, installs
     /// silently and relaunches Gantry. Returns true once the helper is running (the caller should then
     /// shut the app down); false if it couldn't proceed (no asset / hash mismatch / download error).</summary>
     public static async Task<bool> DownloadAndInstallAsync(Release release)
     {
-        if (string.IsNullOrEmpty(release.SetupUrl)) return false;
+        if (string.IsNullOrEmpty(release.SetupUrl) || string.IsNullOrEmpty(release.Sha256)) return false;
 
         var setupPath = Path.Combine(Path.GetTempPath(), $"Gantry-Setup-{release.Version}.exe");
         bool verified = false;
@@ -104,38 +106,53 @@ public static class UpdateChecker
                 await resp.Content.CopyToAsync(fs);
             }
 
-            if (!string.IsNullOrEmpty(release.Sha256))
-            {
-                await using var fs = File.OpenRead(setupPath);
-                var hash = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
-                if (!string.Equals(hash, release.Sha256, StringComparison.OrdinalIgnoreCase)) return false;  // tampered / corrupt
-                verified = true;
-            }
+            await using var verifyStream = File.OpenRead(setupPath);
+            var hash = Convert.ToHexString(await SHA256.HashDataAsync(verifyStream)).ToLowerInvariant();
+            if (!string.Equals(hash, release.Sha256, StringComparison.OrdinalIgnoreCase)) return false;
+            verified = true;
         }
         catch { return false; }
 
         var exePath = Environment.ProcessPath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Gantry", "Gantry.exe");
+        var defaultInstalledExe = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Gantry", "Gantry.exe");
+        // An installed copy is replaced in place. A portable copy is not, so after setup finishes
+        // launch the newly installed application instead of returning to the stale portable exe.
+        var currentDir = Path.GetDirectoryName(exePath) ?? "";
+        var relaunchPath = File.Exists(Path.Combine(currentDir, "unins000.exe")) ? exePath : defaultInstalledExe;
         var ps1 = Path.Combine(Path.GetTempPath(), $"Gantry-update-{release.Version}.ps1");
         var script =
             "param($procId,$setup,$exe)\r\n" +
             "try { Wait-Process -Id $procId -ErrorAction SilentlyContinue } catch {}\r\n" +
             "Start-Sleep -Milliseconds 500\r\n" +
-            "Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait\r\n" +
-            "Start-Process -FilePath $exe\r\n";
+            "$install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru\r\n" +
+            "if ($install.ExitCode -eq 0 -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe }\r\n" +
+            "Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue\r\n" +
+            "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\r\n";
         try { File.WriteAllText(ps1, script); }
         catch { return false; }
 
         Defaults.SetString(InstalledPendingKey, $"{release.Version}|{(verified ? "1" : "0")}");
         try
         {
-            Process.Start(new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{ps1}\" {Environment.ProcessId} \"{setupPath}\" \"{exePath}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true
-            });
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-WindowStyle");
+            startInfo.ArgumentList.Add("Hidden");
+            startInfo.ArgumentList.Add("-ExecutionPolicy");
+            startInfo.ArgumentList.Add("Bypass");
+            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add(ps1);
+            startInfo.ArgumentList.Add(Environment.ProcessId.ToString());
+            startInfo.ArgumentList.Add(setupPath);
+            startInfo.ArgumentList.Add(relaunchPath);
+            Process.Start(startInfo);
         }
         catch { Defaults.SetString(InstalledPendingKey, ""); return false; }
         return true;

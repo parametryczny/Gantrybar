@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
@@ -20,12 +21,16 @@ public partial class DashboardWindow
     private readonly DispatcherTimer _geometryTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool _changingMode;
     private bool _reflowPending;
+    private bool _nativeUserResize;
+    private const int WmEnterSizeMove = 0x0231, WmExitSizeMove = 0x0232;
+    private double CardColumnPitch => 293 * AppSettings.CardScalePercent / 100.0;
     private int LayoutColumns => WindowMode
-        ? Math.Max(1, (int)Math.Round(((ActualWidth > 0 ? ActualWidth : Width) - 24) / 293))
+        ? Math.Max(1, (int)Math.Round(((ActualWidth > 0 ? ActualWidth : Width) - 24) / CardColumnPitch))
         : AppSettings.DashboardColumns;
 
     private void SetupPresentation()
     {
+        SourceInitialized += (_, _) => (PresentationSource.FromVisual(this) as HwndSource)?.AddHook(PresentationWindowProc);
         SettingsButton.ToolTip = AppSettings.T("Settings…");
         SettingsButton.Click += (_, _) => SettingsRequested?.Invoke();
         // macOS carries this switch in the panel header, so Windows does too. Settings alone was not
@@ -122,8 +127,23 @@ public partial class DashboardWindow
         MinWidth = enabled ? 317 : 0; MinHeight = enabled ? 322 : 0;
         if (changed && enabled)
         {
-            Width = Math.Clamp(Defaults.GetInt("floating-window-width", 610), 317, Math.Max(317, SystemParameters.WorkArea.Width));
-            Height = Math.Clamp(Defaults.GetInt("floating-window-height", 504), 322, Math.Max(322, SystemParameters.WorkArea.Height));
+            int savedWidth = Defaults.GetInt("floating-window-width", -1);
+            int savedHeight = Defaults.GetInt("floating-window-height", -1);
+            bool sizeMarkerExists = Defaults.ContainsKey("floating-window-size-user-set");
+            bool explicitSize = savedWidth > 0 && savedHeight > 0
+                && (sizeMarkerExists
+                    ? Defaults.GetBool("floating-window-size-user-set")
+                    : savedWidth != 610 || savedHeight != 504);
+            Defaults.SetBool("floating-window-size-user-set", explicitSize);
+            int printerCount = Math.Max(1, _store.DashboardPrinters.Count);
+            int automaticColumns = Math.Min(2, printerCount);
+            int automaticRows = Math.Max(1, (int)Math.Ceiling(printerCount / (double)automaticColumns));
+            int initialWidth = explicitSize ? savedWidth : (int)Math.Ceiling(24 + automaticColumns * CardColumnPitch);
+            // Height is only a launch placeholder. Once the cards have their live AMS/error content,
+            // FitHeightToContent replaces it with their measured natural height.
+            int initialHeight = explicitSize ? savedHeight : 140 + automaticRows * 182;
+            Width = Math.Clamp(initialWidth, 317, Math.Max(317, SystemParameters.WorkArea.Width));
+            Height = Math.Clamp(initialHeight, 322, Math.Max(322, SystemParameters.WorkArea.Height));
             Left = Math.Clamp(Left, SystemParameters.WorkArea.Left, SystemParameters.WorkArea.Right - Width);
             Top = Math.Clamp(Top, SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - Height);
             Dispatcher.BeginInvoke(new Action(SnapWindowToTiles), DispatcherPriority.Loaded);
@@ -133,26 +153,42 @@ public partial class DashboardWindow
         if (changed) { _renderedColumns = -1; Rebuild(); }
     }
 
-    /// Snap the desktop window to whole 285×174 card tiles. The grid changes its number of visible
-    /// columns/rows; cards never inherit an arbitrary width from a half-finished resize gesture.
+    private IntPtr PresentationWindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam,
+                                          ref bool handled)
+    {
+        if (message == WmEnterSizeMove && WindowMode) _nativeUserResize = true;
+        else if (message == WmExitSizeMove && WindowMode && _nativeUserResize)
+        {
+            _nativeUserResize = false;
+            SnapWindowToTiles();
+            Defaults.SetBool("floating-window-size-user-set", true);
+            Defaults.SetInt("floating-window-width", (int)Width);
+            Defaults.SetInt("floating-window-height", (int)Height);
+        }
+        return IntPtr.Zero;
+    }
+
+    /// Snap the desktop window to whole card columns. Height is deliberately content-driven: cards
+    /// grow when AMS/filament/error data arrives, so a fixed row pitch clips their bottom edge.
     private void SnapWindowToTiles()
     {
         if (!WindowMode || WindowState != WindowState.Normal || _changingMode) return;
-        const double widthBase = 24, columnPitch = 293;   // platform chrome/insets + 285 card + 8 gap
-        const double heightBase = 140, rowPitch = 182;   // title/header/footer + 174 card + 8 gap
+        const double widthBase = 24;
+        double columnPitch = CardColumnPitch;   // platform chrome/insets + scaled card and gap
         int screenColumns = Math.Max(1, (int)Math.Floor((SystemParameters.WorkArea.Width - widthBase) / columnPitch));
         int columns = Math.Clamp((int)Math.Round((Width - widthBase) / columnPitch), 1,
             screenColumns);
-        int screenRows = Math.Max(1, (int)Math.Floor((SystemParameters.WorkArea.Height - heightBase) / rowPitch));
-        int visibleRows = Math.Clamp((int)Math.Round((Height - heightBase) / rowPitch), 1,
-            screenRows);
         double snappedWidth = widthBase + columns * columnPitch;
-        double snappedHeight = heightBase + visibleRows * rowPitch;
-        if (Math.Abs(Width - snappedWidth) < .5 && Math.Abs(Height - snappedHeight) < .5) return;
-        _changingMode = true;
-        Width = snappedWidth;
-        Height = snappedHeight;
-        _changingMode = false;
+        if (Math.Abs(Width - snappedWidth) >= .5)
+        {
+            _changingMode = true;
+            Width = snappedWidth;
+            _changingMode = false;
+        }
+        // Width may have changed the number of rows. Rebuild first; the deferred measurement then
+        // gives every row the height of its tallest real card and removes the unnecessary scrollbar.
+        if (_renderedColumns != LayoutColumns) Rebuild();
+        else FitHeightToContent();
     }
 
     private double _panelWidth, _panelHeight;

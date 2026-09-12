@@ -102,7 +102,7 @@ public sealed class TrayIcon : IDisposable
                         {
                             UpdateChecker.MarkNotified(release.Version);
                             _pendingUpdateUrl = release.PageUrl;
-                            ShowNotification(
+                            ShowUpdateNotification(
                                 AppSettings.T("Gantry update available"),
                                 string.Format(AppSettings.T("Version {0} is available. Click to open the page."), release.Version),
                                 null);
@@ -149,7 +149,7 @@ public sealed class TrayIcon : IDisposable
         if (Build.HasExtras)
         {
             menu.Items.Add(new ToolStripMenuItem(AppSettings.T("How to read Gantry"), null,
-                (_, _) => { ShowDashboard(); _dashboard?.ShowOnboarding(); }));
+                (_, _) => ShowOnboardingAfterMenuCloses(menu)));
         }
         menu.Items.Add(new ToolStripSeparator());
 
@@ -185,6 +185,27 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Quit Gantry"), null, (_, _) => Application.Current.Shutdown()));
         _ = pl;
         return menu;
+    }
+
+    /// The WinForms tray menu still owns mouse capture inside its item callback. Wait for Closed,
+    /// then open and activate the WPF guide so its controls work on the first presentation.
+    private void ShowOnboardingAfterMenuCloses(ContextMenuStrip menu)
+    {
+        void ShowGuide() => Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            ShowDashboard();
+            _dashboard?.ShowOnboarding();
+            _dashboard?.Activate();
+        }));
+
+        if (!menu.Visible) { ShowGuide(); return; }
+        ToolStripDropDownClosedEventHandler? closed = null;
+        closed = (_, _) =>
+        {
+            menu.Closed -= closed;
+            ShowGuide();
+        };
+        menu.Closed += closed;
     }
 
     /// <summary>Non-interactive legend explaining the status colours on the cards. Emoji dots keep
@@ -252,6 +273,15 @@ public sealed class TrayIcon : IDisposable
 
     internal void ShowDashboardFromNotification() => ShowDashboard();
 
+    internal void HandleNotificationActivation(string? arguments)
+    {
+        if (!string.IsNullOrEmpty(arguments)
+            && arguments.Contains("action=update", StringComparison.OrdinalIgnoreCase))
+            OpenPendingUpdate();
+        else
+            ShowDashboardFromNotification();
+    }
+
     private void ToggleSpoolbase()
     {
         if (AppSettings.FloatingWindowEnabled) { ShowAuxiliary(new SpoolbaseWindow()); return; }
@@ -277,6 +307,7 @@ public sealed class TrayIcon : IDisposable
                 if (_spoolbase is not null) { _spoolbase.Close(); _spoolbase = null; }
             };
             _settings.OnEdgeDockChanged = () => _edgeDock?.Refresh();
+            _settings.OnCardScaleChanged = () => _dashboard?.RefreshTheme();
             _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); _dashboard?.RefreshTheme(); };
         }
         _settings.Show();
@@ -304,6 +335,13 @@ public sealed class TrayIcon : IDisposable
         // Native Action Center toast (shows in the Windows notification panel). Falls back to a tray
         // balloon if the toast infrastructure is unavailable.
         if (WindowsToast.Show(title, body, subtitle)) return;
+        string text = string.IsNullOrEmpty(subtitle) ? body : $"{subtitle}\n{body}";
+        _notifyIcon.ShowBalloonTip(5000, title, text, ToolTipIcon.Info);
+    }
+
+    private void ShowUpdateNotification(string title, string body, string? subtitle)
+    {
+        if (WindowsToast.Show(title, body, subtitle, "update")) return;
         string text = string.IsNullOrEmpty(subtitle) ? body : $"{subtitle}\n{body}";
         _notifyIcon.ShowBalloonTip(5000, title, text, ToolTipIcon.Info);
     }

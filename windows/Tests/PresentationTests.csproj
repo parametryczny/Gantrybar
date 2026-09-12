@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Gantry.Windows/Services/StartupState.cs" Link="StartupState.cs" />
+    <Compile Include="../Gantry.Windows/Services/UpdateAssetSelector.cs" Link="UpdateAssetSelector.cs" />
   </ItemGroup>
 </Project>

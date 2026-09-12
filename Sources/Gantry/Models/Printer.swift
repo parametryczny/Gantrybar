@@ -47,6 +47,8 @@ struct PrinterTelemetry: Equatable, Sendable {
     var chamberTargetTemperature: Double?
     var currentLayer: Int?
     var totalLayers: Int?
+    /// Active plate number reported by Bambu (`plate_idx`); required by get_project_file.
+    var currentPlateIndex: Int?
     // Cooling fans as a percentage (parsed from Bambu's 0–15 gear). Aux = big_fan1, chamber = big_fan2.
     var partFanPercent: Int?
     var auxFanPercent: Int?
@@ -62,6 +64,11 @@ struct PrinterTelemetry: Equatable, Sendable {
     var filamentUsedMM: Double?
     /// Bambu: the file currently being printed (for fetching the 3mf's per-filament used_g later).
     var gcodeFile: String?
+    /// Objects exposed by Klipper's `exclude_object` module. Bambu objects are loaded lazily from the
+    /// active gcode.3mf because they are not included in MQTT telemetry.
+    var printObjects: [PrintObject] = []
+    var skippedObjectIDs: Set<String> = []
+    var currentObjectID: String?
     var errorCode: UInt64 = 0
     var hmsCodes: [String] = []
     // Physical filament modules (AMS / AMS HT / CFS / MMU / external). Replaces the flat slot list
@@ -76,6 +83,31 @@ struct PrinterTelemetry: Equatable, Sendable {
     /// Dev diagnostic: the raw AMS-related JSON the printer last reported (developer mode only).
     var debugAMS: String?
     var lastUpdated: Date?
+}
+
+struct BedPoint: Equatable, Sendable {
+    let x: Double
+    let y: Double
+}
+
+struct PrintObject: Equatable, Identifiable, Sendable {
+    /// Klipper object name or Bambu identify_id, represented uniformly for selection/state matching.
+    let id: String
+    let name: String
+    let polygon: [BedPoint]
+}
+
+struct PrintObjectLayout: Equatable, Sendable {
+    let objects: [PrintObject]
+    let skippedObjectIDs: Set<String>
+    let currentObjectID: String?
+    let bedBounds: [Double]          // minX, minY, maxX, maxY
+    let previewPNG: Data?
+}
+
+enum PrintObjectLoadResult: Sendable {
+    case loaded(PrintObjectLayout)
+    case unavailable(String)
 }
 
 /// Which physical filament system a group came from.

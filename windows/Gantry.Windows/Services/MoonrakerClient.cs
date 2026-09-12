@@ -84,7 +84,7 @@ public sealed class MoonrakerClient : IPrinterConnection
 
     private async Task<string?> BuildQueryUrlAsync()
     {
-        var wanted = new List<string> { "print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move", _objects.Nozzle, _objects.Bed, _objects.Fan };
+        var wanted = new List<string> { "print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move", "exclude_object", _objects.Nozzle, _objects.Bed, _objects.Fan };
         if (!string.IsNullOrEmpty(_objects.Chamber)) wanted.Add(_objects.Chamber!);
         wanted = wanted.Distinct().ToList();
         try

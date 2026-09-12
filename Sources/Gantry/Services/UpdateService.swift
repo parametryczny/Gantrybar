@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 
 /// Checks GitHub Releases for a newer Gantry and, on request, downloads it, swaps the running
@@ -9,6 +10,7 @@ enum UpdateService {
         let tag: String
         let downloadURL: URL
         let pageURL: URL
+        let sha256: String
     }
 
     enum UpdateError: LocalizedError {
@@ -16,6 +18,7 @@ enum UpdateService {
         case parse
         case noAsset
         case download
+        case checksum
         case unpack
         case signature
 
@@ -30,6 +33,7 @@ enum UpdateService {
             case .parse: "Nie udało się odczytać informacji o wydaniu."
             case .noAsset: "Wydanie nie zawiera pliku aplikacji dla macOS."
             case .download: "Pobieranie aktualizacji nie powiodło się."
+            case .checksum: "Suma kontrolna pobranej aktualizacji jest nieprawidłowa. Instalację przerwano."
             case .unpack: "Nie udało się rozpakować aktualizacji."
             case .signature: "Podpis pobranej aktualizacji nie zgadza się z bieżącą aplikacją. Instalację przerwano — pobierz wydanie ręcznie ze strony."
             }
@@ -40,6 +44,7 @@ enum UpdateService {
             case .parse: "Could not read the release information."
             case .noAsset: "The release has no macOS app download."
             case .download: "Downloading the update failed."
+            case .checksum: "The downloaded update checksum is invalid. Installation was aborted."
             case .unpack: "Could not unpack the update."
             case .signature: "The downloaded update is not signed by the same identity as the current app. Installation was aborted — download the release manually from the page."
             }
@@ -72,11 +77,13 @@ enum UpdateService {
             ?? URL(string: "https://github.com/parametryczny/gantrybar/releases")!
 
         let assets = root["assets"] as? [[String: Any]] ?? []
-        func assetURL(matching predicate: (String) -> Bool) -> URL? {
+        func releaseAsset(matching predicate: (String) -> Bool) -> (URL, String)? {
             for asset in assets {
                 if let name = asset["name"] as? String, predicate(name),
-                   let link = asset["browser_download_url"] as? String, let url = URL(string: link) {
-                    return url
+                   let link = asset["browser_download_url"] as? String, let url = URL(string: link),
+                   let digest = asset["digest"] as? String,
+                   digest.lowercased().hasPrefix("sha256:") {
+                    return (url, String(digest.dropFirst("sha256:".count)).lowercased())
                 }
             }
             return nil
@@ -87,11 +94,15 @@ enum UpdateService {
         let isKeychain = Bundle.main.bundleURL.deletingPathExtension()
             .lastPathComponent.localizedCaseInsensitiveContains("Keychain")
         let variantTag = isKeychain ? "macOS-Keychain" : "macOS-Local"
-        guard let downloadURL = assetURL(matching: { $0.contains(variantTag) && $0.hasSuffix(".zip") })
-            ?? assetURL(matching: { $0.contains("macOS") && $0.hasSuffix(".zip") }) else {
+        guard let asset = releaseAsset(matching: { $0.contains(variantTag) && $0.hasSuffix(".zip") })
+            ?? releaseAsset(matching: {
+                $0.contains("macOS") && $0.hasSuffix(".zip")
+                    && !$0.localizedCaseInsensitiveContains("LITE")
+            }) else {
             throw UpdateError.noAsset
         }
-        return Release(version: version, tag: tag, downloadURL: downloadURL, pageURL: pageURL)
+        return Release(version: version, tag: tag, downloadURL: asset.0, pageURL: pageURL,
+                       sha256: asset.1)
     }
 
     /// `true` when `candidate` is a strictly higher semantic version than `current`.
@@ -113,6 +124,11 @@ enum UpdateService {
         do { (temporary, response) = try await URLSession.shared.download(from: release.downloadURL) }
         catch { throw UpdateError.download }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError.download }
+        guard let data = try? Data(contentsOf: temporary, options: .mappedIfSafe) else {
+            throw UpdateError.download
+        }
+        let downloadedHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        guard downloadedHash == release.sha256 else { throw UpdateError.checksum }
 
         let fileManager = FileManager.default
         let work = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -130,10 +146,7 @@ enum UpdateService {
             throw UpdateError.unpack
         }
 
-        // Refuse to install anything not signed by the same identity as the running app. HTTPS
-        // already authenticates GitHub as the source; this additionally ensures a tampered or
-        // foreign-signed asset can't silently replace the app, since the local signing key that
-        // produced the running build is never on the release server.
+        // Refuse to install anything not signed by the same identity as the running app.
         try verifySignatureMatchesCurrentApp(newApp)
 
         let destination = Bundle.main.bundleURL
@@ -142,11 +155,23 @@ enum UpdateService {
         #!/bin/bash
         trap '' HUP
         PID="$1"; NEW="$2"; DEST="$3"
+        BACKUP="${DEST}.gantry-update-backup"
         while kill -0 "$PID" 2>/dev/null; do sleep 0.3; done
-        /bin/rm -rf "$DEST"
-        /usr/bin/ditto "$NEW" "$DEST"
-        /usr/bin/xattr -cr "$DEST"
-        /usr/bin/open "$DEST"
+        /bin/rm -rf "$BACKUP"
+        if ! /bin/mv "$DEST" "$BACKUP"; then
+          /usr/bin/open "$DEST"
+          exit 1
+        fi
+        if /usr/bin/ditto "$NEW" "$DEST"; then
+          /usr/bin/xattr -cr "$DEST"
+          /usr/bin/open "$DEST"
+          /bin/rm -rf "$BACKUP"
+        else
+          /bin/rm -rf "$DEST"
+          /bin/mv "$BACKUP" "$DEST"
+          /usr/bin/open "$DEST"
+          exit 1
+        fi
         """
         try contents.write(to: script, atomically: true, encoding: .utf8)
 
@@ -167,32 +192,45 @@ enum UpdateService {
         guard process.terminationStatus == 0 else { throw UpdateError.unpack }
     }
 
-    /// Verifies the downloaded bundle's code signature is intact (`codesign --verify --strict`)
-    /// and that its leaf signing certificate matches the running app's. Any mismatch — an
-    /// ad-hoc, unsigned, or differently-signed bundle — aborts the install.
+    /// Requires the same leaf certificate and bundle identity as the running app. The ZIP itself is
+    /// first matched against GitHub's SHA-256 digest. Gantry releases use a stable self-signed
+    /// identity, so codesign reports CSSMERR_TP_NOT_TRUSTED for an otherwise intact release; that
+    /// single trust-chain result is accepted for compatibility with existing installations.
     private static func verifySignatureMatchesCurrentApp(_ newApp: URL) throws {
+        guard let current = signingLeafHash(of: Bundle.main.bundleURL),
+              let candidate = signingLeafHash(of: newApp),
+              current == candidate else {
+            throw UpdateError.signature
+        }
+
         let verify = Process()
         verify.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         verify.arguments = ["--verify", "--strict", "--deep", "--", newApp.path]
         verify.standardOutput = Pipe()
-        verify.standardError = Pipe()
+        let errorPipe = Pipe()
+        verify.standardError = errorPipe
         do { try verify.run() } catch { throw UpdateError.signature }
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
         verify.waitUntilExit()
-        guard verify.terminationStatus == 0 else { throw UpdateError.signature }
+        if verify.terminationStatus != 0 {
+            let message = String(data: errorData, encoding: .utf8) ?? ""
+            guard message.contains("CSSMERR_TP_NOT_TRUSTED") else {
+                throw UpdateError.signature
+            }
+        }
 
-        guard let current = signingAuthority(of: Bundle.main.bundleURL),
-              let candidate = signingAuthority(of: newApp),
-              current == candidate else {
+        // Also require the same product identity; the certificate signs both full and LITE builds.
+        guard bundleIdentifier(of: newApp) == Bundle.main.bundleIdentifier else {
             throw UpdateError.signature
         }
     }
 
-    /// Returns the leaf-certificate authority (`Authority=` line) reported by `codesign -dvv`,
-    /// or nil for an unsigned/ad-hoc bundle (which then fails the equality check above).
-    private static func signingAuthority(of url: URL) -> String? {
+    /// Returns the certificate hash embedded in the designated requirement. Unlike `Authority=`,
+    /// this remains available for a deliberately untrusted self-signed certificate.
+    private static func signingLeafHash(of url: URL) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        process.arguments = ["-dvv", "--", url.path]
+        process.arguments = ["-dr-", "--", url.path]
         let errorPipe = Pipe()
         process.standardError = errorPipe
         process.standardOutput = Pipe()
@@ -200,9 +238,14 @@ enum UpdateService {
         let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0, let text = String(data: data, encoding: .utf8) else { return nil }
-        for line in text.split(separator: "\n") where line.hasPrefix("Authority=") {
-            return String(line.dropFirst("Authority=".count))
-        }
-        return nil
+        guard let range = text.range(of: #"certificate leaf = H\"([0-9A-Fa-f]+)\""#,
+                                     options: .regularExpression) else { return nil }
+        let match = String(text[range])
+        return match.split(separator: "\"").dropFirst().first.map { String($0).lowercased() }
+    }
+
+    private static func bundleIdentifier(of app: URL) -> String? {
+        guard let bundle = Bundle(url: app) else { return nil }
+        return bundle.bundleIdentifier
     }
 }

@@ -83,3 +83,15 @@ def description(codes: list[str], serial: str, language: str) -> str | None:
         if message := messages.get(_normalize(code), "").strip():
             return message
     return f"HMS {actionable[0]}"
+
+
+def format_error_code(error_code: int) -> str:
+    """Format MQTT's decimal print_error like Bambu's eight-character hexadecimal ecode."""
+    return f"{max(0, int(error_code)):08X}"
+
+
+def description_for_error(error_code: int, serial: str, language: str) -> str | None:
+    if not error_code:
+        return None
+    messages = _messages("pl" if language == "pl" else "en", serial)
+    return messages.get(format_error_code(error_code), "").strip() or None

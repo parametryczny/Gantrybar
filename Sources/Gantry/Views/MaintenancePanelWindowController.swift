@@ -173,8 +173,10 @@ final class MaintenancePanelViewController: NSViewController {
         }
         if telemetry.errorCode != 0 {
             return [(
-                s.t("Error code: 0x{0}", telemetry.errorCode),
-                nil
+                HMSResolver.shared.description(
+                    for: telemetry.errorCode, serial: printer.serial, language: s.language
+                ) ?? s.t("Printer reported an error"),
+                s.t("Diagnostic code: 0x{0}", HMSResolver.shared.formatted(errorCode: telemetry.errorCode))
             )]
         }
         if telemetry.state == .error {

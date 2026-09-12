@@ -4,8 +4,8 @@ import Combine
 import CoreMedia
 
 /// Rich, in-popover per-printer detail view ("Szczegóły") — a HelixScreen-style read view shown by
-/// swapping the popover's content, with a back button to return to the fleet. Monitor only: no
-/// printer control. Bambu printers also get a live chamber-camera stream.
+/// swapping the popover's content, with a back button to return to the fleet. Control surfaces are
+/// an explicit opt-in in Advanced settings. Bambu printers also get a live chamber-camera stream.
 @MainActor
 final class PrinterDetailViewController: NSViewController {
     private let store: PrinterStore
@@ -13,6 +13,7 @@ final class PrinterDetailViewController: NSViewController {
     private let onBack: () -> Void
     private let onOpenAutomations: () -> Void
     private let onOpenAdvanced: () -> Void
+    private let onSkipObjects: () -> Void
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var insightsSubscription: AnyCancellable?
@@ -28,6 +29,7 @@ final class PrinterDetailViewController: NSViewController {
 
     // Header
     private let backButton = NSButton()
+    private let skipObjectsButton = NSButton()
     private let stateDot = NSView()
     private let stateLabel = NSTextField(labelWithString: "")
     private let nameLabel = NSTextField(labelWithString: "")
@@ -43,6 +45,9 @@ final class PrinterDetailViewController: NSViewController {
     private let nozzleChip = TempChipView(title: "Dysza")
     private let bedChip = TempChipView(title: "Stół")
     private let chamberChip = TempChipView(title: "Komora")
+    private let nozzleControl = CompactControlSlider(title: "Dysza", range: 0...300, suffix: "°")
+    private let bedControl = CompactControlSlider(title: "Stół", range: 0...120, suffix: "°")
+    private let temperatureControls = NSStackView()
 
     // Fans / speed
     private let partFan = FanChip(title: "Part")
@@ -50,6 +55,11 @@ final class PrinterDetailViewController: NSViewController {
     private let chamberFan = FanChip(title: "Chamber")
     private let speedLabel = NSTextField(labelWithString: "")
     private let diameterLabel = NSTextField(labelWithString: "")
+    private let partFanControl = CompactControlSlider(title: "Part", range: 0...100, suffix: "%")
+    private let auxFanControl = CompactControlSlider(title: "Aux", range: 0...100, suffix: "%")
+    private let chamberFanControl = CompactControlSlider(title: "Chamber", range: 0...100, suffix: "%")
+    private let speedControl = CompactControlSlider(title: "Prędkość", range: 10...166, suffix: "%")
+    private let fanControls = NSStackView()
 
     // AMS / filaments — reuse the fleet card's dock so the layout logic stays identical.
     private let filamentDock = FilamentDockView()
@@ -77,12 +87,14 @@ final class PrinterDetailViewController: NSViewController {
 
     init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
          onOpenAutomations: @escaping () -> Void, onOpenAdvanced: @escaping () -> Void,
+         onSkipObjects: @escaping () -> Void = {},
          presentation: DashboardPresentation = .popover) {
         self.store = store
         self.serial = serial
         self.onBack = onBack
         self.onOpenAutomations = onOpenAutomations
         self.onOpenAdvanced = onOpenAdvanced
+        self.onSkipObjects = onSkipObjects
         self.presentation = presentation
         super.init(nibName: nil, bundle: nil)
     }
@@ -322,7 +334,16 @@ final class PrinterDetailViewController: NSViewController {
         stateDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
         stateLabel.font = .systemFont(ofSize: 11, weight: .semibold)
 
-        let row = NSStackView(views: [backButton, NSView(), stateDot, stateLabel])
+        skipObjectsButton.title = AppSettings.shared.t("Skip object…")
+        skipObjectsButton.target = self
+        skipObjectsButton.action = #selector(skipObjectsPressed)
+        skipObjectsButton.image = NSImage(systemSymbolName: "rectangle.stack.badge.minus", accessibilityDescription: nil)
+        skipObjectsButton.imagePosition = .imageLeading
+        skipObjectsButton.bezelStyle = .accessoryBar
+        skipObjectsButton.controlSize = .small
+        skipObjectsButton.isHidden = true
+
+        let row = NSStackView(views: [backButton, skipObjectsButton, NSView(), stateDot, stateLabel])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 7
@@ -330,6 +351,7 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     @objc private func backPressed() { onBack() }
+    @objc private func skipObjectsPressed() { onSkipObjects() }
 
     // MARK: Card builders
 
@@ -394,18 +416,25 @@ final class PrinterDetailViewController: NSViewController {
     private func makeTemperatureCard() -> NSView {
         let box = card()
         graph.translatesAutoresizingMaskIntoConstraints = false
-        graph.heightAnchor.constraint(equalToConstant: 104).isActive = true
+        graph.heightAnchor.constraint(equalToConstant: 72).isActive = true
         let chips = NSStackView(views: [nozzleChip, bedChip, chamberChip])
         chips.orientation = .horizontal
         chips.distribution = .fillEqually
         chips.spacing = 8
-        let stack = NSStackView(views: [sectionTitle("Temperatury"), graph, chips])
+        temperatureControls.setViews([nozzleControl, bedControl], in: .top)
+        temperatureControls.orientation = .horizontal
+        temperatureControls.distribution = .fillEqually
+        temperatureControls.spacing = 10
+        nozzleControl.onChange = { [weak self] value in self?.store.setNozzleTemperature(serial: self?.serial ?? "", celsius: value) }
+        bedControl.onChange = { [weak self] value in self?.store.setBedTemperature(serial: self?.serial ?? "", celsius: value) }
+        let stack = NSStackView(views: [sectionTitle("Temperatury"), graph, chips, temperatureControls])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
         graph.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         chips.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        temperatureControls.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
@@ -421,13 +450,28 @@ final class PrinterDetailViewController: NSViewController {
         let infoRow = NSStackView(views: [speedLabel, NSView(), diameterLabel])
         infoRow.orientation = .horizontal
         infoRow.alignment = .centerY
-        let stack = NSStackView(views: [sectionTitle("Wentylatory i prędkość"), gauges, infoRow])
+        let fanControlsTop = NSStackView(views: [partFanControl, auxFanControl])
+        let fanControlsBottom = NSStackView(views: [chamberFanControl, speedControl])
+        for row in [fanControlsTop, fanControlsBottom] {
+            row.orientation = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 10
+        }
+        fanControls.setViews([fanControlsTop, fanControlsBottom], in: .top)
+        fanControls.orientation = .vertical
+        fanControls.spacing = 5
+        partFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 1, percent: value) }
+        auxFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 2, percent: value) }
+        chamberFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 3, percent: value) }
+        speedControl.onChange = { [weak self] value in self?.store.setPrintSpeed(serial: self?.serial ?? "", percent: value) }
+        let stack = NSStackView(views: [sectionTitle("Wentylatory i prędkość"), gauges, infoRow, fanControls])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
         gauges.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         infoRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        fanControls.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
@@ -582,6 +626,8 @@ final class PrinterDetailViewController: NSViewController {
         let settings = AppSettings.shared
         let t = store.telemetry[serial] ?? .init()
         let printer = store.printers.first(where: { $0.serial == serial })
+        let supportsSkipping = printer?.kind == .bambu || printer?.kind == .klipper
+        skipObjectsButton.isHidden = !supportsSkipping || (t.state != .printing && t.state != .paused)
 
         stateDot.layer?.backgroundColor = Self.color(for: t.state).cgColor
         stateLabel.stringValue = settings.t(englishState(t.state))
@@ -618,9 +664,22 @@ final class PrinterDetailViewController: NSViewController {
                         target: (t.chamberTargetTemperature ?? 0) > 0 ? t.chamberTargetTemperature : nil,
                         accent: Self.chamberColor)
 
+        let kind = printer?.kind
+        let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper)
+        temperatureControls.isHidden = !controlEnabled
+        fanControls.isHidden = !controlEnabled
+        nozzleControl.set(value: Int((t.nozzleTargetTemperature ?? t.nozzleTemperature ?? 0).rounded()))
+        bedControl.set(value: Int((t.bedTargetTemperature ?? t.bedTemperature ?? 0).rounded()))
+
         partFan.set(percent: t.partFanPercent)
         auxFan.set(percent: t.auxFanPercent)
         chamberFan.set(percent: t.chamberFanPercent)
+        partFanControl.set(value: t.partFanPercent ?? 0)
+        auxFanControl.set(value: t.auxFanPercent ?? 0)
+        chamberFanControl.set(value: t.chamberFanPercent ?? 0)
+        auxFanControl.isEnabled = kind == .bambu
+        chamberFanControl.isEnabled = kind == .bambu
+        speedControl.set(value: t.speedPercent ?? 100)
         if let level = t.speedLevel {
             var text = settings.t("Speed: ") + speedName(level)
             if let mag = t.speedPercent { text += " · \(mag)%" }
@@ -935,6 +994,102 @@ final class PrinterDetailViewController: NSViewController {
 
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+// MARK: - Compact, opt-in control
+
+@MainActor
+private final class CompactControlSlider: NSView {
+    var onChange: ((Int) -> Void)?
+    private let nameLabel = NSTextField(labelWithString: "")
+    private let valueLabel = NSTextField(labelWithString: "")
+    private let minusButton = NSButton()
+    private let plusButton = NSButton()
+    private let suffix: String
+    private let step: Int
+    private let range: ClosedRange<Int>
+    private var value: Int
+
+    var isEnabled: Bool {
+        get { minusButton.isEnabled }
+        set {
+            minusButton.isEnabled = newValue
+            plusButton.isEnabled = newValue
+            alphaValue = newValue ? 1 : 0.38
+        }
+    }
+
+    init(title: String, range: ClosedRange<Int>, suffix: String) {
+        self.suffix = suffix
+        self.step = 5
+        self.range = range
+        self.value = range.lowerBound
+        super.init(frame: .zero)
+        nameLabel.stringValue = AppSettings.shared.t(title)
+        nameLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        nameLabel.textColor = GantryTheme.secondary
+        nameLabel.alignment = .left
+        nameLabel.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+        valueLabel.textColor = GantryTheme.text
+        valueLabel.alignment = .right
+        valueLabel.alignment = .center
+        valueLabel.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        configureStepButton(minusButton, symbol: "minus", action: #selector(decrement))
+        configureStepButton(plusButton, symbol: "plus", action: #selector(increment))
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [nameLabel, spacer, minusButton, valueLabel, plusButton])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 7
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(equalToConstant: 22)
+        ])
+        set(value: range.lowerBound)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private func configureStepButton(_ button: NSButton, symbol: String, action: Selector) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 6
+        button.layer?.backgroundColor = GantryTheme.surface.cgColor
+        button.target = self
+        button.action = action
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 22),
+            button.heightAnchor.constraint(equalToConstant: 22)
+        ])
+    }
+
+    func set(value: Int) {
+        let clamped = min(range.upperBound, max(range.lowerBound, value))
+        self.value = clamped
+        valueLabel.stringValue = "\(clamped)\(suffix)"
+        minusButton.isEnabled = isEnabled && clamped > range.lowerBound
+        plusButton.isEnabled = isEnabled && clamped < range.upperBound
+    }
+
+    @objc private func decrement() { commit(value - step) }
+    @objc private func increment() { commit(value + step) }
+
+    private func commit(_ candidate: Int) {
+        let clamped = min(range.upperBound, max(range.lowerBound, candidate))
+        set(value: clamped)
+        onChange?(clamped)
+    }
 }
 
 // MARK: - Temperature graph

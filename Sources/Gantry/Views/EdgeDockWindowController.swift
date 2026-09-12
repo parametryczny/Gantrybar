@@ -78,6 +78,7 @@ final class EdgeDockWindowController {
             return
         }
         dockView.edge = settings.edgeDockEdge
+        dockView.scale = CGFloat(settings.edgeDockScalePercent) / 100
         dockView.entries = entries
         reposition()
         if !panel.isVisible { panel.orderFrontRegardless() }
@@ -114,6 +115,13 @@ struct EdgeDockEntry {
 private final class EdgeDockView: NSView {
     var entries: [EdgeDockEntry] = [] { didSet { needsDisplay = true } }
     var edge: EdgeDockEdge = .right { didSet { needsDisplay = true } }
+    var scale: CGFloat = 1 {
+        didSet {
+            guard abs(scale - oldValue) > 0.001 else { return }
+            onLayoutChange?()
+            needsDisplay = true
+        }
+    }
     var onSelect: ((String) -> Void)?
     var onLayoutChange: (() -> Void)?
 
@@ -132,8 +140,8 @@ private final class EdgeDockView: NSView {
     private static let expandedTextGap: CGFloat = 8
     private static let expandedPadX: CGFloat = 11
 
-    private static let nameFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
-    private static let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+    private var nameFont: NSFont { .systemFont(ofSize: 11 * scale, weight: .semibold) }
+    private var valueFont: NSFont { .monospacedDigitSystemFont(ofSize: 11 * scale, weight: .regular) }
     private static let shapeColor = NSColor(srgbRed: 0.031, green: 0.035, blue: 0.043, alpha: 0.96)
 
     /// Window size for the current state. Height always includes one fillet radius above and below the
@@ -141,22 +149,24 @@ private final class EdgeDockView: NSView {
     func preferredSize() -> NSSize {
         let count = max(entries.count, 1)
         if isExpanded {
-            let body = Self.padY * 2 + CGFloat(count) * Self.rowHeight + CGFloat(count - 1) * Self.rowGap
-            return NSSize(width: expandedWidth(), height: body + Self.notch * 2)
+            let body = (Self.padY * 2 + CGFloat(count) * Self.rowHeight
+                        + CGFloat(count - 1) * Self.rowGap) * scale
+            return NSSize(width: expandedWidth(), height: body + Self.notch * 2 * scale)
         }
-        let body = Self.padY * 2 + CGFloat(count) * Self.ring + CGFloat(count - 1) * Self.collapsedGap
-        return NSSize(width: Self.collapsedWidth, height: body + Self.notch * 2)
+        let body = (Self.padY * 2 + CGFloat(count) * Self.ring
+                    + CGFloat(count - 1) * Self.collapsedGap) * scale
+        return NSSize(width: Self.collapsedWidth * scale, height: body + Self.notch * 2 * scale)
     }
 
     private func expandedWidth() -> CGFloat {
         var widest: CGFloat = 0
         for entry in entries {
-            let name = (entry.name as NSString).size(withAttributes: [.font: Self.nameFont]).width
-            let value = (valueText(entry) as NSString).size(withAttributes: [.font: Self.valueFont]).width
+            let name = (entry.name as NSString).size(withAttributes: [.font: nameFont]).width
+            let value = (valueText(entry) as NSString).size(withAttributes: [.font: valueFont]).width
             widest = max(widest, name + value)
         }
-        let content = Self.expandedPadX * 2 + Self.ring + Self.expandedTextGap + widest + 14
-        return min(max(content, 150), 260)
+        let content = (Self.expandedPadX * 2 + Self.ring + Self.expandedTextGap + 14) * scale + widest
+        return min(max(content, 150 * scale), 260 * scale)
     }
 
     private func valueText(_ entry: EdgeDockEntry) -> String {
@@ -180,8 +190,8 @@ private final class EdgeDockView: NSView {
     /// so the strip appears to flow out of the edge rather than sit next to it.
     private func shapePath() -> NSBezierPath {
         let w = bounds.width, h = bounds.height
-        let r = min(Self.notch, w)
-        let bodyRadius = min(w / 2, 12)
+        let r = min(Self.notch * scale, w)
+        let bodyRadius = min(w / 2, 12 * scale)
         let top = h - r, bottom = r
         let path = NSBezierPath()
         path.move(to: NSPoint(x: w, y: h))
@@ -212,55 +222,63 @@ private final class EdgeDockView: NSView {
     }
 
     private func drawCollapsed() {
-        var y = bounds.height - Self.notch - Self.padY - Self.ring / 2
+        var y = bounds.height - (Self.notch + Self.padY + Self.ring / 2) * scale
         for entry in entries {
             drawRing(center: NSPoint(x: bounds.midX, y: y), entry: entry)
-            y -= Self.ring + Self.collapsedGap
+            y -= (Self.ring + Self.collapsedGap) * scale
         }
     }
 
     private func drawExpanded() {
-        var top = bounds.height - Self.notch - Self.padY
-        let ringX = edge == .right ? Self.expandedPadX + Self.ring / 2 : bounds.width - Self.expandedPadX - Self.ring / 2
+        var top = bounds.height - (Self.notch + Self.padY) * scale
+        // Keep the ring beside the physical screen edge while the text unfolds inward.
+        let ringX = edge == .right
+            ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
+            : (Self.expandedPadX + Self.ring / 2) * scale
         for entry in entries {
-            let centerY = top - Self.rowHeight / 2
+            let centerY = top - Self.rowHeight * scale / 2
             drawRing(center: NSPoint(x: ringX, y: centerY), entry: entry)
 
             let dim = entry.state == .idle || entry.state == .offline || entry.state == .finished
             let nameColor = entry.state == .error || entry.state == .offline ? GantryTheme.statusError
                           : (dim ? GantryTheme.secondary : GantryTheme.text)
             let name = NSAttributedString(string: entry.name,
-                                          attributes: [.font: Self.nameFont, .foregroundColor: nameColor])
+                                          attributes: [.font: nameFont, .foregroundColor: nameColor])
             let value = NSAttributedString(string: valueText(entry),
-                                           attributes: [.font: Self.valueFont,
+                                           attributes: [.font: valueFont,
                                                         .foregroundColor: GantryTheme.muted])
-            let textLeft = ringX + Self.ring / 2 + Self.expandedTextGap
-            let textRight = bounds.width - Self.expandedPadX
+            let textLeft = edge == .right
+                ? Self.expandedPadX * scale
+                : ringX + (Self.ring / 2 + Self.expandedTextGap) * scale
+            let textRight = edge == .right
+                ? ringX - (Self.ring / 2 + Self.expandedTextGap) * scale
+                : bounds.width - Self.expandedPadX * scale
             let valueSize = value.size()
             // Clip the name so a long one never runs under the value on the right.
             let nameBox = NSRect(x: textLeft, y: centerY - name.size().height / 2,
-                                 width: max(0, textRight - valueSize.width - 8 - textLeft),
+                                 width: max(0, textRight - valueSize.width - 8 * scale - textLeft),
                                  height: name.size().height)
             name.draw(with: nameBox, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
             value.draw(at: NSPoint(x: textRight - valueSize.width, y: centerY - valueSize.height / 2))
 
-            top -= Self.rowHeight + Self.rowGap
+            top -= (Self.rowHeight + Self.rowGap) * scale
         }
     }
 
     /// One progress ring: a dim track plus an arc that starts at twelve o'clock and runs clockwise.
     /// Offline and error draw a broken ring instead, so a dead printer never looks like a stalled one.
     private func drawRing(center: NSPoint, entry: EdgeDockEntry) {
-        let radius = (Self.ring - Self.ringStroke) / 2
+        let radius = (Self.ring - Self.ringStroke) * scale / 2
         let track = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius,
                                                 width: radius * 2, height: radius * 2))
-        track.lineWidth = Self.ringStroke
+        track.lineWidth = Self.ringStroke * scale
 
         switch entry.state {
         case .error, .offline:
             GantryTheme.statusError.withAlphaComponent(0.3).setStroke()
             track.stroke()
-            let dot = NSBezierPath(ovalIn: NSRect(x: center.x - 2, y: center.y - 2, width: 4, height: 4))
+            let dot = NSBezierPath(ovalIn: NSRect(x: center.x - 2 * scale, y: center.y - 2 * scale,
+                                                 width: 4 * scale, height: 4 * scale))
             GantryTheme.statusError.setFill()
             dot.fill()
             return
@@ -283,7 +301,7 @@ private final class EdgeDockView: NSView {
         let arc = NSBezierPath()
         arc.appendArc(withCenter: center, radius: radius,
                       startAngle: 90, endAngle: 90 - 360 * CGFloat(fraction), clockwise: true)
-        arc.lineWidth = Self.ringStroke
+        arc.lineWidth = Self.ringStroke * scale
         arc.lineCapStyle = .round
         (entry.state == .paused ? GantryTheme.statusPaused : GantryTheme.statusPrinting).setStroke()
         arc.stroke()
@@ -322,8 +340,8 @@ private final class EdgeDockView: NSView {
     }
 
     private func rowIndex(at point: NSPoint) -> Int? {
-        let step = isExpanded ? Self.rowHeight + Self.rowGap : Self.ring + Self.collapsedGap
-        let top = bounds.height - Self.notch - Self.padY
+        let step = (isExpanded ? Self.rowHeight + Self.rowGap : Self.ring + Self.collapsedGap) * scale
+        let top = bounds.height - (Self.notch + Self.padY) * scale
         let offset = top - point.y
         guard offset >= 0 else { return nil }
         let index = Int(offset / step)

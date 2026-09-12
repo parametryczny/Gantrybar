@@ -28,6 +28,11 @@ The `.deb` and `.rpm` packages provide classic system installation. The `.AppIma
 portable application file containing Gantry and most required libraries. Until these artifacts
 appear on GitHub Releases, treat the Linux edition as a beta available from source.
 
+Gantry can check GitHub Releases from Settings. The update package selector offers Automatic, DEB,
+RPM and AppImage. Automatic follows the package family of the current distribution, or keeps using
+AppImage when Gantry itself was launched as an AppImage. Gantry validates the downloaded artifact
+and its published SHA256 digest before handing it to the desktop.
+
 ### Ubuntu, Debian, Linux Mint or Pop!_OS
 
 After the package is published, download `Gantry-0.10.0-Linux-all.deb` from GitHub Releases, then run:

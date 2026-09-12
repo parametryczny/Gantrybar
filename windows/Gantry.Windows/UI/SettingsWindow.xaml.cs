@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window
     /// Raised when any edge-dock setting changes, so the tray owner can re-pin the strip live.
     public Action? OnEdgeDockChanged;
     public Action? OnWindowModeChanged;
+    public Action? OnCardScaleChanged;
 
     public SettingsWindow(PrinterStore? store = null)
     {
@@ -67,6 +68,10 @@ public partial class SettingsWindow : Window
             DockEdgeButton.Content = EdgeName();
             OnEdgeDockChanged?.Invoke();
         };
+        DockSizeMinusButton.Click += (_, _) => ChangeDockScale(-5);
+        DockSizePlusButton.Click += (_, _) => ChangeDockScale(5);
+        CardSizeMinusButton.Click += (_, _) => ChangeCardScale(-5);
+        CardSizePlusButton.Click += (_, _) => ChangeCardScale(5);
         DockOnlyPrintingCheckBox.Click += (_, _) =>
         {
             AppSettings.EdgeDockOnlyPrinting = DockOnlyPrintingCheckBox.IsChecked == true;
@@ -160,10 +165,30 @@ public partial class SettingsWindow : Window
     {
         bool on = AppSettings.EdgeDockEnabled;
         DockEdgeButton.IsEnabled = on;
+        DockSizeMinusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent > 100;
+        DockSizePlusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent < 150;
+        DockSizeValue.Opacity = on ? 1 : 0.45;
         DockOnlyPrintingCheckBox.IsEnabled = on;
         DockPrintersList.IsEnabled = on;
         DockPrintersList.Opacity = on ? 1 : 0.45;
         DockEdgeButton.Opacity = on ? 1 : 0.45;
+    }
+
+    private void ChangeDockScale(int delta)
+    {
+        AppSettings.EdgeDockScalePercent += delta;
+        DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
+        ApplyDockEnabledState();
+        OnEdgeDockChanged?.Invoke();
+    }
+
+    private void ChangeCardScale(int delta)
+    {
+        AppSettings.CardScalePercent += delta;
+        CardSizeValue.Text = $"{AppSettings.CardScalePercent}%";
+        CardSizeMinusButton.IsEnabled = AppSettings.CardScalePercent > 75;
+        CardSizePlusButton.IsEnabled = AppSettings.CardScalePercent < 150;
+        OnCardScaleChanged?.Invoke();
     }
 
     /// One switch row per printer. The serial rides in the control's Tag because the list is rebuilt
@@ -263,6 +288,10 @@ public partial class SettingsWindow : Window
         AutoUpdateCheckBox.Content = AppSettings.T("Download and install updates automatically");
 
         CardsHeading.Text = AppSettings.T("PRINTER CARDS");
+        CardSizeLabel.Text = AppSettings.T("Card size");
+        CardSizeValue.Text = $"{AppSettings.CardScalePercent}%";
+        CardSizeMinusButton.IsEnabled = AppSettings.CardScalePercent > 75;
+        CardSizePlusButton.IsEnabled = AppSettings.CardScalePercent < 150;
         CardFileNameCheckBox.Content = AppSettings.T("File name");
         CardProgressCheckBox.Content = AppSettings.T("Progress");
         CardTempsCheckBox.Content = AppSettings.T("Temperatures");
@@ -321,6 +350,8 @@ public partial class SettingsWindow : Window
         DockEnableCheckBox.IsChecked = AppSettings.EdgeDockEnabled;
         DockEdgeLabel.Text = AppSettings.T("Edge");
         DockEdgeButton.Content = EdgeName();
+        DockSizeLabel.Text = AppSettings.T("Edge dock size");
+        DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
         DockOnlyPrintingCheckBox.Content = AppSettings.T("Only printing");
         DockOnlyPrintingCheckBox.IsChecked = AppSettings.EdgeDockOnlyPrinting;
         DockPrintersCaption.Text = AppSettings.T("WHICH PRINTERS");

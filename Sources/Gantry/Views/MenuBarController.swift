@@ -9,6 +9,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var progressItems: [String: NSStatusItem] = [:]
     private var dashboardViewController: NSViewController?
     private var detailViewController: PrinterDetailViewController?
+    private var skipObjectsViewController: SkipObjectsViewController?
     private var automationsWindows: [String: AutomationsWindowController] = [:]
     private var advancedWindows: [String: PrinterAdvancedWindowController] = [:]
     private var dashboardContentSize = NSSize(width: 540, height: 650)
@@ -44,6 +45,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
             onReconnect: { [weak store] printer in store?.reconnect(printer) },
             onShowDetails: { [weak self] serial in self?.showDetails(serial: serial) },
+            onSkipObjects: { [weak self] serial in self?.showSkipObjects(serial: serial) },
             onPreferredContentSize: { [weak self] size in
                 guard let self else { return }
                 self.dashboardContentSize = size
@@ -97,6 +99,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
                 onReconnect: { [weak store] printer in store?.reconnect(printer) },
                 onShowDetails: { [weak self] serial in self?.revealDetails(serial: serial) },
+                onSkipObjects: { [weak self] serial in self?.showSkipObjects(serial: serial) },
                 onShowSettings: { [weak self] in self?.showSettings() }
             )
         }
@@ -477,8 +480,27 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func showSettings() {
-        if settingsWindow == nil { settingsWindow = SettingsWindowController(store: store) }
-        settingsWindow?.presentCentered()
+        if settingsWindow == nil {
+            let controller = SettingsWindowController(store: store)
+            controller.onClose = { [weak self] in
+                // A transient popover normally closes as soon as the settings window becomes key.
+                // Restore that native behaviour only after settings are gone, leaving the cards
+                // visible behind the settings window while the user adjusts their scale.
+                self?.popover.behavior = .transient
+            }
+            settingsWindow = controller
+        }
+
+        let dashboardWindow: NSWindow?
+        if AppSettings.shared.floatingWindowEnabled {
+            floatingDashboard?.restoreFromDock()
+            dashboardWindow = floatingDashboard?.window
+        } else {
+            if !popover.isShown { showPopoverFromMenu() }
+            popover.behavior = .applicationDefined
+            dashboardWindow = popover.contentViewController?.view.window
+        }
+        settingsWindow?.presentCentered(over: dashboardWindow)
     }
 
     /// Resolve the presentation mode at execution time, including actions from the Dock or menu.
@@ -542,7 +564,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
         // Reset to the fleet list so reopening never lands back in a stale detail view — but not while
         // we're intentionally closing to swap content in a new size.
-        if detailViewController != nil, !suppressFleetReset { returnToFleet() }
+        if (detailViewController != nil || skipObjectsViewController != nil), !suppressFleetReset { returnToFleet() }
     }
 
     // Applied on every show (and on settings change): the vibrancy material plus, for "high", a lower
@@ -600,6 +622,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 onBack: { [weak self] in self?.floatingDashboard?.dismissEmbeddedPanel() },
                 onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
                 onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) },
+                onSkipObjects: { [weak self] in self?.showSkipObjects(serial: serial) },
                 presentation: .floatingWindow)
             floatingDashboard?.present(detail, size: NSSize(width: 480, height: 700))
             return
@@ -608,7 +631,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             store: store, serial: serial,
             onBack: { [weak self] in self?.returnToFleet() },
             onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
-            onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) })
+            onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) },
+            onSkipObjects: { [weak self] in self?.showSkipObjects(serial: serial) })
         detailViewController = detail
         swapPopoverContent(to: detail, size: NSSize(width: 600, height: 720))
     }
@@ -640,8 +664,29 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Returns the popover to the fleet dashboard.
     private func returnToFleet() {
         detailViewController = nil
+        skipObjectsViewController = nil
         guard let dashboard = dashboardViewController else { return }
         swapPopoverContent(to: dashboard, size: dashboardContentSize)
+    }
+
+    private func showSkipObjects(serial: String) {
+        guard Build.hasExtras else { return }
+        if AppSettings.shared.floatingWindowEnabled {
+            let controller = SkipObjectsViewController(store: store, serial: serial) { [weak self] in
+                self?.floatingDashboard?.dismissEmbeddedPanel()
+            }
+            // On a short window the embedded surface scrolls as a whole instead of squeezing or
+            // clipping the bed selector. Its width remains the same focused 480-point modal.
+            floatingDashboard?.present(controller, size: NSSize(width: 480, height: 650),
+                                       fillsViewport: false)
+            return
+        }
+        let controller = SkipObjectsViewController(store: store, serial: serial) { [weak self] in
+            self?.returnToFleet()
+        }
+        skipObjectsViewController = controller
+        detailViewController = nil
+        swapPopoverContent(to: controller, size: NSSize(width: 480, height: 650))
     }
 
     /// Reliably resize the popover when swapping content: an already-open popover won't re-measure on

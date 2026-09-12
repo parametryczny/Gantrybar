@@ -397,7 +397,7 @@ class Gantry:
         if previous is not None:
             Gtk.StyleContext.remove_provider_for_screen(screen, previous)
         provider = Gtk.CssProvider()
-        provider.load_from_data(css_for(theme, alpha))
+        provider.load_from_data(css_for(theme, alpha, int(self.config.data.get("card_scale_percent", 100)) / 100))
         Gtk.StyleContext.add_provider_for_screen(
             screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self._theme_provider = provider
@@ -734,6 +734,11 @@ class Gantry:
         self.detail_window = panel
         self.window.show_detail(panel)
 
+    def open_skip_objects(self, serial: str) -> None:
+        from .skipobjects import SkipObjectsPanel
+        panel = SkipObjectsPanel(self, serial, on_back=self.window.show_fleet)
+        self.window.show_panel(panel, 500, 680)
+
     def toggle_spoolbase(self) -> None:
         if not self.window.tray_mode:
             from .spoolbase import SpoolbaseWindow
@@ -1057,9 +1062,11 @@ class Gantry:
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key):
                 body = i18n.t(STATE_LABELS.get(current.state.value, current.state.value))
-                if current.state == PrinterState.ERROR and current.hms_codes:
-                    from .hms import description
-                    body = description(current.hms_codes, serial, self.language) or body
+                if current.state == PrinterState.ERROR:
+                    from .hms import description, description_for_error
+                    body = (description(current.hms_codes, serial, self.language)
+                            or description_for_error(current.error_code, serial, self.language)
+                            or body)
                 self.notify(printer_name, body)
                 from . import telegram
                 telegram.notify(self, printer_name, body, "")

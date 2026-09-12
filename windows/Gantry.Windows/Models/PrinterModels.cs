@@ -56,6 +56,7 @@ public sealed class PrinterTelemetry
     public double? ChamberTargetTemperature { get; set; }
     public int? CurrentLayer { get; set; }
     public int? TotalLayers { get; set; }
+    public int? CurrentPlateIndex { get; set; }
     // Cooling fans as a percentage (Bambu 0-15 gear normalised, or Moonraker 0-1). Aux = big_fan1,
     // chamber = big_fan2.
     public int? PartFanPercent { get; set; }
@@ -69,6 +70,9 @@ public sealed class PrinterTelemetry
     // Klipper measured filament (mm) + Bambu current print file — sources for spool decrement on finish.
     public double? FilamentUsedMM { get; set; }
     public string? GcodeFile { get; set; }
+    public List<PrintObject> PrintObjects { get; set; } = new();
+    public HashSet<string> SkippedObjectIds { get; set; } = new();
+    public string? CurrentObjectId { get; set; }
     public ulong ErrorCode { get; set; }
     public List<string> HmsCodes { get; set; } = new();
     // Physical filament modules (AMS / AMS HT / CFS / MMU / external). Primary source for the
@@ -98,6 +102,7 @@ public sealed class PrinterTelemetry
             ChamberTargetTemperature = ChamberTargetTemperature,
             CurrentLayer = CurrentLayer,
             TotalLayers = TotalLayers,
+            CurrentPlateIndex = CurrentPlateIndex,
             PartFanPercent = PartFanPercent,
             AuxFanPercent = AuxFanPercent,
             ChamberFanPercent = ChamberFanPercent,
@@ -108,6 +113,9 @@ public sealed class PrinterTelemetry
             JobName = JobName,
             FilamentUsedMM = FilamentUsedMM,
             GcodeFile = GcodeFile,
+            PrintObjects = PrintObjects.Select(o => o with { Polygon = new List<BedPoint>(o.Polygon) }).ToList(),
+            SkippedObjectIds = new HashSet<string>(SkippedObjectIds),
+            CurrentObjectId = CurrentObjectId,
             ErrorCode = ErrorCode,
             HmsCodes = new List<string>(HmsCodes),
             FilamentGroups = FilamentGroups.Select(g => g.Clone()).ToList(),
@@ -119,6 +127,11 @@ public sealed class PrinterTelemetry
         };
     }
 }
+
+public readonly record struct BedPoint(double X, double Y);
+public sealed record PrintObject(string Id, string Name, List<BedPoint> Polygon);
+public sealed record PrintObjectLayout(List<PrintObject> Objects, HashSet<string> SkippedObjectIds,
+    string? CurrentObjectId, double[] BedBounds, byte[]? PreviewPng);
 
 /// One point in a printer's rolling temperature history, drawn by the detail window's graph.
 public readonly record struct TemperatureSample(DateTime Time, double? Nozzle, double? Bed, double? Chamber);

@@ -73,6 +73,8 @@ public static class Defaults
     private static JsonElement Wrap(object value)
         => JsonSerializer.SerializeToElement(value);
 
+    public static bool ContainsKey(string key) => _store.ContainsKey(key);
+
     public static string? GetString(string key)
         => _store.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
@@ -252,6 +254,17 @@ public static class AppSettings
         get => Build.HasExtras && Defaults.GetBool("card-show-details-chip", false);
         set => Defaults.SetBool("card-show-details-chip", value);
     }
+    /// <summary>Magnification of the complete printer card. Five-percent steps mirror macOS and
+    /// keep the tile grid deterministic while the window fits itself to the scaled content.</summary>
+    public static int CardScalePercent
+    {
+        get
+        {
+            int value = Defaults.GetInt("card-scale-percent", 100);
+            return Math.Clamp((int)Math.Round(value / 5.0) * 5, 75, 150);
+        }
+        set => Defaults.SetInt("card-scale-percent", Math.Clamp((int)Math.Round(value / 5.0) * 5, 75, 150));
+    }
     /// <summary>Calmer palette: temperatures stay grey and filament colours are muted toward grey.</summary>
     public static bool Monochrome
     {
@@ -314,6 +327,18 @@ public static class AppSettings
     {
         get { var s = Defaults.GetString("edge-dock-edge"); return s == "left" ? "left" : "right"; }
         set => Defaults.SetString("edge-dock-edge", value == "left" ? "left" : "right");
+    }
+
+    /// <summary>Manual edge-dock scale for large/high-density displays. Five-percent steps keep
+    /// the strip crisp and keep all three platform implementations on the same scale grid.</summary>
+    public static int EdgeDockScalePercent
+    {
+        get
+        {
+            int value = Defaults.GetInt("edge-dock-scale-percent", 100);
+            return Math.Clamp((int)Math.Round(value / 5.0) * 5, 100, 150);
+        }
+        set => Defaults.SetInt("edge-dock-scale-percent", Math.Clamp((int)Math.Round(value / 5.0) * 5, 100, 150));
     }
 
     /// Hide printers that are neither printing nor paused.

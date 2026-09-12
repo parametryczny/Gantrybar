@@ -54,12 +54,13 @@
     "tileResize": {
       "card": { "width": 285, "height": 174 },
       "gap": 8,
-      "contentSize": { "width": "12 + columns * 293", "height": "108 + visibleRows * 182" },
-      "windowsFrameSize": { "width": "24 + columns * 293", "height": "140 + visibleRows * 182" },
+      "contentSize": { "width": "12 + columns * 293", "height": "fixedChrome + measuredCardGridHeight" },
+      "windowsFrameSize": { "width": "24 + columns * 293", "height": "nonClientChrome + measuredCardGridHeight" },
+      "heightPolicy": "fitEveryCompleteRowAfterWidthSnap",
       "compactRowsInWindowMode": false,
       "snapTiming": "afterLiveResize",
       "allowsEmptyGridSpace": true,
-      "overflow": "scroll"
+      "overflow": "scrollOnlyAtScreenLimit"
     },
     "responsive": {
       "compactWhen": "popover only",

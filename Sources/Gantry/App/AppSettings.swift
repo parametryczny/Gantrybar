@@ -70,11 +70,18 @@ final class AppSettings: ObservableObject {
     /// default so casual users get a pure monitor without control surfaces.
     @Published var developerMode: Bool { didSet { defaults.set(developerMode, forKey: "developer-mode") } }
 
+    /// Explicit opt-in for commands that change printer state from the detail view. Kept separate
+    /// from developer mode so monitoring remains read-only unless the user deliberately enables it.
+    @Published var printerControlEnabled: Bool { didSet { defaults.set(printerControlEnabled, forKey: "printer-control-enabled") } }
+
     // What each fleet card shows (customisable in Settings).
     @Published var cardShowFileName: Bool { didSet { defaults.set(cardShowFileName, forKey: "card-show-filename") } }
     @Published var cardShowProgress: Bool { didSet { defaults.set(cardShowProgress, forKey: "card-show-progress") } }
     @Published var cardShowTemperatures: Bool { didSet { defaults.set(cardShowTemperatures, forKey: "card-show-temps") } }
     @Published var cardShowFilaments: Bool { didSet { defaults.set(cardShowFilaments, forKey: "card-show-filaments") } }
+    /// Magnification of the complete printer-card surface. The discrete steps keep the grid aligned
+    /// and make the minus/plus controls predictable across popover and window presentations.
+    @Published var cardScalePercent: Int { didSet { defaults.set(cardScalePercent, forKey: "card-scale-percent") } }
     /// Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).
     @Published var cardShowSpoolGrams: Bool { didSet { defaults.set(cardShowSpoolGrams, forKey: "card-show-spool-grams") } }
 
@@ -163,6 +170,7 @@ final class AppSettings: ObservableObject {
     // opt-in second surface, not a replacement for the menu-bar popover.
     @Published var edgeDockEnabled: Bool { didSet { defaults.set(edgeDockEnabled, forKey: "edge-dock-enabled") } }
     @Published var edgeDockEdge: EdgeDockEdge { didSet { defaults.set(edgeDockEdge.rawValue, forKey: "edge-dock-edge") } }
+    @Published var edgeDockScalePercent: Int { didSet { defaults.set(edgeDockScalePercent, forKey: "edge-dock-scale-percent") } }
     /// Hide printers that are neither printing nor paused, so a large fleet does not fill the screen
     /// with idle rings.
     @Published var edgeDockOnlyPrinting: Bool { didSet { defaults.set(edgeDockOnlyPrinting, forKey: "edge-dock-only-printing") } }
@@ -206,10 +214,13 @@ final class AppSettings: ObservableObject {
         webDashboardEnabled = defaults.object(forKey: "web-dashboard-enabled") as? Bool ?? true
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
+        printerControlEnabled = defaults.object(forKey: "printer-control-enabled") as? Bool ?? false
         cardShowFileName = defaults.object(forKey: "card-show-filename") as? Bool ?? true
         cardShowProgress = defaults.object(forKey: "card-show-progress") as? Bool ?? true
         cardShowTemperatures = defaults.object(forKey: "card-show-temps") as? Bool ?? true
         cardShowFilaments = defaults.object(forKey: "card-show-filaments") as? Bool ?? true
+        cardScalePercent = Self.nearestStep(defaults.object(forKey: "card-scale-percent") as? Int ?? 100,
+                                            in: Self.cardScaleSteps)
         cardShowSpoolGrams = defaults.object(forKey: "card-show-spool-grams") as? Bool ?? false
         cardShowDetailsChip = defaults.object(forKey: "card-show-details-chip") as? Bool ?? false
         monochrome = defaults.object(forKey: "monochrome") as? Bool ?? false
@@ -228,10 +239,19 @@ final class AppSettings: ObservableObject {
         floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? true
         edgeDockEnabled = defaults.object(forKey: "edge-dock-enabled") as? Bool ?? false
         edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
+        edgeDockScalePercent = Self.nearestStep(defaults.object(forKey: "edge-dock-scale-percent") as? Int ?? 100,
+                                                in: Self.edgeDockScaleSteps)
         edgeDockOnlyPrinting = defaults.object(forKey: "edge-dock-only-printing") as? Bool ?? false
         edgeDockHiddenPrinters = Set((defaults.string(forKey: "edge-dock-hidden") ?? "")
             .split(separator: "\n").map(String.init))
         if Build.isLite { forceLiteDefaults() }
+    }
+
+    static let cardScaleSteps = Array(stride(from: 75, through: 150, by: 5))
+    static let edgeDockScaleSteps = Array(stride(from: 100, through: 150, by: 5))
+
+    private static func nearestStep(_ value: Int, in steps: [Int]) -> Int {
+        steps.min(by: { abs($0 - value) < abs($1 - value) }) ?? 100
     }
 
     /// LITE ships only the tray surface, so every switch it has no UI for is pinned off, whatever a
@@ -245,6 +265,7 @@ final class AppSettings: ObservableObject {
         floatingWindowEnabled = false
         edgeDockEnabled = false
         developerMode = false
+        printerControlEnabled = false
         allowScriptActions = false
         cardShowSpoolGrams = false
         cardShowDetailsChip = false

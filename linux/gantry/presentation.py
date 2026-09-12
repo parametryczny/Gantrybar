@@ -70,23 +70,26 @@ class DesktopPresentation:
             self.app.rebuild_cards()
 
     def layout_columns(self):
+        scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
+        pitch = 293 * scale
         if self.tray_mode:
             return max(1, min(2, int(self.app.config.data.get("dashboard_columns", 2))))
-        return max(1, round((self.get_size()[0] - 12) / 293))
+        return max(1, round((self.get_size()[0] - 12) / pitch))
 
     def _snapped_tile_size(self, proposed_width, proposed_height):
-        """Nearest whole 285×174 card grid, including the dashboard's chrome and 8 px gaps."""
+        """Snap width to card columns; derive height from every complete, measured card row."""
         display = Gdk.Display.get_default()
         monitor = display.get_primary_monitor() if display else None
         workarea = monitor.get_workarea() if monitor else None
         max_width = workarea.width if workarea else 1800
         max_height = workarea.height if workarea else 1200
-        columns = max(1, min(int((max_width - 12) // 293),
-                             round((proposed_width - 12) / 293)))
-        screen_rows = max(1, int((max_height - 108) // 182))
-        visible_rows = max(1, min(screen_rows,
-                                  round((proposed_height - 108) / 182)))
-        return 12 + columns * 293, 108 + visible_rows * 182
+        scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
+        pitch = 293 * scale
+        columns = max(1, min(int((max_width - 12) // pitch),
+                             round((proposed_width - 12) / pitch)))
+        snapped_width = int(12 + columns * pitch)
+        content_height = self.content_height_for_width(snapped_width)
+        return snapped_width, min(max_height - 24, max(290, content_height))
 
     def _desktop_resize(self, _widget, allocation):
         if self.tray_mode:

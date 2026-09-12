@@ -90,12 +90,16 @@ class MaintenancePanel(Gtk.Frame):
         self.show_all()
 
     def _alerts(self) -> list[tuple[str, str | None]]:
-        from .hms import actionable_codes, description
+        from .hms import actionable_codes, description, description_for_error, format_error_code
         codes = actionable_codes(self.telemetry.hms_codes, self.printer.serial, self.app.language)
         if codes:
             return [(description([code], self.printer.serial, self.app.language) or f"HMS {code}", code) for code in codes]
         if getattr(self.telemetry, "error_code", 0):
-            return [(i18n.t("Error code: 0x{0:X}").format(self.telemetry.error_code), None)]
+            return [(
+                description_for_error(self.telemetry.error_code, self.printer.serial, self.app.language)
+                or i18n.t("Printer reported an error"),
+                i18n.t("Diagnostic code: 0x{0}").format(format_error_code(self.telemetry.error_code)),
+            )]
         from .core import PrinterState
         if self.telemetry.state == PrinterState.ERROR:
             return [(i18n.t("Printer reported an error"), None)]
