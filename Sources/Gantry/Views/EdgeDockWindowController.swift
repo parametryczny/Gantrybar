@@ -5,6 +5,10 @@ import Combine
 /// printer. Collapsed it is 22 points wide and carries only colour and fill; hovering expands it into
 /// a list with names, percentages and remaining time, and clicking a row opens that printer's details.
 ///
+/// Two settings change that resting state (issue #34): pinning keeps the list unfolded without the
+/// pointer, and with it a live camera can sit under the rows, so a print can be watched at a glance
+/// instead of through a window that has to stay open.
+///
 /// The "grows out of the edge" look comes from the two concave fillets where the strip meets the
 /// screen: the window is taller than the visible body by one fillet radius at each end, and the extra
 /// area is filled with everything *except* a quarter disc. Nothing is drawn as a background colour —
@@ -22,6 +26,9 @@ final class EdgeDockWindowController {
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var screenSubscription: AnyCancellable?
+    /// The strip has room for one picture, so it carries one feed at a time.
+    private var cameraFeed: CameraFeedController?
+    private var cameraSerial: String?
 
     init(store: PrinterStore, onSelect: @escaping (String) -> Void) {
         self.store = store
@@ -62,7 +69,7 @@ final class EdgeDockWindowController {
     func refresh() {
         let settings = AppSettings.shared
         guard settings.edgeDockEnabled else {
-            panel.orderOut(nil)
+            hide()
             return
         }
         let hidden = settings.edgeDockHiddenPrinters
@@ -74,14 +81,62 @@ final class EdgeDockWindowController {
                                  progress: telemetry.progress, remainingMinutes: telemetry.remainingMinutes)
         }
         guard !entries.isEmpty else {
-            panel.orderOut(nil)
+            hide()
             return
         }
         dockView.edge = settings.edgeDockEdge
         dockView.scale = CGFloat(settings.edgeDockScalePercent) / 100
+        dockView.pinned = settings.edgeDockPinned
         dockView.entries = entries
+        syncCamera(entries: entries, settings: settings)
         reposition()
         if !panel.isVisible { panel.orderFrontRegardless() }
+    }
+
+    /// Taking the strip off screen must also take the stream down; an invisible camera would keep
+    /// decoding frames and holding the printer's single stream slot.
+    private func hide() {
+        detachCamera()
+        panel.orderOut(nil)
+    }
+
+    private func detachCamera() {
+        cameraFeed?.stop()
+        cameraFeed = nil
+        cameraSerial = nil
+        dockView.cameraView = nil
+    }
+
+    /// Starts, moves or drops the feed. Only the serial decides: while it is unchanged the running
+    /// stream is left completely alone, so the 500 ms telemetry refresh cannot restart it.
+    private func syncCamera(entries: [EdgeDockEntry], settings: AppSettings) {
+        let wanted = Build.hasExtras && settings.edgeDockPinned && settings.edgeDockCamera
+            ? cameraTarget(in: entries) : nil
+        guard wanted != cameraSerial else { return }
+        detachCamera()
+        guard let wanted else { return }
+        let feed = CameraFeedController(store: store, serial: wanted)
+        feed.view.cornerRadius = 8
+        cameraFeed = feed
+        cameraSerial = wanted
+        dockView.cameraView = feed.view
+        feed.start()
+    }
+
+    /// One picture, so it follows the print that is actually running: a printing printer first, then a
+    /// paused one, and otherwise only when exactly one candidate exists. With several idle machines
+    /// there is no sensible way to guess which one the user meant, and quietly picking the first would
+    /// be worse than showing nothing; "Only printing" and the per-printer ticks narrow a larger fleet.
+    ///
+    /// Brands without a stream Gantry can decode are not candidates, so they never get a black
+    /// rectangle instead of a picture.
+    private func cameraTarget(in entries: [EdgeDockEntry]) -> String? {
+        let candidates = entries.filter { entry in
+            CameraFeedController.supportsCamera(store.printers.first(where: { $0.serial == entry.serial })?.kind)
+        }
+        if let printing = candidates.first(where: { $0.state == .printing }) { return printing.serial }
+        if let paused = candidates.first(where: { $0.state == .paused }) { return paused.serial }
+        return candidates.count == 1 ? candidates[0].serial : nil
     }
 
     /// Pins the panel flush to the chosen edge of the screen holding the menu bar, vertically centred.
@@ -113,19 +168,44 @@ struct EdgeDockEntry {
 }
 
 private final class EdgeDockView: NSView {
-    var entries: [EdgeDockEntry] = [] { didSet { needsDisplay = true } }
+    var entries: [EdgeDockEntry] = [] { didSet { needsLayout = true; needsDisplay = true } }
     var edge: EdgeDockEdge = .right { didSet { needsDisplay = true } }
     var scale: CGFloat = 1 {
         didSet {
             guard abs(scale - oldValue) > 0.001 else { return }
             onLayoutChange?()
+            needsLayout = true
+            needsDisplay = true
+        }
+    }
+    /// Pinned means permanently unfolded: hover stops being what decides the width.
+    var pinned = false {
+        didSet {
+            guard pinned != oldValue else { return }
+            onLayoutChange?()
+            needsLayout = true
+            needsDisplay = true
+        }
+    }
+    /// The live picture, handed in by the controller. Nil when the camera is off or has no target.
+    var cameraView: NSView? {
+        didSet {
+            guard cameraView !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let cameraView {
+                cameraView.translatesAutoresizingMaskIntoConstraints = true
+                addSubview(cameraView)
+            }
+            onLayoutChange?()
+            needsLayout = true
             needsDisplay = true
         }
     }
     var onSelect: ((String) -> Void)?
     var onLayoutChange: (() -> Void)?
 
-    private var isExpanded = false
+    private var isHovering = false
+    private var isExpanded: Bool { pinned || isHovering }
     private var trackingArea: NSTrackingArea?
 
     // Geometry. The strip is deliberately narrow: at rest a printer is one 14 pt ring and nothing else.
@@ -139,6 +219,10 @@ private final class EdgeDockView: NSView {
     private static let notch: CGFloat = 11
     private static let expandedTextGap: CGFloat = 8
     private static let expandedPadX: CGFloat = 11
+    private static let cameraGap: CGFloat = 8
+    /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
+    private static let cameraMinStripWidth: CGFloat = 236
+    private static let cameraMaxStripWidth: CGFloat = 300
 
     private var nameFont: NSFont { .systemFont(ofSize: 11 * scale, weight: .semibold) }
     private var valueFont: NSFont { .monospacedDigitSystemFont(ofSize: 11 * scale, weight: .regular) }
@@ -149,9 +233,11 @@ private final class EdgeDockView: NSView {
     func preferredSize() -> NSSize {
         let count = max(entries.count, 1)
         if isExpanded {
-            let body = (Self.padY * 2 + CGFloat(count) * Self.rowHeight
+            let rows = (Self.padY * 2 + CGFloat(count) * Self.rowHeight
                         + CGFloat(count - 1) * Self.rowGap) * scale
-            return NSSize(width: expandedWidth(), height: body + Self.notch * 2 * scale)
+            let width = expandedWidth()
+            return NSSize(width: width,
+                          height: rows + cameraBlockHeight(stripWidth: width) + Self.notch * 2 * scale)
         }
         let body = (Self.padY * 2 + CGFloat(count) * Self.ring
                     + CGFloat(count - 1) * Self.collapsedGap) * scale
@@ -166,7 +252,38 @@ private final class EdgeDockView: NSView {
             widest = max(widest, name + value)
         }
         let content = (Self.expandedPadX * 2 + Self.ring + Self.expandedTextGap + 14) * scale + widest
-        return min(max(content, 150 * scale), 260 * scale)
+        // With a camera the strip stops being sized by its longest printer name: the picture needs a
+        // usable width of its own, so it raises the floor and lifts the ceiling.
+        let minimum = (cameraView == nil ? 150 : Self.cameraMinStripWidth) * scale
+        let maximum = (cameraView == nil ? 260 : Self.cameraMaxStripWidth) * scale
+        return min(max(content, minimum), maximum)
+    }
+
+    /// Height the picture and its gap add to the body, or zero when there is nothing to show.
+    private func cameraBlockHeight(stripWidth: CGFloat) -> CGFloat {
+        guard cameraView != nil, isExpanded else { return 0 }
+        return Self.cameraGap * scale + (cameraWidth(stripWidth: stripWidth) * 9 / 16).rounded()
+    }
+
+    private func cameraWidth(stripWidth: CGFloat) -> CGFloat {
+        max(0, stripWidth - Self.expandedPadX * 2 * scale)
+    }
+
+    /// The picture is a real subview inside a hand-drawn silhouette, so it gets framed here rather
+    /// than by constraints: bottom of the body, above the lower fillet, horizontally centred.
+    override func layout() {
+        super.layout()
+        guard let cameraView else { return }
+        let width = cameraWidth(stripWidth: bounds.width)
+        let height = (width * 9 / 16).rounded()
+        guard isExpanded, width > 0, height > 0 else {
+            cameraView.isHidden = true
+            return
+        }
+        cameraView.isHidden = false
+        cameraView.frame = NSRect(x: ((bounds.width - width) / 2).rounded(),
+                                  y: (Self.notch + Self.padY) * scale,
+                                  width: width, height: height)
     }
 
     private func valueText(_ entry: EdgeDockEntry) -> String {
@@ -320,15 +437,17 @@ private final class EdgeDockView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        guard !isExpanded else { return }
-        isExpanded = true
+        guard !isHovering else { return }
+        isHovering = true
+        guard !pinned else { return }   // already unfolded, nothing to re-lay out
         onLayoutChange?()
         needsDisplay = true
     }
 
     override func mouseExited(with event: NSEvent) {
-        guard isExpanded else { return }
-        isExpanded = false
+        guard isHovering else { return }
+        isHovering = false
+        guard !pinned else { return }
         onLayoutChange?()
         needsDisplay = true
     }
@@ -340,6 +459,8 @@ private final class EdgeDockView: NSView {
     }
 
     private func rowIndex(at point: NSPoint) -> Int? {
+        // A click on the picture is not a click on the row behind it.
+        if let cameraView, !cameraView.isHidden, cameraView.frame.contains(point) { return nil }
         let step = (isExpanded ? Self.rowHeight + Self.rowGap : Self.ring + Self.collapsedGap) * scale
         let top = bounds.height - (Self.notch + Self.padY) * scale
         let offset = top - point.y

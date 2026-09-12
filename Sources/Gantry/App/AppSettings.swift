@@ -171,6 +171,12 @@ final class AppSettings: ObservableObject {
     @Published var edgeDockEnabled: Bool { didSet { defaults.set(edgeDockEnabled, forKey: "edge-dock-enabled") } }
     @Published var edgeDockEdge: EdgeDockEdge { didSet { defaults.set(edgeDockEdge.rawValue, forKey: "edge-dock-edge") } }
     @Published var edgeDockScalePercent: Int { didSet { defaults.set(edgeDockScalePercent, forKey: "edge-dock-scale-percent") } }
+    /// Keep the strip unfolded instead of expanding it on hover, so progress stays readable without
+    /// keeping the pointer there. Asked for in issue #34.
+    @Published var edgeDockPinned: Bool { didSet { defaults.set(edgeDockPinned, forKey: "edge-dock-pinned") } }
+    /// Live camera under the rows of a pinned strip. Only meaningful while pinned: a stream that
+    /// started and stopped on every hover would spend its life reconnecting.
+    @Published var edgeDockCamera: Bool { didSet { defaults.set(edgeDockCamera, forKey: "edge-dock-camera") } }
     /// Hide printers that are neither printing nor paused, so a large fleet does not fill the screen
     /// with idle rings.
     @Published var edgeDockOnlyPrinting: Bool { didSet { defaults.set(edgeDockOnlyPrinting, forKey: "edge-dock-only-printing") } }
@@ -241,6 +247,8 @@ final class AppSettings: ObservableObject {
         edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
         edgeDockScalePercent = Self.nearestStep(defaults.object(forKey: "edge-dock-scale-percent") as? Int ?? 100,
                                                 in: Self.edgeDockScaleSteps)
+        edgeDockPinned = defaults.object(forKey: "edge-dock-pinned") as? Bool ?? false
+        edgeDockCamera = defaults.object(forKey: "edge-dock-camera") as? Bool ?? false
         edgeDockOnlyPrinting = defaults.object(forKey: "edge-dock-only-printing") as? Bool ?? false
         edgeDockHiddenPrinters = Set((defaults.string(forKey: "edge-dock-hidden") ?? "")
             .split(separator: "\n").map(String.init))
@@ -264,6 +272,8 @@ final class AppSettings: ObservableObject {
         telegramEnabled = false
         floatingWindowEnabled = false
         edgeDockEnabled = false
+        edgeDockPinned = false
+        edgeDockCamera = false
         developerMode = false
         printerControlEnabled = false
         allowScriptActions = false

@@ -109,6 +109,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var dockEdgeRow = SettingsRowView(control: dockEdgeControl)
     private let dockScaleControl = SettingsScaleControl()
     private lazy var dockScaleRow = SettingsRowView(control: dockScaleControl)
+    private lazy var dockPinnedRow = SettingsToggleRow(target: self, action: #selector(dockPinnedToggled))
+    private lazy var dockCameraRow = SettingsToggleRow(target: self, action: #selector(dockCameraToggled))
     private lazy var dockOnlyPrintingRow = SettingsToggleRow(target: self, action: #selector(dockOnlyPrintingToggled))
     private let dockPrintersCaption = NSTextField(labelWithString: "")
     /// The per-printer list is its own card so it can be rebuilt wholesale when printers come and go,
@@ -464,7 +466,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // The dock section is one heading over two cards: the fixed switches, then the printer list.
         dockGroupLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         dockGroupLabel.textColor = GantryTheme.muted
-        let dockSettingsCard = makeCard([dockEnableRow, dockEdgeRow, dockScaleRow, dockOnlyPrintingRow])
+        let dockSettingsCard = makeCard([dockEnableRow, dockEdgeRow, dockScaleRow,
+                                         dockPinnedRow, dockCameraRow, dockOnlyPrintingRow])
         let dockGroup = NSStackView(views: [dockGroupLabel, dockSettingsCard,
                                             dockPrintersCaption, dockPrintersHolder, dockHint])
         dockGroup.orientation = .vertical
@@ -690,6 +693,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                                    steps: AppSettings.edgeDockScaleSteps,
                                    enabled: settings.edgeDockEnabled)
         dockScaleRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
+        dockPinnedRow.titleLabel.stringValue = settings.t("Keep the strip open")
+        dockPinnedRow.isOn = settings.edgeDockPinned
+        dockPinnedRow.setEnabled(settings.edgeDockEnabled)
+        dockCameraRow.titleLabel.stringValue = settings.t("Camera under the strip")
+        dockCameraRow.isOn = settings.edgeDockCamera
+        // The camera needs a strip that stays open: a stream that began and ended with every hover
+        // would spend its life reconnecting, so the switch waits for pinning.
+        dockCameraRow.setEnabled(settings.edgeDockEnabled && settings.edgeDockPinned)
         dockOnlyPrintingRow.titleLabel.stringValue = settings.t("Only printing")
         dockOnlyPrintingRow.isOn = settings.edgeDockOnlyPrinting
         dockOnlyPrintingRow.setEnabled(settings.edgeDockEnabled)
@@ -899,6 +910,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         guard let index = AppSettings.edgeDockScaleSteps.firstIndex(of: settings.edgeDockScalePercent) else { return }
         let target = min(max(0, index + direction), AppSettings.edgeDockScaleSteps.count - 1)
         settings.edgeDockScalePercent = AppSettings.edgeDockScaleSteps[target]
+    }
+
+    @objc private func dockPinnedToggled() {
+        AppSettings.shared.edgeDockPinned = dockPinnedRow.isOn
+    }
+
+    @objc private func dockCameraToggled() {
+        AppSettings.shared.edgeDockCamera = dockCameraRow.isOn
     }
 
     @objc private func dockOnlyPrintingToggled() {

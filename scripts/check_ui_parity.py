@@ -79,6 +79,21 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"edgeDockScalePercent[\s\S]*?Self\.collapsedWidth \* scale",
         "macOS edge dock does not apply its selected scale")
+
+# Issue #34, macOS first: the strip can stay unfolded and carry one live camera under its rows.
+# Windows and GNU/Linux still expand on hover only, so they are deliberately not required here yet.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"var pinned = false[\s\S]*?isExpanded: Bool \{ pinned \|\| isHovering \}",
+        "macOS edge dock cannot stay open without the pointer")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"edgeDockPinned && settings\.edgeDockCamera[\s\S]*?CameraFeedController\(store: store, serial: wanted\)",
+        "macOS edge dock camera is not driven by its own two settings")
+require("Sources/Gantry/Views/CameraFeed.swift",
+        r"final class CameraFeedController[\s\S]*?func start\(\)[\s\S]*?func stop\(\)",
+        "the camera feed is not reusable outside the detail view")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"dockPinnedRow[\s\S]*?dockCameraRow",
+        "macOS settings are missing the edge-dock pin and camera switches")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r"CardColumnPitch\s*=>\s*293 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
         "Windows floating window is not snapped to card columns with content-driven height")
