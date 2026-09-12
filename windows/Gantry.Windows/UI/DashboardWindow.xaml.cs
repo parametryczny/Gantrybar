@@ -82,6 +82,9 @@ public partial class DashboardWindow : Window
         BrandText.Foreground = GTheme.Brush(GTheme.Text);
         StatusLine.Foreground = GTheme.Brush(GTheme.Secondary);
         FooterText.Foreground = GTheme.Brush(GTheme.Muted);
+        // Opaque on purpose: this is what stops the header from inheriting the desktop's brightness.
+        FleetHeaderPlate.Background = GTheme.Brush(GTheme.SurfaceOnBackdrop);
+        FleetHeaderPlate.BorderBrush = GTheme.Brush(GTheme.Line);
         DetailLayer.Background = GTheme.Brush(GTheme.Canvas);
         ApplyPanelTransparency();
     }
@@ -670,14 +673,16 @@ public partial class DashboardWindow : Window
             if (!IsVisible || _boundedLayer != null || _nativeUserResize) return;
             double innerWidth = Math.Max(1, Width - FleetSurface.Margin.Left - FleetSurface.Margin.Right);
             double cardsWidth = Math.Max(1, innerWidth - CardsScroll.Padding.Left - CardsScroll.Padding.Right);
-            FleetHeader.InvalidateMeasure();
+            // The plate, not the grid inside it: the header's outer margin moved onto the plate, so
+            // measuring the grid would now miss it and the window would come out short.
+            FleetHeaderPlate.InvalidateMeasure();
             CardsPanel.InvalidateMeasure();
             FooterText.InvalidateMeasure();
-            FleetHeader.Measure(new Size(innerWidth, double.PositiveInfinity));
+            FleetHeaderPlate.Measure(new Size(innerWidth, double.PositiveInfinity));
             CardsPanel.Measure(new Size(cardsWidth, double.PositiveInfinity));
             FooterText.Measure(new Size(innerWidth, double.PositiveInfinity));
             double desired = FleetSurface.Margin.Top + FleetSurface.Margin.Bottom
-                + FleetHeader.DesiredSize.Height
+                + FleetHeaderPlate.DesiredSize.Height
                 + CardsScroll.Padding.Top + CardsScroll.Padding.Bottom + CardsPanel.DesiredSize.Height
                 + FooterText.DesiredSize.Height + 12; // DPI rounding guard keeps Auto from adding a bottom bar
             // In desktop mode Window.Height includes the native title bar and frame, while the values

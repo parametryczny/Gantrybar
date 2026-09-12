@@ -45,20 +45,26 @@ def css_for(theme: str, window_alpha: float = 1.0, card_scale: float = 1.0) -> b
             "#f2f2f7", "#1c1c1e", "#ffffff", "#d1d1d6", "#636366", "#8e8e93", "#3a3a3c"
         )
         segment_off = "alpha(#1c1c1e, 0.14)"
+        surface_on_backdrop = "#f2f2f2"
     else:
         canvas, text, card, line, secondary, muted, metric = (
             "#0c0d0e", "#f2f3f1", "#151719", "#2a2c2e", "#a7aaa6", "#6d716e", "#d4d7d3"
         )
         segment_off = "alpha(#f2f3f1, 0.14)"
+        surface_on_backdrop = "#212325"
     values = {
         "canvas": canvas, "text": text, "card": card, "line": line, "secondary": secondary,
         "muted": muted, "metric": metric, "alpha": window_alpha, "segment_off": segment_off,
+        "surface_on_backdrop": surface_on_backdrop,
     }
     base = ("""
 window { background: %(canvas)s; color: %(text)s; }
 window.popover-window { background-color: alpha(%(canvas)s, %(alpha).3f); border: 1px solid %(line)s; border-radius: 20px; }
 .fleet-root { padding: 12px 14px 8px; }
-.fleet-header { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 11px; padding: 6px 8px 6px 12px; }
+/* Opaque, with the card's fill already blended in. A translucent tile borrows its contrast from
+   whatever is beneath it, and beneath this one is only the RGBA window: over a bright desktop the
+   wordmark and the fleet summary lost their contrast entirely. Same fix as macOS and Windows. */
+.fleet-header { background: %(surface_on_backdrop)s; border: 1px solid alpha(#ffffff, 0.09); border-radius: 11px; padding: 6px 8px 6px 12px; }
 .wordmark { color: %(text)s; font-size: 17px; font-weight: 800; }
 .title { color: %(text)s; font-size: 20px; font-weight: 700; }
 .summary { color: %(secondary)s; font-size: 11px; }

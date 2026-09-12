@@ -49,6 +49,13 @@ internal static class GTheme
     // Semantic surfaces built from the tokens.
     public static Color Line => W(0.09);
     public static Color Surface => W(0.052);
+    /// <summary>Surface with the card's own fill already blended in, and opaque. A bento tile borrows
+    /// its contrast from the opaque card beneath it; the fleet header has only the translucent panel
+    /// tint and the blurred desktop beneath it, so over a bright window it lost that contrast and left
+    /// near-white text on near-white. Baking the blend makes it look the same wherever it is opened.</summary>
+    public static Color SurfaceOnBackdrop => IsLight
+        ? Color.FromRgb(0xF2, 0xF2, 0xF2)
+        : Color.FromRgb(0x21, 0x23, 0x25);
     public static Color CardTranslucent => With(Card, 0.5);
 
     public static Brush Brush(Color c) => new SolidColorBrush(c);

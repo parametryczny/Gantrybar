@@ -113,6 +113,18 @@ require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r"private void FitPanel\(\)[\s\S]*?double\.PositiveInfinity[\s\S]*?WorkArea\.Height",
         "Windows bounded panel height is not measured from its content and the work area")
+
+# The fleet header sits on a translucent panel on all three, so its tile has to carry its own
+# contrast. Borrowed from the backdrop it read as near-white on near-white over a bright window.
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"header\.layer\?\.backgroundColor = GantryTheme\.surfaceOnBackdrop\.cgColor",
+        "macOS fleet header borrows its contrast from the desktop behind the panel")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"FleetHeaderPlate\.Background = GTheme\.Brush\(GTheme\.SurfaceOnBackdrop\)",
+        "Windows fleet header borrows its contrast from the desktop behind the panel")
+require("linux/gantry/dashboard.py",
+        r"\.fleet-header \{ background: %\(surface_on_backdrop\)s;",
+        "Linux fleet header borrows its contrast from the desktop behind the panel")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r"CardColumnPitch\s*=>\s*293 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
         "Windows floating window is not snapped to card columns with content-driven height")
