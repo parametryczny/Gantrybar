@@ -174,26 +174,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// Keeps the dashboard visible as a live preview while appearance settings are edited. The
     /// settings window uses the dashboard's level (important when "always on top" is enabled) and
     /// is centered over it without becoming its child, so switching window mode cannot hide both.
-    func presentCentered(over dashboardWindow: NSWindow? = nil) {
+    /// Centred on the screen, always. It used to be centred on the fleet panel, which parked it
+    /// straight on top of the cards the user had just come to adjust. `companion` only lends its
+    /// window level, so the panel cannot end up covering the settings window they are typing in.
+    func presentCentered(levelMatching companion: NSWindow? = nil) {
         refresh()
         showWindow(nil)
         guard let window else { return }
-        if let dashboardWindow {
-            window.level = dashboardWindow.level
-            let targetFrame = dashboardWindow.frame
-            var origin = NSPoint(
-                x: targetFrame.midX - window.frame.width / 2,
-                y: targetFrame.midY - window.frame.height / 2
-            )
-            if let visible = dashboardWindow.screen?.visibleFrame {
-                origin.x = min(max(origin.x, visible.minX), visible.maxX - window.frame.width)
-                origin.y = min(max(origin.y, visible.minY), visible.maxY - window.frame.height)
-            }
-            window.setFrameOrigin(origin)
-        } else {
-            window.level = .normal
-            window.center()
-        }
+        window.level = companion?.level ?? .normal
+        window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

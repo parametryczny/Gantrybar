@@ -484,23 +484,25 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             let controller = SettingsWindowController(store: store)
             controller.onClose = { [weak self] in
                 // A transient popover normally closes as soon as the settings window becomes key.
-                // Restore that native behaviour only after settings are gone, leaving the cards
-                // visible behind the settings window while the user adjusts their scale.
+                // Restore that native behaviour only after settings are gone, so the cards stay on
+                // screen while their scale is being adjusted.
                 self?.popover.behavior = .transient
             }
             settingsWindow = controller
         }
 
-        let dashboardWindow: NSWindow?
+        // The panel stays where it is, next to the menu bar, and settings open centred on the screen
+        // instead of on top of it. Only the window level is borrowed, so the panel cannot cover them.
+        let companion: NSWindow?
         if AppSettings.shared.floatingWindowEnabled {
             floatingDashboard?.restoreFromDock()
-            dashboardWindow = floatingDashboard?.window
+            companion = floatingDashboard?.window
         } else {
             if !popover.isShown { showPopoverFromMenu() }
             popover.behavior = .applicationDefined
-            dashboardWindow = popover.contentViewController?.view.window
+            companion = popover.contentViewController?.view.window
         }
-        settingsWindow?.presentCentered(over: dashboardWindow)
+        settingsWindow?.presentCentered(levelMatching: companion)
     }
 
     /// Resolve the presentation mode at execution time, including actions from the Dock or menu.
