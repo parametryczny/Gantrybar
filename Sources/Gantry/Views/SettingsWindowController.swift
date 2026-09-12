@@ -697,10 +697,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         dockPinnedRow.isOn = settings.edgeDockPinned
         dockPinnedRow.setEnabled(settings.edgeDockEnabled)
         dockCameraRow.titleLabel.stringValue = settings.t("Camera under the strip")
+        dockCameraRow.setSubtitle(settings.t("Pick the printers below. Each picture sits under its own row."))
         dockCameraRow.isOn = settings.edgeDockCamera
-        // The camera needs a strip that stays open: a stream that began and ended with every hover
-        // would spend its life reconnecting, so the switch waits for pinning.
-        dockCameraRow.setEnabled(settings.edgeDockEnabled && settings.edgeDockPinned)
+        dockCameraRow.setEnabled(settings.edgeDockEnabled)
         dockOnlyPrintingRow.titleLabel.stringValue = settings.t("Only printing")
         dockOnlyPrintingRow.isOn = settings.edgeDockOnlyPrinting
         dockOnlyPrintingRow.setEnabled(settings.edgeDockEnabled)
@@ -918,6 +917,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func dockCameraToggled() {
         AppSettings.shared.edgeDockCamera = dockCameraRow.isOn
+        syncDockPrinterSwitches()
+    }
+
+    /// Which printers hang a picture under their row. Same identifier trick as the visibility switch,
+    /// prefixed so one recursive pass can tell the two controls apart.
+    @objc private func dockPrinterCameraToggled(_ sender: NSButton) {
+        let name = sender.identifier?.rawValue ?? ""
+        guard name.hasPrefix("camera:") else { return }
+        let serial = String(name.dropFirst("camera:".count))
+        guard !serial.isEmpty else { return }
+        var chosen = AppSettings.shared.edgeDockCameraSerials
+        if sender.state == .on { chosen.insert(serial) } else { chosen.remove(serial) }
+        AppSettings.shared.edgeDockCameraSerials = chosen
     }
 
     @objc private func dockOnlyPrintingToggled() {
@@ -958,7 +970,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             toggle.identifier = NSUserInterfaceItemIdentifier(printer.serial)
             toggle.target = self
             toggle.action = #selector(dockPrinterToggled(_:))
-            let row = SettingsRowView(control: toggle, minHeight: 40)
+            // Two decisions per printer: is it in the strip at all, and does its picture hang under
+            // its row. The camera is the smaller button, because it is the rarer choice.
+            let camera = NSButton()
+            camera.identifier = NSUserInterfaceItemIdentifier("camera:\(printer.serial)")
+            camera.setButtonType(.toggle)
+            camera.bezelStyle = .accessoryBarAction
+            camera.image = NSImage(systemSymbolName: "video", accessibilityDescription: nil)
+            camera.alternateImage = NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
+            camera.imagePosition = .imageOnly
+            camera.target = self
+            camera.action = #selector(dockPrinterCameraToggled(_:))
+            camera.toolTip = AppSettings.shared.t("Camera under the strip")
+            let controls = NSStackView(views: [camera, toggle])
+            controls.orientation = .horizontal
+            controls.alignment = .centerY
+            controls.spacing = 10
+            let row = SettingsRowView(control: controls, minHeight: 40)
             row.titleLabel.stringValue = printer.name
             row.setSubtitle(printer.model)
             rows.append(row)
@@ -977,14 +1005,34 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func syncDockPrinterSwitches() {
         let settings = AppSettings.shared
         let hidden = settings.edgeDockHiddenPrinters
+        let withCamera = settings.edgeDockCameraSerials
         for row in dockPrintersHolder.subviews.first?.subviews.first?.subviews ?? [] {
             guard let row = row as? SettingsRowView else { continue }
             row.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
-            for control in row.subviews {
-                guard let toggle = control as? NSSwitch, let serial = toggle.identifier?.rawValue else { continue }
-                toggle.state = hidden.contains(serial) ? .off : .on
-                toggle.isEnabled = settings.edgeDockEnabled
+            for control in identifiedControls(in: row) {
+                guard let name = control.identifier?.rawValue else { continue }
+                if let toggle = control as? NSSwitch {
+                    toggle.state = hidden.contains(name) ? .off : .on
+                    toggle.isEnabled = settings.edgeDockEnabled
+                    continue
+                }
+                guard let button = control as? NSButton, name.hasPrefix("camera:") else { continue }
+                let serial = String(name.dropFirst("camera:".count))
+                let kind = store.printers.first(where: { $0.serial == serial })?.kind
+                button.state = withCamera.contains(serial) ? .on : .off
+                // A brand with no stream Gantry can decode never gets the choice offered.
+                button.isEnabled = settings.edgeDockEnabled && settings.edgeDockCamera
+                    && !hidden.contains(serial) && CameraFeedController.supportsCamera(kind)
+                button.isHidden = !CameraFeedController.supportsCamera(kind)
             }
+        }
+    }
+
+    /// The per-printer row nests its controls in a stack, so a flat pass over `subviews` misses them.
+    private func identifiedControls(in view: NSView) -> [NSControl] {
+        view.subviews.flatMap { subview -> [NSControl] in
+            if let control = subview as? NSControl, control.identifier != nil { return [control] }
+            return identifiedControls(in: subview)
         }
     }
 

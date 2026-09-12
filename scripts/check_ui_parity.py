@@ -86,8 +86,14 @@ require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"var pinned = false[\s\S]*?isExpanded: Bool \{ pinned \|\| isHovering \}",
         "macOS edge dock cannot stay open without the pointer")
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
-        r"edgeDockPinned && settings\.edgeDockCamera[\s\S]*?CameraFeedController\(store: store, serial: wanted\)",
-        "macOS edge dock camera is not driven by its own two settings")
+        r"settings\.edgeDockCamera[\s\S]*?edgeDockCameraSerials[\s\S]*?CameraFeedController\(store: store, serial: serial\)",
+        "macOS edge dock cameras are not driven by the per-printer selection")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"cameraViews\[metric\.entry\.serial\]",
+        "macOS edge dock does not place each picture under its own printer row")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"dockPrinterCameraToggled[\s\S]*?edgeDockCameraSerials",
+        "macOS settings cannot choose which printers show a picture")
 require("Sources/Gantry/Views/CameraFeed.swift",
         r"final class CameraFeedController[\s\S]*?func start\(\)[\s\S]*?func stop\(\)",
         "the camera feed is not reusable outside the detail view")

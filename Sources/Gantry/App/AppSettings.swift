@@ -174,9 +174,14 @@ final class AppSettings: ObservableObject {
     /// Keep the strip unfolded instead of expanding it on hover, so progress stays readable without
     /// keeping the pointer there. Asked for in issue #34.
     @Published var edgeDockPinned: Bool { didSet { defaults.set(edgeDockPinned, forKey: "edge-dock-pinned") } }
-    /// Live camera under the rows of a pinned strip. Only meaningful while pinned: a stream that
-    /// started and stopped on every hover would spend its life reconnecting.
+    /// Master switch for live pictures in the strip. Each selected printer gets its own stream, and
+    /// a Bambu machine has a single stream slot, so one lever that stops them all earns its place.
     @Published var edgeDockCamera: Bool { didSet { defaults.set(edgeDockCamera, forKey: "edge-dock-camera") } }
+    /// Printers whose picture sits under their own row. An inclusion list, unlike the visibility
+    /// list above: a newly added printer must not start streaming by itself.
+    @Published var edgeDockCameraSerials: Set<String> {
+        didSet { defaults.set(edgeDockCameraSerials.sorted().joined(separator: "\n"), forKey: "edge-dock-camera-serials") }
+    }
     /// Hide printers that are neither printing nor paused, so a large fleet does not fill the screen
     /// with idle rings.
     @Published var edgeDockOnlyPrinting: Bool { didSet { defaults.set(edgeDockOnlyPrinting, forKey: "edge-dock-only-printing") } }
@@ -249,6 +254,8 @@ final class AppSettings: ObservableObject {
                                                 in: Self.edgeDockScaleSteps)
         edgeDockPinned = defaults.object(forKey: "edge-dock-pinned") as? Bool ?? false
         edgeDockCamera = defaults.object(forKey: "edge-dock-camera") as? Bool ?? false
+        edgeDockCameraSerials = Set((defaults.string(forKey: "edge-dock-camera-serials") ?? "")
+            .split(separator: "\n").map(String.init))
         edgeDockOnlyPrinting = defaults.object(forKey: "edge-dock-only-printing") as? Bool ?? false
         edgeDockHiddenPrinters = Set((defaults.string(forKey: "edge-dock-hidden") ?? "")
             .split(separator: "\n").map(String.init))

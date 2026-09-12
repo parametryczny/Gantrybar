@@ -5,9 +5,11 @@ import Combine
 /// printer. Collapsed it is 22 points wide and carries only colour and fill; hovering expands it into
 /// a list with names, percentages and remaining time, and clicking a row opens that printer's details.
 ///
-/// Two settings change that resting state (issue #34): pinning keeps the list unfolded without the
-/// pointer, and with it a live camera can sit under the rows, so a print can be watched at a glance
-/// instead of through a window that has to stay open.
+/// Issue #34 added two things to that. Pinning keeps the list unfolded without the pointer, and a
+/// pinned strip can be released from the strip itself. Separately, any printer can be given a live
+/// picture that hangs directly under its own row, so a print is watched at a glance instead of
+/// through a window that has to stay open. The two are independent: a picture works on a strip that
+/// still folds, it is simply hidden until the strip opens.
 ///
 /// The "grows out of the edge" look comes from the two concave fillets where the strip meets the
 /// screen: the window is taller than the visible body by one fillet radius at each end, and the extra
@@ -26,9 +28,8 @@ final class EdgeDockWindowController {
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var screenSubscription: AnyCancellable?
-    /// The strip has room for one picture, so it carries one feed at a time.
-    private var cameraFeed: CameraFeedController?
-    private var cameraSerial: String?
+    /// One feed per printer the user ticked for a picture, keyed by serial.
+    private var cameraFeeds: [String: CameraFeedController] = [:]
 
     init(store: PrinterStore, onSelect: @escaping (String) -> Void) {
         self.store = store
@@ -92,55 +93,52 @@ final class EdgeDockWindowController {
         dockView.scale = CGFloat(settings.edgeDockScalePercent) / 100
         dockView.pinned = settings.edgeDockPinned
         dockView.entries = entries
-        syncCamera(entries: entries, settings: settings)
+        syncCameras(entries: entries, settings: settings)
         reposition()
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
 
-    /// Taking the strip off screen must also take the stream down; an invisible camera would keep
+    /// Taking the strip off screen must also take the streams down; an invisible camera would keep
     /// decoding frames and holding the printer's single stream slot.
     private func hide() {
-        detachCamera()
+        detachCameras()
         panel.orderOut(nil)
     }
 
-    private func detachCamera() {
-        cameraFeed?.stop()
-        cameraFeed = nil
-        cameraSerial = nil
-        dockView.cameraView = nil
+    private func detachCameras() {
+        cameraFeeds.values.forEach { $0.stop() }
+        cameraFeeds = [:]
+        dockView.cameraViews = [:]
     }
 
-    /// Starts, moves or drops the feed. Only the serial decides: while it is unchanged the running
-    /// stream is left completely alone, so the 500 ms telemetry refresh cannot restart it.
-    private func syncCamera(entries: [EdgeDockEntry], settings: AppSettings) {
-        let wanted = Build.hasExtras && settings.edgeDockPinned && settings.edgeDockCamera
-            ? cameraTarget(in: entries) : nil
-        guard wanted != cameraSerial else { return }
-        detachCamera()
-        guard let wanted else { return }
-        let feed = CameraFeedController(store: store, serial: wanted)
-        feed.view.cornerRadius = 8
-        cameraFeed = feed
-        cameraSerial = wanted
-        dockView.cameraView = feed.view
-        feed.start()
-    }
-
-    /// One picture, so it follows the print that is actually running: a printing printer first, then a
-    /// paused one, and otherwise only when exactly one candidate exists. With several idle machines
-    /// there is no sensible way to guess which one the user meant, and quietly picking the first would
-    /// be worse than showing nothing; "Only printing" and the per-printer ticks narrow a larger fleet.
-    ///
-    /// Brands without a stream Gantry can decode are not candidates, so they never get a black
-    /// rectangle instead of a picture.
-    private func cameraTarget(in entries: [EdgeDockEntry]) -> String? {
-        let candidates = entries.filter { entry in
-            CameraFeedController.supportsCamera(store.printers.first(where: { $0.serial == entry.serial })?.kind)
+    /// Starts and drops feeds so the running set matches what the user ticked. Membership is the only
+    /// thing compared, so the 500 ms telemetry refresh never restarts a live stream, and folding the
+    /// strip does not either: the pictures are merely hidden. That is why unfolding shows a live image
+    /// at once instead of a reconnect, and it is also the cost: a ticked printer streams for as long
+    /// as the strip is on screen, which on a Bambu machine occupies its only camera slot.
+    private func syncCameras(entries: [EdgeDockEntry], settings: AppSettings) {
+        var wanted: Set<String> = []
+        if Build.hasExtras && settings.edgeDockCamera {
+            let chosen = settings.edgeDockCameraSerials
+            wanted = Set(entries.map(\.serial).filter { serial in
+                // Brands without a stream Gantry can decode would get a black rectangle, so they are
+                // skipped even if ticked; their tick is disabled in Settings for the same reason.
+                chosen.contains(serial)
+                    && CameraFeedController.supportsCamera(store.printers.first(where: { $0.serial == serial })?.kind)
+            })
         }
-        if let printing = candidates.first(where: { $0.state == .printing }) { return printing.serial }
-        if let paused = candidates.first(where: { $0.state == .paused }) { return paused.serial }
-        return candidates.count == 1 ? candidates[0].serial : nil
+        guard wanted != Set(cameraFeeds.keys) else { return }
+        for (serial, feed) in cameraFeeds where !wanted.contains(serial) {
+            feed.stop()
+            cameraFeeds[serial] = nil
+        }
+        for serial in wanted where cameraFeeds[serial] == nil {
+            let feed = CameraFeedController(store: store, serial: serial)
+            feed.view.cornerRadius = 8
+            cameraFeeds[serial] = feed
+            feed.start()
+        }
+        dockView.cameraViews = cameraFeeds.mapValues(\.view)
     }
 
     /// Pins the panel flush to the chosen edge of the screen holding the menu bar, vertically centred.
@@ -191,14 +189,17 @@ private final class EdgeDockView: NSView {
             needsDisplay = true
         }
     }
-    /// The live picture, handed in by the controller. Nil when the camera is off or has no target.
-    var cameraView: NSView? {
+    /// Live pictures by serial, handed in by the controller. Each one is drawn directly under its own
+    /// printer's row, so which machine an image belongs to needs no caption.
+    var cameraViews: [String: NSView] = [:] {
         didSet {
-            guard cameraView !== oldValue else { return }
-            oldValue?.removeFromSuperview()
-            if let cameraView {
-                cameraView.translatesAutoresizingMaskIntoConstraints = true
-                addSubview(cameraView)
+            guard Set(cameraViews.keys) != Set(oldValue.keys) else { return }
+            for (serial, view) in oldValue where cameraViews[serial] !== view {
+                view.removeFromSuperview()
+            }
+            for view in cameraViews.values where view.superview !== self {
+                view.translatesAutoresizingMaskIntoConstraints = true
+                addSubview(view)
             }
             onLayoutChange?()
             needsLayout = true
@@ -243,11 +244,10 @@ private final class EdgeDockView: NSView {
     func preferredSize() -> NSSize {
         let count = max(entries.count, 1)
         if isExpanded {
-            let rows = (Self.padY * 2 + CGFloat(count) * Self.rowHeight
-                        + CGFloat(count - 1) * Self.rowGap) * scale
             let width = expandedWidth()
             return NSSize(width: width,
-                          height: rows + pinBandHeight + cameraBlockHeight(stripWidth: width)
+                          height: Self.padY * 2 * scale + pinBandHeight
+                                  + expandedContentHeight(stripWidth: width)
                                   + Self.notch * 2 * scale)
         }
         let body = (Self.padY * 2 + CGFloat(count) * Self.ring
@@ -263,11 +263,47 @@ private final class EdgeDockView: NSView {
             widest = max(widest, name + value)
         }
         let content = (Self.expandedPadX * 2 + Self.ring + Self.expandedTextGap + 14) * scale + widest
-        // With a camera the strip stops being sized by its longest printer name: the picture needs a
+        // With a picture the strip stops being sized by its longest printer name: the image needs a
         // usable width of its own, so it raises the floor and lifts the ceiling.
-        let minimum = (cameraView == nil ? 150 : Self.cameraMinStripWidth) * scale
-        let maximum = (cameraView == nil ? 260 : Self.cameraMaxStripWidth) * scale
+        let showsAny = entries.contains { cameraViews[$0.serial] != nil }
+        let minimum = (showsAny ? Self.cameraMinStripWidth : 150) * scale
+        let maximum = (showsAny ? Self.cameraMaxStripWidth : 260) * scale
         return min(max(content, minimum), maximum)
+    }
+
+    /// One place that decides the expanded silhouette, so measuring it, drawing it, framing the
+    /// pictures and hit-testing clicks cannot drift apart. Offsets run downward from the content top.
+    private struct RowMetric {
+        let entry: EdgeDockEntry
+        let top: CGFloat            // distance from the content top to the top of the text row
+        let height: CGFloat         // the text row itself
+        let cameraHeight: CGFloat   // 0 when this printer has no picture
+    }
+
+    private func rowMetrics(stripWidth: CGFloat) -> (rows: [RowMetric], height: CGFloat) {
+        let pictureWidth = cameraWidth(stripWidth: stripWidth)
+        let pictureHeight = (pictureWidth * 9 / 16).rounded()
+        var rows: [RowMetric] = []
+        var offset: CGFloat = 0
+        for (index, entry) in entries.enumerated() {
+            let camera = cameraViews[entry.serial] != nil && pictureWidth > 0 ? pictureHeight : 0
+            rows.append(RowMetric(entry: entry, top: offset, height: Self.rowHeight * scale,
+                                  cameraHeight: camera))
+            offset += Self.rowHeight * scale
+            if camera > 0 { offset += Self.cameraGap * scale + camera }
+            if index < entries.count - 1 { offset += Self.rowGap * scale }
+        }
+        return (rows, offset)
+    }
+
+    private func expandedContentHeight(stripWidth: CGFloat) -> CGFloat {
+        guard !entries.isEmpty else { return Self.rowHeight * scale }
+        return rowMetrics(stripWidth: stripWidth).height
+    }
+
+    /// y of the top of the first text row, in view coordinates.
+    private var contentTop: CGFloat {
+        bounds.height - (Self.notch + Self.padY) * scale - pinBandHeight
     }
 
     /// Height the release control and its gap add to the body, or zero when the strip is not pinned.
@@ -300,31 +336,39 @@ private final class EdgeDockView: NSView {
                               width: size.width, height: size.height))
     }
 
-    /// Height the picture and its gap add to the body, or zero when there is nothing to show.
-    private func cameraBlockHeight(stripWidth: CGFloat) -> CGFloat {
-        guard cameraView != nil, isExpanded else { return 0 }
-        return Self.cameraGap * scale + (cameraWidth(stripWidth: stripWidth) * 9 / 16).rounded()
-    }
-
     private func cameraWidth(stripWidth: CGFloat) -> CGFloat {
         max(0, stripWidth - Self.expandedPadX * 2 * scale)
     }
 
-    /// The picture is a real subview inside a hand-drawn silhouette, so it gets framed here rather
-    /// than by constraints: bottom of the body, above the lower fillet, horizontally centred.
+    /// The pictures are real subviews inside a hand-drawn silhouette, so they get framed here rather
+    /// than by constraints: each one directly under its printer's row, horizontally centred. While the
+    /// strip is collapsed they are hidden but their streams keep running, so unfolding it shows a live
+    /// picture at once instead of a reconnect.
     override func layout() {
         super.layout()
-        guard let cameraView else { return }
-        let width = cameraWidth(stripWidth: bounds.width)
-        let height = (width * 9 / 16).rounded()
-        guard isExpanded, width > 0, height > 0 else {
-            cameraView.isHidden = true
+        guard !cameraViews.isEmpty else { return }
+        guard isExpanded else {
+            cameraViews.values.forEach { $0.isHidden = true }
             return
         }
-        cameraView.isHidden = false
-        cameraView.frame = NSRect(x: ((bounds.width - width) / 2).rounded(),
-                                  y: (Self.notch + Self.padY) * scale,
-                                  width: width, height: height)
+        let width = cameraWidth(stripWidth: bounds.width)
+        let x = ((bounds.width - width) / 2).rounded()
+        var placed: Set<String> = []
+        for metric in rowMetrics(stripWidth: bounds.width).rows {
+            guard let view = cameraViews[metric.entry.serial] else { continue }
+            guard metric.cameraHeight > 0, width > 0 else {
+                view.isHidden = true
+                continue
+            }
+            view.isHidden = false
+            view.frame = NSRect(x: x,
+                                y: contentTop - metric.top - metric.height
+                                   - Self.cameraGap * scale - metric.cameraHeight,
+                                width: width, height: metric.cameraHeight)
+            placed.insert(metric.entry.serial)
+        }
+        // A picture whose printer dropped out of the strip this refresh has no row to sit under.
+        for (serial, view) in cameraViews where !placed.contains(serial) { view.isHidden = true }
     }
 
     private func valueText(_ entry: EdgeDockEntry) -> String {
@@ -393,13 +437,13 @@ private final class EdgeDockView: NSView {
     }
 
     private func drawExpanded() {
-        var top = bounds.height - (Self.notch + Self.padY) * scale - pinBandHeight
         // Keep the ring beside the physical screen edge while the text unfolds inward.
         let ringX = edge == .right
             ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
             : (Self.expandedPadX + Self.ring / 2) * scale
-        for entry in entries {
-            let centerY = top - Self.rowHeight * scale / 2
+        for metric in rowMetrics(stripWidth: bounds.width).rows {
+            let entry = metric.entry
+            let centerY = contentTop - metric.top - metric.height / 2
             drawRing(center: NSPoint(x: ringX, y: centerY), entry: entry)
 
             let dim = entry.state == .idle || entry.state == .offline || entry.state == .finished
@@ -423,8 +467,6 @@ private final class EdgeDockView: NSView {
                                  height: name.size().height)
             name.draw(with: nameBox, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
             value.draw(at: NSPoint(x: textRight - valueSize.width, y: centerY - valueSize.height / 2))
-
-            top -= (Self.rowHeight + Self.rowGap) * scale
         }
     }
 
@@ -510,13 +552,25 @@ private final class EdgeDockView: NSView {
     }
 
     private func rowIndex(at point: NSPoint) -> Int? {
-        // A click on the picture is not a click on the row behind it.
-        if let cameraView, !cameraView.isHidden, cameraView.frame.contains(point) { return nil }
-        let step = (isExpanded ? Self.rowHeight + Self.rowGap : Self.ring + Self.collapsedGap) * scale
-        let top = bounds.height - (Self.notch + Self.padY) * scale - pinBandHeight
-        let offset = top - point.y
-        guard offset >= 0 else { return nil }
-        let index = Int(offset / step)
-        return index >= 0 && index < entries.count ? index : nil
+        // A click on a picture is not a click on the row above it.
+        for view in cameraViews.values where !view.isHidden && view.frame.contains(point) { return nil }
+        guard isExpanded else {
+            let step = (Self.ring + Self.collapsedGap) * scale
+            let offset = bounds.height - (Self.notch + Self.padY) * scale - point.y
+            guard offset >= 0 else { return nil }
+            let index = Int(offset / step)
+            return index >= 0 && index < entries.count ? index : nil
+        }
+        // Expanded rows are no longer a fixed pitch, because a picture may sit between two of them.
+        // Walk the same metrics the drawing uses, and let each row own the gap below it so a click
+        // between rows still lands somewhere sensible.
+        let rows = rowMetrics(stripWidth: bounds.width).rows
+        for (index, metric) in rows.enumerated() {
+            let rowTop = contentTop - metric.top
+            let claimed = metric.height + (metric.cameraHeight > 0
+                ? Self.cameraGap * scale + metric.cameraHeight : 0) + Self.rowGap * scale
+            if point.y <= rowTop && point.y > rowTop - claimed { return index }
+        }
+        return nil
     }
 }
