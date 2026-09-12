@@ -88,6 +88,7 @@ public static class StatusParser
         }
         if (Int(report, "layer_num") is { } ln) result.CurrentLayer = ln;
         if (Int(report, "total_layer_num") is { } tln) result.TotalLayers = tln;
+        if (Int(report, "plate_idx") is { } plate && plate > 0) result.CurrentPlateIndex = plate;
 
         // Fans (part / aux / chamber), speed level+magnitude and nozzle diameter. Keep the previous
         // value when a key is missing (partial reports drop them).
@@ -107,9 +108,20 @@ public static class StatusParser
             result.CurrentStage = 255;
 
         if (Str(report, "subtask_name") is { Length: > 0 } job) result.JobName = DisplayName(job);
-        // The file being printed (for fetching its per-filament used_g from the 3mf).
-        if (Str(report, "gcode_file") is { Length: > 0 } gf) result.GcodeFile = gf;
-        else if (Str(report, "subtask_name") is { Length: > 0 } sn) result.GcodeFile = sn;
+        // X2D/H2D can report an internal Metadata/plate_N.gcode path which is not the archive name;
+        // in that case the subtask name is the same fallback used by the macOS implementation.
+        var reportedFile = Str(report, "gcode_file");
+        var subtask = Str(report, "subtask_name");
+        bool internalPlate = reportedFile?.Replace('\\', '/').Contains("/Metadata/plate_", StringComparison.OrdinalIgnoreCase) == true;
+        if (internalPlate && !string.IsNullOrEmpty(subtask)) result.GcodeFile = subtask;
+        else if (!string.IsNullOrEmpty(reportedFile)) result.GcodeFile = reportedFile;
+        else if (!string.IsNullOrEmpty(subtask)) result.GcodeFile = subtask;
+        if (report.TryGetProperty("s_obj", out var skipped) && skipped.ValueKind == JsonValueKind.Array)
+            result.SkippedObjectIds = skipped.EnumerateArray()
+                .Select(ObjectId)
+                .Where(value => value is not null)
+                .Select(value => value!)
+                .ToHashSet();
         if (UInt64Value(report, "print_error") is { } err) result.ErrorCode = err;
 
         if (report.TryGetProperty("hms", out var hms) && hms.ValueKind == JsonValueKind.Array)
@@ -348,6 +360,18 @@ public static class StatusParser
         var n = Num(obj, key);
         return n.HasValue ? (int)n.Value : null;
     }
+
+    /// <summary>One entry of Bambu's `s_obj` list of already-skipped objects. Unlike <see cref="Int"/>
+    /// the element itself is the value, not a property of an object. Numbers are the normal form, but
+    /// a string is accepted too, so a firmware that quotes them still matches the ids the picker uses.
+    /// </summary>
+    private static string? ObjectId(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Number => value.TryGetInt64(out var number)
+            ? number.ToString(CultureInfo.InvariantCulture) : null,
+        JsonValueKind.String => value.GetString() is { Length: > 0 } text ? text : null,
+        _ => null,
+    };
 
     /// <summary>Slot level, or null when the printer says it cannot measure it. Bambu reports
     /// remain: -1 for a slot with no RFID tag (a third-party spool), and passing that through

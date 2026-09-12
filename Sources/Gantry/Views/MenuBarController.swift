@@ -9,6 +9,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var progressItems: [String: NSStatusItem] = [:]
     private var dashboardViewController: NSViewController?
     private var detailViewController: PrinterDetailViewController?
+    private var skipObjectsViewController: SkipObjectsViewController?
     private var automationsWindows: [String: AutomationsWindowController] = [:]
     private var advancedWindows: [String: PrinterAdvancedWindowController] = [:]
     private var dashboardContentSize = NSSize(width: 540, height: 650)
@@ -44,6 +45,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
             onReconnect: { [weak store] printer in store?.reconnect(printer) },
             onShowDetails: { [weak self] serial in self?.showDetails(serial: serial) },
+            onSkipObjects: { [weak self] serial in self?.showSkipObjects(serial: serial) },
             onPreferredContentSize: { [weak self] size in
                 guard let self else { return }
                 self.dashboardContentSize = size
@@ -85,27 +87,33 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             }
         }
         // Optional always-on-top strip at a screen edge. It owns its own visibility, so it is safe to
-        // create unconditionally: with the setting off it simply never orders itself in.
-        edgeDock = EdgeDockWindowController(store: store) { [weak self] serial in
-            self?.revealDetails(serial: serial)
+        // create unconditionally: with the setting off it simply never orders itself in. LITE has one
+        // surface only — the menu-bar popover — so neither extra window is built there.
+        if Build.hasExtras {
+            edgeDock = EdgeDockWindowController(store: store) { [weak self] serial in
+                self?.revealDetails(serial: serial)
+            }
+            floatingDashboard = FloatingDashboardWindowController(
+                store: store,
+                onAdd: { [weak self] in self?.showAddPrinter() },
+                onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
+                onReconnect: { [weak store] printer in store?.reconnect(printer) },
+                onShowDetails: { [weak self] serial in self?.revealDetails(serial: serial) },
+                onSkipObjects: { [weak self] serial in self?.showSkipObjects(serial: serial) },
+                onShowSettings: { [weak self] in self?.showSettings() }
+            )
         }
-        floatingDashboard = FloatingDashboardWindowController(
-            store: store,
-            onAdd: { [weak self] in self?.showAddPrinter() },
-            onEdit: { [weak self] printer in self?.showEditPrinter(printer) },
-            onReconnect: { [weak store] printer in store?.reconnect(printer) },
-            onShowDetails: { [weak self] serial in self?.revealDetails(serial: serial) },
-            onShowSettings: { [weak self] in self?.showSettings() }
-        )
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .gantryShowDashboard, object: nil, queue: .main
         ) { [weak self] _ in
             DispatchQueue.main.async { self?.showDashboard() }
         }
-        updateNotificationObserver = NotificationCenter.default.addObserver(
-            forName: .gantryCheckForUpdates, object: nil, queue: .main
-        ) { _ in
-            DispatchQueue.main.async { UpdatePresenter.checkAndPresent(from: nil) }
+        if Build.hasExtras {
+            updateNotificationObserver = NotificationCenter.default.addObserver(
+                forName: .gantryCheckForUpdates, object: nil, queue: .main
+            ) { _ in
+                DispatchQueue.main.async { UpdatePresenter.checkAndPresent(from: nil) }
+            }
         }
     }
 
@@ -210,7 +218,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             button.imagePosition = .imageOnly
             button.toolTip = store.activePrintCount > 0
                 ? AppSettings.shared.t("Gantry — printing: {0}", store.activePrintCount)
-                : "Gantry"
+                : Build.appName
         }
     }
 
@@ -324,11 +332,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          title: settings.t("Show printers")) { [weak self] in
             self?.showPopoverFromMenu()
         })
-        menu.addItem(row(icon: "questionmark.circle", title: settings.t("How to read Gantry")) { [weak self] in
-            self?.appMenuOnboarding(nil)
-        })
+        if Build.hasExtras {
+            menu.addItem(row(icon: "questionmark.circle", title: settings.t("How to read Gantry")) { [weak self] in
+                self?.appMenuOnboarding(nil)
+            })
+        }
 
-        if settings.spoolbaseEnabled {
+        if Build.hasExtras, settings.spoolbaseEnabled {
             menu.addItem(row(icon: "shippingbox.fill",
                              title: settings.t("Spoolbase — filament stock")) { [weak self] in
                 self?.showSpoolbase()
@@ -351,14 +361,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          enabled: !store.printers.isEmpty) { [weak self] in
             self?.store.reconnectAll()
         })
-        menu.addItem(row(icon: "stethoscope",
-                         title: settings.t("Diagnostic Center…")) { [weak self] in
-            self?.showDiagnostics()
-        })
-        menu.addItem(row(icon: "chart.bar",
-                         title: settings.t("Fleet statistics…")) { [weak self] in
-            self?.showFleetStats()
-        })
+        if Build.hasExtras {
+            menu.addItem(row(icon: "stethoscope",
+                             title: settings.t("Diagnostic Center…")) { [weak self] in
+                self?.showDiagnostics()
+            })
+            menu.addItem(row(icon: "chart.bar",
+                             title: settings.t("Fleet statistics…")) { [weak self] in
+                self?.showFleetStats()
+            })
+        }
 
         menu.addItem(.separator())
 
@@ -375,11 +387,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))) {
             QuietHours.isEnabled.toggle()
         })
-        menu.addItem(row(icon: "arrow.down.circle",
-                         title: settings.t("Check for updates…"),
-                         accessory: .detail("v\(UpdateService.currentVersion)")) {
-            UpdatePresenter.checkAndPresent(from: nil)
-        })
+        if Build.hasExtras {
+            menu.addItem(row(icon: "arrow.down.circle",
+                             title: settings.t("Check for updates…"),
+                             accessory: .detail("v\(UpdateService.currentVersion)")) {
+                UpdatePresenter.checkAndPresent(from: nil)
+            })
+        }
         menu.addItem(row(icon: "gearshape",
                          title: settings.t("Settings…"),
                          accessory: .detail("⌘,")) { [weak self] in
@@ -466,8 +480,29 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func showSettings() {
-        if settingsWindow == nil { settingsWindow = SettingsWindowController(store: store) }
-        settingsWindow?.presentCentered()
+        if settingsWindow == nil {
+            let controller = SettingsWindowController(store: store)
+            controller.onClose = { [weak self] in
+                // A transient popover normally closes as soon as the settings window becomes key.
+                // Restore that native behaviour only after settings are gone, so the cards stay on
+                // screen while their scale is being adjusted.
+                self?.popover.behavior = .transient
+            }
+            settingsWindow = controller
+        }
+
+        // The panel stays where it is, next to the menu bar, and settings open centred on the screen
+        // instead of on top of it. Only the window level is borrowed, so the panel cannot cover them.
+        let companion: NSWindow?
+        if AppSettings.shared.floatingWindowEnabled {
+            floatingDashboard?.restoreFromDock()
+            companion = floatingDashboard?.window
+        } else {
+            if !popover.isShown { showPopoverFromMenu() }
+            popover.behavior = .applicationDefined
+            companion = popover.contentViewController?.view.window
+        }
+        settingsWindow?.presentCentered(levelMatching: companion)
     }
 
     /// Resolve the presentation mode at execution time, including actions from the Dock or menu.
@@ -531,7 +566,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
         // Reset to the fleet list so reopening never lands back in a stale detail view — but not while
         // we're intentionally closing to swap content in a new size.
-        if detailViewController != nil, !suppressFleetReset { returnToFleet() }
+        if (detailViewController != nil || skipObjectsViewController != nil), !suppressFleetReset { returnToFleet() }
     }
 
     // Applied on every show (and on settings change): the vibrancy material plus, for "high", a lower
@@ -580,6 +615,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Swaps the popover's content to the in-bubble detail view for one printer, keeping everything
     /// inside the popover instead of opening a separate window.
     private func showDetails(serial: String) {
+        // LITE ships no detail view; the cards themselves are the whole surface.
+        guard Build.hasExtras else { return }
         if AppSettings.shared.floatingWindowEnabled {
             closePopover()
             let detail = PrinterDetailViewController(
@@ -587,6 +624,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 onBack: { [weak self] in self?.floatingDashboard?.dismissEmbeddedPanel() },
                 onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
                 onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) },
+                onSkipObjects: { [weak self] in self?.showSkipObjects(serial: serial) },
                 presentation: .floatingWindow)
             floatingDashboard?.present(detail, size: NSSize(width: 480, height: 700))
             return
@@ -595,7 +633,15 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             store: store, serial: serial,
             onBack: { [weak self] in self?.returnToFleet() },
             onOpenAutomations: { [weak self] in self?.showAutomations(serial: serial) },
-            onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) })
+            onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) },
+            onSkipObjects: { [weak self] in self?.showSkipObjects(serial: serial) })
+        // The detail view reports the height its cards need, capped by the screen, instead of being
+        // nailed to one number: on a tall display it grows rather than scrolling inside 720 points.
+        detail.onPreferredContentSize = { [weak self] size in
+            guard let self, self.detailViewController === detail,
+                  self.popover.contentSize != size else { return }
+            self.popover.contentSize = size
+        }
         detailViewController = detail
         swapPopoverContent(to: detail, size: NSSize(width: 600, height: 720))
     }
@@ -627,8 +673,29 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// Returns the popover to the fleet dashboard.
     private func returnToFleet() {
         detailViewController = nil
+        skipObjectsViewController = nil
         guard let dashboard = dashboardViewController else { return }
         swapPopoverContent(to: dashboard, size: dashboardContentSize)
+    }
+
+    private func showSkipObjects(serial: String) {
+        guard Build.hasExtras else { return }
+        if AppSettings.shared.floatingWindowEnabled {
+            let controller = SkipObjectsViewController(store: store, serial: serial) { [weak self] in
+                self?.floatingDashboard?.dismissEmbeddedPanel()
+            }
+            // On a short window the embedded surface scrolls as a whole instead of squeezing or
+            // clipping the bed selector. Its width remains the same focused 480-point modal.
+            floatingDashboard?.present(controller, size: NSSize(width: 480, height: 650),
+                                       fillsViewport: false)
+            return
+        }
+        let controller = SkipObjectsViewController(store: store, serial: serial) { [weak self] in
+            self?.returnToFleet()
+        }
+        skipObjectsViewController = controller
+        detailViewController = nil
+        swapPopoverContent(to: controller, size: NSSize(width: 480, height: 650))
     }
 
     /// Reliably resize the popover when swapping content: an already-open popover won't re-measure on

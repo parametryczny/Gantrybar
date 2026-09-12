@@ -58,6 +58,7 @@ enum BambuStatusParser {
         }
         if let value = integer(report["layer_num"]) { result.currentLayer = value }
         if let value = integer(report["total_layer_num"]) { result.totalLayers = value }
+        if let value = integer(report["plate_idx"]), value > 0 { result.currentPlateIndex = value }
         // Fans (part / aux / chamber), speed level+magnitude and nozzle diameter. Not every model
         // reports each field, so keep the previous value when a key is missing.
         if let value = fanPercent(report["cooling_fan_speed"]) { result.partFanPercent = value }
@@ -75,9 +76,20 @@ enum BambuStatusParser {
             result.currentStage = 255
         }
         if let value = string(report["subtask_name"]), !value.isEmpty { result.jobName = displayName(value) }
-        // The file being printed, e.g. "vase.gcode.3mf" — needed to fetch its per-filament used_g.
-        if let file = string(report["gcode_file"]), !file.isEmpty { result.gcodeFile = file }
-        else if let file = string(report["subtask_name"]), !file.isEmpty { result.gcodeFile = file }
+        // Classic Bambu firmware exposes the downloadable SD-card archive through `gcode_file`,
+        // whereas H2D/X2D reports only an internal path such as `/data/Metadata/plate_1.gcode`.
+        // Use the display/subtask name only for that internal-plate form. Applying the X2D rule to
+        // every model makes X1/P1/P2/A1 search FTPS for a friendly job title instead of the real file.
+        let reportedFile = string(report["gcode_file"])
+        let subtask = string(report["subtask_name"])
+        let normalizedFile = reportedFile?.lowercased().replacingOccurrences(of: "\\", with: "/")
+        let isInternalPlate = normalizedFile?.contains("/metadata/plate_") == true
+        if isInternalPlate, let subtask, !subtask.isEmpty { result.gcodeFile = subtask }
+        else if let reportedFile, !reportedFile.isEmpty { result.gcodeFile = reportedFile }
+        else if let subtask, !subtask.isEmpty { result.gcodeFile = subtask }
+        if let skipped = report["s_obj"] as? [Any] {
+            result.skippedObjectIDs = Set(skipped.compactMap { integer($0).map(String.init) })
+        }
         if let value = uint64(report["print_error"]) { result.errorCode = value }
         if let hms = report["hms"] as? [[String: Any]] {
             result.hmsCodes = hms.compactMap(hmsCode)

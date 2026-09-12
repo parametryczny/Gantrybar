@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window
     /// Raised when any edge-dock setting changes, so the tray owner can re-pin the strip live.
     public Action? OnEdgeDockChanged;
     public Action? OnWindowModeChanged;
+    public Action? OnCardScaleChanged;
 
     public SettingsWindow(PrinterStore? store = null)
     {
@@ -26,13 +27,14 @@ public partial class SettingsWindow : Window
         ApplyThemeVisuals();
         ApplyLanguage();
         LoadSettings();
+        ApplyEditionVisibility();
         FloatingWindowCheckBox.Content = AppSettings.T("Show Gantry in a floating window");
         AlwaysOnTopCheckBox.Content = AppSettings.T("Always on top");
-        FloatingWindowCheckBox.IsChecked = Defaults.GetBool("floating-window-enabled");
+        FloatingWindowCheckBox.IsChecked = AppSettings.FloatingWindowEnabled;
         AlwaysOnTopCheckBox.IsChecked = Defaults.GetBool("floating-window-always-on-top", true);
         FloatingWindowCheckBox.Click += (_, _) =>
         {
-            Defaults.SetBool("floating-window-enabled", FloatingWindowCheckBox.IsChecked == true);
+            AppSettings.FloatingWindowEnabled = FloatingWindowCheckBox.IsChecked == true;
             OnWindowModeChanged?.Invoke();
         };
         AlwaysOnTopCheckBox.Click += (_, _) =>
@@ -66,8 +68,10 @@ public partial class SettingsWindow : Window
             DockEdgeButton.Content = EdgeName();
             OnEdgeDockChanged?.Invoke();
         };
-        DockSizeMinusButton.Click += (_, _) => ChangeDockScale(-25);
-        DockSizePlusButton.Click += (_, _) => ChangeDockScale(25);
+        DockSizeMinusButton.Click += (_, _) => ChangeDockScale(-5);
+        DockSizePlusButton.Click += (_, _) => ChangeDockScale(5);
+        CardSizeMinusButton.Click += (_, _) => ChangeCardScale(-5);
+        CardSizePlusButton.Click += (_, _) => ChangeCardScale(5);
         DockOnlyPrintingCheckBox.Click += (_, _) =>
         {
             AppSettings.EdgeDockOnlyPrinting = DockOnlyPrintingCheckBox.IsChecked == true;
@@ -127,6 +131,25 @@ public partial class SettingsWindow : Window
         CloseButton.Click += (_, _) => Close();
     }
 
+    /// <summary>Hides everything the LITE edition does not ship: the Advanced tab (developer mode,
+    /// Telegram, web dashboard), Spoolbase, the floating window, the edge dock and the two card rows
+    /// that belong to Spoolbase and the detail view. The handlers stay wired — the controls are simply
+    /// unreachable — so the full build is untouched by this method.</summary>
+    private void ApplyEditionVisibility()
+    {
+        if (Build.HasExtras) return;
+        TabAdvanced.Visibility = Visibility.Collapsed;
+        TabAdvancedColumn.Width = new System.Windows.GridLength(0);
+        SpoolbaseCheckBox.Visibility = SpoolbaseSeparator.Visibility = Visibility.Collapsed;
+        UpdatesHeading.Visibility = UpdatesCard.Visibility = Visibility.Collapsed;
+        FloatingWindowCheckBox.Visibility = AlwaysOnTopCheckBox.Visibility =
+            FloatingWindowSeparator.Visibility = Visibility.Collapsed;
+        CardSpoolGramsCheckBox.Visibility = CardSpoolGramsSeparator.Visibility = Visibility.Collapsed;
+        CardDetailsChipCheckBox.Visibility = CardDetailsChipSeparator.Visibility = Visibility.Collapsed;
+        DockHeading.Visibility = DockCard.Visibility = DockPrintersCaption.Visibility =
+            DockPrintersCard.Visibility = DockHint.Visibility = Visibility.Collapsed;
+    }
+
     private void ShowPage(System.Windows.Controls.ScrollViewer page)
     {
         PageGeneral.Visibility = ReferenceEquals(page, PageGeneral) ? Visibility.Visible : Visibility.Collapsed;
@@ -157,6 +180,15 @@ public partial class SettingsWindow : Window
         DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
         ApplyDockEnabledState();
         OnEdgeDockChanged?.Invoke();
+    }
+
+    private void ChangeCardScale(int delta)
+    {
+        AppSettings.CardScalePercent += delta;
+        CardSizeValue.Text = $"{AppSettings.CardScalePercent}%";
+        CardSizeMinusButton.IsEnabled = AppSettings.CardScalePercent > 75;
+        CardSizePlusButton.IsEnabled = AppSettings.CardScalePercent < 150;
+        OnCardScaleChanged?.Invoke();
     }
 
     /// One switch row per printer. The serial rides in the control's Tag because the list is rebuilt
@@ -256,6 +288,10 @@ public partial class SettingsWindow : Window
         AutoUpdateCheckBox.Content = AppSettings.T("Download and install updates automatically");
 
         CardsHeading.Text = AppSettings.T("PRINTER CARDS");
+        CardSizeLabel.Text = AppSettings.T("Card size");
+        CardSizeValue.Text = $"{AppSettings.CardScalePercent}%";
+        CardSizeMinusButton.IsEnabled = AppSettings.CardScalePercent > 75;
+        CardSizePlusButton.IsEnabled = AppSettings.CardScalePercent < 150;
         CardFileNameCheckBox.Content = AppSettings.T("File name");
         CardProgressCheckBox.Content = AppSettings.T("Progress");
         CardTempsCheckBox.Content = AppSettings.T("Temperatures");
@@ -295,7 +331,7 @@ public partial class SettingsWindow : Window
         CheckUpdatesButton.Content = AppSettings.T("Check for updates");
 
         AboutHeading.Text = AppSettings.T("ABOUT");
-        AboutVersion.Text = $"Gantry · {AppSettings.T("version")} {UpdateChecker.CurrentVersion} · DPAPI";
+        AboutVersion.Text = $"{Build.AppName} · {AppSettings.T("version")} {UpdateChecker.CurrentVersion} · DPAPI";
         AboutAuthor.Text = "@_parametryczny";
         GitHubButton.Content = "GitHub";
         XButton.Content = "@_parametryczny";
@@ -305,7 +341,7 @@ public partial class SettingsWindow : Window
         TabGeneral.Content = AppSettings.T("General");
         TabAppearance.Content = AppSettings.T("Appearance");
         TabAdvanced.Content = AppSettings.T("Advanced");
-        HeaderSubtitle.Text = "Gantry · @_parametryczny";
+        HeaderSubtitle.Text = $"{Build.AppName} · @_parametryczny";
         FooterVersion.Text = string.Format(AppSettings.T("Version {0} · DPAPI"), UpdateChecker.CurrentVersion);
         DeveloperHeading.Text = AppSettings.T("DEVELOPER");
 

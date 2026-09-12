@@ -1,0 +1,3 @@
+#!/bin/sh
+# Gantry LITE: the same package, run with the extras switched off.
+GANTRY_EDITION=lite exec /usr/bin/python3 -m gantry "$@"

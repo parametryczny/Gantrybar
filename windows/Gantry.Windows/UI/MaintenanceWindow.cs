@@ -102,7 +102,11 @@ internal sealed class MaintenancePanel
         if (codes.Count > 0)
             return codes.Select(code => (HmsResolver.Description(new[] { code }, _printer.Serial, _pl) ?? $"HMS {code}", (string?)code)).ToList();
         if (_telemetry.ErrorCode != 0)
-            return new() { (string.Format(AppSettings.T("Error code: 0x{0:X}"), _telemetry.ErrorCode), null) };
+            return new() { (
+                HmsResolver.Description(_telemetry.ErrorCode, _printer.Serial, _pl)
+                    ?? AppSettings.T("Printer reported an error"),
+                string.Format(AppSettings.T("Diagnostic code: 0x{0}"), HmsResolver.FormatErrorCode(_telemetry.ErrorCode))
+            ) };
         if (_telemetry.State == PrinterState.Error)
             return new() { (AppSettings.T("Printer reported an error"), null) };
         return new();

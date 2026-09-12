@@ -180,7 +180,8 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
+                        <!-- Collapsed to zero width in LITE, which has no Advanced page. -->
+                        <ColumnDefinition x:Name="TabAdvancedColumn" Width="*"/>
                     </Grid.ColumnDefinitions>
                     <RadioButton x:Name="TabGeneral" Style="{StaticResource TabPill}" GroupName="SettingsTabs" IsChecked="True"/>
                     <RadioButton x:Name="TabAppearance" Grid.Column="1" Style="{StaticResource TabPill}" GroupName="SettingsTabs" Margin="2,0"/>
@@ -202,7 +203,7 @@
                                 </Grid>
                                 <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="StartupCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
+                                <Border x:Name="SpoolbaseSeparator" Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="SpoolbaseCheckBox"/>
                             </StackPanel>
                         </Border>
@@ -233,7 +234,7 @@
                         </Border>
 
                         <TextBlock x:Name="UpdatesHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border Style="{StaticResource Card}">
+                        <Border x:Name="UpdatesCard" Style="{StaticResource Card}">
                             <StackPanel>
                                 <Grid Style="{StaticResource RowGrid}">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -280,7 +281,7 @@
                                 </Grid>
                                 <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="MonochromeCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
+                                <Border x:Name="FloatingWindowSeparator" Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="FloatingWindowCheckBox"/>
                                 <CheckBox x:Name="AlwaysOnTopCheckBox"/>
                             </StackPanel>
@@ -289,6 +290,16 @@
                         <TextBlock x:Name="CardsHeading" Style="{StaticResource GroupHeading}"/>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <Grid x:Name="CardSizeRow" Style="{StaticResource RowGrid}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="CardSizeLabel" Style="{StaticResource RowLabel}"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button x:Name="CardSizeMinusButton" Content="−" Width="34" Height="26" FontSize="15"/>
+                                        <TextBlock x:Name="CardSizeValue" Width="54" TextAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
+                                        <Button x:Name="CardSizePlusButton" Content="+" Width="34" Height="26" FontSize="15"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="CardFileNameCheckBox"/>
                                 <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="CardProgressCheckBox"/>
@@ -296,15 +307,15 @@
                                 <CheckBox x:Name="CardTempsCheckBox"/>
                                 <Border Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="CardFilamentsCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
+                                <Border x:Name="CardSpoolGramsSeparator" Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="CardSpoolGramsCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
+                                <Border x:Name="CardDetailsChipSeparator" Style="{StaticResource RowSeparator}"/>
                                 <CheckBox x:Name="CardDetailsChipCheckBox"/>
                             </StackPanel>
                         </Border>
 
                         <TextBlock x:Name="DockHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border Style="{StaticResource Card}">
+                        <Border x:Name="DockCard" Style="{StaticResource Card}">
                             <StackPanel>
                                 <CheckBox x:Name="DockEnableCheckBox"/>
                                 <Border Style="{StaticResource RowSeparator}"/>
@@ -328,7 +339,7 @@
                             </StackPanel>
                         </Border>
                         <TextBlock x:Name="DockPrintersCaption" Style="{StaticResource GroupHeading}" Margin="2,14,0,7"/>
-                        <Border Style="{StaticResource Card}">
+                        <Border x:Name="DockPrintersCard" Style="{StaticResource Card}">
                             <StackPanel x:Name="DockPrintersList"/>
                         </Border>
                         <TextBlock x:Name="DockHint" FontSize="11" Foreground="{DynamicResource SettingsMutedBrush}" TextWrapping="Wrap" Margin="2,10,0,0"/>

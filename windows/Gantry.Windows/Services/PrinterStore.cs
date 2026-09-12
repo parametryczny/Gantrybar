@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Gantry.Models;
 
@@ -672,6 +673,59 @@ public sealed class PrinterStore
         if (_clients.TryGetValue(serial, out var c) && c is MoonrakerClient m) m.SendGcode(script);
     }
 
+    public async Task<(PrintObjectLayout? Layout, string? Error)> LoadPrintObjectLayoutAsync(string serial)
+    {
+        var printer = Printers.FirstOrDefault(p => p.Serial == serial);
+        if (printer is null) return (null, AppSettings.T("Printer not found."));
+        var telemetry = Telemetry.TryGetValue(serial, out var value) ? value : new PrinterTelemetry();
+        if (printer.Kind == PrinterKind.Klipper)
+        {
+            if (telemetry.PrintObjects.Count == 0) return (null, AppSettings.T("This print does not expose multiple objects."));
+            var points = telemetry.PrintObjects.SelectMany(o => o.Polygon).ToList();
+            double[] bounds = points.Count == 0 ? new double[] { 0, 0, 256, 256 } : new[] { points.Min(p => p.X) - 5, points.Min(p => p.Y) - 5, points.Max(p => p.X) + 5, points.Max(p => p.Y) + 5 };
+            return (new PrintObjectLayout(telemetry.PrintObjects, telemetry.SkippedObjectIds, telemetry.CurrentObjectId, bounds, null), null);
+        }
+        if (printer.Kind != PrinterKind.Bambu) return (null, AppSettings.T("Skipping objects is not available for this printer."));
+        if (string.IsNullOrWhiteSpace(telemetry.GcodeFile)) return (null, AppSettings.T("The printer did not provide the active print file name."));
+        var code = AccessCodeStore.ReadAccessCode(serial);
+        if (string.IsNullOrWhiteSpace(code)) return (null, AppSettings.T("The printer access code is missing."));
+        try
+        {
+            var data = await new BambuFileClient(printer.Host, code).FetchAsync(telemetry.GcodeFile);
+            var layout = ThreeMFReader.ObjectLayout(data, telemetry.GcodeFile, telemetry.SkippedObjectIds);
+            return layout is null ? (null, AppSettings.T("The downloaded 3MF does not contain a skippable object list.")) : (layout, null);
+        }
+        catch (Exception ftpsError)
+        {
+            try
+            {
+                await using var tunnel = new BambuTunnelFileClient(printer.Host, code);
+                var parts = await tunnel.FetchActiveProjectPartsAsync(telemetry.CurrentPlateIndex ?? 1);
+                var layout = ThreeMFReader.ObjectLayout(parts.SliceInfo, parts.PickPng, telemetry.SkippedObjectIds);
+                return layout is null ? (null, AppSettings.T("The downloaded 3MF does not contain a skippable object list.")) : (layout, null);
+            }
+            catch (Exception tunnelError) { return (null, string.Format(AppSettings.T("The printer did not make the active 3MF available over LAN: {0}"), $"{ftpsError.Message}; {tunnelError.Message}")); }
+        }
+    }
+
+    public void SkipPrintObjects(string serial, IEnumerable<string> ids)
+    {
+        var selected = ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+        if (selected.Count == 0) return;
+        var printer = Printers.FirstOrDefault(p => p.Serial == serial);
+        if (printer?.Kind == PrinterKind.Klipper)
+        {
+            foreach (var id in selected) SendGcode(serial, $"EXCLUDE_OBJECT NAME={id}");
+            return;
+        }
+        if (printer?.Kind != PrinterKind.Bambu) return;
+        var existing = Telemetry.TryGetValue(serial, out var telemetry) ? telemetry.SkippedObjectIds : new HashSet<string>();
+        var values = existing.Concat(selected).Select(id => int.TryParse(id, out var number) ? (int?)number : null).Where(v => v.HasValue).Select(v => v!.Value).Distinct().OrderBy(v => v).ToArray();
+        if (values.Length == 0) return;
+        var payload = JsonSerializer.Serialize(new { print = new { sequence_id = "2004", command = "skip_objects", timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), obj_list = values } });
+        SendCommand(serial, payload);
+    }
+
     /// Chamber LED on/off. Bambu uses ledctrl; Klipper a best-effort caselight pin. A per-printer
     /// override wins: Bambu treats it as MQTT JSON, Klipper as a G-code line.
     public void SetChamberLight(bool on, string serial)
@@ -841,8 +895,9 @@ public sealed class PrinterStore
         if (AppSettings.NotifyPrinterError && current.State == PrinterState.Error && (previous?.State != PrinterState.Error || !SequenceEqual(previous?.HmsCodes, current.HmsCodes)))
         {
             string description = HmsResolver.Description(current.HmsCodes, printer.Serial, pl)
+                ?? HmsResolver.Description(current.ErrorCode, printer.Serial, pl)
                 ?? (current.ErrorCode != 0
-                    ? string.Format(AppSettings.T("Error code: 0x{0:X}"), current.ErrorCode)
+                    ? string.Format(AppSettings.T("Diagnostic code: 0x{0}"), HmsResolver.FormatErrorCode(current.ErrorCode))
                     : AppSettings.T("The printer reported an error."));
             Push(AppSettings.T("Printer error"), description);
         }

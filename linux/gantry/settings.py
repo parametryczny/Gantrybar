@@ -10,6 +10,7 @@ from typing import Any
 from gi.repository import GLib, Gtk  # type: ignore
 
 from . import __version__
+from . import edition
 from . import i18n
 from .storage import autostart_enabled, set_autostart
 
@@ -44,14 +45,24 @@ class SettingsDialog(Gtk.Dialog):
         outer.pack_start(self.stack, True, True, 0)
         self.get_content_area().pack_start(outer, True, True, 0)
 
-        self.stack.add_titled(self._page([self._basics(), self._notifications(),
-                                          self._updates(), self._about()]),
-                              "general",i18n.t("General"))
-        self.stack.add_titled(self._page([self._appearance(), self._cards(), self._dock()]),
-                              "appearance",i18n.t("Appearance"))
-        self.stack.add_titled(self._page([self._developer(), self._telegram(),
-                                          self._web()]),
-                              "advanced",i18n.t("Advanced"))
+        # LITE has no updater, so its General tab goes Basics → Notifications → About. The section is
+        # still built: save() and the live-update wiring read its widgets.
+        updates = self._updates()
+        general_sections = ([self._basics(), self._notifications(), updates, self._about()]
+                            if edition.HAS_EXTRAS
+                            else [self._basics(), self._notifications(), self._about()])
+        self.stack.add_titled(self._page(general_sections), "general",i18n.t("General"))
+        # The sections LITE does not show are still BUILT — save() reads their widgets, and building
+        # them from the stored config means an unshown control writes back exactly what it read, so a
+        # full Gantry sharing this config file is never edited behind the user's back. They are simply
+        # left out of the pages (and the Advanced tab is not added at all).
+        dock, developer, telegram, web = self._dock(), self._developer(), self._telegram(), self._web()
+        appearance_sections = ([self._appearance(), self._cards(), dock] if edition.HAS_EXTRAS
+                               else [self._appearance(), self._cards()])
+        self.stack.add_titled(self._page(appearance_sections), "appearance",i18n.t("Appearance"))
+        if edition.HAS_EXTRAS:
+            self.stack.add_titled(self._page([developer, telegram, web]),
+                                  "advanced",i18n.t("Advanced"))
         self.show_all()
         self.release_link.hide()
         self._connect_live_updates()
@@ -112,7 +123,9 @@ class SettingsDialog(Gtk.Dialog):
         self.floating_window.set_active(bool(self.app.config.data.get("floating-window-enabled", False)))
         self.always_on_top = Gtk.CheckButton(label=i18n.t("Always on top"))
         self.always_on_top.set_active(bool(self.app.config.data.get("floating-window-always-on-top", True)))
-        return self._section(i18n.t("APPEARANCE"), [form, self.floating_window, self.always_on_top])
+        # LITE lives in the tray only: no second surface to offer.
+        rows_below = [self.floating_window, self.always_on_top] if edition.HAS_EXTRAS else []
+        return self._section(i18n.t("APPEARANCE"), [form, *rows_below])
 
     def _preview_transparency(self, combo: Gtk.ComboBoxText) -> None:
         self.app.preview_panel_transparency(combo.get_active_id() or "low")
@@ -140,8 +153,9 @@ class SettingsDialog(Gtk.Dialog):
         self.spoolbase = self._check(
 i18n.t("Spoolbase — filament stock"),
             bool(self.app.config.data.get("spoolbase_enabled", True)))
-        return self._section(i18n.t("BASICS"),
-                             [language_row, self.autostart, self.spoolbase])
+        basics = ([language_row, self.autostart, self.spoolbase] if edition.HAS_EXTRAS
+                  else [language_row, self.autostart])
+        return self._section(i18n.t("BASICS"), basics)
 
     def _developer(self) -> Gtk.Widget:
         self.developer = self._check(i18n.t("Developer mode (control + automations)"),
@@ -169,6 +183,7 @@ i18n.t("Show the strip on top"),
         edge_row = Gtk.Box(spacing=10)
         edge_row.pack_start(Gtk.Label(label=i18n.t("Edge"), xalign=0), False, False, 0)
         edge_row.pack_end(self.dock_edge, False, False, 0)
+        self.dock_scale = self._scale_row(i18n.t("Edge dock size"), "edge-dock-scale-percent", 100, 150)
         self.dock_only_printing = self._check(
 i18n.t("Only printing"),
             bool(self.app.config.data.get("edge-dock-only-printing", False)))
@@ -178,7 +193,7 @@ i18n.t("Only printing"),
         caption = Gtk.Label(label=i18n.t("WHICH PRINTERS"), xalign=0)
         caption.get_style_context().add_class("settings-section")
         self.dock_printers: dict[str, Gtk.CheckButton] = {}
-        widgets: list[Gtk.Widget] = [self.dock_enabled, edge_row, self.dock_only_printing, caption]
+        widgets: list[Gtk.Widget] = [self.dock_enabled, edge_row, self.dock_scale[0], self.dock_only_printing, caption]
         printers = list(getattr(self.app, "printers", []))
         if not printers:
             empty = Gtk.Label(label=i18n.t("No printers"), xalign=0)
@@ -197,13 +212,14 @@ i18n.t("Only printing"),
 
     def _cards(self) -> Gtk.Widget:
         self.card_options: dict[str, Gtk.CheckButton] = {}
-        widgets: list[Gtk.Widget] = []
+        self.card_scale = self._scale_row(i18n.t("Card size"), "card_scale_percent", 75, 150)
+        widgets: list[Gtk.Widget] = [self.card_scale[0]]
         for key, english, default in (
             ("card_show_filename", "File name", True),
             ("card_show_progress", "Progress", True),
             ("card_show_temperatures", "Temperatures", True),
             ("card_show_filaments", "Filaments / AMS", True),
-            ("card_show_details_chip", "Details chip on the card", False),
+            *((("card_show_details_chip", "Details chip on the card", False),) if edition.HAS_EXTRAS else ()),
         ):
             check = self._check(i18n.t(english),
                                 bool(self.app.config.data.get(key, default)))
@@ -221,8 +237,29 @@ i18n.t("Shortcut to the detail view; the ⋯ menu always has it"))
 i18n.t("Monochrome colours"),
             bool(self.app.config.data.get("monochrome", False)))
         self.monochrome.set_tooltip_text(i18n.t("Grey temperatures, calmer AMS colours"))
-        widgets.extend((self.spool_grams, self.details_chip, self.monochrome))
+        widgets.extend((self.spool_grams, self.details_chip, self.monochrome) if edition.HAS_EXTRAS
+                       else (self.monochrome,))
         return self._section(i18n.t("PRINTER CARDS"), widgets)
+
+    def _scale_row(self, label: str, key: str, minimum: int, maximum: int) -> tuple[Gtk.Widget, Gtk.Label]:
+        value = max(minimum, min(maximum, round(int(self.app.config.data.get(key, 100)) / 5) * 5))
+        row = Gtk.Box(spacing=8)
+        row.pack_start(Gtk.Label(label=i18n.t(label), xalign=0), True, True, 0)
+        minus, plus = Gtk.Button(label="−"), Gtk.Button(label="+")
+        display = Gtk.Label(label=f"{value}%"); display.set_size_request(48, -1)
+        def step(_button: Gtk.Button, delta: int) -> None:
+            current = max(minimum, min(maximum, int(self.app.config.data.get(key, 100)) + delta))
+            self.app.config.data[key] = current; display.set_text(f"{current}%")
+            minus.set_sensitive(current > minimum); plus.set_sensitive(current < maximum)
+            self.app.config.save()
+            if key == "card_scale_percent":
+                self.app.apply_theme(); self.app.rebuild_cards()
+            elif getattr(self.app, "edge_dock", None) is not None:
+                self.app.edge_dock.refresh()
+        minus.connect("clicked", step, -5); plus.connect("clicked", step, 5)
+        minus.set_sensitive(value > minimum); plus.set_sensitive(value < maximum)
+        row.pack_start(minus, False, False, 0); row.pack_start(display, False, False, 0); row.pack_start(plus, False, False, 0)
+        return row, display
 
     def _notifications(self) -> Gtk.Widget:
         self.notices: dict[str, Gtk.CheckButton] = {}
@@ -355,12 +392,22 @@ i18n.t("Open release"))
         self._available_release: object | None = None
         self.auto_update = self._check(i18n.t("Automatically check for updates"),
             bool(self.app.config.data.get("auto_update_check", False)))
+        self.update_format = Gtk.ComboBoxText()
+        for value, label in (("auto", i18n.t("Automatically")), ("deb", i18n.t("DEB")),
+                             ("rpm", i18n.t("RPM")), ("appimage", i18n.t("AppImage"))):
+            self.update_format.append(value, label)
+        selected_format = str(self.app.config.data.get("linux_update_format", "auto"))
+        self.update_format.set_active_id(selected_format if selected_format in {"auto", "deb", "rpm", "appimage"} else "auto")
+        self.update_format.connect("changed", self._update_format_changed)
+        format_row = Gtk.Box(spacing=10)
+        format_row.pack_start(Gtk.Label(label=i18n.t("Update package"), xalign=0), False, False, 0)
+        format_row.pack_end(self.update_format, False, False, 0)
         hint = Gtk.Label(
-            label=(i18n.t("The system package manager confirms installation of the .deb package.")),
+            label=(i18n.t("Automatic selection uses DEB, RPM or AppImage according to your Linux system.")),
             xalign=0, wrap=True)
         hint.get_style_context().add_class("settings-hint")
         return self._section(i18n.t("UPDATES"),
-                             [row, self.release_link, self.install_update, self.auto_update, hint])
+                             [row, self.release_link, self.install_update, self.auto_update, format_row, hint])
 
     def _about(self) -> Gtk.Widget:
         wrapper = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
@@ -424,14 +471,25 @@ i18n.t("☕  Support the project"))
             self._available_release = release
             self.update_status.set_text(
                 i18n.t("Version {0} is available.").format(release.version))
-            self.release_link.set_uri(release.deb_url or release.page_url)
-            self.release_link.show()
-            if release.deb_url:
-                self.install_update.show()
+            self._refresh_update_asset()
         else:
             self.update_status.set_text(
                 i18n.t("You have the latest version ({0}).").format(__version__))
         return False
+
+    def _update_format_changed(self, *_args: object) -> None:
+        if self._available_release is not None:
+            self._refresh_update_asset()
+
+    def _refresh_update_asset(self) -> None:
+        release = self._available_release
+        if release is None: return
+        from .updater import select_package_format
+        package_format = select_package_format(release, self.update_format.get_active_id() or "auto")
+        package_url = release.asset(package_format)[0] if package_format else None
+        self.release_link.set_uri(package_url or release.page_url)
+        self.release_link.show()
+        self.install_update.set_visible(bool(package_url))
 
     def _install_update(self, *_args: object) -> None:
         release = self._available_release
@@ -442,8 +500,8 @@ i18n.t("☕  Support the project"))
 
         def work() -> None:
             try:
-                from .updater import download_deb
-                path, error = download_deb(release), None
+                from .updater import download_package
+                path, error = download_package(release, self.update_format.get_active_id() or "auto"), None
             except Exception as value:
                 path, error = None, str(value)
             GLib.idle_add(self._download_done, path, error)
@@ -464,7 +522,7 @@ i18n.t("☕  Support the project"))
 
     def _connect_live_updates(self) -> None:
         """macOS applies settings as controls change; GTK now follows the same Done-only flow."""
-        for combo in (self.language, self.theme, self.transparency, self.dock_edge):
+        for combo in (self.language, self.theme, self.transparency, self.dock_edge, self.update_format):
             combo.connect("changed", self._live_changed)
         checks = [self.autostart, self.spoolbase, self.developer, self.allow_scripts,
                   self.spool_grams, self.monochrome, self.quiet, self.auto_update,
@@ -508,11 +566,14 @@ i18n.t("☕  Support the project"))
             developer_mode=self.developer.get_active(),
             allow_script_actions=self.allow_scripts.get_active(),
             auto_update_check=self.auto_update.get_active(),
+            linux_update_format=self.update_format.get_active_id() or "auto",
         )
         self.app.config.data["web_dashboard_enabled"] = self.web_enabled.get_active()
         self.app.config.data["edge-dock-enabled"] = self.dock_enabled.get_active()
         self.app.config.data["edge-dock-edge"] = self.dock_edge.get_active_id() or "right"
         self.app.config.data["edge-dock-only-printing"] = self.dock_only_printing.get_active()
+        self.app.config.data["edge-dock-scale-percent"] = max(100, min(150, round(int(self.app.config.data.get("edge-dock-scale-percent", 100)) / 5) * 5))
+        self.app.config.data["card_scale_percent"] = max(75, min(150, round(int(self.app.config.data.get("card_scale_percent", 100)) / 5) * 5))
         hidden = sorted(serial for serial, widget in self.dock_printers.items() if not widget.get_active())
         self.app.config.data["edge-dock-hidden"] = "\n".join(hidden)
         self.app.config.data["telegram-enabled"] = self.telegram_enabled.get_active()

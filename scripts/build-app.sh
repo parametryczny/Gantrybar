@@ -20,6 +20,15 @@ case "$STORAGE_MODE" in
              # main-thread only. Drop them until the OS runtime is fixed.
              -Xswiftc -Xfrontend -Xswiftc -disable-dynamic-actor-isolation)
         ;;
+    lite)
+        # Gantry LITE: the same sources built with -DGANTRY_LITE — tray, printers, notifications and a
+        # short settings sheet, nothing else. Its own name and bundle id, so it installs and keeps its
+        # Local Network grant alongside a full Gantry instead of replacing it.
+        APP_NAME="Gantry LITE"
+        BUNDLE_ID="pl.gantry.lite"
+        SWIFT_FLAGS=(-Xswiftc -DKEYCHAIN_STORAGE -Xswiftc -DGANTRY_LITE
+             -Xswiftc -Xfrontend -Xswiftc -disable-dynamic-actor-isolation)
+        ;;
     keychain)
         APP_NAME="Gantry Keychain"
         BUNDLE_ID="pl.gantry.app.keychain"
@@ -31,7 +40,7 @@ case "$STORAGE_MODE" in
              -Xswiftc -Xfrontend -Xswiftc -disable-dynamic-actor-isolation)
         ;;
     *)
-        echo "Użycie: $0 [local|keychain]" >&2
+        echo "Użycie: $0 [local|keychain|lite]" >&2
         exit 2
         ;;
 esac
@@ -55,19 +64,29 @@ chmod +x "$APP_PATH/Contents/MacOS/Gantry"
 # This used to copy whatever ffmpeg happened to be on the build host, which meant released bundles had
 # none at all (the 0.10.0 dmg is 4 MB) and the Kobra S1 camera just told users to install Homebrew.
 # Now it is a pinned, decode-only universal build (~4 MB), produced once into vendor/ and reused.
-VENDORED_FFMPEG="vendor/ffmpeg-macos/ffmpeg"
-if [[ ! -x "$VENDORED_FFMPEG" ]]; then
-    echo "Buduję minimalny ffmpeg (jednorazowo, kilka minut)…"
-    scripts/build-ffmpeg-macos-minimal.sh "$(dirname "$VENDORED_FFMPEG")"
+# LITE has no camera view, no Spoolbase and no web dashboard, so it ships none of their payload.
+if [[ "$STORAGE_MODE" != "lite" ]]; then
+    VENDORED_FFMPEG="vendor/ffmpeg-macos/ffmpeg"
+    if [[ ! -x "$VENDORED_FFMPEG" ]]; then
+        echo "Buduję minimalny ffmpeg (jednorazowo, kilka minut)…"
+        scripts/build-ffmpeg-macos-minimal.sh "$(dirname "$VENDORED_FFMPEG")"
+    fi
+    cp "$VENDORED_FFMPEG" "$APP_PATH/Contents/MacOS/ffmpeg"
+    chmod +x "$APP_PATH/Contents/MacOS/ffmpeg"
 fi
-cp "$VENDORED_FFMPEG" "$APP_PATH/Contents/MacOS/ffmpeg"
-chmod +x "$APP_PATH/Contents/MacOS/ffmpeg"
 cp "Resources/Info.plist" "$APP_PATH/Contents/Info.plist"
-cp "Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
-# Embedded Spoolbase filament catalog (loaded via Bundle.main at runtime).
-cp "Resources/filament-catalog.json" "$APP_PATH/Contents/Resources/filament-catalog.json"
-# Canonical read-only LAN dashboard shared with Windows and Linux.
-cp "Resources/web-dashboard.html" "$APP_PATH/Contents/Resources/web-dashboard.html"
+# The LITE icon is the same G with a LITE band; it falls back to the shared icon if not generated yet.
+if [[ "$STORAGE_MODE" == "lite" && -f "Resources/AppIcon-LITE.icns" ]]; then
+    cp "Resources/AppIcon-LITE.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+else
+    cp "Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+fi
+if [[ "$STORAGE_MODE" != "lite" ]]; then
+    # Embedded Spoolbase filament catalog (loaded via Bundle.main at runtime).
+    cp "Resources/filament-catalog.json" "$APP_PATH/Contents/Resources/filament-catalog.json"
+    # Canonical read-only LAN dashboard shared with Windows and Linux.
+    cp "Resources/web-dashboard.html" "$APP_PATH/Contents/Resources/web-dashboard.html"
+fi
 # Translation catalog, shared verbatim with the Windows and Linux builds.
 mkdir -p "$APP_PATH/Contents/Resources/i18n"
 cp "i18n/pl.json" "$APP_PATH/Contents/Resources/i18n/pl.json"
@@ -81,10 +100,12 @@ SIGN_HASH="$(security find-identity -p codesigning 2>/dev/null | awk '/BambuBar 
 # Nested Mach-O executables are NOT covered by signing the bundle, so ffmpeg has to be signed on its
 # own and BEFORE the app, or `codesign --verify --deep` rejects the bundle with "code object is not
 # signed at all".
-if [[ -n "$SIGN_HASH" ]]; then
-    codesign --force --sign "$SIGN_HASH" "$APP_PATH/Contents/MacOS/ffmpeg"
-else
-    codesign --force --sign - "$APP_PATH/Contents/MacOS/ffmpeg"
+if [[ -f "$APP_PATH/Contents/MacOS/ffmpeg" ]]; then
+    if [[ -n "$SIGN_HASH" ]]; then
+        codesign --force --sign "$SIGN_HASH" "$APP_PATH/Contents/MacOS/ffmpeg"
+    else
+        codesign --force --sign - "$APP_PATH/Contents/MacOS/ffmpeg"
+    fi
 fi
 if [[ -n "$SIGN_HASH" ]]; then
     codesign --force --sign "$SIGN_HASH" --identifier "$BUNDLE_ID" --entitlements "Resources/Gantry.entitlements" "$APP_PATH"

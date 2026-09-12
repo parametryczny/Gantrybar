@@ -23,8 +23,9 @@ public partial class DashboardWindow
     private bool _reflowPending;
     private bool _nativeUserResize;
     private const int WmEnterSizeMove = 0x0231, WmExitSizeMove = 0x0232;
+    private double CardColumnPitch => 293 * AppSettings.CardScalePercent / 100.0;
     private int LayoutColumns => WindowMode
-        ? Math.Max(1, (int)Math.Round(((ActualWidth > 0 ? ActualWidth : Width) - 24) / 293))
+        ? Math.Max(1, (int)Math.Round(((ActualWidth > 0 ? ActualWidth : Width) - 24) / CardColumnPitch))
         : AppSettings.DashboardColumns;
 
     private void SetupPresentation()
@@ -36,12 +37,21 @@ public partial class DashboardWindow
         // discoverable: people look for it where the mockups and the Mac put it.
         WindowModeButton.Click += (_, _) =>
         {
-            Defaults.SetBool("floating-window-enabled", !Defaults.GetBool("floating-window-enabled"));
+            AppSettings.FloatingWindowEnabled = !AppSettings.FloatingWindowEnabled;
             ApplyWindowMode();
-            if (Defaults.GetBool("floating-window-enabled")) { Show(); Activate(); }
+            if (AppSettings.FloatingWindowEnabled) { Show(); Activate(); }
         };
         GuideButton.ToolTip = AppSettings.T("How to read Gantry");
         GuideButton.Click += (_, _) => ShowOnboarding();
+        if (Build.IsLite)
+        {
+            // LITE header: wordmark plus the printer actions. No window/popover switch (one surface),
+            // no guide, and no "clear finished" — a finished job simply stays until the next print.
+            BrandText.Text = "GANTRY LITE";
+            WindowModeButton.Visibility = Visibility.Collapsed;
+            GuideButton.Visibility = Visibility.Collapsed;
+            ClearButton.Visibility = Visibility.Collapsed;
+        }
         PinButton.ToolTip = AppSettings.T("Always on top");
         PinButton.Click += (_, _) =>
         {
@@ -92,7 +102,7 @@ public partial class DashboardWindow
         body.Children.Add(new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 18) });
         body.Children.Add(GuideText("Connecting to printers…", 19));
         _startupCount = GuideText("", 13); body.Children.Add(_startupCount);
-        body.Children.Add(GuideButtonFor("How to read Gantry", ShowOnboarding));
+        if (Build.HasExtras) body.Children.Add(GuideButtonFor("How to read Gantry", ShowOnboarding));
         body.Children.Add(GuideButtonFor("Show dashboard now", () => { _store.Startup.Finish(); UpdateStartup(); FitHeightToContent(); }));
         _startupLayer = new Border { Background = GTheme.Brush(GTheme.Canvas), CornerRadius = new CornerRadius(14),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Child = body };
@@ -101,7 +111,7 @@ public partial class DashboardWindow
 
     public void ApplyWindowMode()
     {
-        bool enabled = Defaults.GetBool("floating-window-enabled");
+        bool enabled = AppSettings.FloatingWindowEnabled;
         bool changed = enabled != WindowMode;
         _changingMode = true;
         WindowMode = enabled;
@@ -128,7 +138,7 @@ public partial class DashboardWindow
             int printerCount = Math.Max(1, _store.DashboardPrinters.Count);
             int automaticColumns = Math.Min(2, printerCount);
             int automaticRows = Math.Max(1, (int)Math.Ceiling(printerCount / (double)automaticColumns));
-            int initialWidth = explicitSize ? savedWidth : 24 + automaticColumns * 293;
+            int initialWidth = explicitSize ? savedWidth : (int)Math.Ceiling(24 + automaticColumns * CardColumnPitch);
             // Height is only a launch placeholder. Once the cards have their live AMS/error content,
             // FitHeightToContent replaces it with their measured natural height.
             int initialHeight = explicitSize ? savedHeight : 140 + automaticRows * 182;
@@ -163,7 +173,8 @@ public partial class DashboardWindow
     private void SnapWindowToTiles()
     {
         if (!WindowMode || WindowState != WindowState.Normal || _changingMode) return;
-        const double widthBase = 24, columnPitch = 293;   // platform chrome/insets + 285 card + 8 gap
+        const double widthBase = 24;
+        double columnPitch = CardColumnPitch;   // platform chrome/insets + scaled card and gap
         int screenColumns = Math.Max(1, (int)Math.Floor((SystemParameters.WorkArea.Width - widthBase) / columnPitch));
         int columns = Math.Clamp((int)Math.Round((Width - widthBase) / columnPitch), 1,
             screenColumns);
@@ -182,6 +193,9 @@ public partial class DashboardWindow
 
     private double _panelWidth, _panelHeight;
     private ScrollViewer? _panelScroll;
+    private bool _fittingPanel;
+    /// Breathing room left around the bounded panel card inside the dashboard host.
+    private const double PanelInsetX = 32, PanelInsetY = 48;
     internal void ShowPanel(FrameworkElement content, double width = 480, double height = 650, Action? cleanup = null)
     {
         ClosePanel(); HideCardMenu();
@@ -216,19 +230,62 @@ public partial class DashboardWindow
         FleetSurface.Effect = new BlurEffect { Radius = 5, RenderingBias = RenderingBias.Performance };
         FleetSurface.IsHitTestVisible = false;
         FleetSurface.IsEnabled = false;
-        if (!WindowMode) Height = Math.Min(SystemParameters.WorkArea.Height - 24, Math.Max(Height, 600));
         FitPanel();
     }
 
+    /// Sizes the bounded panel card. The height a caller passes is a floor, not a ceiling: the card
+    /// takes whatever its content actually needs and only the work area stops it (in desktop mode, the
+    /// window the user sized). Before this, a detail view was pinned to the 720 points it asked for and
+    /// scrolled inside them even on a 1440p screen with a third of the height to spare, which is what
+    /// issue #34 traced: the scrollbar was stock WPF, the panel simply refused to grow.
     private void FitPanel()
     {
-        if (_panelScroll == null) return;
-        // The rounded card owns the size now; the scroller inside just fills it.
-        if (_panelScroll.Parent is Border card)
+        if (_fittingPanel || _panelScroll == null || _panelScroll.Parent is not Border card) return;
+        _fittingPanel = true;
+        try
         {
-            card.Width = Math.Max(1, Math.Min(_panelWidth, DashboardHost.ActualWidth - 32));
-            card.Height = Math.Max(1, Math.Min(_panelHeight, DashboardHost.ActualHeight - 48));
+            double cardWidth = Math.Max(1, Math.Min(_panelWidth, DashboardHost.ActualWidth - PanelInsetX));
+            double wanted = _panelHeight;
+            // Before the host has a width, measuring would happen at one point and report a nonsense
+            // height, so the floor stands until the real width arrives with the next SizeChanged.
+            if (DashboardHost.ActualWidth > PanelInsetX && _panelScroll.Content is FrameworkElement body)
+            {
+                // DesiredSize with unbounded vertical space, so this is the content's own height and
+                // not one the ScrollViewer's viewport has already clipped.
+                body.InvalidateMeasure();
+                body.Measure(new Size(cardWidth, double.PositiveInfinity));
+                wanted = Math.Max(wanted, body.DesiredSize.Height
+                                          + card.BorderThickness.Top + card.BorderThickness.Bottom);
+            }
+            double nonClient = WindowMode && DashboardHost.ActualHeight > 0
+                ? Math.Max(0, ActualHeight - DashboardHost.ActualHeight) : 0;
+            double cardHeight = Math.Max(1, Math.Min(wanted,
+                SystemParameters.WorkArea.Height - 24 - nonClient - PanelInsetY));
+            if (WindowMode)
+            {
+                // The window belongs to the user in desktop mode, so the card fits inside the size
+                // they chose instead of resizing it under them.
+                cardHeight = Math.Max(1, Math.Min(cardHeight, DashboardHost.ActualHeight - PanelInsetY));
+            }
+            else
+            {
+                double target = Math.Min(cardHeight + PanelInsetY, SystemParameters.WorkArea.Height - 24);
+                if (Math.Abs(target - Height) >= 1)
+                {
+                    _changingMode = true;
+                    Height = target;
+                    _changingMode = false;
+                    // The popover hangs off the bottom-right corner, so a taller one has to move up
+                    // rather than run off the screen.
+                    var area = SystemParameters.WorkArea;
+                    Left = area.Right - Width - 8;
+                    Top = area.Bottom - Height - 8;
+                }
+            }
+            card.Width = cardWidth;
+            card.Height = cardHeight;
         }
+        finally { _fittingPanel = false; }
     }
 
     internal void ClosePanel()
@@ -287,6 +344,7 @@ public partial class DashboardWindow
 
     public void ShowOnboarding()
     {
+        if (Build.IsLite) return;   // LITE ships no guide
         Defaults.SetBool("gantry.onboarding.v1.seen", true);
         _store.Startup.ClaimGuide(false);
         var steps = new[] {

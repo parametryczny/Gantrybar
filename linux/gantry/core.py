@@ -131,6 +131,13 @@ class NozzleTelemetry:
 
 
 @dataclass(slots=True)
+class PrintObject:
+    object_id: str
+    name: str
+    polygon: list[tuple[float, float]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Telemetry:
     state: PrinterState = PrinterState.OFFLINE
     progress: int = 0
@@ -146,6 +153,7 @@ class Telemetry:
     chamber_target: float | None = None
     current_layer: int | None = None
     total_layers: int | None = None
+    current_plate_index: int | None = None
     stage: int | None = None
     job_name: str | None = None
     error_code: int = 0
@@ -161,6 +169,9 @@ class Telemetry:
     # can read its per-filament used_g from the 3mf. Used to auto-decrement the assigned physical spool.
     filament_used_mm: float | None = None
     gcode_file: str | None = None
+    print_objects: list[PrintObject] = field(default_factory=list)
+    skipped_object_ids: set[str] = field(default_factory=set)
+    current_object_id: str | None = None
     # Cooling fans as a percentage (Bambu reports a 0-15 gear; aux = big_fan1, chamber = big_fan2),
     # speed level (Bambu spd_lvl: 1 Silent .. 4 Ludicrous) and magnitude, and nozzle diameter. Shown in
     # the Details view; not every model/firmware reports each one.
@@ -452,9 +463,16 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
     if report.get("subtask_name"):
         result.job_name = _display_name(str(report["subtask_name"]))
     # The printed file, e.g. "vase.gcode.3mf" — needed to fetch its per-filament used_g after a finish.
-    gcode_file = report.get("gcode_file") or report.get("subtask_name")
+    reported_file = str(report.get("gcode_file") or "")
+    subtask_file = str(report.get("subtask_name") or "")
+    gcode_file = subtask_file if "/metadata/plate_" in reported_file.replace("\\", "/").lower() and subtask_file else (reported_file or subtask_file)
     if gcode_file:
         result.gcode_file = str(gcode_file)
+    plate_index = _integer(report.get("plate_idx"))
+    if plate_index and plate_index > 0:
+        result.current_plate_index = plate_index
+    if isinstance(report.get("s_obj"), list):
+        result.skipped_object_ids = {str(value) for value in report["s_obj"] if _integer(value) is not None}
     if "print_error" in report:
         try:
             result.error_code = int(str(report["print_error"]), 0)

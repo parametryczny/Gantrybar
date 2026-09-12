@@ -49,7 +49,14 @@
     <Border x:Name="PanelBody" CornerRadius="12" Background="#40242426" SnapsToDevicePixels="True">
         <Grid x:Name="DashboardHost" ClipToBounds="True">
             <DockPanel x:Name="FleetSurface" Margin="2">
-                <Grid x:Name="FleetHeader" DockPanel.Dock="Top" Margin="16,14,12,8">
+                <!-- The header sits on its own plate, like the macOS one. Without it the brand and the
+                     fleet summary took their contrast from whatever window the acrylic backdrop showed
+                     through, and over a bright one they disappeared. Margin + Padding keep the text
+                     exactly where the old 16,14,12,8 margin put it. -->
+                <Border x:Name="FleetHeaderPlate" DockPanel.Dock="Top" Margin="10,10,10,4"
+                        Padding="6,4,2,4" CornerRadius="10.5" BorderThickness="1"
+                        SnapsToDevicePixels="True">
+                <Grid x:Name="FleetHeader">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -75,6 +82,7 @@
                         <Button x:Name="AddButton" Style="{StaticResource FlatIconButton}" Content="+" Width="28" Height="28" Margin="4,0" FontSize="15" ToolTip="Add printer"/>
                     </WrapPanel>
                 </Grid>
+                </Border>
                 <TextBlock x:Name="FooterText" DockPanel.Dock="Bottom" HorizontalAlignment="Center"
                            FontSize="10" Foreground="#8A8A8E" Margin="0,4,0,6"/>
                 <ScrollViewer x:Name="CardsScroll" VerticalScrollBarVisibility="Auto"

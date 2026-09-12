@@ -20,6 +20,16 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
+  <!-- Gantry LITE: the same sources with GANTRY_LITE defined (dotnet build -p:GantryEdition=lite).
+       Tray, printers, notifications and a short settings window; no Spoolbase, detail view,
+       maintenance, automations, diagnostics, fleet stats, Telegram, web dashboard, floating window or
+       edge dock. Its own exe name so it installs beside a full Gantry rather than replacing it. -->
+  <PropertyGroup Condition="'$(GantryEdition)' == 'lite'">
+    <DefineConstants>$(DefineConstants);GANTRY_LITE</DefineConstants>
+    <AssemblyName>GantryLite</AssemblyName>
+    <Product>Gantry LITE</Product>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
@@ -32,12 +42,13 @@
          see UI/DetailWindow.cs. ffmpeg.exe is fetched and placed next to the app by CI (windows.yml). -->
   </ItemGroup>
 
-  <!-- Bundled Spoolbase filament catalog, copied next to the exe (Assets/). -->
+  <!-- Bundled Spoolbase filament catalog, copied next to the exe (Assets/). LITE ships neither it nor
+       the web dashboard page, because it has neither feature. -->
   <ItemGroup>
-    <Content Include="Assets\filament-catalog.json">
+    <Content Include="Assets\filament-catalog.json" Condition="'$(GantryEdition)' != 'lite'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\..\Resources\web-dashboard.html" Link="Assets\web-dashboard.html">
+    <Content Include="..\..\Resources\web-dashboard.html" Link="Assets\web-dashboard.html" Condition="'$(GantryEdition)' != 'lite'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- Gantry wordmark logo (embedded resource, used in the dashboard header). -->

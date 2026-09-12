@@ -20,6 +20,7 @@ from typing import Any
 
 from gi.repository import GLib  # type: ignore
 
+from . import edition
 from . import i18n
 from .core import PrinterKind, PrinterState
 
@@ -62,6 +63,8 @@ def _muted(cfg: dict) -> bool:
 
 def notify(app, printer: str, title: str, body: str) -> None:
     """Send one event to Telegram, when enabled, configured and not muted. Fire-and-forget on a thread."""
+    if edition.IS_LITE:
+        return   # LITE ships no Telegram integration
     cfg = app.config.data
     if not cfg.get("telegram-enabled") or _muted(cfg):
         return

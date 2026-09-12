@@ -135,12 +135,17 @@ class EdgeDock:
     # ------------------------------------------------------------ geometry
 
     def _size(self) -> tuple[float, float]:
+        scale = self._scale()
         count = max(len(self.entries), 1)
         if self.expanded:
             body = PAD_Y * 2 + count * ROW_HEIGHT + (count - 1) * ROW_GAP
-            return self._expanded_width(), body + NOTCH * 2
+            return self._expanded_width() * scale, (body + NOTCH * 2) * scale
         body = PAD_Y * 2 + count * RING + (count - 1) * COLLAPSED_GAP
-        return COLLAPSED_WIDTH, body + NOTCH * 2
+        return COLLAPSED_WIDTH * scale, (body + NOTCH * 2) * scale
+
+    def _scale(self) -> float:
+        value = round(int(self.app.config.data.get("edge-dock-scale-percent", 100)) / 5) * 5
+        return max(1.0, min(1.5, value / 100))
 
     def _expanded_width(self) -> float:
         layout = self.area.create_pango_layout("")
@@ -173,6 +178,8 @@ class EdgeDock:
 
     def _on_draw(self, _widget: Gtk.Widget, cr: Any) -> bool:
         width, height = self._size()
+        scale = self._scale()
+        logical_width, logical_height = width / scale, height / scale
         left = str(self.app.config.data.get("edge-dock-edge", "right")) == "left"
         cr.set_operator(cairo.OPERATOR_SOURCE)   # clear the window to fully transparent first
         cr.set_source_rgba(0, 0, 0, 0)
@@ -180,18 +187,21 @@ class EdgeDock:
         cr.set_operator(cairo.OPERATOR_OVER)
 
         cr.save()
+        cr.scale(scale, scale)
         if left:
-            cr.translate(width, 0)
+            cr.translate(logical_width, 0)
             cr.scale(-1, 1)
-        self._silhouette(cr, width, height)
+        self._silhouette(cr, logical_width, logical_height)
         cr.set_source_rgba(*SHAPE)
         cr.fill()
         cr.restore()
 
+        cr.save(); cr.scale(scale, scale)
         if self.expanded:
-            self._draw_expanded(cr, width, left)
+            self._draw_expanded(cr, logical_width, left)
         else:
-            self._draw_collapsed(cr, width)
+            self._draw_collapsed(cr, logical_width)
+        cr.restore()
         return False
 
     @staticmethod
@@ -295,8 +305,9 @@ class EdgeDock:
         return False
 
     def _on_click(self, _widget: Gtk.Widget, event: Any) -> bool:
+        scale = self._scale()
         step = ROW_HEIGHT + ROW_GAP if self.expanded else RING + COLLAPSED_GAP
-        offset = event.y - (NOTCH + PAD_Y)
+        offset = event.y / scale - (NOTCH + PAD_Y)
         if offset < 0:
             return False
         index = int(offset // step)

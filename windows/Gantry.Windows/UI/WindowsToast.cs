@@ -12,13 +12,13 @@ internal static class WindowsToast
 {
     private static bool _initialized;
 
-    public static void Initialize(Action activated)
+    public static void Initialize(Action<string?> activated)
     {
         if (_initialized) return;
         _initialized = true;
         try
         {
-            ToastNotificationManagerCompat.OnActivated += _ => activated();
+            ToastNotificationManagerCompat.OnActivated += args => activated(args.Argument);
             _ = ToastNotificationManagerCompat.CreateToastNotifier().Setting;
         }
         catch (Exception ex)
@@ -29,11 +29,13 @@ internal static class WindowsToast
 
     /// <summary>Shows an Action Center toast. Returns false if the toast infrastructure is unavailable
     /// (very old Windows / locked-down policy) so the caller can fall back to a tray balloon.</summary>
-    public static bool Show(string title, string body, string? subtitle)
+    public static bool Show(string title, string body, string? subtitle, string? activationAction = null)
     {
         try
         {
-            var builder = new ToastContentBuilder().AddText(title);
+            var builder = new ToastContentBuilder();
+            if (!string.IsNullOrEmpty(activationAction)) builder.AddArgument("action", activationAction);
+            builder.AddText(title);
             if (!string.IsNullOrEmpty(subtitle)) builder.AddText(subtitle);
             if (!string.IsNullOrEmpty(body)) builder.AddText(body);
             var notifier = ToastNotificationManagerCompat.CreateToastNotifier();

@@ -77,6 +77,28 @@ enum MoonrakerStatusParser {
             telemetry.amsSlots = group.legacyAMSSlots
         }
 
+        if let exclusion = status["exclude_object"] as? [String: Any] {
+            let definitions = exclusion["objects"] as? [[String: Any]] ?? []
+            telemetry.printObjects = definitions.compactMap { item in
+                guard let name = string(item["name"]), !name.isEmpty else { return nil }
+                let polygon = (item["polygon"] as? [[Any]])?.compactMap { point -> BedPoint? in
+                    guard point.count >= 2, let x = number(point[0]), let y = number(point[1]) else { return nil }
+                    return BedPoint(x: x, y: y)
+                } ?? []
+                if !polygon.isEmpty { return PrintObject(id: name, name: name, polygon: polygon) }
+                if let center = item["center"] as? [Any], center.count >= 2,
+                   let x = number(center[0]), let y = number(center[1]) {
+                    let r = 4.0
+                    return PrintObject(id: name, name: name, polygon: [
+                        BedPoint(x: x-r, y: y-r), BedPoint(x: x+r, y: y-r),
+                        BedPoint(x: x+r, y: y+r), BedPoint(x: x-r, y: y+r)])
+                }
+                return PrintObject(id: name, name: name, polygon: [])
+            }
+            telemetry.skippedObjectIDs = Set((exclusion["excluded_objects"] as? [String] ?? []))
+            telemetry.currentObjectID = string(exclusion["current_object"])
+        }
+
         // Single-nozzle Klipper machine: expose one nozzle entry so the dashboard renders it via the
         // shared collection just like Bambu.
         telemetry.nozzles = [

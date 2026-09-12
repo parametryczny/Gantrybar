@@ -56,4 +56,22 @@ import Testing
         #expect(value?.auxFanPercent == nil)
         #expect(value?.chamberFanPercent == nil)
     }
+
+    @Test func parsesExcludeObjectGeometryAndState() {
+        let value = telemetry(#"""
+        {"result":{"status":{"exclude_object":{
+          "objects":[
+            {"name":"gear_1","polygon":[[10,20],[30,20],[30,40],[10,40]],"center":[20,30]},
+            {"name":"gear_2","polygon":[[50,60],[70,60],[70,80],[50,80]]}
+          ],
+          "current_object":"gear_2",
+          "excluded_objects":["gear_1"]
+        }}}}
+        """#)
+        #expect(value?.printObjects.count == 2)
+        #expect(value?.printObjects.first?.id == "gear_1")
+        #expect(value?.printObjects.first?.polygon.first == BedPoint(x: 10, y: 20))
+        #expect(value?.currentObjectID == "gear_2")
+        #expect(value?.skippedObjectIDs == Set(["gear_1"]))
+    }
 }

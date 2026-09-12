@@ -27,7 +27,7 @@ public sealed class TrayIcon : IDisposable
         {
             Icon = BuildIcon(out _mainIconHandle),
             Visible = true,
-            Text = "Gantry"
+            Text = Build.AppName
         };
         _notifyIcon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleDashboard(); };
         _notifyIcon.BalloonTipClicked += (_, _) => OpenPendingUpdate();
@@ -40,15 +40,23 @@ public sealed class TrayIcon : IDisposable
         RefreshTooltip();
         UpdateProgressIcons();
         // Optional always-on-top strip at a screen edge. It owns its own visibility, so creating it
-        // unconditionally is safe: with the setting off it simply never shows itself.
-        _edgeDock = new EdgeDockWindow(_store, serial =>
+        // unconditionally is safe: with the setting off it simply never shows itself. LITE has one
+        // surface only — the tray flyout — so it builds neither the strip nor the detached window.
+        if (Build.HasExtras)
         {
-            ShowDashboard();
-            _dashboard?.ShowDetail(serial);
-        });
-        AnnounceInstalledIfPending();
-        _ = RunUpdateChecksAsync();
-        if (Defaults.GetBool("floating-window-enabled")) ShowDashboard();
+            _edgeDock = new EdgeDockWindow(_store, serial =>
+            {
+                ShowDashboard();
+                _dashboard?.ShowDetail(serial);
+            });
+        }
+        // LITE never checks for or installs updates; it is a fixed, self-contained build.
+        if (Build.HasExtras)
+        {
+            AnnounceInstalledIfPending();
+            _ = RunUpdateChecksAsync();
+        }
+        if (AppSettings.FloatingWindowEnabled) ShowDashboard();
     }
 
     private string? _pendingUpdateUrl;
@@ -94,7 +102,7 @@ public sealed class TrayIcon : IDisposable
                         {
                             UpdateChecker.MarkNotified(release.Version);
                             _pendingUpdateUrl = release.PageUrl;
-                            ShowNotification(
+                            ShowUpdateNotification(
                                 AppSettings.T("Gantry update available"),
                                 string.Format(AppSettings.T("Version {0} is available. Click to open the page."), release.Version),
                                 null);
@@ -120,7 +128,7 @@ public sealed class TrayIcon : IDisposable
         bool pl = AppSettings.Polish;
 
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Show printers"), null, (_, _) => ShowDashboard()));
-        if (AppSettings.SpoolbaseEnabled)
+        if (Build.HasExtras && AppSettings.SpoolbaseEnabled)
         {
             menu.Items.Add(new ToolStripMenuItem(
                 AppSettings.T("Spoolbase — filament stock"),
@@ -131,12 +139,18 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Scan for printers…"), null, (_, _) => { ShowDashboard(); _store.Scan(); }));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Add printer…"), null, (_, _) => { ShowDashboard(); _dashboard?.OpenAddPrinter(); }));
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Diagnostic Center…"), null,
-            (_, _) => ShowAuxiliary(new DiagnosticsWindow(_store))));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Fleet statistics…"), null,
-            (_, _) => ShowAuxiliary(new FleetStatsWindow(_store))));
-        menu.Items.Add(new ToolStripMenuItem(AppSettings.T("How to read Gantry"), null,
-            (_, _) => ShowOnboardingAfterMenuCloses(menu)));
+        if (Build.HasExtras)
+        {
+            menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Diagnostic Center…"), null,
+                (_, _) => ShowAuxiliary(new DiagnosticsWindow(_store))));
+            menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Fleet statistics…"), null,
+                (_, _) => ShowAuxiliary(new FleetStatsWindow(_store))));
+        }
+        if (Build.HasExtras)
+        {
+            menu.Items.Add(new ToolStripMenuItem(AppSettings.T("How to read Gantry"), null,
+                (_, _) => ShowOnboardingAfterMenuCloses(menu)));
+        }
         menu.Items.Add(new ToolStripSeparator());
 
         var language = new ToolStripMenuItem(AppSettings.T("Language: EN"));
@@ -152,9 +166,12 @@ public sealed class TrayIcon : IDisposable
         quiet.Click += (_, _) => QuietHours.Enabled = quiet.Checked;
         menu.Items.Add(quiet);
 
-        menu.Items.Add(new ToolStripMenuItem(
-            string.Format(AppSettings.T("Check for updates… (v{0})"), UpdateChecker.CurrentVersion),
-            null, (_, _) => ShowUpdateChecker()));
+        if (Build.HasExtras)
+        {
+            menu.Items.Add(new ToolStripMenuItem(
+                string.Format(AppSettings.T("Check for updates… (v{0})"), UpdateChecker.CurrentVersion),
+                null, (_, _) => ShowUpdateChecker()));
+        }
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Settings…"), null, (_, _) => ShowSettings()));
         menu.Items.Add(BuildColourLegend());
 
@@ -256,9 +273,18 @@ public sealed class TrayIcon : IDisposable
 
     internal void ShowDashboardFromNotification() => ShowDashboard();
 
+    internal void HandleNotificationActivation(string? arguments)
+    {
+        if (!string.IsNullOrEmpty(arguments)
+            && arguments.Contains("action=update", StringComparison.OrdinalIgnoreCase))
+            OpenPendingUpdate();
+        else
+            ShowDashboardFromNotification();
+    }
+
     private void ToggleSpoolbase()
     {
-        if (Defaults.GetBool("floating-window-enabled")) { ShowAuxiliary(new SpoolbaseWindow()); return; }
+        if (AppSettings.FloatingWindowEnabled) { ShowAuxiliary(new SpoolbaseWindow()); return; }
         if (_spoolbase is null)
         {
             _spoolbase = new SpoolbaseWindow();
@@ -281,6 +307,7 @@ public sealed class TrayIcon : IDisposable
                 if (_spoolbase is not null) { _spoolbase.Close(); _spoolbase = null; }
             };
             _settings.OnEdgeDockChanged = () => _edgeDock?.Refresh();
+            _settings.OnCardScaleChanged = () => _dashboard?.RefreshTheme();
             _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); _dashboard?.RefreshTheme(); };
         }
         _settings.Show();
@@ -290,7 +317,7 @@ public sealed class TrayIcon : IDisposable
 
     private void ShowAuxiliary(System.Windows.Window controller)
     {
-        if (Defaults.GetBool("floating-window-enabled"))
+        if (AppSettings.FloatingWindowEnabled)
         {
             ShowDashboard(); EnsureDashboard().EmbedWindow(controller);
         }
@@ -308,6 +335,13 @@ public sealed class TrayIcon : IDisposable
         // Native Action Center toast (shows in the Windows notification panel). Falls back to a tray
         // balloon if the toast infrastructure is unavailable.
         if (WindowsToast.Show(title, body, subtitle)) return;
+        string text = string.IsNullOrEmpty(subtitle) ? body : $"{subtitle}\n{body}";
+        _notifyIcon.ShowBalloonTip(5000, title, text, ToolTipIcon.Info);
+    }
+
+    private void ShowUpdateNotification(string title, string body, string? subtitle)
+    {
+        if (WindowsToast.Show(title, body, subtitle, "update")) return;
         string text = string.IsNullOrEmpty(subtitle) ? body : $"{subtitle}\n{body}";
         _notifyIcon.ShowBalloonTip(5000, title, text, ToolTipIcon.Info);
     }

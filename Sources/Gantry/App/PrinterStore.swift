@@ -125,6 +125,155 @@ final class PrinterStore: ObservableObject {
         (clients[serial] as? MoonrakerClient)?.sendGcode(script)
     }
 
+    private func sendPrinterGcode(serial: String, line: String) {
+        guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return }
+        if kind == .klipper {
+            sendGcode(serial: serial, script: line)
+        } else if kind == .bambu {
+            let payload: [String: Any] = ["print": [
+                "sequence_id": "2006", "command": "gcode_line", "param": line + "\n"
+            ]]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            sendCommand(serial: serial, json: json)
+        }
+    }
+
+    func setNozzleTemperature(serial: String, celsius: Int) {
+        sendPrinterGcode(serial: serial, line: "M104 S\(max(0, min(300, celsius)))")
+    }
+
+    func setBedTemperature(serial: String, celsius: Int) {
+        sendPrinterGcode(serial: serial, line: "M140 S\(max(0, min(120, celsius)))")
+    }
+
+    /// Bambu fan indices: P1 part, P2 auxiliary, P3 chamber. Klipper exposes the standard part fan
+    /// through M106; model-specific auxiliary/chamber macros intentionally remain unavailable.
+    func setFan(serial: String, index: Int, percent: Int) {
+        let value = Int((Double(max(0, min(100, percent))) * 2.55).rounded())
+        guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return }
+        if kind == .klipper {
+            guard index == 1 else { return }
+            sendGcode(serial: serial, script: "M106 S\(value)")
+        } else if kind == .bambu {
+            sendPrinterGcode(serial: serial, line: "M106 P\(index) S\(value)")
+        }
+    }
+
+    func setPrintSpeed(serial: String, percent: Int) {
+        sendPrinterGcode(serial: serial, line: "M220 S\(max(10, min(166, percent)))")
+    }
+
+    func loadPrintObjectLayout(serial: String) async -> PrintObjectLoadResult {
+        guard let printer = printers.first(where: { $0.serial == serial }),
+              let current = telemetry[serial], current.state == .printing || current.state == .paused else {
+            return .unavailable(AppSettings.shared.t("There is no active print to inspect."))
+        }
+        if printer.kind == .klipper {
+            guard current.printObjects.count > 1 else {
+                return .unavailable(AppSettings.shared.t("This print does not expose multiple objects."))
+            }
+            let points = current.printObjects.flatMap(\.polygon)
+            let bounds: [Double]
+            if let minX = points.map(\.x).min(), let minY = points.map(\.y).min(),
+               let maxX = points.map(\.x).max(), let maxY = points.map(\.y).max() {
+                let pad = max(5, max(maxX-minX, maxY-minY) * 0.06)
+                bounds = [minX-pad, minY-pad, maxX+pad, maxY+pad]
+            } else { bounds = [0, 0, 256, 256] }
+            return .loaded(PrintObjectLayout(objects: current.printObjects,
+                                             skippedObjectIDs: current.skippedObjectIDs,
+                                             currentObjectID: current.currentObjectID,
+                                             bedBounds: bounds, previewPNG: nil))
+        }
+        guard printer.kind == .bambu else {
+            return .unavailable(AppSettings.shared.t("Skipping objects is not available for this printer."))
+        }
+        guard let file = current.gcodeFile, !file.isEmpty else {
+            return .unavailable(AppSettings.shared.t("The printer did not provide the active print file name."))
+        }
+        guard let code = accessCode(for: serial) else {
+            return .unavailable(AppSettings.shared.t("The printer access code is missing."))
+        }
+
+        let plateIndex = current.currentPlateIndex ?? Self.plateIndex(in: file) ?? 1
+        var projectFileError: Error?
+        do {
+            // This mirrors Bambu Studio's PartSkipDialog: ask mem:/16 for the active project's pick
+            // image and metadata instead of guessing where the complete archive was stored.
+            let parts = try await BambuTunnelFileClient(host: printer.host, accessCode: code)
+                .fetchActiveProjectParts(plateIndex: plateIndex)
+            if let layout = ThreeMFReader.printObjectLayout(sliceInfo: parts.sliceInfo,
+                                                            pickPNG: parts.pickPNG,
+                                                            plateIndex: plateIndex,
+                                                            skipped: telemetry[serial]?.skippedObjectIDs ?? []) {
+                return .loaded(layout)
+            }
+            projectFileError = BambuTunnelFileClient.TunnelError(
+                message: "slice_info.config nie zawiera obiektów dla płyty \(plateIndex)")
+        } catch {
+            projectFileError = error
+        }
+
+        do {
+            let data = try await BambuFileClient(host: printer.host, accessCode: code).fetch(fileName: file)
+            if let layout = ThreeMFReader.printObjectLayout(fromData: data, gcodeFile: file,
+                                                            skipped: telemetry[serial]?.skippedObjectIDs ?? []) {
+                return .loaded(layout)
+            }
+            // X2D can expose the plate g-code referenced by MQTT through FTPS even though the
+            // containing 3MF remains on internal eMMC. Treat a non-archive/non-layout payload as a
+            // miss so the internal-storage tunnel below is still attempted.
+            throw BambuFileClient.FTPError(message: "pobrany plik nie jest archiwum 3MF z listą obiektów")
+        } catch {
+            let model = printer.model.uppercased()
+            let name = printer.name.uppercased()
+            // Discovery stores Bambu's hardware code (X2D currently reports `N6`) rather than the
+            // marketing name. Also accept the user-visible name so future X2D firmware identifiers
+            // do not silently disable the internal-storage fallback.
+            let supportsInternalTunnel = model == "N6" || model.contains("X2D") || model.contains("H2")
+                || name.contains("X2D") || name.contains("H2")
+            guard supportsInternalTunnel else {
+                NSLog("[Gantry] skip objects: failed to read %@: %@", file, error.localizedDescription)
+                let reason = projectFileError?.localizedDescription ?? error.localizedDescription
+                return .unavailable(AppSettings.shared.t("The printer did not make the active 3MF available over LAN: {0}", reason))
+            }
+            do {
+                let data = try await BambuTunnelFileClient(host: printer.host, accessCode: code)
+                    .fetchArchive(hint: file)
+                guard let layout = ThreeMFReader.printObjectLayout(fromData: data, gcodeFile: file,
+                                                                   skipped: telemetry[serial]?.skippedObjectIDs ?? []) else {
+                    return .unavailable(AppSettings.shared.t("The downloaded 3MF does not contain a skippable object list."))
+                }
+                return .loaded(layout)
+            } catch let tunnelError {
+                NSLog("[Gantry] skip objects: FTPS failed (%@), tunnel failed (%@)",
+                      error.localizedDescription, tunnelError.localizedDescription)
+                return .unavailable(AppSettings.shared.t("X2D could not provide the active 3MF: {0}", tunnelError.localizedDescription))
+            }
+        }
+    }
+
+    private static func plateIndex(in file: String) -> Int? {
+        guard let range = file.range(of: #"plate_(\d+)"#, options: .regularExpression) else { return nil }
+        return Int(file[range].dropFirst(6))
+    }
+
+    func skipPrintObjects(serial: String, ids: Set<String>) {
+        guard !ids.isEmpty, let printer = printers.first(where: { $0.serial == serial }) else { return }
+        if printer.kind == .klipper {
+            for name in ids { sendGcode(serial: serial, script: "EXCLUDE_OBJECT NAME=\(name)") }
+            return
+        }
+        guard printer.kind == .bambu else { return }
+        let existing = telemetry[serial]?.skippedObjectIDs ?? []
+        let values = existing.union(ids).compactMap(Int.init).sorted()
+        guard let data = try? JSONSerialization.data(withJSONObject: ["print": [
+            "sequence_id": "2004", "command": "skip_objects",
+            "timestamp": Int(Date().timeIntervalSince1970), "obj_list": values]]),
+              let json = String(data: data, encoding: .utf8) else { return }
+        sendCommand(serial: serial, json: json)
+    }
+
     /// Chamber LED on/off. Bambu uses `ledctrl`; Klipper uses a best-effort `caselight` pin (configs
     /// vary — advanced users can point a custom-command/script action at their own macro).
     func setChamberLight(_ on: Bool, serial: String) {
@@ -806,8 +955,9 @@ final class PrinterStore: ObservableObject {
         }
         if settings.notifyError, current.state == .error, previous?.state != .error || previous?.hmsCodes != current.hmsCodes {
             let description = HMSResolver.shared.description(for: current.hmsCodes, serial: printer.serial, language: settings.language)
+                ?? HMSResolver.shared.description(for: current.errorCode, serial: printer.serial, language: settings.language)
                 ?? (current.errorCode != 0
-                    ? settings.t("Error code: 0x{0}", current.errorCode)
+                    ? settings.t("Diagnostic code: 0x{0}", HMSResolver.shared.formatted(errorCode: current.errorCode))
                     : settings.t("The printer reported an error."))
             push(title: settings.t("Printer error"), body: description)
         } else if settings.notifyPaused, current.state == .paused, previous?.state != .paused {

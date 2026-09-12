@@ -21,6 +21,7 @@ from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from . import i18n
 from .core import STATE_LABELS, Printer, PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
+from . import edition
 from .desktop import installed_slicers, open_desktop_app
 from .presentation import DesktopPresentation
 
@@ -33,7 +34,7 @@ CARD_ROW_GAP = 8
 CONTENT_INSET = 12
 
 
-def css_for(theme: str, window_alpha: float = 1.0) -> bytes:
+def css_for(theme: str, window_alpha: float = 1.0, card_scale: float = 1.0) -> bytes:
     """Current GantryTheme tokens translated to GTK CSS.
 
     Only the panel backdrop uses ``window_alpha``.  Cards remain readable and translucent through
@@ -44,20 +45,26 @@ def css_for(theme: str, window_alpha: float = 1.0) -> bytes:
             "#f2f2f7", "#1c1c1e", "#ffffff", "#d1d1d6", "#636366", "#8e8e93", "#3a3a3c"
         )
         segment_off = "alpha(#1c1c1e, 0.14)"
+        surface_on_backdrop = "#f2f2f2"
     else:
         canvas, text, card, line, secondary, muted, metric = (
             "#0c0d0e", "#f2f3f1", "#151719", "#2a2c2e", "#a7aaa6", "#6d716e", "#d4d7d3"
         )
         segment_off = "alpha(#f2f3f1, 0.14)"
+        surface_on_backdrop = "#212325"
     values = {
         "canvas": canvas, "text": text, "card": card, "line": line, "secondary": secondary,
         "muted": muted, "metric": metric, "alpha": window_alpha, "segment_off": segment_off,
+        "surface_on_backdrop": surface_on_backdrop,
     }
-    return ("""
+    base = ("""
 window { background: %(canvas)s; color: %(text)s; }
 window.popover-window { background-color: alpha(%(canvas)s, %(alpha).3f); border: 1px solid %(line)s; border-radius: 20px; }
 .fleet-root { padding: 12px 14px 8px; }
-.fleet-header { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 11px; padding: 6px 8px 6px 12px; }
+/* Opaque, with the card's fill already blended in. A translucent tile borrows its contrast from
+   whatever is beneath it, and beneath this one is only the RGBA window: over a bright desktop the
+   wordmark and the fleet summary lost their contrast entirely. Same fix as macOS and Windows. */
+.fleet-header { background: %(surface_on_backdrop)s; border: 1px solid alpha(#ffffff, 0.09); border-radius: 11px; padding: 6px 8px 6px 12px; }
 .wordmark { color: %(text)s; font-size: 17px; font-weight: 800; }
 .title { color: %(text)s; font-size: 20px; font-weight: 700; }
 .summary { color: %(secondary)s; font-size: 11px; }
@@ -98,8 +105,9 @@ button.printer-alert { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .temp-value.hold { color: #f2f3f1; font-weight: 700; }
 .temp-value.err { color: #ff5a4e; font-weight: 700; }
 .temp-value.mono { color: %(secondary)s; }
-.print-error { background: alpha(#ff5a4e, 0.13); border-radius: 8px; padding: 5px 8px; min-height: 44px; }
+.print-error { background: alpha(#ff5a4e, 0.13); border-radius: 8px; padding: 5px 8px; min-height: 62px; }
 .print-error label { color: #ef9690; font-size: 11px; font-weight: 600; }
+.print-error .print-error-code { color: %(secondary)s; font-family: monospace; font-size: 9px; font-weight: 400; }
 .ams-group { background: transparent; padding: 4px 6px; }
 .ams-group.divided { border-left: 1px solid alpha(#ffffff, 0.09); }
 .ams-title { color: %(text)s; font-size: 10px; font-weight: 600; }
@@ -176,7 +184,16 @@ eventbox.sb-tile:hover { background: alpha(#ffffff, 0.055); }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 3px; background: %(segment_off)s; }
 progressbar progress { border-radius: 2px; background: %(metric)s; }
-""" % values).encode()
+""" % values)
+    scale = max(0.75, min(1.50, card_scale))
+    scaled = "" if abs(scale - 1.0) < 0.001 else f"""
+.card {{ padding: {6*scale:.1f}px {10*scale:.1f}px; border-radius: {16*scale:.1f}px; }}
+.printer-name {{ font-size: {14*scale:.1f}px; }} .status, .job, .metric {{ font-size: {10*scale:.1f}px; }}
+.percent, .temp-value {{ font-size: {14*scale:.1f}px; }} .temp-zone {{ min-height: {22*scale:.1f}px; }}
+button.cardmenu {{ min-width: {24*scale:.1f}px; min-height: {24*scale:.1f}px; font-size: {15*scale:.1f}px; }}
+.ams {{ min-height: {18*scale:.1f}px; }} .slot-material, .slot-grams, .ams-title {{ font-size: {10*scale:.1f}px; }}
+"""
+    return (base + scaled).encode()
 
 
 def _muted_hex(value: str, amount: float = 0.62) -> str:
@@ -367,12 +384,15 @@ class PrinterCard(Gtk.Frame):
         self.maintenance = self._button("",i18n.t("Maintenance"))
         self.maintenance.set_no_show_all(True)
         self.maintenance.connect("clicked", self._open_maintenance)
+        self.skip_objects = self._button("▱−", i18n.t("Skip object"))
+        self.skip_objects.set_no_show_all(True)
+        self.skip_objects.connect("clicked", lambda *_: app.open_skip_objects(printer.serial))
         grip = Gtk.Label(label="⠿")
         grip.get_style_context().add_class("metric")
         menu = self._button("⋯", "Menu")
         menu.connect("clicked", self._show_menu)
         for child, expand in ((icon, False), (self.name, True), (self.connection, False),
-                              (self.details, False), (self.printer_alert, False), (self.maintenance, False),
+                              (self.details, False), (self.printer_alert, False), (self.maintenance, False), (self.skip_objects, False),
                               (grip, False), (menu, False)):
             top.pack_start(child, expand, expand, 0)
         self.box.pack_start(top, False, False, 0)
@@ -424,9 +444,21 @@ class PrinterCard(Gtk.Frame):
         self.print_error.set_valign(Gtk.Align.FILL)
         self.print_error_label = Gtk.Label(xalign=0, yalign=0.5, wrap=True, ellipsize=Pango.EllipsizeMode.END)
         self.print_error_label.set_lines(2)
-        self.print_error.add(self.print_error_label)
+        self.print_error_code = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.MIDDLE)
+        self.print_error_code.get_style_context().add_class("print-error-code")
+        error_copy = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        error_copy.pack_start(self.print_error_label, True, True, 0)
+        error_copy.pack_start(self.print_error_code, False, False, 0)
+        self.print_error_dismiss = Gtk.Button(label=i18n.t("Dismiss"))
+        self.print_error_dismiss.set_relief(Gtk.ReliefStyle.NONE)
+        self.print_error_dismiss.connect("clicked", self._dismiss_print_error)
+        error_row = Gtk.Box(spacing=8)
+        error_row.pack_start(error_copy, True, True, 0)
+        error_row.pack_start(self.print_error_dismiss, False, False, 0)
+        self.print_error.add(error_row)
         self.print_error.set_no_show_all(True)
-        self.print_error.connect("button-release-event", self._open_maintenance)
+        self._current_error_signature: str | None = None
+        self._dismissed_error_signature: str | None = None
         self.filament_section.add_overlay(self.print_error)
         self.box.pack_start(self.filament_section, False, False, 0)
 
@@ -448,13 +480,17 @@ class PrinterCard(Gtk.Frame):
     def _show_menu(self, button: Gtk.Button) -> None:
         pl = self.app.language == "pl"
         menu = Gtk.Menu()
-        entries: list[tuple[str, Any]] = [
-            ((i18n.t("Details")), lambda *_: self.app.open_details(self.printer.serial)),
-            ((i18n.t("Reconnect")), lambda *_: self.app.reconnect_printer(self.printer.serial)),
-        ]
+        # LITE keeps the menu to what a monitor needs: reconnect, copy IP, edit, remove. No detail
+        # view, no slicer hand-offs.
+        entries: list[tuple[str, Any]] = []
+        if edition.HAS_EXTRAS:
+            entries.append((i18n.t("Details"), lambda *_: self.app.open_details(self.printer.serial)))
+            if self.printer.kind in {PrinterKind.BAMBU, PrinterKind.KLIPPER}:
+                entries.append((i18n.t("Skip object"), lambda *_: self.app.open_skip_objects(self.printer.serial)))
+        entries.append((i18n.t("Reconnect"), lambda *_: self.app.reconnect_printer(self.printer.serial)))
         for label, callback in entries:
             item = Gtk.MenuItem(label=label); item.connect("activate", callback); menu.append(item)
-        slicers = installed_slicers()
+        slicers = installed_slicers() if edition.HAS_EXTRAS else []
         if self.printer.kind == PrinterKind.BAMBU:
             bambu = next((slicer for slicer in slicers if slicer.name == "Bambu Studio"), None)
             if bambu is not None:
@@ -515,7 +551,11 @@ class PrinterCard(Gtk.Frame):
 
     def update(self, telemetry: Telemetry, reason: str | None = None) -> None:
         self._last_telemetry = telemetry
-        signal, count = self.app.insights.signal(self.printer.serial)
+        can_skip = edition.HAS_EXTRAS and self.printer.kind in {PrinterKind.BAMBU, PrinterKind.KLIPPER} and telemetry.state in {PrinterState.PRINTING, PrinterState.PAUSED}
+        self.skip_objects.set_no_show_all(not can_skip); self.skip_objects.set_visible(can_skip)
+        # LITE carries neither chip: maintenance tracking is a full-edition feature, and the "!" chip
+        # opens maintenance, which LITE does not have.
+        signal, count = self.app.insights.signal(self.printer.serial) if edition.HAS_EXTRAS else ("none", 0)
         ctx = self.maintenance.get_style_context()
         ctx.remove_class("maintenance-due"); ctx.remove_class("maintenance-urgent")
         if signal == "none":
@@ -527,7 +567,8 @@ class PrinterCard(Gtk.Frame):
             self.maintenance.set_no_show_all(False); self.maintenance.show()
         from .hms import actionable_codes
         alerts = actionable_codes(telemetry.hms_codes, self.printer.serial, self.app.language)
-        has_alert = bool(alerts or getattr(telemetry, "error_code", 0) or telemetry.state == PrinterState.ERROR)
+        has_alert = edition.HAS_EXTRAS and bool(
+            alerts or getattr(telemetry, "error_code", 0) or telemetry.state == PrinterState.ERROR)
         if has_alert:
             self.printer_alert.set_label(f"! {len(alerts)}" if len(alerts) > 1 else "!")
             self.printer_alert.set_no_show_all(False); self.printer_alert.show()
@@ -571,7 +612,16 @@ class PrinterCard(Gtk.Frame):
         for widget in (self.temp_rule, self.temps):
             widget.set_no_show_all(not show_temperatures); widget.set_visible(show_temperatures)
         has_filaments = bool(telemetry.filament_groups) and show_filaments
-        show_print_error = telemetry.state == PrinterState.ERROR
+        from .hms import format_error_code
+        error_signature = "|".join([format_error_code(getattr(telemetry, "error_code", 0)),
+                                    *telemetry.hms_codes])
+        if telemetry.state != PrinterState.ERROR:
+            self._dismissed_error_signature = None
+            self._current_error_signature = None
+        else:
+            self._current_error_signature = error_signature
+        show_print_error = (telemetry.state == PrinterState.ERROR
+                            and self._dismissed_error_signature != error_signature)
         show_filament_section = has_filaments or show_print_error
         self.ams_rule.set_no_show_all(not show_filament_section)
         self.ams_rule.set_visible(show_filament_section)
@@ -581,17 +631,25 @@ class PrinterCard(Gtk.Frame):
         self.ams.set_visible(has_filaments)
         self.ams.set_opacity(0.0 if show_print_error else 1.0)
         self.ams.set_sensitive(not show_print_error)
-        self.filament_section.set_size_request(-1, 44 if show_print_error and not has_filaments else -1)
+        self.filament_section.set_size_request(-1, 62 if show_print_error and not has_filaments else -1)
         self.print_error.set_no_show_all(not show_print_error)
         self.print_error.set_visible(show_print_error)
         if show_print_error:
-            from .hms import description
+            from .hms import description, description_for_error
             error_text = description(telemetry.hms_codes, self.printer.serial, self.app.language)
             if not error_text and getattr(telemetry, "error_code", 0):
-                error_text = i18n.t("Error code: 0x{0:X}").format(telemetry.error_code)
+                error_text = description_for_error(telemetry.error_code, self.printer.serial, self.app.language)
             error_text = error_text or i18n.t("Printer reported an error")
             self.print_error_label.set_text(error_text)
-            self.print_error.set_tooltip_text(error_text)
+            if getattr(telemetry, "error_code", 0):
+                code_text = i18n.t("Diagnostic code: 0x{0}").format(format_error_code(telemetry.error_code))
+            elif alerts:
+                code_text = i18n.t("Diagnostic code: {0}").format(alerts[0])
+            else:
+                code_text = ""
+            self.print_error_code.set_text(code_text)
+            self.print_error_dismiss.set_label(i18n.t("Dismiss"))
+            self.print_error.set_tooltip_text(f"{error_text}\n{code_text}" if code_text else error_text)
         offline = telemetry.state == PrinterState.OFFLINE
         ctx = self.get_style_context()
         if offline: ctx.add_class("offline")
@@ -718,9 +776,10 @@ class PrinterCard(Gtk.Frame):
                     header.pack_start(separator, False, False, 0)
                     header.pack_start(cluster, False, False, 0)
 
-                if group.temperature is not None:
+                # LITE names the module and stops there — no chamber temperature, no humidity.
+                if edition.HAS_EXTRAS and group.temperature is not None:
                     add_environment("🌡", f"{group.temperature:.0f}°")
-                if group.humidity is not None:
+                if edition.HAS_EXTRAS and group.humidity is not None:
                     humidity = f"{group.humidity}/5" if group.humidity <= 5 else f"{group.humidity}%"
                     add_environment("💧", humidity)
                 gbox.pack_start(header, False, False, 0)
@@ -799,15 +858,23 @@ class PrinterCard(Gtk.Frame):
                 width = min(allocation.width, max(60, int(round(allocation.width * 0.35))))
                 overlay.set_size_request(width, 18)
             box.connect("size-allocate", resize_single_swatch)
-        if grams and self.app.config.data.get("card_show_spool_grams", False):
-            label = Gtk.Label(label=f"{int(grams)} g")
+        if self.app.config.data.get("card_show_spool_grams", False):
+            show_grams = bool(present and grams and grams > 0)
+            label = Gtk.Label(label=f"{int(grams or 0)} g")
             label.get_style_context().add_class("slot-grams")
+            label.set_opacity(1.0 if show_grams else 0.0)
             box.pack_start(label, False, False, 0)
         if store is None:
             return box
         event = Gtk.EventBox(); event.add(box)
         event.connect("button-press-event", lambda *_: self._open_slot_assign(group, group_index, slot, slot_index))
         return event
+
+    def _dismiss_print_error(self, *_args: Any) -> None:
+        if not self._current_error_signature:
+            return
+        self._dismissed_error_signature = self._current_error_signature
+        self.update(self._last_telemetry)
 
     def _open_slot_assign(self, group: Any, group_index: int, slot: Any, slot_index: int) -> bool:
         try:
@@ -924,8 +991,9 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         root.get_style_context().add_class("fleet-root")
         header = Gtk.Box(spacing=7)
+        self.fleet_header = header
         header.get_style_context().add_class("fleet-header")
-        wordmark = Gtk.Label(label="GANTRY")
+        wordmark = Gtk.Label(label="GANTRY LITE" if edition.IS_LITE else "GANTRY")
         wordmark.get_style_context().add_class("wordmark")
         dot = Gtk.Label(label="·"); dot.get_style_context().add_class("summary")
         self.subtitle = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
@@ -943,7 +1011,12 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         settings.set_tooltip_text(i18n.t("Settings"))
         guide = self._header_button("?", lambda *_: self.show_onboarding())
         guide.set_tooltip_text(i18n.t("How to read Gantry"))
-        for button in (self.pin, settings, guide, self.columns, self.collapse, clear, refresh, add):
+        # LITE header: settings plus the printer actions. No guide, and no "clear finished" — a
+        # finished job simply stays on the card until the next print starts.
+        buttons = ((self.pin, settings, guide, self.columns, self.collapse, clear, refresh, add)
+                   if edition.HAS_EXTRAS
+                   else (self.pin, settings, self.columns, self.collapse, refresh, add))
+        for button in buttons:
             header.pack_start(button, False, False, 0)
         root.pack_start(header, False, False, 0)
         self.scroll = Gtk.ScrolledWindow()
@@ -987,18 +1060,31 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         self.columns.set_label("▯" if int(self.app.config.data.get("dashboard_columns", 2)) == 2 else "▥")
 
     def resize_for_content(self) -> None:
-        if not self.tray_mode or self._panel_layer is not None:
+        if self._panel_layer is not None:
             return
         compact = self.app.is_compact()
-        columns = max(1, min(2, int(self.app.config.data.get("dashboard_columns", 2))))
-        width = PANEL_COMPACT if compact else (PANEL_ONE_COLUMN if columns == 1 else PANEL_TWO_COLUMNS)
-        minimum, natural = self.fleet.get_preferred_height_for_width(width)
+        if self.tray_mode:
+            columns = max(1, min(2, int(self.app.config.data.get("dashboard_columns", 2))))
+            scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
+            width = int((PANEL_COMPACT if compact else (PANEL_ONE_COLUMN if columns == 1 else PANEL_TWO_COLUMNS)) * scale)
+        else:
+            width = self.get_size()[0]
+        natural = self.content_height_for_width(width)
         display = Gdk.Display.get_default()
         monitor = display.get_primary_monitor() if display else None
         max_height = (monitor.get_workarea().height - 24) if monitor else 820
         height = max(350 if self.app.startup.loading else 150, min(max_height, natural))
         self.set_default_size(width, height)
         self.resize(width, height)
+
+    def content_height_for_width(self, width: int) -> int:
+        """Real dashboard height, independent of the scroller's currently clipped viewport."""
+        inner_width = max(1, width - 28)  # .fleet-root horizontal padding
+        grid_height = self.grid.get_preferred_height_for_width(inner_width)[1]
+        header_height = self.fleet_header.get_preferred_height_for_width(inner_width)[1]
+        footer_height = self.footer.get_preferred_height_for_width(inner_width)[1]
+        # Root: 12 px top + 8 px bottom, two 6 px gaps, plus a rounding guard.
+        return int(header_height + grid_height + footer_height + 20 + 12 + 4)
 
     def show_detail(self, widget: Gtk.Widget) -> None:
         if not self.tray_mode:

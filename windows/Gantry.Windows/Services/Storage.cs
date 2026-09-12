@@ -160,8 +160,17 @@ public static class AppSettings
     /// Developer mode: reveals the printer control + automations tile in the detail window.
     public static bool DeveloperMode
     {
-        get => Defaults.GetBool("developer-mode");
+        get => Build.HasExtras && Defaults.GetBool("developer-mode");
         set => Defaults.SetBool("developer-mode", value);
+    }
+
+    /// <summary>Second surface: the fleet in a resizable desktop window instead of the tray flyout.
+    /// LITE ships the flyout only, so it reads false here whatever a full Gantry left in the shared
+    /// defaults file (the setters stay live so the full app's own value is never rewritten).</summary>
+    public static bool FloatingWindowEnabled
+    {
+        get => Build.HasExtras && Defaults.GetBool("floating-window-enabled");
+        set => Defaults.SetBool("floating-window-enabled", value);
     }
 
     /// Security kill switch for automation actions that execute code: "script" (runs a program on this
@@ -170,7 +179,7 @@ public static class AppSettings
     /// KeePass triggers (CVE-2023-24055). The rule engine refuses these actions unless this is enabled.
     public static bool AllowScriptActions
     {
-        get => Defaults.GetBool("allow-script-actions", false);
+        get => Build.HasExtras && Defaults.GetBool("allow-script-actions", false);
         set => Defaults.SetBool("allow-script-actions", value);
     }
 
@@ -236,14 +245,25 @@ public static class AppSettings
     /// <summary>Show remaining grams on the spool under AMS NFC / Spoolbase slots (off by default).</summary>
     public static bool CardShowSpoolGrams
     {
-        get => Defaults.GetBool("card-show-spool-grams", false);
+        get => Build.HasExtras && Defaults.GetBool("card-show-spool-grams", false);
         set => Defaults.SetBool("card-show-spool-grams", value);
     }
     /// <summary>Optional chart shortcut in the card header. The ⋯ menu always exposes Details.</summary>
     public static bool CardShowDetailsChip
     {
-        get => Defaults.GetBool("card-show-details-chip", false);
+        get => Build.HasExtras && Defaults.GetBool("card-show-details-chip", false);
         set => Defaults.SetBool("card-show-details-chip", value);
+    }
+    /// <summary>Magnification of the complete printer card. Five-percent steps mirror macOS and
+    /// keep the tile grid deterministic while the window fits itself to the scaled content.</summary>
+    public static int CardScalePercent
+    {
+        get
+        {
+            int value = Defaults.GetInt("card-scale-percent", 100);
+            return Math.Clamp((int)Math.Round(value / 5.0) * 5, 75, 150);
+        }
+        set => Defaults.SetInt("card-scale-percent", Math.Clamp((int)Math.Round(value / 5.0) * 5, 75, 150));
     }
     /// <summary>Calmer palette: temperatures stay grey and filament colours are muted toward grey.</summary>
     public static bool Monochrome
@@ -255,14 +275,14 @@ public static class AppSettings
     // Whether the embedded Spoolbase filament-stock tool appears in the tray menu.
     public static bool SpoolbaseEnabled
     {
-        get => Defaults.GetBool("spoolbase-enabled", true);
+        get => Build.HasExtras && Defaults.GetBool("spoolbase-enabled", true);
         set => Defaults.SetBool("spoolbase-enabled", value);
     }
 
     /// <summary>Whether the read-only LAN web dashboard (http://&lt;ip&gt;:8787) runs.</summary>
     public static bool WebDashboardEnabled
     {
-        get => Defaults.GetBool("web-dashboard-enabled", true);
+        get => Build.HasExtras && Defaults.GetBool("web-dashboard-enabled", true);
         set => Defaults.SetBool("web-dashboard-enabled", value);
     }
 
@@ -298,7 +318,7 @@ public static class AppSettings
     // macOS/Linux. Off by default, because it is an opt-in second surface, not a tray replacement.
     public static bool EdgeDockEnabled
     {
-        get => Defaults.GetBool("edge-dock-enabled", false);
+        get => Build.HasExtras && Defaults.GetBool("edge-dock-enabled", false);
         set => Defaults.SetBool("edge-dock-enabled", value);
     }
 
@@ -309,20 +329,16 @@ public static class AppSettings
         set => Defaults.SetString("edge-dock-edge", value == "left" ? "left" : "right");
     }
 
-    /// <summary>Manual edge-dock scale for large/high-density displays. Three deliberate steps keep
-    /// the strip crisp and predictable instead of accepting arbitrary values.</summary>
+    /// <summary>Manual edge-dock scale for large/high-density displays. Five-percent steps keep
+    /// the strip crisp and keep all three platform implementations on the same scale grid.</summary>
     public static int EdgeDockScalePercent
     {
         get
         {
             int value = Defaults.GetInt("edge-dock-scale-percent", 100);
-            return value < 113 ? 100 : value < 138 ? 125 : 150;
+            return Math.Clamp((int)Math.Round(value / 5.0) * 5, 100, 150);
         }
-        set
-        {
-            int snapped = value < 113 ? 100 : value < 138 ? 125 : 150;
-            Defaults.SetInt("edge-dock-scale-percent", snapped);
-        }
+        set => Defaults.SetInt("edge-dock-scale-percent", Math.Clamp((int)Math.Round(value / 5.0) * 5, 100, 150));
     }
 
     /// Hide printers that are neither printing nor paused.
@@ -344,7 +360,7 @@ public static class AppSettings
     // Telegram push + bot. Keys shared verbatim with macOS/Linux (see docs/telegram.md).
     public static bool TelegramEnabled
     {
-        get => Defaults.GetBool("telegram-enabled", false);
+        get => Build.HasExtras && Defaults.GetBool("telegram-enabled", false);
         set => Defaults.SetBool("telegram-enabled", value);
     }
     public static string TelegramBotToken

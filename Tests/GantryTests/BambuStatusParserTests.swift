@@ -66,6 +66,32 @@ import Foundation
         #expect(BambuStatusParser.telemetry(from: Data("not json".utf8)) == nil)
     }
 
+    @Test func parsesSkippedObjectIdentifiers() {
+        let result = telemetry("{\"print\":{\"s_obj\":[3,7]}}")
+        #expect(result?.skippedObjectIDs == Set(["3", "7"]))
+    }
+
+    @Test func usesSubtaskNameAsBambuArchiveHint() {
+        let result = telemetry("""
+        {"print":{"subtask_name":"double_magnetic_x2d_plate_2",
+        "gcode_file":"/data/Metadata/plate_2.gcode"}}
+        """)
+        #expect(result?.gcodeFile == "double_magnetic_x2d_plate_2")
+    }
+
+    @Test func usesRealGcodeFileForClassicBambuArchive() {
+        let result = telemetry("""
+        {"print":{"subtask_name":"Friendly benchy name",
+        "gcode_file":"/cache/real_benchy.gcode.3mf"}}
+        """)
+        #expect(result?.gcodeFile == "/cache/real_benchy.gcode.3mf")
+    }
+
+    @Test func parsesActivePlateIndex() {
+        #expect(telemetry("{\"print\":{\"plate_idx\":2}}")?.currentPlateIndex == 2)
+        #expect(telemetry("{\"print\":{\"plate_idx\":\"3\"}}")?.currentPlateIndex == 3)
+    }
+
     @Test func parsesAMSSlots() {
         let result = telemetry("""
         {"print":{"ams":{"tray_now":"0","ams":[{"id":"0","humidity":"2","temp":"28",

@@ -14,6 +14,7 @@ from .core import (
     FilamentGroup,
     FilamentSlot,
     NozzleTelemetry,
+    PrintObject,
     Printer,
     PrinterKind,
     PrinterState,
@@ -201,6 +202,23 @@ def parse_moonraker(payload: bytes | str | dict[str, Any], previous: Telemetry |
             )
             telemetry.filament_groups = [group]
             telemetry.ams_slots = group.legacy_slots()
+    exclusion = status.get("exclude_object") if isinstance(status.get("exclude_object"), dict) else None
+    if exclusion is not None:
+        parsed: list[PrintObject] = []
+        for index, value in enumerate(exclusion.get("objects", [])):
+            if not isinstance(value, dict):
+                continue
+            name = str(value.get("name") or f"Object {index + 1}")
+            polygon: list[tuple[float, float]] = []
+            for point in value.get("polygon", []):
+                if isinstance(point, list) and len(point) >= 2:
+                    x, y = _number(point[0]), _number(point[1])
+                    if x is not None and y is not None: polygon.append((x, y))
+            parsed.append(PrintObject(name, name, polygon))
+        telemetry.print_objects = parsed
+        telemetry.skipped_object_ids = {str(value) for value in exclusion.get("excluded_objects", [])}
+        current = exclusion.get("current_object")
+        telemetry.current_object_id = str(current) if current else None
     # Single-nozzle Klipper machine: expose one nozzle entry for the shared collection.
     telemetry.nozzles = [NozzleTelemetry("single", telemetry.nozzle, telemetry.nozzle_target)]
     return telemetry
@@ -381,7 +399,7 @@ class HttpConnection:
             return False
 
     def _moonraker_path(self) -> str:
-        wanted = ["print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move"]
+        wanted = ["print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move", "exclude_object"]
         wanted.extend(str(value) for value in self._moonraker_objects.values() if value)
         try:
             root = json.loads(self._get("/printer/objects/list"))

@@ -37,7 +37,7 @@ floating = CONTRACT["floatingWindow"]
 
 # macOS is the visual reference, but it is checked too so a macOS change must update the contract.
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        rf"panelWidth:\s*CGFloat\s*=\s*useCompactMode\s*\?\s*{compact}\s*:\s*\(expandedColumnCount\s*==\s*1\s*\?\s*{one}\s*:\s*{two}\)",
+        rf"basePanelWidth:\s*CGFloat\s*=\s*useCompactMode\s*\?\s*{compact}\s*:\s*\(expandedColumnCount\s*==\s*1\s*\?\s*{one}\s*:\s*{two}\)",
         "panel widths differ from the contract")
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         rf"let gap:\s*CGFloat\s*=\s*{column_gap}\b", "fleet column gap differs from the contract")
@@ -62,20 +62,78 @@ require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf'frameAutosaveName\s*=\s*"{re.escape(floating["frameAutosaveName"])}"',
         "floating window frame is not persisted")
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        r"func snappedFloatingContentSize[\s\S]*?columnPitch:\s*CGFloat\s*=\s*293[\s\S]*?rowPitch:\s*CGFloat\s*=\s*182",
-        "macOS floating window is not snapped to whole card tiles")
+        r"func snappedFloatingContentSize[\s\S]*?columnPitch:\s*CGFloat\s*=\s*293[\s\S]*?height:\s*proposed\.height",
+        "macOS floating window width is not snapped to whole card columns")
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
-        r"windowDidEndLiveResize[\s\S]*?snapWindowToTiles",
-        "macOS does not snap to tiles after native resize")
+        r"windowDidEndLiveResize[\s\S]*?snapWindowToTiles[\s\S]*?fitHeightToCards",
+        "macOS does not snap columns and fit the real card-row height after resize")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"magnification = scale",
+        "macOS printer card scale does not magnify the real cards")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"measuredContent \* cardScale",
+        "macOS popover height does not include printer card magnification")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"cardScaleRow[\s\S]*?dockScaleRow",
+        "macOS settings are missing card and edge-dock scale controls")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"edgeDockScalePercent[\s\S]*?Self\.collapsedWidth \* scale",
+        "macOS edge dock does not apply its selected scale")
+
+# Issue #34, macOS first: the strip can stay unfolded and carry one live camera under its rows.
+# Windows and GNU/Linux still expand on hover only, so they are deliberately not required here yet.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"var pinned = false[\s\S]*?isExpanded: Bool \{ pinned \|\| isHovering \}",
+        "macOS edge dock cannot stay open without the pointer")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"settings\.edgeDockCamera[\s\S]*?edgeDockCameraSerials[\s\S]*?CameraFeedController\(store: store, serial: serial\)",
+        "macOS edge dock cameras are not driven by the per-printer selection")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"cameraViews\[metric\.entry\.serial\]",
+        "macOS edge dock does not place each picture under its own printer row")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"dockPrinterCameraToggled[\s\S]*?edgeDockCameraSerials",
+        "macOS settings cannot choose which printers show a picture")
+require("Sources/Gantry/Views/CameraFeed.swift",
+        r"final class CameraFeedController[\s\S]*?func start\(\)[\s\S]*?func stop\(\)",
+        "the camera feed is not reusable outside the detail view")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"dockPinnedRow[\s\S]*?dockCameraRow",
+        "macOS settings are missing the edge-dock pin and camera switches")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"pinButtonRect\(\)[\s\S]*?onUnpin\?\(\)",
+        "macOS pinned edge dock cannot be released from the strip itself")
+
+# Issue #34, the second half: the detail panel must take the height its cards need, capped by the
+# screen, instead of the constant it used to be nailed to. GNU/Linux already sizes to content through
+# set_propagate_natural_height, so only the two ports that hard-coded a number are checked here.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"minimumPopoverHeight[\s\S]*?func updatePreferredHeight\(\)[\s\S]*?visibleFrame\.height",
+        "macOS detail popover height is not driven by its cards and the screen")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
-        r"SnapWindowToTiles\(\)[\s\S]*?columnPitch = 293[\s\S]*?FitHeightToContent",
+        r"private void FitPanel\(\)[\s\S]*?double\.PositiveInfinity[\s\S]*?WorkArea\.Height",
+        "Windows bounded panel height is not measured from its content and the work area")
+
+# The fleet header sits on a translucent panel on all three, so its tile has to carry its own
+# contrast. Borrowed from the backdrop it read as near-white on near-white over a bright window.
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"header\.layer\?\.backgroundColor = GantryTheme\.surfaceOnBackdrop\.cgColor",
+        "macOS fleet header borrows its contrast from the desktop behind the panel")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"FleetHeaderPlate\.Background = GTheme\.Brush\(GTheme\.SurfaceOnBackdrop\)",
+        "Windows fleet header borrows its contrast from the desktop behind the panel")
+require("linux/gantry/dashboard.py",
+        r"\.fleet-header \{ background: %\(surface_on_backdrop\)s;",
+        "Linux fleet header borrows its contrast from the desktop behind the panel")
+require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
+        r"CardColumnPitch\s*=>\s*293 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
         "Windows floating window is not snapped to card columns with content-driven height")
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
         r"if \(WindowMode\) return false;.*full card tiles",
         "Windows still switches to compact rows while resizing the window")
 require("linux/gantry/presentation.py",
-        r"def _snapped_tile_size[\s\S]*?columns \* 293[\s\S]*?visible_rows \* 182",
-        "Linux floating window is not snapped to whole card tiles")
+        r"def _snapped_tile_size[\s\S]*?pitch = 293 \* scale[\s\S]*?columns \* pitch[\s\S]*?content_height_for_width",
+        "Linux floating window does not snap columns and fit the real card-row height")
 require("linux/gantry/app.py",
         r"if not getattr\(self\.window, \"tray_mode\", True\):[\s\S]*?return False.*full card tiles",
         "Linux still switches to compact rows while resizing the window")
@@ -248,8 +306,11 @@ require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         "macOS printer grip must not initiate a window drag")
 
 # Presentation ports: keep session state and actual card previews, not separate demo components.
+# The Windows side reads the stored key through AppSettings.FloatingWindowEnabled (which also pins the
+# mode off in the LITE build), so either form counts as "the mode is still here".
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
-        r'floating-window-enabled', "Windows is missing persistent window mode")
+        r'floating-window-enabled|AppSettings\.FloatingWindowEnabled',
+        "Windows is missing persistent window mode")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
         r'new PrinterCard\(this, printer', "Windows guide must use production printer cards")
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
@@ -291,11 +352,29 @@ require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
         r"if \(!WindowMode\)[\s\S]*?Top = area\.Bottom - Height - 8",
         "Windows content fitting no longer preserves popover anchoring")
 require("windows/Gantry.Windows/Services/Storage.cs",
-        r"EdgeDockScalePercent[\s\S]*?100[\s\S]*?125[\s\S]*?150",
-        "Windows edge dock is missing its three manual size presets")
+        r"EdgeDockScalePercent[\s\S]*?Round\(value / 5\.0\)[\s\S]*?100, 150",
+        "Windows edge dock is missing five-percent size steps")
 require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
         r"DockSizeMinusButton[\s\S]*?DockSizeValue[\s\S]*?DockSizePlusButton",
         "Windows settings are missing edge-dock minus/plus controls")
+for relative in ("windows/Gantry.Windows/Services/Storage.cs", "linux/gantry/storage.py"):
+    require(relative, r"card-scale-percent|card_scale_percent", "printer-card scale is not persisted")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml.cs", r"ChangeCardScale\(-5\)[\s\S]*?ChangeCardScale\(5\)",
+        "Windows card scale does not use five-percent steps")
+require("linux/gantry/settings.py", r'_scale_row\(i18n\.t\("Card size"\), "card_scale_percent", 75, 150\)',
+        "Linux settings are missing printer-card scale controls")
+
+# Object skipping stays end-to-end on both ports: discovery, protected UI and printer command.
+require("windows/Gantry.Windows/Services/MoonrakerStatusParser.cs", r'exclude_object[\s\S]*?PrintObjects',
+        "Windows is missing Klipper object discovery")
+require("windows/Gantry.Windows/Services/PrinterStore.cs", r'LoadPrintObjectLayoutAsync[\s\S]*?SkipPrintObjects[\s\S]*?EXCLUDE_OBJECT[\s\S]*?skip_objects',
+        "Windows object skipping is not wired to both Klipper and Bambu")
+require("windows/Gantry.Windows/UI/SkipObjectsPanel.cs", r'class SkipObjectsPanel[\s\S]*?Confirm skip[\s\S]*?SkipPrintObjects',
+        "Windows is missing the protected object-skipping panel")
+require("linux/gantry/http_clients.py", r'exclude_object[\s\S]*?print_objects',
+        "Linux is missing Klipper object discovery")
+require("linux/gantry/skipobjects.py", r'class SkipObjectsPanel[\s\S]*?Confirm skip[\s\S]*?skip_objects',
+        "Linux is missing the protected object-skipping panel")
 
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)

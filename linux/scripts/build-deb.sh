@@ -4,12 +4,32 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 VERSION=$(PYTHONPATH="$ROOT/linux" python3 -c 'from gantry import __version__; print(__version__)')
 ARCH=all
-BUILD="$ROOT/linux/build/gantry_${VERSION}_${ARCH}"
-SUFFIX=${GANTRY_PACKAGE_SUFFIX:-}
-if [ -n "$SUFFIX" ]; then
-  OUTPUT="$ROOT/linux/dist/Gantry-${VERSION}-Linux-${ARCH}-${SUFFIX}.deb"
+# GANTRY_EDITION=lite builds Gantry LITE: the same code with the extras switched off (tray, printers,
+# notifications, short settings). It is a separate package that replaces gantry rather than sitting
+# beside it — both would own the same Python package directory.
+EDITION=${GANTRY_EDITION:-full}
+if [ "$EDITION" = "lite" ]; then
+  PACKAGE=gantry-lite
+  APP_NAME="Gantry LITE"
+  BINARY=gantry-lite
+  OTHER_EDITION=gantry
 else
-  OUTPUT="$ROOT/linux/dist/Gantry-${VERSION}-Linux-${ARCH}.deb"
+  PACKAGE=gantry
+  APP_NAME=Gantry
+  BINARY=gantry
+  OTHER_EDITION=gantry-lite
+fi
+BUILD="$ROOT/linux/build/${PACKAGE}_${VERSION}_${ARCH}"
+SUFFIX=${GANTRY_PACKAGE_SUFFIX:-}
+if [ "$EDITION" = "lite" ]; then
+  NAME_PREFIX="Gantry-LITE"
+else
+  NAME_PREFIX="Gantry"
+fi
+if [ -n "$SUFFIX" ]; then
+  OUTPUT="$ROOT/linux/dist/${NAME_PREFIX}-${VERSION}-Linux-${ARCH}-${SUFFIX}.deb"
+else
+  OUTPUT="$ROOT/linux/dist/${NAME_PREFIX}-${VERSION}-Linux-${ARCH}.deb"
 fi
 
 rm -rf "$BUILD"
@@ -23,17 +43,17 @@ mkdir -p "$BUILD/DEBIAN" \
   "$ROOT/linux/dist"
 
 cat > "$BUILD/DEBIAN/control" <<EOF
-Package: gantry
+Package: $PACKAGE
 Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: $ARCH
 Depends: python3 (>= 3.10), python3-gi, python3-websocket, gir1.2-gtk-3.0, gir1.2-gdkpixbuf-2.0, gir1.2-gstreamer-1.0, gir1.2-ayatanaappindicator3-0.1, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav, libsecret-tools, gnome-keyring, libnotify-bin, openssl, avahi-daemon, x11-xserver-utils
-Conflicts: bambubar
-Replaces: bambubar
+Conflicts: bambubar, ${OTHER_EDITION}
+Replaces: bambubar, ${OTHER_EDITION}
 Maintainer: Kamil Grzegorczyk <parametryczny@users.noreply.github.com>
 Homepage: https://github.com/parametryczny/gantrybar
-Description: Gantry 3D printer status monitor
+Description: $APP_NAME 3D printer status monitor
  Gantry monitors Bambu Lab, Anycubic, Elegoo, Klipper/Moonraker and PrusaLink printers over the
  local network, shows print progress, temperatures, layers and filament slots,
  and lives in the system tray.
@@ -47,13 +67,27 @@ cp "$ROOT"/i18n/*.json "$ROOT/linux/gantry/data/i18n/"
 cp "$ROOT/Resources/web-dashboard.html" "$ROOT/linux/gantry/data/web-dashboard.html"
 cp -a "$ROOT/linux/gantry/." "$BUILD/usr/lib/python3/dist-packages/gantry/"
 find "$BUILD/usr/lib/python3/dist-packages/gantry" -type d -name __pycache__ -prune -exec rm -rf {} +
-install -m 0755 "$ROOT/linux/packaging/gantry" "$BUILD/usr/bin/gantry"
-install -m 0755 "$ROOT/linux/packaging/gantry-kiosk" "$BUILD/usr/bin/gantry-kiosk"
-install -m 0755 "$ROOT/linux/packaging/gantry-kiosk-setup" "$BUILD/usr/bin/gantry-kiosk-setup"
-install -m 0644 "$ROOT/linux/packaging/gantry.desktop" "$BUILD/usr/share/applications/gantry.desktop"
-install -m 0644 "$ROOT/linux/packaging/gantry-kiosk.desktop" "$BUILD/usr/share/applications/gantry-kiosk.desktop"
+if [ "$EDITION" = "lite" ]; then
+  # Stamp the edition into the installed copy; the source tree stays the full edition.
+  sed -i.bak 's/^EDITION = "full"$/EDITION = "lite"/' \
+    "$BUILD/usr/lib/python3/dist-packages/gantry/edition.py"
+  rm -f "$BUILD/usr/lib/python3/dist-packages/gantry/edition.py.bak"
+  grep -q '^EDITION = "lite"$' "$BUILD/usr/lib/python3/dist-packages/gantry/edition.py"
+  # LITE has neither the web dashboard nor Spoolbase, so their payload is not shipped.
+  rm -f "$BUILD/usr/lib/python3/dist-packages/gantry/data/web-dashboard.html"
+  rm -f "$BUILD/usr/lib/python3/dist-packages/gantry/data/filament-catalog.json"
+fi
+install -m 0755 "$ROOT/linux/packaging/$BINARY" "$BUILD/usr/bin/$BINARY"
+install -m 0644 "$ROOT/linux/packaging/$PACKAGE.desktop" "$BUILD/usr/share/applications/$PACKAGE.desktop"
+if [ "$EDITION" != "lite" ]; then
+  install -m 0755 "$ROOT/linux/packaging/gantry-kiosk" "$BUILD/usr/bin/gantry-kiosk"
+  install -m 0755 "$ROOT/linux/packaging/gantry-kiosk-setup" "$BUILD/usr/bin/gantry-kiosk-setup"
+  install -m 0644 "$ROOT/linux/packaging/gantry-kiosk.desktop" "$BUILD/usr/share/applications/gantry-kiosk.desktop"
+fi
 install -m 0644 "$ROOT/linux/assets/gantry.svg" "$BUILD/usr/share/icons/hicolor/scalable/apps/gantry.svg"
-install -m 0644 "$ROOT/linux/packaging/gantry.metainfo.xml" "$BUILD/usr/share/metainfo/pl.parametryczny.Gantry.metainfo.xml"
+if [ "$EDITION" != "lite" ]; then
+  install -m 0644 "$ROOT/linux/packaging/gantry.metainfo.xml" "$BUILD/usr/share/metainfo/pl.parametryczny.Gantry.metainfo.xml"
+fi
 install -m 0644 "$ROOT/LICENSE" "$BUILD/usr/share/doc/gantry/copyright"
 install -m 0644 "$ROOT/linux/packaging/Gantry-printers-template.csv" "$BUILD/usr/share/doc/gantry/Gantry-printers-template.csv"
 

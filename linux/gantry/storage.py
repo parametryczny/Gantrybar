@@ -62,11 +62,14 @@ DEFAULTS: dict[str, Any] = {
     "card_show_filaments": True,
     "card_show_spool_grams": False,
     "card_show_details_chip": False,
+    "card_scale_percent": 100,
     "monochrome": False,
+    "edge-dock-scale-percent": 100,
     "web_dashboard_enabled": True,
     # Linux keeps package installation under the desktop package manager's control. This setting
     # enables periodic release checks and a native notification/link to the signed release page.
     "auto_update_check": False,
+    "linux_update_format": "auto",
     # Same key and semantics as macOS/Windows: selected printers are pinned individually.
     # ``tray_progress_enabled`` is retained only for one-time migration from older Linux builds.
     "menu_bar_progress_serials": [],

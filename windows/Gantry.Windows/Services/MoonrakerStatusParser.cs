@@ -78,6 +78,30 @@ public static class MoonrakerStatusParser
             t.AmsSlots = mmuGroup.LegacyAmsSlots().ToList();
         }
 
+        if (Obj(status, "exclude_object", out var exclusion))
+        {
+            if (exclusion.TryGetProperty("objects", out var values) && values.ValueKind == JsonValueKind.Array)
+            {
+                t.PrintObjects = values.EnumerateArray().Select((value, index) =>
+                {
+                    string name = Str(value, "name") ?? $"Object {index + 1}";
+                    var polygon = new List<BedPoint>();
+                    if (value.TryGetProperty("polygon", out var points) && points.ValueKind == JsonValueKind.Array)
+                        foreach (var point in points.EnumerateArray())
+                            if (point.ValueKind == JsonValueKind.Array)
+                            {
+                                var pair = point.EnumerateArray().ToArray();
+                                if (pair.Length >= 2 && pair[0].TryGetDouble(out var x) && pair[1].TryGetDouble(out var y))
+                                    polygon.Add(new BedPoint(x, y));
+                            }
+                    return new PrintObject(name, name, polygon);
+                }).ToList();
+            }
+            if (exclusion.TryGetProperty("excluded_objects", out var skipped) && skipped.ValueKind == JsonValueKind.Array)
+                t.SkippedObjectIds = skipped.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => v.Length > 0).ToHashSet();
+            t.CurrentObjectId = Str(exclusion, "current_object");
+        }
+
         // Single-nozzle Klipper machine: expose one nozzle entry so the dashboard renders it via the
         // shared collection just like Bambu.
         t.Nozzles = new List<NozzleTelemetry>

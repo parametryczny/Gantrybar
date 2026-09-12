@@ -249,6 +249,16 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(value.chamber, 37)
         self.assertEqual(value.part_fan, 42)
 
+    def test_moonraker_skip_objects(self):
+        value = parse_moonraker({"result": {"status": {"exclude_object": {
+            "objects": [{"name": "gear", "polygon": [[10, 20], [30, 20], [30, 40]]},
+                        {"name": "case", "polygon": [[50, 60], [80, 60], [80, 90]]}],
+            "excluded_objects": ["gear"], "current_object": "case"}}}})
+        self.assertEqual([item.name for item in value.print_objects], ["gear", "case"])
+        self.assertEqual(value.skipped_object_ids, {"gear"})
+        self.assertEqual(value.current_object_id, "case")
+        self.assertEqual(value.print_objects[0].polygon[0], (10.0, 20.0))
+
     def test_csv_rejects_duplicate_serial(self):
         content = "name,host,serial,access_code,port\nA,192.168.1.2,S1,C1,8883\nB,192.168.1.3,S1,C2,8883\n"
         with self.assertRaises(ValueError):

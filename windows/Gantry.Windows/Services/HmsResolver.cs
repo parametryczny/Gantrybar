@@ -29,6 +29,17 @@ public static class HmsResolver
         return $"HMS {actionable[0]}";
     }
 
+    /// <summary>Resolve the decimal MQTT print_error through Bambu's hexadecimal ecode catalogue.</summary>
+    public static string? Description(ulong errorCode, string serial, bool polish)
+    {
+        if (errorCode == 0) return null;
+        var lookup = Messages(polish ? "pl" : "en", serial);
+        return lookup.TryGetValue(FormatErrorCode(errorCode), out var message) && !string.IsNullOrWhiteSpace(message)
+            ? message.Trim() : null;
+    }
+
+    public static string FormatErrorCode(ulong errorCode) => errorCode.ToString("X8");
+
     private static Dictionary<string, string> Messages(string languageCode, string serial)
     {
         string cacheKey = $"{languageCode}-all-models";

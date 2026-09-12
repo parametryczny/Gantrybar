@@ -21,6 +21,20 @@ final class HMSResolver {
         return actionable.first.map { "HMS \($0)" }
     }
 
+    /// `print_error` is sent as a decimal integer, while Bambu's local catalogue stores the same
+    /// value as an eight-character hexadecimal `ecode` (for example 134184967 -> 07FF8007).
+    /// Resolve it through the same catalogue so cards show the actual instruction, not just a number.
+    func description(for errorCode: UInt64, serial: String, language: String) -> String? {
+        guard errorCode != 0 else { return nil }
+        let languageCode = language == "pl" ? "pl" : "en"
+        let lookup = messages(prefix: String(serial.prefix(3)).uppercased(), languageCode: languageCode)
+        return lookup[String(format: "%08llX", errorCode)]?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    func formatted(errorCode: UInt64) -> String {
+        String(format: "%08llX", errorCode)
+    }
+
     /// Bambu's catalog contains internal HMS markers with an intentionally empty description.
     /// Bambu Studio does not present those as user-facing faults, so Gantry suppresses them. Truly
     /// unknown codes remain actionable and keep their raw HMS fallback.
@@ -94,4 +108,8 @@ final class HMSResolver {
     private func normalize(_ code: String) -> String {
         code.replacingOccurrences(of: "_", with: "").uppercased()
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

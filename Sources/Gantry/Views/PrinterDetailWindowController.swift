@@ -1,11 +1,9 @@
 import AppKit
-import AVFoundation
 import Combine
-import CoreMedia
 
 /// Rich, in-popover per-printer detail view ("Szczegóły") — a HelixScreen-style read view shown by
-/// swapping the popover's content, with a back button to return to the fleet. Monitor only: no
-/// printer control. Bambu printers also get a live chamber-camera stream.
+/// swapping the popover's content, with a back button to return to the fleet. Control surfaces are
+/// an explicit opt-in in Advanced settings. Bambu printers also get a live chamber-camera stream.
 @MainActor
 final class PrinterDetailViewController: NSViewController {
     private let store: PrinterStore
@@ -13,6 +11,7 @@ final class PrinterDetailViewController: NSViewController {
     private let onBack: () -> Void
     private let onOpenAutomations: () -> Void
     private let onOpenAdvanced: () -> Void
+    private let onSkipObjects: () -> Void
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var insightsSubscription: AnyCancellable?
@@ -28,6 +27,7 @@ final class PrinterDetailViewController: NSViewController {
 
     // Header
     private let backButton = NSButton()
+    private let skipObjectsButton = NSButton()
     private let stateDot = NSView()
     private let stateLabel = NSTextField(labelWithString: "")
     private let nameLabel = NSTextField(labelWithString: "")
@@ -43,6 +43,9 @@ final class PrinterDetailViewController: NSViewController {
     private let nozzleChip = TempChipView(title: "Dysza")
     private let bedChip = TempChipView(title: "Stół")
     private let chamberChip = TempChipView(title: "Komora")
+    private let nozzleControl = CompactControlSlider(title: "Dysza", range: 0...300, suffix: "°")
+    private let bedControl = CompactControlSlider(title: "Stół", range: 0...120, suffix: "°")
+    private let temperatureControls = NSStackView()
 
     // Fans / speed
     private let partFan = FanChip(title: "Part")
@@ -50,6 +53,11 @@ final class PrinterDetailViewController: NSViewController {
     private let chamberFan = FanChip(title: "Chamber")
     private let speedLabel = NSTextField(labelWithString: "")
     private let diameterLabel = NSTextField(labelWithString: "")
+    private let partFanControl = CompactControlSlider(title: "Part", range: 0...100, suffix: "%")
+    private let auxFanControl = CompactControlSlider(title: "Aux", range: 0...100, suffix: "%")
+    private let chamberFanControl = CompactControlSlider(title: "Chamber", range: 0...100, suffix: "%")
+    private let speedControl = CompactControlSlider(title: "Prędkość", range: 10...166, suffix: "%")
+    private let fanControls = NSStackView()
 
     // AMS / filaments — reuse the fleet card's dock so the layout logic stays identical.
     private let filamentDock = FilamentDockView()
@@ -62,27 +70,30 @@ final class PrinterDetailViewController: NSViewController {
     private let maintenanceStack = NSStackView()
     private let statisticsStack = NSStackView()
 
-    // Camera
-    private let cameraView = CameraView()
+    // Camera. The feed itself lives in CameraFeedController; this view only hosts it.
+    private lazy var cameraFeed = CameraFeedController(store: store, serial: serial)
     private var cameraCard: NSView?
-    private var stream: RTSPCameraStream?
-    /// P1/A1 fallback: those machines have no RTSP endpoint, only the port-6000 JPEG stream.
-    private var jpegStream: BambuJPEGCameraStream?
-    private var klipperStream: KlipperCameraStream?
-    private var elegooStream: ElegooCameraStream?
-    private var anycubicStream: AnycubicCameraStream?
-    private var cameraTimeout: DispatchWorkItem?
-    private var receivedFrame = false
     private let presentation: DashboardPresentation
+    /// Reported whenever the cards change the height the panel needs, so the popover can follow.
+    var onPreferredContentSize: ((NSSize) -> Void)?
+    private var popoverHeightConstraint: NSLayoutConstraint?
+    private weak var headerRow: NSView?
+    /// The height the panel used to be nailed to. It survives as a floor, so a short detail view
+    /// looks the way it always did, and only a taller one is allowed past it.
+    private static let minimumPopoverHeight: CGFloat = 700
+    /// The width the popover is asked for; kept as it was so only the height changes.
+    private static let popoverReportedWidth: CGFloat = 600
 
     init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
          onOpenAutomations: @escaping () -> Void, onOpenAdvanced: @escaping () -> Void,
+         onSkipObjects: @escaping () -> Void = {},
          presentation: DashboardPresentation = .popover) {
         self.store = store
         self.serial = serial
         self.onBack = onBack
         self.onOpenAutomations = onOpenAutomations
         self.onOpenAdvanced = onOpenAdvanced
+        self.onSkipObjects = onSkipObjects
         self.presentation = presentation
         super.init(nibName: nil, bundle: nil)
     }
@@ -90,18 +101,23 @@ final class PrinterDetailViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 700))
-        // The popover needs a fixed fitting size. In the detached window the host controls both
-        // dimensions, keeping the header visible and the entire vertical scroll within the window.
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: Self.minimumPopoverHeight))
+        // The popover needs a definite fitting size, but the height is no longer a constant: it
+        // follows the cards and stops at the screen, so a tall detail view on a tall display is not
+        // forced to scroll inside a number picked by hand. In the detached window the host controls
+        // both dimensions, keeping the header visible and the entire vertical scroll within it.
         root.translatesAutoresizingMaskIntoConstraints = false
         if presentation == .popover {
+            let height = root.heightAnchor.constraint(equalToConstant: Self.minimumPopoverHeight)
+            popoverHeightConstraint = height
             NSLayoutConstraint.activate([
                 root.widthAnchor.constraint(equalToConstant: 480),
-                root.heightAnchor.constraint(equalToConstant: 700)
+                height
             ])
         }
         let header = makeHeader()
         header.translatesAutoresizingMaskIntoConstraints = false
+        headerRow = header
         root.addSubview(header)
 
         let scroll = NSScrollView()
@@ -140,7 +156,7 @@ final class PrinterDetailViewController: NSViewController {
 
         // Bambu (MQTT) and Klipper (Moonraker) both support control + camera; Prusa/Snapmaker later.
         let kind = store.printers.first(where: { $0.serial == serial })?.kind
-        let supportsControlCamera = kind == .bambu || kind == .klipper || kind == .elegooCC1 || kind == .elegooCC2 || kind == .anycubicKobraS1
+        let supportsControlCamera = CameraFeedController.supportsCamera(kind)
         cardViews = [
             "status": makeStatusCard(),
             "recent": makeRecentPrintsCard(),
@@ -209,6 +225,26 @@ final class PrinterDetailViewController: NSViewController {
         let customize = makeCustomizeButton()
         contentStack.addArrangedSubview(customize)
         customize.widthAnchor.constraint(equalTo: contentStack.widthAnchor, constant: -28).isActive = true
+        updatePreferredHeight()
+    }
+
+    /// Height the cards actually need, capped by the screen. Hiding or showing a module changes it, so
+    /// this runs from `rebuildCards` rather than once at load.
+    private func updatePreferredHeight() {
+        guard presentation == .popover, popoverHeightConstraint != nil else { return }
+        // Measure after the new cards have their constraints, otherwise fittingSize is the old stack.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let constraint = self.popoverHeightConstraint else { return }
+            self.view.layoutSubtreeIfNeeded()
+            let header = (self.headerRow?.fittingSize.height ?? 24) + 16   // 8 above, 8 below
+            let content = self.contentStack.fittingSize.height
+            let screen = self.view.window?.screen ?? NSScreen.main
+            let available = (screen?.visibleFrame.height ?? 900) - 40
+            let target = min(max(Self.minimumPopoverHeight, header + content), max(320, available))
+            guard abs(constraint.constant - target) >= 1 else { return }
+            constraint.constant = target
+            self.onPreferredContentSize?(NSSize(width: Self.popoverReportedWidth, height: target))
+        }
     }
 
     private func makeCustomizeButton() -> NSView {
@@ -294,7 +330,15 @@ final class PrinterDetailViewController: NSViewController {
         stopCamera()
     }
 
-    deinit { stream?.stop() }
+    // MARK: Camera
+
+    /// Only the "is this module even visible" rule stays here; the feed itself is CameraFeedController's.
+    private func startCamera() {
+        guard !hiddenModules().contains("camera") else { return }   // don't stream a hidden camera
+        cameraFeed.start()
+    }
+
+    private func stopCamera() { cameraFeed.stop() }
 
     private func scheduleRefresh() {
         guard !refreshScheduled else { return }
@@ -322,7 +366,16 @@ final class PrinterDetailViewController: NSViewController {
         stateDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
         stateLabel.font = .systemFont(ofSize: 11, weight: .semibold)
 
-        let row = NSStackView(views: [backButton, NSView(), stateDot, stateLabel])
+        skipObjectsButton.title = AppSettings.shared.t("Skip object…")
+        skipObjectsButton.target = self
+        skipObjectsButton.action = #selector(skipObjectsPressed)
+        skipObjectsButton.image = NSImage(systemSymbolName: "rectangle.stack.badge.minus", accessibilityDescription: nil)
+        skipObjectsButton.imagePosition = .imageLeading
+        skipObjectsButton.bezelStyle = .accessoryBar
+        skipObjectsButton.controlSize = .small
+        skipObjectsButton.isHidden = true
+
+        let row = NSStackView(views: [backButton, skipObjectsButton, NSView(), stateDot, stateLabel])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 7
@@ -330,6 +383,7 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     @objc private func backPressed() { onBack() }
+    @objc private func skipObjectsPressed() { onSkipObjects() }
 
     // MARK: Card builders
 
@@ -394,18 +448,25 @@ final class PrinterDetailViewController: NSViewController {
     private func makeTemperatureCard() -> NSView {
         let box = card()
         graph.translatesAutoresizingMaskIntoConstraints = false
-        graph.heightAnchor.constraint(equalToConstant: 104).isActive = true
+        graph.heightAnchor.constraint(equalToConstant: 72).isActive = true
         let chips = NSStackView(views: [nozzleChip, bedChip, chamberChip])
         chips.orientation = .horizontal
         chips.distribution = .fillEqually
         chips.spacing = 8
-        let stack = NSStackView(views: [sectionTitle("Temperatury"), graph, chips])
+        temperatureControls.setViews([nozzleControl, bedControl], in: .top)
+        temperatureControls.orientation = .horizontal
+        temperatureControls.distribution = .fillEqually
+        temperatureControls.spacing = 10
+        nozzleControl.onChange = { [weak self] value in self?.store.setNozzleTemperature(serial: self?.serial ?? "", celsius: value) }
+        bedControl.onChange = { [weak self] value in self?.store.setBedTemperature(serial: self?.serial ?? "", celsius: value) }
+        let stack = NSStackView(views: [sectionTitle("Temperatury"), graph, chips, temperatureControls])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
         graph.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         chips.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        temperatureControls.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
@@ -421,13 +482,28 @@ final class PrinterDetailViewController: NSViewController {
         let infoRow = NSStackView(views: [speedLabel, NSView(), diameterLabel])
         infoRow.orientation = .horizontal
         infoRow.alignment = .centerY
-        let stack = NSStackView(views: [sectionTitle("Wentylatory i prędkość"), gauges, infoRow])
+        let fanControlsTop = NSStackView(views: [partFanControl, auxFanControl])
+        let fanControlsBottom = NSStackView(views: [chamberFanControl, speedControl])
+        for row in [fanControlsTop, fanControlsBottom] {
+            row.orientation = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 10
+        }
+        fanControls.setViews([fanControlsTop, fanControlsBottom], in: .top)
+        fanControls.orientation = .vertical
+        fanControls.spacing = 5
+        partFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 1, percent: value) }
+        auxFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 2, percent: value) }
+        chamberFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 3, percent: value) }
+        speedControl.onChange = { [weak self] value in self?.store.setPrintSpeed(serial: self?.serial ?? "", percent: value) }
+        let stack = NSStackView(views: [sectionTitle("Wentylatory i prędkość"), gauges, infoRow, fanControls])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
         gauges.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         infoRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        fanControls.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
@@ -543,6 +619,7 @@ final class PrinterDetailViewController: NSViewController {
     private func makeCameraCard() -> NSView {
         let box = card()
         cameraCard = box
+        let cameraView = cameraFeed.view
         cameraView.translatesAutoresizingMaskIntoConstraints = false
         cameraView.heightAnchor.constraint(equalToConstant: 230).isActive = true
         let advancedButton = NSButton(title: AppSettings.shared.t("Advanced…"),
@@ -582,6 +659,8 @@ final class PrinterDetailViewController: NSViewController {
         let settings = AppSettings.shared
         let t = store.telemetry[serial] ?? .init()
         let printer = store.printers.first(where: { $0.serial == serial })
+        let supportsSkipping = printer?.kind == .bambu || printer?.kind == .klipper
+        skipObjectsButton.isHidden = !supportsSkipping || (t.state != .printing && t.state != .paused)
 
         stateDot.layer?.backgroundColor = Self.color(for: t.state).cgColor
         stateLabel.stringValue = settings.t(englishState(t.state))
@@ -618,9 +697,22 @@ final class PrinterDetailViewController: NSViewController {
                         target: (t.chamberTargetTemperature ?? 0) > 0 ? t.chamberTargetTemperature : nil,
                         accent: Self.chamberColor)
 
+        let kind = printer?.kind
+        let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper)
+        temperatureControls.isHidden = !controlEnabled
+        fanControls.isHidden = !controlEnabled
+        nozzleControl.set(value: Int((t.nozzleTargetTemperature ?? t.nozzleTemperature ?? 0).rounded()))
+        bedControl.set(value: Int((t.bedTargetTemperature ?? t.bedTemperature ?? 0).rounded()))
+
         partFan.set(percent: t.partFanPercent)
         auxFan.set(percent: t.auxFanPercent)
         chamberFan.set(percent: t.chamberFanPercent)
+        partFanControl.set(value: t.partFanPercent ?? 0)
+        auxFanControl.set(value: t.auxFanPercent ?? 0)
+        chamberFanControl.set(value: t.chamberFanPercent ?? 0)
+        auxFanControl.isEnabled = kind == .bambu
+        chamberFanControl.isEnabled = kind == .bambu
+        speedControl.set(value: t.speedPercent ?? 100)
         if let level = t.speedLevel {
             var text = settings.t("Speed: ") + speedName(level)
             if let mag = t.speedPercent { text += " · \(mag)%" }
@@ -717,166 +809,6 @@ final class PrinterDetailViewController: NSViewController {
         filamentDock.setGroups(groups, settings: AppSettings.shared, showRemaining: true)
     }
 
-    // MARK: Camera
-
-    private func startCamera() {
-        guard !hiddenModules().contains("camera") else { return }   // don't stream a hidden camera
-        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
-        receivedFrame = false
-        switch printer.kind {
-        case .bambu: startBambuCamera(printer)
-        case .klipper: startKlipperCamera(printer)
-        case .elegooCC1, .elegooCC2: startElegooCamera(printer)
-        case .anycubicKobraS1: startAnycubicCamera(printer)
-        default: return
-        }
-        // If no frame arrives in time, show a helpful fallback.
-        let timeout = DispatchWorkItem { [weak self] in
-            guard let self, !self.receivedFrame else { return }
-            self.cameraView.showStatus(Self.cameraUnavailableText)
-        }
-        cameraTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
-    }
-
-    /// Camera reachable on a separate IP (per-printer override) or the printer's own host.
-    private func cameraHost(for printer: SavedPrinter) -> String {
-        let override = PrinterOverridesStore.shared.overrides(for: serial).cameraHost
-        return (override?.isEmpty == false) ? override! : printer.host
-    }
-
-    private func startBambuCamera(_ printer: SavedPrinter) {
-        guard stream == nil, let code = store.accessCode(for: serial), !code.isEmpty else {
-            cameraView.showStatus(AppSettings.shared.t("Camera unavailable (no access code)"))
-            return
-        }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
-        let stream = RTSPCameraStream(
-            host: cameraHost(for: printer),
-            accessCode: code,
-            onState: { state in Task { @MainActor [weak self] in self?.handleCameraState(state) } },
-            onParameterSets: { sps, pps in Task { @MainActor [weak self] in self?.cameraView.setParameterSets(sps: sps, pps: pps) } },
-            onAccessUnit: { avcc, keyframe in Task { @MainActor [weak self] in self?.handleAccessUnit(avcc, keyframe: keyframe) } }
-        )
-        self.stream = stream
-        stream.start()
-    }
-
-    private func startKlipperCamera(_ printer: SavedPrinter) {
-        guard klipperStream == nil else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
-        let stream = KlipperCameraStream(
-            host: cameraHost(for: printer),
-            port: printer.port ?? 7125,
-            apiKey: store.accessCode(for: serial),
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in self?.handleKlipperState(state) } }
-        )
-        klipperStream = stream
-        stream.start()
-    }
-
-    private func startElegooCamera(_ printer: SavedPrinter) {
-        guard elegooStream == nil else { return }
-        let isCC2 = printer.kind == .elegooCC2
-        store.sendElegooMethod(serial: serial, method: isCC2 ? 1042 : 386,
-                               params: isCC2 ? [:] : ["Enable": 1])
-        let port = isCC2 ? 8080 : 3031
-        let path = isCC2 ? "/?action=stream" : "/video"
-        guard let url = URL(string: "http://\(cameraHost(for: printer)):\(port)\(path)") else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
-        let stream = ElegooCameraStream(url: url,
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in
-                if case .failed = state, self?.receivedFrame == false { self?.cameraView.showStatus(Self.cameraUnavailableText) }
-            } })
-        elegooStream = stream; stream.start()
-    }
-
-    private func startAnycubicCamera(_ printer: SavedPrinter) {
-        guard anycubicStream == nil, let url = URL(string: "http://\(cameraHost(for: printer)):18088/flv") else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to FLV camera…"))
-        let stream = AnycubicCameraStream(url: url,
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in
-                if case .failed(let message) = state, self?.receivedFrame == false { self?.cameraView.showStatus(message) }
-            } })
-        anycubicStream = stream; stream.start()
-    }
-
-    private func stopCamera() {
-        cameraTimeout?.cancel()
-        cameraTimeout = nil
-        stream?.stop()
-        stream = nil
-        jpegStream?.stop()
-        jpegStream = nil
-        klipperStream?.stop()
-        klipperStream = nil
-        elegooStream?.stop()
-        elegooStream = nil
-        anycubicStream?.stop()
-        anycubicStream = nil
-    }
-
-    private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {
-        receivedFrame = true
-        cameraTimeout?.cancel()
-        cameraView.enqueue(avcc, keyframe: keyframe)
-    }
-
-    private func handleKlipperFrame(_ data: Data) {
-        receivedFrame = true
-        cameraTimeout?.cancel()
-        if let image = NSImage(data: data) { cameraView.show(image) }
-    }
-
-    /// The X1 answers on RTSP(S); the P1 and A1 do not have that endpoint at all and serve JPEG frames
-    /// on port 6000 instead. So a failed RTSP attempt is not the end of the road, it is the cue to try
-    /// the other protocol before telling the user anything is wrong.
-    private func startBambuJPEGFallback(_ printer: SavedPrinter) {
-        guard jpegStream == nil, !receivedFrame,
-              let code = store.accessCode(for: serial), !code.isEmpty else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to the P1/A1 camera…"))
-        let stream = BambuJPEGCameraStream(
-            host: cameraHost(for: printer),
-            accessCode: code,
-            onState: { state in Task { @MainActor [weak self] in
-                guard let self else { return }
-                if case .failed = state, !self.receivedFrame {
-                    self.cameraView.showStatus(Self.cameraUnavailableText)
-                }
-            } },
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } })
-        jpegStream = stream
-        stream.start()
-    }
-
-    private func handleCameraState(_ state: RTSPCameraStream.State) {
-        switch state {
-        case .connecting, .playing:
-            break
-        case .failed:
-            // Not necessarily a dead end: on a P1/A1 there is no RTSP endpoint to begin with.
-            guard let printer = store.printers.first(where: { $0.serial == serial }) else {
-                if !receivedFrame { cameraView.showStatus(Self.cameraUnavailableText) }
-                return
-            }
-            startBambuJPEGFallback(printer)
-        }
-    }
-
-    private func handleKlipperState(_ state: KlipperCameraStream.State) {
-        switch state {
-        case .connecting, .streaming:
-            break
-        case .failed:
-            if !receivedFrame {
-                cameraView.showStatus(AppSettings.shared.t("Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)"))
-            }
-        }
-    }
-
     // MARK: Helpers
 
     private func englishState(_ state: PrinterState) -> String {
@@ -919,9 +851,6 @@ final class PrinterDetailViewController: NSViewController {
         }
     }
 
-    static var cameraUnavailableText: String {
-        AppSettings.shared.t("No camera preview.\nEnable “LAN Only Mode” on the printer — the local stream\nis unavailable while the printer is cloud-connected.")
-    }
 
     private static let finishFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -935,6 +864,102 @@ final class PrinterDetailViewController: NSViewController {
 
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+// MARK: - Compact, opt-in control
+
+@MainActor
+private final class CompactControlSlider: NSView {
+    var onChange: ((Int) -> Void)?
+    private let nameLabel = NSTextField(labelWithString: "")
+    private let valueLabel = NSTextField(labelWithString: "")
+    private let minusButton = NSButton()
+    private let plusButton = NSButton()
+    private let suffix: String
+    private let step: Int
+    private let range: ClosedRange<Int>
+    private var value: Int
+
+    var isEnabled: Bool {
+        get { minusButton.isEnabled }
+        set {
+            minusButton.isEnabled = newValue
+            plusButton.isEnabled = newValue
+            alphaValue = newValue ? 1 : 0.38
+        }
+    }
+
+    init(title: String, range: ClosedRange<Int>, suffix: String) {
+        self.suffix = suffix
+        self.step = 5
+        self.range = range
+        self.value = range.lowerBound
+        super.init(frame: .zero)
+        nameLabel.stringValue = AppSettings.shared.t(title)
+        nameLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        nameLabel.textColor = GantryTheme.secondary
+        nameLabel.alignment = .left
+        nameLabel.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+        valueLabel.textColor = GantryTheme.text
+        valueLabel.alignment = .right
+        valueLabel.alignment = .center
+        valueLabel.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        configureStepButton(minusButton, symbol: "minus", action: #selector(decrement))
+        configureStepButton(plusButton, symbol: "plus", action: #selector(increment))
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [nameLabel, spacer, minusButton, valueLabel, plusButton])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 7
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(equalToConstant: 22)
+        ])
+        set(value: range.lowerBound)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private func configureStepButton(_ button: NSButton, symbol: String, action: Selector) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 6
+        button.layer?.backgroundColor = GantryTheme.surface.cgColor
+        button.target = self
+        button.action = action
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 22),
+            button.heightAnchor.constraint(equalToConstant: 22)
+        ])
+    }
+
+    func set(value: Int) {
+        let clamped = min(range.upperBound, max(range.lowerBound, value))
+        self.value = clamped
+        valueLabel.stringValue = "\(clamped)\(suffix)"
+        minusButton.isEnabled = isEnabled && clamped > range.lowerBound
+        plusButton.isEnabled = isEnabled && clamped < range.upperBound
+    }
+
+    @objc private func decrement() { commit(value - step) }
+    @objc private func increment() { commit(value + step) }
+
+    private func commit(_ candidate: Int) {
+        let clamped = min(range.upperBound, max(range.lowerBound, candidate))
+        set(value: clamped)
+        onChange?(clamped)
+    }
 }
 
 // MARK: - Temperature graph
@@ -1117,133 +1142,6 @@ final class FanChip: NSView {
 }
 
 
-// MARK: - Camera view (H.264 via AVSampleBufferDisplayLayer)
-
-@MainActor
-final class CameraView: NSView {
-    private let displayLayer = AVSampleBufferDisplayLayer()   // Bambu H.264
-    private let imageView = NSImageView()                     // Klipper JPEG snapshots
-    private let statusLabel = NSTextField(labelWithString: "")
-    private var formatDescription: CMFormatDescription?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = 10
-        layer?.backgroundColor = NSColor.black.cgColor
-        layer?.masksToBounds = true
-
-        displayLayer.videoGravity = .resizeAspect
-        displayLayer.frame = bounds
-        layer?.addSublayer(displayLayer)
-
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-        imageView.isHidden = true
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(imageView)
-        NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: topAnchor),
-            imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            imageView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .white
-        statusLabel.alignment = .center
-        statusLabel.maximumNumberOfLines = 0
-        statusLabel.lineBreakMode = .byWordWrapping
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(statusLabel)
-        NSLayoutConstraint.activate([
-            statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 12),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12)
-        ])
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override func layout() {
-        super.layout()
-        displayLayer.frame = bounds
-    }
-
-    func setParameterSets(sps: Data, pps: Data) {
-        var format: CMFormatDescription?
-        sps.withUnsafeBytes { spsRaw in
-            pps.withUnsafeBytes { ppsRaw in
-                guard let spsBase = spsRaw.bindMemory(to: UInt8.self).baseAddress,
-                      let ppsBase = ppsRaw.bindMemory(to: UInt8.self).baseAddress else { return }
-                let pointers: [UnsafePointer<UInt8>] = [spsBase, ppsBase]
-                let sizes: [Int] = [sps.count, pps.count]
-                pointers.withUnsafeBufferPointer { ptrBuf in
-                    sizes.withUnsafeBufferPointer { sizeBuf in
-                        CMVideoFormatDescriptionCreateFromH264ParameterSets(
-                            allocator: kCFAllocatorDefault,
-                            parameterSetCount: 2,
-                            parameterSetPointers: ptrBuf.baseAddress!,
-                            parameterSetSizes: sizeBuf.baseAddress!,
-                            nalUnitHeaderLength: 4,
-                            formatDescriptionOut: &format)
-                    }
-                }
-            }
-        }
-        if let format { formatDescription = format }
-    }
-
-    func enqueue(_ avcc: Data, keyframe: Bool) {
-        guard let formatDescription else { return }
-        let length = avcc.count
-        var blockBuffer: CMBlockBuffer?
-        guard CMBlockBufferCreateWithMemoryBlock(
-            allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: length,
-            blockAllocator: kCFAllocatorDefault, customBlockSource: nil,
-            offsetToData: 0, dataLength: length, flags: 0, blockBufferOut: &blockBuffer) == kCMBlockBufferNoErr,
-              let blockBuffer else { return }
-        let copied = avcc.withUnsafeBytes {
-            CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: blockBuffer,
-                                          offsetIntoDestination: 0, dataLength: length)
-        }
-        guard copied == kCMBlockBufferNoErr else { return }
-
-        var sampleBuffer: CMSampleBuffer?
-        var sampleSize = length
-        guard CMSampleBufferCreate(
-            allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, dataReady: true,
-            makeDataReadyCallback: nil, refcon: nil, formatDescription: formatDescription,
-            sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil,
-            sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize, sampleBufferOut: &sampleBuffer) == noErr,
-              let sampleBuffer else { return }
-
-        // Live stream with no timestamps → display each frame as soon as it arrives.
-        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true),
-           CFArrayGetCount(attachments) > 0 {
-            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-            CFDictionarySetValue(dict,
-                                 Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-        }
-
-        if displayLayer.status == .failed { displayLayer.flush() }
-        displayLayer.enqueue(sampleBuffer)
-        statusLabel.isHidden = true
-    }
-
-    /// Klipper JPEG snapshot frame.
-    func show(_ image: NSImage) {
-        imageView.image = image
-        imageView.isHidden = false
-        statusLabel.isHidden = true
-    }
-
-    func showStatus(_ text: String) {
-        statusLabel.stringValue = text
-        statusLabel.isHidden = false
-    }
-}
 
 // MARK: - Reorderable card container
 

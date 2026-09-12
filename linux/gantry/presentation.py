@@ -1,6 +1,7 @@
 """Native window mode, bounded panels and live-card onboarding shared by tray and desktop."""
 from __future__ import annotations
 from gi.repository import Gtk, Gdk, GLib
+from . import edition
 from . import i18n
 from .core import PrinterState
 
@@ -25,10 +26,11 @@ class DesktopPresentation:
         box.pack_start(Gtk.Label(label=i18n.t("Connecting to printers…")), False, False, 0)
         self._startup_count = Gtk.Label()
         box.pack_start(self._startup_count, False, False, 0)
-        guide = Gtk.Button(label=i18n.t("How to read Gantry"))
-        guide.get_style_context().add_class("guide-action")
-        guide.connect("clicked", lambda *_: self.show_onboarding())
-        box.pack_start(guide, False, False, 0)
+        if edition.HAS_EXTRAS:   # LITE ships no guide
+            guide = Gtk.Button(label=i18n.t("How to read Gantry"))
+            guide.get_style_context().add_class("guide-action")
+            guide.connect("clicked", lambda *_: self.show_onboarding())
+            box.pack_start(guide, False, False, 0)
         skip = Gtk.Button(label=i18n.t("Show dashboard now"))
         skip.get_style_context().add_class("guide-action")
         skip.connect("clicked", lambda *_: self.app._finish_startup())
@@ -68,23 +70,26 @@ class DesktopPresentation:
             self.app.rebuild_cards()
 
     def layout_columns(self):
+        scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
+        pitch = 293 * scale
         if self.tray_mode:
             return max(1, min(2, int(self.app.config.data.get("dashboard_columns", 2))))
-        return max(1, round((self.get_size()[0] - 12) / 293))
+        return max(1, round((self.get_size()[0] - 12) / pitch))
 
     def _snapped_tile_size(self, proposed_width, proposed_height):
-        """Nearest whole 285×174 card grid, including the dashboard's chrome and 8 px gaps."""
+        """Snap width to card columns; derive height from every complete, measured card row."""
         display = Gdk.Display.get_default()
         monitor = display.get_primary_monitor() if display else None
         workarea = monitor.get_workarea() if monitor else None
         max_width = workarea.width if workarea else 1800
         max_height = workarea.height if workarea else 1200
-        columns = max(1, min(int((max_width - 12) // 293),
-                             round((proposed_width - 12) / 293)))
-        screen_rows = max(1, int((max_height - 108) // 182))
-        visible_rows = max(1, min(screen_rows,
-                                  round((proposed_height - 108) / 182)))
-        return 12 + columns * 293, 108 + visible_rows * 182
+        scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
+        pitch = 293 * scale
+        columns = max(1, min(int((max_width - 12) // pitch),
+                             round((proposed_width - 12) / pitch)))
+        snapped_width = int(12 + columns * pitch)
+        content_height = self.content_height_for_width(snapped_width)
+        return snapped_width, min(max_height - 24, max(290, content_height))
 
     def _desktop_resize(self, _widget, allocation):
         if self.tray_mode:
@@ -207,6 +212,8 @@ class DesktopPresentation:
         return False
 
     def show_onboarding(self):
+        if edition.IS_LITE:
+            return   # LITE ships no guide
         from .dashboard import PrinterCard
         self.app.startup.guide_claimed = True
         self.app.config.data["gantry.onboarding.v1.seen"] = True

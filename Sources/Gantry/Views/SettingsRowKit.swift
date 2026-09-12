@@ -92,6 +92,61 @@ final class SettingsToggleRow: SettingsRowView {
     }
 }
 
+/// Compact minus/value/plus control used for discrete UI scale presets.
+@MainActor
+final class SettingsScaleControl: NSView {
+    private let minus = NSButton(title: "−", target: nil, action: nil)
+    private let plus = NSButton(title: "+", target: nil, action: nil)
+    private let value = NSTextField(labelWithString: "100%")
+    var onStep: ((Int) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        for button in [minus, plus] {
+            button.bezelStyle = .rounded
+            button.controlSize = .small
+            button.font = .systemFont(ofSize: 15, weight: .medium)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.widthAnchor.constraint(equalToConstant: 30).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        }
+        minus.target = self
+        minus.action = #selector(stepDown)
+        plus.target = self
+        plus.action = #selector(stepUp)
+        value.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        value.textColor = GantryTheme.secondary
+        value.alignment = .center
+        value.widthAnchor.constraint(equalToConstant: 50).isActive = true
+
+        let stack = NSStackView(views: [minus, value, plus])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 3
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func configure(percent: Int, steps: [Int], enabled: Bool = true) {
+        value.stringValue = "\(percent)%"
+        let index = steps.firstIndex(of: percent) ?? 0
+        minus.isEnabled = enabled && index > 0
+        plus.isEnabled = enabled && index < steps.count - 1
+    }
+
+    @objc private func stepDown() { onStep?(-1) }
+    @objc private func stepUp() { onStep?(1) }
+}
+
 /// A row that hosts arbitrary content across the full width (QR code, token fields, peer list).
 @MainActor
 final class SettingsContentRow: NSView {

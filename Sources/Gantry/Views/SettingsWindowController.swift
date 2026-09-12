@@ -7,16 +7,20 @@ import CoreImage
 /// right column across the whole window instead of each section inventing its own layout.
 private enum SettingsTab: Int, CaseIterable {
     case general, appearance, advanced
+
+    /// LITE has nothing to put under Advanced (no developer mode, no Telegram, no web dashboard), so
+    /// it shows two tabs. The bar addresses tabs by position in this list, not by rawValue.
+    static var visible: [SettingsTab] { Build.isLite ? [.general, .appearance] : allCases }
 }
 
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: PrinterStore
 
     // Chrome
     private let headerTitle = NSTextField(labelWithString: "")
     private let headerSubtitle = NSTextField(labelWithString: "")
-    private let tabBar = SettingsTabBar(count: SettingsTab.allCases.count)
+    private let tabBar = SettingsTabBar(count: SettingsTab.visible.count)
     private let pagesContainer = NSView()
     private var pages: [SettingsTab: NSScrollView] = [:]
     private var currentTab: SettingsTab = .general
@@ -91,6 +95,8 @@ final class SettingsWindowController: NSWindowController {
     private lazy var cardProgressRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardTempsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardFilamentsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
+    private let cardScaleControl = SettingsScaleControl()
+    private lazy var cardScaleRow = SettingsRowView(control: cardScaleControl)
     private lazy var cardSpoolGramsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
     private lazy var cardDetailsChipRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
 
@@ -101,6 +107,10 @@ final class SettingsWindowController: NSWindowController {
     private lazy var dockEnableRow = SettingsToggleRow(target: self, action: #selector(dockEnableToggled))
     private let dockEdgeControl = NSSegmentedControl(labels: ["L", "R"], trackingMode: .selectOne, target: nil, action: nil)
     private lazy var dockEdgeRow = SettingsRowView(control: dockEdgeControl)
+    private let dockScaleControl = SettingsScaleControl()
+    private lazy var dockScaleRow = SettingsRowView(control: dockScaleControl)
+    private lazy var dockPinnedRow = SettingsToggleRow(target: self, action: #selector(dockPinnedToggled))
+    private lazy var dockCameraRow = SettingsToggleRow(target: self, action: #selector(dockCameraToggled))
     private lazy var dockOnlyPrintingRow = SettingsToggleRow(target: self, action: #selector(dockOnlyPrintingToggled))
     private let dockPrintersCaption = NSTextField(labelWithString: "")
     /// The per-printer list is its own card so it can be rebuilt wholesale when printers come and go,
@@ -112,6 +122,7 @@ final class SettingsWindowController: NSWindowController {
     // MARK: Advanced
     private let developerGroupLabel = NSTextField(labelWithString: "")
     private lazy var developerRow = SettingsToggleRow(target: self, action: #selector(developerToggled))
+    private lazy var printerControlRow = SettingsToggleRow(target: self, action: #selector(printerControlToggled))
     private lazy var scriptActionsRow = SettingsToggleRow(target: self, action: #selector(scriptActionsToggled))
 
     private let telegramGroupLabel = NSTextField(labelWithString: "")
@@ -135,6 +146,7 @@ final class SettingsWindowController: NSWindowController {
 
 
     private var settingsSubscription: AnyCancellable?
+    var onClose: (() -> Void)?
 
     init(store: PrinterStore) {
         self.store = store
@@ -149,6 +161,7 @@ final class SettingsWindowController: NSWindowController {
         window.titleVisibility = .hidden
         window.contentMinSize = NSSize(width: 600, height: 520)
         super.init(window: window)
+        window.delegate = self
         buildInterface()
         refresh()
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
@@ -158,12 +171,25 @@ final class SettingsWindowController: NSWindowController {
 
     required init?(coder: NSCoder) { nil }
 
-    func presentCentered() {
+    /// Keeps the dashboard visible as a live preview while appearance settings are edited. The
+    /// settings window uses the dashboard's level (important when "always on top" is enabled) and
+    /// is centered over it without becoming its child, so switching window mode cannot hide both.
+    /// Centred on the screen, always. It used to be centred on the fleet panel, which parked it
+    /// straight on top of the cards the user had just come to adjust. `companion` only lends its
+    /// window level, so the panel cannot end up covering the settings window they are typing in.
+    func presentCentered(levelMatching companion: NSWindow? = nil) {
         refresh()
         showWindow(nil)
-        window?.center()
-        window?.makeKeyAndOrderFront(nil)
+        guard let window else { return }
+        window.level = companion?.level ?? .normal
+        window.center()
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window?.level = .normal
+        onClose?()
     }
 
     // MARK: Layout helpers
@@ -271,8 +297,9 @@ final class SettingsWindowController: NSWindowController {
         headerText.spacing = 1
 
         tabBar.onSelect = { [weak self] index in
-            guard let tab = SettingsTab(rawValue: index) else { return }
-            self?.show(tab: tab)
+            let tabs = SettingsTab.visible
+            guard index >= 0, index < tabs.count else { return }
+            self?.show(tab: tabs[index])
         }
 
         languageControl.target = self
@@ -280,10 +307,12 @@ final class SettingsWindowController: NSWindowController {
         configureSegmented(themeControl, action: #selector(themeChanged), widths: [82, 82])
         configureSegmented(transparencyControl, action: #selector(transparencyChanged), widths: [72, 72, 72])
         configureSegmented(dockEdgeControl, action: #selector(dockEdgeChanged), widths: [78, 78])
+        cardScaleControl.onStep = { [weak self] direction in self?.changeCardScale(direction) }
+        dockScaleControl.onStep = { [weak self] direction in self?.changeDockScale(direction) }
 
         pages[.general] = makePage(buildGeneralGroups())
         pages[.appearance] = makePage(buildAppearanceGroups())
-        pages[.advanced] = makePage(buildAdvancedGroups())
+        if Build.hasExtras { pages[.advanced] = makePage(buildAdvancedGroups()) }
 
         pagesContainer.translatesAutoresizingMaskIntoConstraints = false
         for page in pages.values {
@@ -351,7 +380,7 @@ final class SettingsWindowController: NSWindowController {
     private func show(tab: SettingsTab) {
         currentTab = tab
         for (key, page) in pages { page.isHidden = key != tab }
-        tabBar.select(tab.rawValue)
+        if let index = SettingsTab.visible.firstIndex(of: tab) { tabBar.select(index) }
     }
 
     // MARK: Page contents
@@ -391,17 +420,32 @@ final class SettingsWindowController: NSWindowController {
         let supportRow = SettingsContentRow(supportStack)
         supportSubtitle.widthAnchor.constraint(equalTo: supportStack.widthAnchor).isActive = true
 
-        return [
-            makeGroup(basicsGroupLabel, [languageRow, launchRow, spoolbaseRow]),
+        // Spoolbase is a full-edition tool, so LITE's basics are language + launch at login only.
+        let basics: [NSView] = Build.hasExtras ? [languageRow, launchRow, spoolbaseRow]
+                                               : [languageRow, launchRow]
+        // LITE never checks for or installs updates, so it has no UPDATES section.
+        var groups: [NSView] = [
+            makeGroup(basicsGroupLabel, basics),
             makeGroup(notificationsGroupLabel, [notifyFinishedRow, notifyFinishingSoonRow, notifyErrorRow,
                                                 notifyPausedRow, notifyLowFilamentRow, notifyHumidityRow,
-                                                quietHoursRow]),
-            makeGroup(updatesGroupLabel, [updateRow, autoUpdateRow]),
-            makeGroup(aboutGroupLabel, [appRow, githubRow, xRow, supportRow])
+                                                quietHoursRow])
         ]
+        if Build.hasExtras { groups.append(makeGroup(updatesGroupLabel, [updateRow, autoUpdateRow])) }
+        groups.append(makeGroup(aboutGroupLabel, [appRow, githubRow, xRow, supportRow]))
+        return groups
     }
 
     private func buildAppearanceGroups() -> [NSView] {
+        // LITE keeps the look-and-feel controls and the card content switches; the second and third
+        // surfaces (floating window, edge dock) and the Spoolbase/details extras on the card are gone.
+        if Build.isLite {
+            return [
+                makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
+                makeGroup(cardsGroupLabel, [cardScaleRow, cardFileNameRow, cardProgressRow,
+                                            cardTempsRow, cardFilamentsRow])
+            ]
+        }
+
         dockHint.font = .systemFont(ofSize: 11)
         dockHint.textColor = GantryTheme.muted
         _ = caption(dockPrintersCaption)
@@ -411,7 +455,8 @@ final class SettingsWindowController: NSWindowController {
         // The dock section is one heading over two cards: the fixed switches, then the printer list.
         dockGroupLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         dockGroupLabel.textColor = GantryTheme.muted
-        let dockSettingsCard = makeCard([dockEnableRow, dockEdgeRow, dockOnlyPrintingRow])
+        let dockSettingsCard = makeCard([dockEnableRow, dockEdgeRow, dockScaleRow,
+                                         dockPinnedRow, dockCameraRow, dockOnlyPrintingRow])
         let dockGroup = NSStackView(views: [dockGroupLabel, dockSettingsCard,
                                             dockPrintersCaption, dockPrintersHolder, dockHint])
         dockGroup.orientation = .vertical
@@ -426,7 +471,7 @@ final class SettingsWindowController: NSWindowController {
 
         return [
             makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
-            makeGroup(cardsGroupLabel, [cardFileNameRow, cardProgressRow, cardTempsRow,
+            makeGroup(cardsGroupLabel, [cardScaleRow, cardFileNameRow, cardProgressRow, cardTempsRow,
                                         cardFilamentsRow, cardSpoolGramsRow, cardDetailsChipRow]),
             makeGroup(floatingWindowGroupLabel, [floatingWindowEnableRow]),
             dockGroup
@@ -488,7 +533,7 @@ final class SettingsWindowController: NSWindowController {
 
 
         return [
-            makeGroup(developerGroupLabel, [developerRow, scriptActionsRow]),
+            makeGroup(developerGroupLabel, [printerControlRow, developerRow, scriptActionsRow]),
             makeGroup(telegramGroupLabel, [telegramEnableRow, telegramTokenRow, telegramChatRow,
                                            telegramTestRow, telegramHintRow]),
             makeGroup(webGroupLabel, [webEnableRow, webRow])
@@ -503,10 +548,14 @@ final class SettingsWindowController: NSWindowController {
         window.appearance = settings.appearance
         window.title = settings.t("Gantry Settings")
         headerTitle.stringValue = settings.t("Settings")
-        headerSubtitle.stringValue = "Gantry · @parametryczny"
-        tabBar.setTitles([settings.t("General"),
-                          settings.t("Appearance"),
-                          settings.t("Advanced")])
+        headerSubtitle.stringValue = "\(Build.appName) · @parametryczny"
+        tabBar.setTitles(SettingsTab.visible.map {
+            switch $0 {
+            case .general: settings.t("General")
+            case .appearance: settings.t("Appearance")
+            case .advanced: settings.t("Advanced")
+            }
+        })
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.19"
         footerVersion.stringValue = settings.t("Version {0}", version) + " • \(AccessCodeStore.modeName)"
@@ -514,7 +563,7 @@ final class SettingsWindowController: NSWindowController {
 
         refreshGeneral(settings, version: version)
         refreshAppearance(settings)
-        refreshAdvanced(settings)
+        if Build.hasExtras { refreshAdvanced(settings) }
     }
 
     private func refreshGeneral(_ settings: AppSettings, version: String) {
@@ -528,9 +577,11 @@ final class SettingsWindowController: NSWindowController {
         }
         launchRow.titleLabel.stringValue = settings.t("Launch at login")
         launchRow.isOn = LaunchAtLoginManager.isEnabled
-        spoolbaseRow.titleLabel.stringValue = settings.t("Spoolbase")
-        spoolbaseRow.setSubtitle(settings.t("Filament stock in the menu"))
-        spoolbaseRow.isOn = settings.spoolbaseEnabled
+        if Build.hasExtras {
+            spoolbaseRow.titleLabel.stringValue = settings.t("Spoolbase")
+            spoolbaseRow.setSubtitle(settings.t("Filament stock in the menu"))
+            spoolbaseRow.isOn = settings.spoolbaseEnabled
+        }
 
         notificationsGroupLabel.stringValue = settings.t("NOTIFICATIONS")
         notifyFinishedRow.titleLabel.stringValue = settings.t("Print finished")
@@ -553,15 +604,17 @@ final class SettingsWindowController: NSWindowController {
         quietEndPicker.dateValue = date(fromMinutes: QuietHours.endMinutes)
         setQuietPickersEnabled(QuietHours.isEnabled)
 
-        updatesGroupLabel.stringValue = settings.t("UPDATES")
-        updateRow.titleLabel.stringValue = settings.t("Check for updates")
-        updateButton.title = settings.t("Check")
-        autoUpdateRow.titleLabel.stringValue = settings.t("Install automatically")
-        autoUpdateRow.setSubtitle(settings.t("Downloads and verifies the release signature"))
-        autoUpdateRow.isOn = settings.autoUpdate
+        if Build.hasExtras {
+            updatesGroupLabel.stringValue = settings.t("UPDATES")
+            updateRow.titleLabel.stringValue = settings.t("Check for updates")
+            updateButton.title = settings.t("Check")
+            autoUpdateRow.titleLabel.stringValue = settings.t("Install automatically")
+            autoUpdateRow.setSubtitle(settings.t("Downloads and verifies the release signature"))
+            autoUpdateRow.isOn = settings.autoUpdate
+        }
 
         aboutGroupLabel.stringValue = settings.t("ABOUT GANTRY")
-        appRow.titleLabel.stringValue = "Gantry"
+        appRow.titleLabel.stringValue = Build.appName
         appRow.setSubtitle(settings.t("Version {0} • {1}", version, AccessCodeStore.modeName))
         githubRow.titleLabel.stringValue = "GitHub"
         githubButton.title = "@parametryczny"
@@ -591,6 +644,8 @@ final class SettingsWindowController: NSWindowController {
         monochromeRow.isOn = settings.monochrome
 
         cardsGroupLabel.stringValue = settings.t("PRINTER CARDS")
+        cardScaleRow.titleLabel.stringValue = settings.t("Card size")
+        cardScaleControl.configure(percent: settings.cardScalePercent, steps: AppSettings.cardScaleSteps)
         cardFileNameRow.titleLabel.stringValue = settings.t("File name")
         cardFileNameRow.isOn = settings.cardShowFileName
         cardProgressRow.titleLabel.stringValue = settings.t("Progress")
@@ -599,6 +654,8 @@ final class SettingsWindowController: NSWindowController {
         cardTempsRow.isOn = settings.cardShowTemperatures
         cardFilamentsRow.titleLabel.stringValue = settings.t("Filaments / AMS")
         cardFilamentsRow.isOn = settings.cardShowFilaments
+        // Everything below belongs to rows LITE never builds.
+        guard Build.hasExtras else { return }
         cardSpoolGramsRow.titleLabel.stringValue = settings.t("Grams on spool")
         cardSpoolGramsRow.setSubtitle("AMS NFC / Spoolbase")
         cardSpoolGramsRow.isOn = settings.cardShowSpoolGrams
@@ -620,6 +677,18 @@ final class SettingsWindowController: NSWindowController {
         dockEdgeControl.selectedSegment = settings.edgeDockEdge == .left ? 0 : 1
         dockEdgeControl.isEnabled = settings.edgeDockEnabled
         dockEdgeRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
+        dockScaleRow.titleLabel.stringValue = settings.t("Edge dock size")
+        dockScaleControl.configure(percent: settings.edgeDockScalePercent,
+                                   steps: AppSettings.edgeDockScaleSteps,
+                                   enabled: settings.edgeDockEnabled)
+        dockScaleRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
+        dockPinnedRow.titleLabel.stringValue = settings.t("Keep the strip open")
+        dockPinnedRow.isOn = settings.edgeDockPinned
+        dockPinnedRow.setEnabled(settings.edgeDockEnabled)
+        dockCameraRow.titleLabel.stringValue = settings.t("Camera under the strip")
+        dockCameraRow.setSubtitle(settings.t("With nothing picked it follows the printer that is printing. Pick printers below and each picture sits under its own row."))
+        dockCameraRow.isOn = settings.edgeDockCamera
+        dockCameraRow.setEnabled(settings.edgeDockEnabled)
         dockOnlyPrintingRow.titleLabel.stringValue = settings.t("Only printing")
         dockOnlyPrintingRow.isOn = settings.edgeDockOnlyPrinting
         dockOnlyPrintingRow.setEnabled(settings.edgeDockEnabled)
@@ -630,6 +699,9 @@ final class SettingsWindowController: NSWindowController {
 
     private func refreshAdvanced(_ settings: AppSettings) {
         developerGroupLabel.stringValue = settings.t("DEVELOPER")
+        printerControlRow.titleLabel.stringValue = settings.t("Printer control")
+        printerControlRow.setSubtitle(settings.t("Enables temperature, fan and speed controls in Details. Off by default."))
+        printerControlRow.isOn = settings.printerControlEnabled
         developerRow.titleLabel.stringValue = settings.t("Developer mode")
         developerRow.setSubtitle(settings.t("Reveals control and automations"))
         developerRow.isOn = settings.developerMode
@@ -760,6 +832,10 @@ final class SettingsWindowController: NSWindowController {
         AppSettings.shared.developerMode = developerRow.isOn
     }
 
+    @objc private func printerControlToggled() {
+        AppSettings.shared.printerControlEnabled = printerControlRow.isOn
+    }
+
     @objc private func scriptActionsToggled() {
         AppSettings.shared.allowScriptActions = scriptActionsRow.isOn
     }
@@ -788,13 +864,23 @@ final class SettingsWindowController: NSWindowController {
         settings.cardShowProgress = cardProgressRow.isOn
         settings.cardShowTemperatures = cardTempsRow.isOn
         settings.cardShowFilaments = cardFilamentsRow.isOn
+        settings.monochrome = monochromeRow.isOn
+        // These two rows only exist in the full edition; in LITE they are never built, so reading them
+        // here would only write a default back over the stored value.
+        guard Build.hasExtras else { return }
         settings.cardShowSpoolGrams = cardSpoolGramsRow.isOn
         settings.cardShowDetailsChip = cardDetailsChipRow.isOn
-        settings.monochrome = monochromeRow.isOn
     }
 
     @objc private func floatingWindowToggled() {
         AppSettings.shared.floatingWindowEnabled = floatingWindowEnableRow.isOn
+    }
+
+    private func changeCardScale(_ direction: Int) {
+        let settings = AppSettings.shared
+        guard let index = AppSettings.cardScaleSteps.firstIndex(of: settings.cardScalePercent) else { return }
+        let target = min(max(0, index + direction), AppSettings.cardScaleSteps.count - 1)
+        settings.cardScalePercent = AppSettings.cardScaleSteps[target]
     }
 
     // MARK: Edge dock
@@ -805,6 +891,34 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func dockEdgeChanged() {
         AppSettings.shared.edgeDockEdge = dockEdgeControl.selectedSegment == 0 ? .left : .right
+    }
+
+    private func changeDockScale(_ direction: Int) {
+        let settings = AppSettings.shared
+        guard let index = AppSettings.edgeDockScaleSteps.firstIndex(of: settings.edgeDockScalePercent) else { return }
+        let target = min(max(0, index + direction), AppSettings.edgeDockScaleSteps.count - 1)
+        settings.edgeDockScalePercent = AppSettings.edgeDockScaleSteps[target]
+    }
+
+    @objc private func dockPinnedToggled() {
+        AppSettings.shared.edgeDockPinned = dockPinnedRow.isOn
+    }
+
+    @objc private func dockCameraToggled() {
+        AppSettings.shared.edgeDockCamera = dockCameraRow.isOn
+        syncDockPrinterSwitches()
+    }
+
+    /// Which printers hang a picture under their row. Same identifier trick as the visibility switch,
+    /// prefixed so one recursive pass can tell the two controls apart.
+    @objc private func dockPrinterCameraToggled(_ sender: NSButton) {
+        let name = sender.identifier?.rawValue ?? ""
+        guard name.hasPrefix("camera:") else { return }
+        let serial = String(name.dropFirst("camera:".count))
+        guard !serial.isEmpty else { return }
+        var chosen = AppSettings.shared.edgeDockCameraSerials
+        if sender.state == .on { chosen.insert(serial) } else { chosen.remove(serial) }
+        AppSettings.shared.edgeDockCameraSerials = chosen
     }
 
     @objc private func dockOnlyPrintingToggled() {
@@ -845,7 +959,26 @@ final class SettingsWindowController: NSWindowController {
             toggle.identifier = NSUserInterfaceItemIdentifier(printer.serial)
             toggle.target = self
             toggle.action = #selector(dockPrinterToggled(_:))
-            let row = SettingsRowView(control: toggle, minHeight: 40)
+            // Two decisions per printer: is it in the strip at all, and does its picture hang under
+            // its row. The camera is the smaller button, because it is the rarer choice.
+            let camera = NSButton()
+            camera.identifier = NSUserInterfaceItemIdentifier("camera:\(printer.serial)")
+            camera.setButtonType(.toggle)
+            camera.bezelStyle = .accessoryBarAction
+            camera.image = NSImage(systemSymbolName: "video", accessibilityDescription: nil)
+            camera.alternateImage = NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
+            camera.imagePosition = .imageOnly
+            camera.target = self
+            camera.action = #selector(dockPrinterCameraToggled(_:))
+            camera.toolTip = AppSettings.shared.t("Camera under the strip")
+            let controls = NSStackView(views: [camera, toggle])
+            controls.orientation = .horizontal
+            controls.alignment = .centerY
+            controls.spacing = 10
+            // A stack view ignores contentHuggingPriority along its own axis, so without this it
+            // stretches to fill the row and squeezes the printer name down to one letter per line.
+            controls.setHuggingPriority(.required, for: .horizontal)
+            let row = SettingsRowView(control: controls, minHeight: 40)
             row.titleLabel.stringValue = printer.name
             row.setSubtitle(printer.model)
             rows.append(row)
@@ -864,14 +997,38 @@ final class SettingsWindowController: NSWindowController {
     private func syncDockPrinterSwitches() {
         let settings = AppSettings.shared
         let hidden = settings.edgeDockHiddenPrinters
+        let withCamera = settings.edgeDockCameraSerials
         for row in dockPrintersHolder.subviews.first?.subviews.first?.subviews ?? [] {
             guard let row = row as? SettingsRowView else { continue }
             row.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
-            for control in row.subviews {
-                guard let toggle = control as? NSSwitch, let serial = toggle.identifier?.rawValue else { continue }
-                toggle.state = hidden.contains(serial) ? .off : .on
-                toggle.isEnabled = settings.edgeDockEnabled
+            for control in identifiedControls(in: row) {
+                guard let name = control.identifier?.rawValue else { continue }
+                if let toggle = control as? NSSwitch {
+                    toggle.state = hidden.contains(name) ? .off : .on
+                    toggle.isEnabled = settings.edgeDockEnabled
+                    continue
+                }
+                guard let button = control as? NSButton, name.hasPrefix("camera:") else { continue }
+                let serial = String(name.dropFirst("camera:".count))
+                let kind = store.printers.first(where: { $0.serial == serial })?.kind
+                let on = withCamera.contains(serial)
+                button.state = on ? .on : .off
+                // The filled glyph alone is a subtle difference at this size; the accent colour makes
+                // "this printer is streaming" readable at a glance.
+                button.contentTintColor = on ? .controlAccentColor : GantryTheme.secondary
+                // A brand with no stream Gantry can decode never gets the choice offered.
+                button.isEnabled = settings.edgeDockEnabled && settings.edgeDockCamera
+                    && !hidden.contains(serial) && CameraFeedController.supportsCamera(kind)
+                button.isHidden = !CameraFeedController.supportsCamera(kind)
             }
+        }
+    }
+
+    /// The per-printer row nests its controls in a stack, so a flat pass over `subviews` misses them.
+    private func identifiedControls(in view: NSView) -> [NSControl] {
+        view.subviews.flatMap { subview -> [NSControl] in
+            if let control = subview as? NSControl, control.identifier != nil { return [control] }
+            return identifiedControls(in: subview)
         }
     }
 

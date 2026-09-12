@@ -89,7 +89,7 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
     /// and pick up any chamber temperature sensor and the MMU object if present.
     private func buildQueryURL() async -> URL? {
         var wanted = ["print_stats", "virtual_sdcard", "display_status", "mmu", "gcode_move",
-                      objects.nozzle, objects.bed, objects.fan]
+                      "exclude_object", objects.nozzle, objects.bed, objects.fan]
         if let chamber = objects.chamber { wanted.append(chamber) }
         wanted = Array(Set(wanted))
         if let listURL = URL(string: "\(baseURL)/printer/objects/list"),
