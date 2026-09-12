@@ -28,6 +28,18 @@ enum PanelTransparency: String, CaseIterable {
         case .high: 0.7
         }
     }
+
+    /// A dark floor laid OVER the vibrancy. `.behindWindow` blending punches straight through to the
+    /// desktop, so the panel took its brightness from whatever window happened to be behind it: over
+    /// a white one the header went white-on-white and stopped being readable. The floor keeps the
+    /// panel dark whatever is back there, and its alpha is what still makes the three levels differ.
+    var tintAlpha: CGFloat {
+        switch self {
+        case .low: 0.86
+        case .medium: 0.66
+        case .high: 0.5
+        }
+    }
 }
 
 @MainActor

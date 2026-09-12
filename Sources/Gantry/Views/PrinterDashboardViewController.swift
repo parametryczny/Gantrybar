@@ -48,6 +48,8 @@ final class PrinterDashboardViewController: NSViewController {
     // The translucent panel backdrop sits BEHIND the cards (not as the root view) so its transparency
     // can change without fading the cards on top of it.
     private let backgroundEffectView = NSVisualEffectView()
+    /// Dark floor over the vibrancy, so panel contrast never depends on the desktop behind it.
+    private let backgroundTintView = NSView()
     private let resetButton = NSButton()
     private let compactButton = NSButton()
     private let columnsButton = NSButton()
@@ -149,6 +151,15 @@ final class PrinterDashboardViewController: NSViewController {
         backgroundEffectView.state = .active
         backgroundEffectView.wantsLayer = true
         root.addSubview(backgroundEffectView)
+        // The dark floor has to sit ON TOP of the vibrancy, not under it: `.behindWindow` blending
+        // replaces whatever is beneath the effect view with the desktop, so the canvas colour on the
+        // root never reaches the eye. Everything that draws its own surface (the cards) was fine;
+        // the header, a 5% white tile, took its contrast from the desktop and lost it over a bright
+        // window. Content added after this line stays above the floor.
+        backgroundTintView.frame = root.bounds
+        backgroundTintView.autoresizingMask = [.width, .height]
+        backgroundTintView.wantsLayer = true
+        root.addSubview(backgroundTintView)
         view = root
         applyPanelTransparency()
 
@@ -265,10 +276,12 @@ final class PrinterDashboardViewController: NSViewController {
         headerInner.translatesAutoresizingMaskIntoConstraints = false
 
         // Wrap the header in a light bento surface (saves vertical space, matches the card bentos).
+        // Baked rather than translucent: a bento borrows its contrast from the card beneath it, and
+        // this one has only the vibrancy backdrop beneath it.
         let header = NSView()
         header.wantsLayer = true
         header.layer?.cornerRadius = GantryTheme.tileRadius
-        header.layer?.backgroundColor = GantryTheme.surface.cgColor
+        header.layer?.backgroundColor = GantryTheme.surfaceOnBackdrop.cgColor
         header.layer?.borderWidth = 1
         header.layer?.borderColor = GantryTheme.line.cgColor
         header.addSubview(headerInner)
@@ -931,6 +944,8 @@ final class PrinterDashboardViewController: NSViewController {
         let level = AppSettings.shared.panelTransparency
         backgroundEffectView.material = level.material
         backgroundEffectView.alphaValue = level.backgroundAlpha
+        backgroundTintView.layer?.backgroundColor = GantryTheme.canvas
+            .withAlphaComponent(level.tintAlpha).cgColor
     }
 
     private func refreshLocalization() {

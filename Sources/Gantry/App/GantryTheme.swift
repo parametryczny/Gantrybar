@@ -15,6 +15,12 @@ enum GantryTheme {
     static let card      = NSColor(hex: 0x151719)
     static let line      = NSColor.white.withAlphaComponent(0.09)
     static let surface   = NSColor.white.withAlphaComponent(0.052)
+    /// `surface` with the card's dark fill already blended in. A bento tile borrows its contrast from
+    /// the opaque card underneath it, but the fleet header sits straight on the window backdrop, and
+    /// `.behindWindow` vibrancy makes that backdrop whatever the desktop behind the panel happens to
+    /// be. Over a bright window the borrowed version left white text on white, so the header uses the
+    /// baked one and looks the same wherever the panel is opened.
+    static let surfaceOnBackdrop = NSColor(hex: 0x212325)
     static let text      = NSColor(hex: 0xF2F3F1)
     static let secondary = NSColor(hex: 0xA7AAA6)
     static let muted     = NSColor(hex: 0x6D716E)
