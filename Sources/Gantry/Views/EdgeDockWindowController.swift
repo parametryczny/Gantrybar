@@ -285,11 +285,23 @@ private final class EdgeDockView: NSView {
 
     private var nameFont: NSFont { .systemFont(ofSize: 11 * scale, weight: .semibold) }
     private var valueFont: NSFont { .monospacedDigitSystemFont(ofSize: 11 * scale, weight: .regular) }
-    /// The dark floor over the blur. Not opaque, or the frost behind it would never show; not much
-    /// thinner either, because the rows are light text and their contrast rests on this. At 0.8 over a
-    /// pure white desktop, the worst case, the composite is still dark enough for the names and values
-    /// to clear 4.5:1, which is why the value colour moved up from `muted` to `secondary`.
-    private static let shapeColor = NSColor(srgbRed: 0.031, green: 0.035, blue: 0.043, alpha: 0.8)
+    /// The dark floor over the blur, at full strength. How much of it is actually used comes from the
+    /// panel-transparency setting, because that is the only honest place for this trade-off: a thick
+    /// floor hides the frost, a thin one costs text contrast. The labels carry a shadow so the thin
+    /// end stays readable, and the value colour moved up from `muted` to `secondary` for the same
+    /// reason. Measured on a pure white desktop, the worst case: at 0.86 the value text clears 6:1,
+    /// at 0.68 it is near 3:1 and leans on the shadow.
+    private static let shapeColor = NSColor(srgbRed: 0.031, green: 0.035, blue: 0.043, alpha: 1)
+
+    /// A soft dark halo under the labels. This is what lets the floor be thin enough to see the blur
+    /// through; without it the names would smear into a bright desktop showing through the frost.
+    private var labelShadow: NSShadow {
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.75)
+        shadow.shadowBlurRadius = 3 * scale
+        shadow.shadowOffset = .zero
+        return shadow
+    }
 
     /// Window size for the current state. Height always includes one fillet radius above and below the
     /// visible body, because that is where the concave transitions are drawn.
@@ -486,7 +498,9 @@ private final class EdgeDockView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         NSGraphicsContext.current?.cgContext.setShouldAntialias(true)
-        Self.shapeColor.setFill()
+        Self.shapeColor
+            .withAlphaComponent(AppSettings.shared.panelTransparency.edgeDockFloorAlpha)
+            .setFill()
         shapePath().fill()
         guard !entries.isEmpty else { return }
         if isExpanded {
@@ -518,11 +532,14 @@ private final class EdgeDockView: NSView {
             let dim = entry.state == .idle || entry.state == .offline || entry.state == .finished
             let nameColor = entry.state == .error || entry.state == .offline ? GantryTheme.statusError
                           : (dim ? GantryTheme.secondary : GantryTheme.text)
+            let halo = labelShadow
             let name = NSAttributedString(string: entry.name,
-                                          attributes: [.font: nameFont, .foregroundColor: nameColor])
+                                          attributes: [.font: nameFont, .foregroundColor: nameColor,
+                                                       .shadow: halo])
             let value = NSAttributedString(string: valueText(entry),
                                            attributes: [.font: valueFont,
-                                                        .foregroundColor: GantryTheme.secondary])
+                                                        .foregroundColor: GantryTheme.secondary,
+                                                        .shadow: halo])
             let textLeft = edge == .right
                 ? Self.expandedPadX * scale
                 : ringX + (Self.ring / 2 + Self.expandedTextGap) * scale

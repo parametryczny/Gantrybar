@@ -40,6 +40,18 @@ enum PanelTransparency: String, CaseIterable {
         case .high: 0.5
         }
     }
+
+    /// How solid the edge dock's own fill is over its frosted backdrop. The strip is small and sits
+    /// directly on the desktop, so this is what decides whether the blur is visible at all: at the
+    /// most opaque setting barely a tenth of it comes through, which reads as no frost. Thinning it
+    /// costs text contrast, which is why the strip's labels carry a shadow.
+    var edgeDockFloorAlpha: CGFloat {
+        switch self {
+        case .low: 0.86
+        case .medium: 0.68
+        case .high: 0.54
+        }
+    }
 }
 
 @MainActor
