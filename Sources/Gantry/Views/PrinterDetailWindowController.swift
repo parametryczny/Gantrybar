@@ -1,7 +1,5 @@
 import AppKit
-import AVFoundation
 import Combine
-import CoreMedia
 
 /// Rich, in-popover per-printer detail view ("Szczegóły") — a HelixScreen-style read view shown by
 /// swapping the popover's content, with a back button to return to the fleet. Control surfaces are
@@ -72,17 +70,9 @@ final class PrinterDetailViewController: NSViewController {
     private let maintenanceStack = NSStackView()
     private let statisticsStack = NSStackView()
 
-    // Camera
-    private let cameraView = CameraView()
+    // Camera. The feed itself lives in CameraFeedController; this view only hosts it.
+    private lazy var cameraFeed = CameraFeedController(store: store, serial: serial)
     private var cameraCard: NSView?
-    private var stream: RTSPCameraStream?
-    /// P1/A1 fallback: those machines have no RTSP endpoint, only the port-6000 JPEG stream.
-    private var jpegStream: BambuJPEGCameraStream?
-    private var klipperStream: KlipperCameraStream?
-    private var elegooStream: ElegooCameraStream?
-    private var anycubicStream: AnycubicCameraStream?
-    private var cameraTimeout: DispatchWorkItem?
-    private var receivedFrame = false
     private let presentation: DashboardPresentation
 
     init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
@@ -152,7 +142,7 @@ final class PrinterDetailViewController: NSViewController {
 
         // Bambu (MQTT) and Klipper (Moonraker) both support control + camera; Prusa/Snapmaker later.
         let kind = store.printers.first(where: { $0.serial == serial })?.kind
-        let supportsControlCamera = kind == .bambu || kind == .klipper || kind == .elegooCC1 || kind == .elegooCC2 || kind == .anycubicKobraS1
+        let supportsControlCamera = CameraFeedController.supportsCamera(kind)
         cardViews = [
             "status": makeStatusCard(),
             "recent": makeRecentPrintsCard(),
@@ -306,7 +296,15 @@ final class PrinterDetailViewController: NSViewController {
         stopCamera()
     }
 
-    deinit { stream?.stop() }
+    // MARK: Camera
+
+    /// Only the "is this module even visible" rule stays here; the feed itself is CameraFeedController's.
+    private func startCamera() {
+        guard !hiddenModules().contains("camera") else { return }   // don't stream a hidden camera
+        cameraFeed.start()
+    }
+
+    private func stopCamera() { cameraFeed.stop() }
 
     private func scheduleRefresh() {
         guard !refreshScheduled else { return }
@@ -587,6 +585,7 @@ final class PrinterDetailViewController: NSViewController {
     private func makeCameraCard() -> NSView {
         let box = card()
         cameraCard = box
+        let cameraView = cameraFeed.view
         cameraView.translatesAutoresizingMaskIntoConstraints = false
         cameraView.heightAnchor.constraint(equalToConstant: 230).isActive = true
         let advancedButton = NSButton(title: AppSettings.shared.t("Advanced…"),
@@ -776,166 +775,6 @@ final class PrinterDetailViewController: NSViewController {
         filamentDock.setGroups(groups, settings: AppSettings.shared, showRemaining: true)
     }
 
-    // MARK: Camera
-
-    private func startCamera() {
-        guard !hiddenModules().contains("camera") else { return }   // don't stream a hidden camera
-        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
-        receivedFrame = false
-        switch printer.kind {
-        case .bambu: startBambuCamera(printer)
-        case .klipper: startKlipperCamera(printer)
-        case .elegooCC1, .elegooCC2: startElegooCamera(printer)
-        case .anycubicKobraS1: startAnycubicCamera(printer)
-        default: return
-        }
-        // If no frame arrives in time, show a helpful fallback.
-        let timeout = DispatchWorkItem { [weak self] in
-            guard let self, !self.receivedFrame else { return }
-            self.cameraView.showStatus(Self.cameraUnavailableText)
-        }
-        cameraTimeout = timeout
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
-    }
-
-    /// Camera reachable on a separate IP (per-printer override) or the printer's own host.
-    private func cameraHost(for printer: SavedPrinter) -> String {
-        let override = PrinterOverridesStore.shared.overrides(for: serial).cameraHost
-        return (override?.isEmpty == false) ? override! : printer.host
-    }
-
-    private func startBambuCamera(_ printer: SavedPrinter) {
-        guard stream == nil, let code = store.accessCode(for: serial), !code.isEmpty else {
-            cameraView.showStatus(AppSettings.shared.t("Camera unavailable (no access code)"))
-            return
-        }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
-        let stream = RTSPCameraStream(
-            host: cameraHost(for: printer),
-            accessCode: code,
-            onState: { state in Task { @MainActor [weak self] in self?.handleCameraState(state) } },
-            onParameterSets: { sps, pps in Task { @MainActor [weak self] in self?.cameraView.setParameterSets(sps: sps, pps: pps) } },
-            onAccessUnit: { avcc, keyframe in Task { @MainActor [weak self] in self?.handleAccessUnit(avcc, keyframe: keyframe) } }
-        )
-        self.stream = stream
-        stream.start()
-    }
-
-    private func startKlipperCamera(_ printer: SavedPrinter) {
-        guard klipperStream == nil else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
-        let stream = KlipperCameraStream(
-            host: cameraHost(for: printer),
-            port: printer.port ?? 7125,
-            apiKey: store.accessCode(for: serial),
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in self?.handleKlipperState(state) } }
-        )
-        klipperStream = stream
-        stream.start()
-    }
-
-    private func startElegooCamera(_ printer: SavedPrinter) {
-        guard elegooStream == nil else { return }
-        let isCC2 = printer.kind == .elegooCC2
-        store.sendElegooMethod(serial: serial, method: isCC2 ? 1042 : 386,
-                               params: isCC2 ? [:] : ["Enable": 1])
-        let port = isCC2 ? 8080 : 3031
-        let path = isCC2 ? "/?action=stream" : "/video"
-        guard let url = URL(string: "http://\(cameraHost(for: printer)):\(port)\(path)") else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to camera…"))
-        let stream = ElegooCameraStream(url: url,
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in
-                if case .failed = state, self?.receivedFrame == false { self?.cameraView.showStatus(Self.cameraUnavailableText) }
-            } })
-        elegooStream = stream; stream.start()
-    }
-
-    private func startAnycubicCamera(_ printer: SavedPrinter) {
-        guard anycubicStream == nil, let url = URL(string: "http://\(cameraHost(for: printer)):18088/flv") else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to FLV camera…"))
-        let stream = AnycubicCameraStream(url: url,
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in
-                if case .failed(let message) = state, self?.receivedFrame == false { self?.cameraView.showStatus(message) }
-            } })
-        anycubicStream = stream; stream.start()
-    }
-
-    private func stopCamera() {
-        cameraTimeout?.cancel()
-        cameraTimeout = nil
-        stream?.stop()
-        stream = nil
-        jpegStream?.stop()
-        jpegStream = nil
-        klipperStream?.stop()
-        klipperStream = nil
-        elegooStream?.stop()
-        elegooStream = nil
-        anycubicStream?.stop()
-        anycubicStream = nil
-    }
-
-    private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {
-        receivedFrame = true
-        cameraTimeout?.cancel()
-        cameraView.enqueue(avcc, keyframe: keyframe)
-    }
-
-    private func handleKlipperFrame(_ data: Data) {
-        receivedFrame = true
-        cameraTimeout?.cancel()
-        if let image = NSImage(data: data) { cameraView.show(image) }
-    }
-
-    /// The X1 answers on RTSP(S); the P1 and A1 do not have that endpoint at all and serve JPEG frames
-    /// on port 6000 instead. So a failed RTSP attempt is not the end of the road, it is the cue to try
-    /// the other protocol before telling the user anything is wrong.
-    private func startBambuJPEGFallback(_ printer: SavedPrinter) {
-        guard jpegStream == nil, !receivedFrame,
-              let code = store.accessCode(for: serial), !code.isEmpty else { return }
-        cameraView.showStatus(AppSettings.shared.t("Connecting to the P1/A1 camera…"))
-        let stream = BambuJPEGCameraStream(
-            host: cameraHost(for: printer),
-            accessCode: code,
-            onState: { state in Task { @MainActor [weak self] in
-                guard let self else { return }
-                if case .failed = state, !self.receivedFrame {
-                    self.cameraView.showStatus(Self.cameraUnavailableText)
-                }
-            } },
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleKlipperFrame(data) } })
-        jpegStream = stream
-        stream.start()
-    }
-
-    private func handleCameraState(_ state: RTSPCameraStream.State) {
-        switch state {
-        case .connecting, .playing:
-            break
-        case .failed:
-            // Not necessarily a dead end: on a P1/A1 there is no RTSP endpoint to begin with.
-            guard let printer = store.printers.first(where: { $0.serial == serial }) else {
-                if !receivedFrame { cameraView.showStatus(Self.cameraUnavailableText) }
-                return
-            }
-            startBambuJPEGFallback(printer)
-        }
-    }
-
-    private func handleKlipperState(_ state: KlipperCameraStream.State) {
-        switch state {
-        case .connecting, .streaming:
-            break
-        case .failed:
-            if !receivedFrame {
-                cameraView.showStatus(AppSettings.shared.t("Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)"))
-            }
-        }
-    }
-
     // MARK: Helpers
 
     private func englishState(_ state: PrinterState) -> String {
@@ -978,9 +817,6 @@ final class PrinterDetailViewController: NSViewController {
         }
     }
 
-    static var cameraUnavailableText: String {
-        AppSettings.shared.t("No camera preview.\nEnable “LAN Only Mode” on the printer — the local stream\nis unavailable while the printer is cloud-connected.")
-    }
 
     private static let finishFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -1272,133 +1108,6 @@ final class FanChip: NSView {
 }
 
 
-// MARK: - Camera view (H.264 via AVSampleBufferDisplayLayer)
-
-@MainActor
-final class CameraView: NSView {
-    private let displayLayer = AVSampleBufferDisplayLayer()   // Bambu H.264
-    private let imageView = NSImageView()                     // Klipper JPEG snapshots
-    private let statusLabel = NSTextField(labelWithString: "")
-    private var formatDescription: CMFormatDescription?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = 10
-        layer?.backgroundColor = NSColor.black.cgColor
-        layer?.masksToBounds = true
-
-        displayLayer.videoGravity = .resizeAspect
-        displayLayer.frame = bounds
-        layer?.addSublayer(displayLayer)
-
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-        imageView.isHidden = true
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(imageView)
-        NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: topAnchor),
-            imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            imageView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .white
-        statusLabel.alignment = .center
-        statusLabel.maximumNumberOfLines = 0
-        statusLabel.lineBreakMode = .byWordWrapping
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(statusLabel)
-        NSLayoutConstraint.activate([
-            statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 12),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12)
-        ])
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override func layout() {
-        super.layout()
-        displayLayer.frame = bounds
-    }
-
-    func setParameterSets(sps: Data, pps: Data) {
-        var format: CMFormatDescription?
-        sps.withUnsafeBytes { spsRaw in
-            pps.withUnsafeBytes { ppsRaw in
-                guard let spsBase = spsRaw.bindMemory(to: UInt8.self).baseAddress,
-                      let ppsBase = ppsRaw.bindMemory(to: UInt8.self).baseAddress else { return }
-                let pointers: [UnsafePointer<UInt8>] = [spsBase, ppsBase]
-                let sizes: [Int] = [sps.count, pps.count]
-                pointers.withUnsafeBufferPointer { ptrBuf in
-                    sizes.withUnsafeBufferPointer { sizeBuf in
-                        CMVideoFormatDescriptionCreateFromH264ParameterSets(
-                            allocator: kCFAllocatorDefault,
-                            parameterSetCount: 2,
-                            parameterSetPointers: ptrBuf.baseAddress!,
-                            parameterSetSizes: sizeBuf.baseAddress!,
-                            nalUnitHeaderLength: 4,
-                            formatDescriptionOut: &format)
-                    }
-                }
-            }
-        }
-        if let format { formatDescription = format }
-    }
-
-    func enqueue(_ avcc: Data, keyframe: Bool) {
-        guard let formatDescription else { return }
-        let length = avcc.count
-        var blockBuffer: CMBlockBuffer?
-        guard CMBlockBufferCreateWithMemoryBlock(
-            allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: length,
-            blockAllocator: kCFAllocatorDefault, customBlockSource: nil,
-            offsetToData: 0, dataLength: length, flags: 0, blockBufferOut: &blockBuffer) == kCMBlockBufferNoErr,
-              let blockBuffer else { return }
-        let copied = avcc.withUnsafeBytes {
-            CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: blockBuffer,
-                                          offsetIntoDestination: 0, dataLength: length)
-        }
-        guard copied == kCMBlockBufferNoErr else { return }
-
-        var sampleBuffer: CMSampleBuffer?
-        var sampleSize = length
-        guard CMSampleBufferCreate(
-            allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, dataReady: true,
-            makeDataReadyCallback: nil, refcon: nil, formatDescription: formatDescription,
-            sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil,
-            sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize, sampleBufferOut: &sampleBuffer) == noErr,
-              let sampleBuffer else { return }
-
-        // Live stream with no timestamps → display each frame as soon as it arrives.
-        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true),
-           CFArrayGetCount(attachments) > 0 {
-            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-            CFDictionarySetValue(dict,
-                                 Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-        }
-
-        if displayLayer.status == .failed { displayLayer.flush() }
-        displayLayer.enqueue(sampleBuffer)
-        statusLabel.isHidden = true
-    }
-
-    /// Klipper JPEG snapshot frame.
-    func show(_ image: NSImage) {
-        imageView.image = image
-        imageView.isHidden = false
-        statusLabel.isHidden = true
-    }
-
-    func showStatus(_ text: String) {
-        statusLabel.stringValue = text
-        statusLabel.isHidden = false
-    }
-}
 
 // MARK: - Reorderable card container
 
