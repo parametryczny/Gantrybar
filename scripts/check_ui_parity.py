@@ -104,6 +104,19 @@ require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"pinButtonRect\(\)[\s\S]*?onUnpin\?\(\)",
         "macOS pinned edge dock cannot be released from the strip itself")
 
+# Frosted glass and an animated unfold, macOS only for now. The grace timer is not decoration: an
+# animated edge slides out from under the pointer and the leave event that follows would fold the
+# strip straight back, the loop the Windows port hit in issue #32.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"blendingMode = \.behindWindow[\s\S]*?backdrop\.maskImage = mask",
+        "macOS edge dock has no frosted backdrop clipped to its silhouette")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"unfoldDuration[\s\S]*?panel\.animator\(\)\.setFrame",
+        "macOS edge dock snaps open instead of animating")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"collapseTimer = Timer\.scheduledTimer[\s\S]*?collapseIfPointerLeft",
+        "macOS edge dock can fold on the leave event its own animation causes")
+
 # Issue #34, the second half: the detail panel must take the height its cards need, capped by the
 # screen, instead of the constant it used to be nailed to. GNU/Linux already sizes to content through
 # set_propagate_natural_height, so only the two ports that hard-coded a number are checked here.

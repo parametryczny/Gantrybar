@@ -25,6 +25,7 @@ final class EdgeDockWindowController {
     private let store: PrinterStore
     private let panel: EdgeDockPanel
     private let dockView: EdgeDockView
+    private let backdrop = NSVisualEffectView()
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var screenSubscription: AnyCancellable?
@@ -47,10 +48,23 @@ final class EdgeDockWindowController {
         // so it does not vanish when the user switches desktops.
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        panel.contentView = dockView
+        // Frosted glass under the silhouette. `.behindWindow` blurs the desktop, and the strip's own
+        // fill sits on top of it as a dark floor, so the blur is visible without the rows losing
+        // their contrast to whatever happens to be behind the strip.
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        backdrop.material = .hudWindow
+        backdrop.wantsLayer = true
+        panel.contentView = backdrop
+        dockView.frame = backdrop.bounds
+        dockView.autoresizingMask = [.width, .height]
+        backdrop.addSubview(dockView)
+        // The view that knows the silhouette also keeps the blur clipped to it, on every layout pass,
+        // so the frost follows the shape while the panel is still animating open.
+        dockView.backdrop = backdrop
 
         dockView.onSelect = onSelect
-        dockView.onLayoutChange = { [weak self] in self?.reposition() }
+        dockView.onLayoutChange = { [weak self] animated in self?.reposition(animated: animated) }
         // Releasing the strip belongs on the strip: reaching Settings to undo something you can see
         // is the long way round. Writing the setting is enough to drive the rest, because the
         // settings subscription below brings us straight back into refresh().
@@ -157,14 +171,29 @@ final class EdgeDockWindowController {
     /// Pins the panel flush to the chosen edge of the screen holding the menu bar, vertically centred.
     /// Uses `frame` rather than `visibleFrame` so it really touches the edge instead of stopping at the
     /// Dock; being at `.statusBar` level it simply floats over anything in the way.
-    private func reposition() {
+    private func reposition(animated: Bool = false) {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let size = dockView.preferredSize()
         let y = screen.frame.midY - size.height / 2
         let x = dockView.edge == .right ? screen.frame.maxX - size.width : screen.frame.minX
         let frame = NSRect(x: x, y: y, width: size.width, height: size.height)
-        if panel.frame != frame { panel.setFrame(frame, display: true) }
+        guard panel.frame != frame else { return }
+        // Unfolding and folding are the only size changes worth animating. A telemetry refresh can
+        // also change the width, by a few points when a remaining time gains a digit, and animating
+        // that would make the strip breathe for no reason.
+        guard animated, panel.isVisible else {
+            panel.setFrame(frame, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.unfoldDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(frame, display: true)
+        }
     }
+
+    /// Short enough to feel like a response to the pointer rather than a transition of its own.
+    private static let unfoldDuration: TimeInterval = 0.18
 }
 
 /// Borderless panels refuse key status by default, which is what we want: clicking the strip must not
@@ -188,7 +217,7 @@ private final class EdgeDockView: NSView {
     var scale: CGFloat = 1 {
         didSet {
             guard abs(scale - oldValue) > 0.001 else { return }
-            onLayoutChange?()
+            onLayoutChange?(false)
             needsLayout = true
             needsDisplay = true
         }
@@ -197,7 +226,7 @@ private final class EdgeDockView: NSView {
     var pinned = false {
         didSet {
             guard pinned != oldValue else { return }
-            onLayoutChange?()
+            onLayoutChange?(true)
             needsLayout = true
             needsDisplay = true
         }
@@ -214,18 +243,22 @@ private final class EdgeDockView: NSView {
                 view.translatesAutoresizingMaskIntoConstraints = true
                 addSubview(view)
             }
-            onLayoutChange?()
+            onLayoutChange?(false)
             needsLayout = true
             needsDisplay = true
         }
     }
     var onSelect: ((String) -> Void)?
-    var onLayoutChange: (() -> Void)?
+    /// `true` asks the host to animate the size change rather than snap to it.
+    var onLayoutChange: ((Bool) -> Void)?
     var onUnpin: (() -> Void)?
+    /// The frosted backdrop this strip clips to its own silhouette.
+    weak var backdrop: NSVisualEffectView?
 
     private var isHovering = false
     private var isExpanded: Bool { pinned || isHovering }
     private var trackingArea: NSTrackingArea?
+    private var collapseTimer: Timer?
 
     // Geometry. The strip is deliberately narrow: at rest a printer is one 14 pt ring and nothing else.
     private static let ring: CGFloat = 14
@@ -243,6 +276,8 @@ private final class EdgeDockView: NSView {
     private static let pinRow: CGFloat = 14
     private static let pinGap: CGFloat = 4
     private static let pinGlyph: CGFloat = 10
+    /// Grace period before folding, long enough to outlast the unfold animation's own leave event.
+    private static let collapseDelay: TimeInterval = 0.2
     private static let cameraGap: CGFloat = 8
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private static let cameraMinStripWidth: CGFloat = 236
@@ -250,7 +285,11 @@ private final class EdgeDockView: NSView {
 
     private var nameFont: NSFont { .systemFont(ofSize: 11 * scale, weight: .semibold) }
     private var valueFont: NSFont { .monospacedDigitSystemFont(ofSize: 11 * scale, weight: .regular) }
-    private static let shapeColor = NSColor(srgbRed: 0.031, green: 0.035, blue: 0.043, alpha: 0.96)
+    /// The dark floor over the blur. Not opaque, or the frost behind it would never show; not much
+    /// thinner either, because the rows are light text and their contrast rests on this. At 0.8 over a
+    /// pure white desktop, the worst case, the composite is still dark enough for the names and values
+    /// to clear 4.5:1, which is why the value colour moved up from `muted` to `secondary`.
+    private static let shapeColor = NSColor(srgbRed: 0.031, green: 0.035, blue: 0.043, alpha: 0.8)
 
     /// Window size for the current state. Height always includes one fillet radius above and below the
     /// visible body, because that is where the concave transitions are drawn.
@@ -357,8 +396,25 @@ private final class EdgeDockView: NSView {
     /// than by constraints: each one directly under its printer's row, horizontally centred. While the
     /// strip is collapsed they are hidden but their streams keep running, so unfolding it shows a live
     /// picture at once instead of a reconnect.
+    /// Clips the frosted backdrop to the strip's outline. Without this the blur would be a rectangle
+    /// with the silhouette merely painted inside it, and the concave fillets would sit on a frosted
+    /// square. Runs on every layout pass, so the outline keeps up while the panel animates open.
+    private func clipBackdropToSilhouette() {
+        guard let backdrop, bounds.width > 0, bounds.height > 0 else { return }
+        let size = bounds.size
+        let outline = shapePath()
+        let mask = NSImage(size: size, flipped: false) { _ in
+            NSColor.black.setFill()
+            outline.fill()
+            return true
+        }
+        mask.capInsets = NSEdgeInsets()   // 1:1 with the window, never stretched
+        backdrop.maskImage = mask
+    }
+
     override func layout() {
         super.layout()
+        clipBackdropToSilhouette()
         guard !cameraViews.isEmpty else { return }
         guard isExpanded else {
             cameraViews.values.forEach { $0.isHidden = true }
@@ -466,7 +522,7 @@ private final class EdgeDockView: NSView {
                                           attributes: [.font: nameFont, .foregroundColor: nameColor])
             let value = NSAttributedString(string: valueText(entry),
                                            attributes: [.font: valueFont,
-                                                        .foregroundColor: GantryTheme.muted])
+                                                        .foregroundColor: GantryTheme.secondary])
             let textLeft = edge == .right
                 ? Self.expandedPadX * scale
                 : ringX + (Self.ring / 2 + Self.expandedTextGap) * scale
@@ -538,18 +594,37 @@ private final class EdgeDockView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        collapseTimer?.invalidate()
+        collapseTimer = nil
         guard !isHovering else { return }
         isHovering = true
         guard !pinned else { return }   // already unfolded, nothing to re-lay out
-        onLayoutChange?()
+        onLayoutChange?(true)
         needsDisplay = true
     }
 
+    /// Folding waits a moment and then checks where the pointer actually is. While the strip animates
+    /// open its edge travels under the cursor, and a window that moves out from under the pointer emits
+    /// a leave event even though the user has not moved: acting on that immediately would fold the
+    /// strip, which puts the edge back under the cursor, which opens it again. This is the same loop
+    /// the Windows port hit in issue #32, where it showed up as flicker.
     override func mouseExited(with event: NSEvent) {
+        guard isHovering else { return }
+        collapseTimer?.invalidate()
+        collapseTimer = Timer.scheduledTimer(withTimeInterval: Self.collapseDelay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.collapseIfPointerLeft() }
+        }
+    }
+
+    private func collapseIfPointerLeft() {
+        collapseTimer = nil
+        // NSEvent.mouseLocation is screen-absolute and therefore right even mid-animation, unlike the
+        // tracking area, whose rect belongs to a size the window may have already left behind.
+        if let frame = window?.frame, frame.contains(NSEvent.mouseLocation) { return }
         guard isHovering else { return }
         isHovering = false
         guard !pinned else { return }
-        onLayoutChange?()
+        onLayoutChange?(true)
         needsDisplay = true
     }
 
