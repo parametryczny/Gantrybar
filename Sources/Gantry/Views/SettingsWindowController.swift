@@ -178,6 +178,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var scriptActionsCheck = SettingsCheckbox(target: self, action: #selector(scriptActionsToggled))
 
     private var settingsSubscription: AnyCancellable?
+    private var refreshScheduled = false
+    /// Panes whose contents no longer match the settings. Everything except the visible one waits.
+    private var stale: Set<SettingsPaneID> = []
+    /// The last URL a QR code was rendered for, so an unchanged dashboard address is not redrawn.
+    private var qrCache: (url: String, image: NSImage?)?
     var onClose: (() -> Void)?
 
     init(store: PrinterStore) {
@@ -203,7 +208,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         paneHeight = height
         refresh()
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async { self?.refresh() }
+            self?.scheduleRefresh()
         }
     }
 
@@ -243,6 +248,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         for id in SettingsPaneID.visible {
             let pane = SettingsPane(identifier: id.rawValue, symbolName: id.symbolName,
                                     content: content(for: id))
+            pane.onWillAppear = { [weak self] in self?.refreshPane(id) }
             panes[id] = pane
             let item = NSTabViewItem(viewController: pane)
             item.image = NSImage(systemSymbolName: id.symbolName, accessibilityDescription: nil)
@@ -509,11 +515,61 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             window.title = tabController.tabViewItems[index].label
         }
 
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.19"
-        refreshGeneral(settings, version: version)
-        refreshAppearance(settings)
-        if Build.hasExtras { refreshAdvanced(settings) }
+        // Only the pane on screen is filled in. The others are marked stale and refreshed on their
+        // way in, which is the same reasoning as the dashboard: laying out and measuring a pane
+        // nobody is looking at costs exactly as much as one they are.
+        stale = Set(SettingsPaneID.visible)
+        if let id = selectedPaneID { refreshPane(id) }
         resizeToSelectedPane()
+    }
+
+    /// One refresh per run loop turn, however many settings were written.
+    ///
+    /// This is the fix for the sluggishness: a single click on a notification checkbox writes six
+    /// `@Published` properties, and a card-content click seven, each of which published separately
+    /// and drove a *whole* refresh of all six panes. Measured, one click cost six and seven full
+    /// refreshes, and every one of them rendered the dashboard QR code again from scratch.
+    private func scheduleRefresh() {
+        guard !refreshScheduled else { return }
+        refreshScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.refreshScheduled = false
+            self.refresh()
+        }
+    }
+
+    private var selectedPaneID: SettingsPaneID? {
+        let index = tabController.selectedTabViewItemIndex
+        guard index >= 0, index < tabController.tabViewItems.count else { return nil }
+        return (tabController.tabViewItems[index].identifier as? String)
+            .flatMap(SettingsPaneID.init(rawValue:))
+    }
+
+    /// Fills one pane, and only if something has changed since it was last filled.
+    private func refreshPane(_ id: SettingsPaneID, force: Bool = false) {
+        guard force || stale.contains(id) else { return }
+        stale.remove(id)
+        let settings = AppSettings.shared
+        switch id {
+        case .general:
+            refreshGeneralPane(settings)
+            if Build.isLite { refreshAbout(settings) }
+        case .notifications: refreshNotificationsPane(settings)
+        case .appearance: refreshAppearancePane(settings)
+        case .windows: refreshWindowsPane(settings)
+        case .integrations: refreshIntegrationsPane(settings)
+        case .advanced:
+            refreshAdvancedPane(settings)
+            refreshAbout(settings)
+        }
+    }
+
+    /// Writes a label only when the text actually differs. A text field's `stringValue` invalidates
+    /// its intrinsic size and with it the pane's whole layout, and most refreshes change nothing.
+    private func setText(_ field: NSTextField, _ text: String) {
+        guard field.stringValue != text else { return }
+        field.stringValue = text
     }
 
     private func paneTitle(_ id: SettingsPaneID, _ settings: AppSettings) -> String {
@@ -527,15 +583,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func refreshGeneral(_ settings: AppSettings, version: String) {
-        languageCaption.stringValue = settings.t("Language") + ":"
+    private func refreshGeneralPane(_ settings: AppSettings) {
+        setText(languageCaption, settings.t("Language") + ":")
         let languages = Localization.available()
-        languageControl.removeAllItems()
-        for language in languages { languageControl.addItem(withTitle: language.name) }
-        if let index = languages.firstIndex(where: { $0.code == settings.language }) {
+        // Rebuilt only when the catalogue itself changed. Tearing the menu down and filling it again
+        // on every refresh was pure waste: the list comes from the files in i18n/.
+        if languageControl.itemTitles != languages.map(\.name) {
+            languageControl.removeAllItems()
+            for language in languages { languageControl.addItem(withTitle: language.name) }
+        }
+        if let index = languages.firstIndex(where: { $0.code == settings.language }),
+           languageControl.indexOfSelectedItem != index {
             languageControl.selectItem(at: index)
         }
-        basicsCaption.stringValue = settings.t("Options") + ":"
+        setText(basicsCaption, settings.t("Options") + ":")
         launchCheck.title = settings.t("Launch at login")
         launchCheck.isOn = LaunchAtLoginManager.isEnabled
         if Build.hasExtras {
@@ -543,15 +604,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             spoolbaseCheck.setSubtitle(settings.t("Filament stock in the menu"))
             spoolbaseCheck.isOn = settings.spoolbaseEnabled
 
-            updatesHeading.stringValue = settings.t("Updates")
-            updateCaption.stringValue = settings.t("Check for updates") + ":"
+            setText(updatesHeading, settings.t("Updates"))
+            setText(updateCaption, settings.t("Check for updates") + ":")
             updateButton.title = settings.t("Check")
             autoUpdateCheck.title = settings.t("Install automatically")
             autoUpdateCheck.setSubtitle(settings.t("Downloads and verifies the release signature"))
             autoUpdateCheck.isOn = settings.autoUpdate
         }
+    }
 
-        notificationsCaption.stringValue = settings.t("Notify me") + ":"
+    private func refreshNotificationsPane(_ settings: AppSettings) {
+        setText(notificationsCaption, settings.t("Notify me") + ":")
         notifyFinishedCheck.title = settings.t("Print finished")
         notifyFinishedCheck.isOn = settings.notifyFinished
         notifyFinishingSoonCheck.title = settings.t("Finishing in {0} minutes", settings.finishingSoonMinutes)
@@ -566,29 +629,35 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         notifyHumidityCheck.isOn = settings.notifyHumidity
         quietHoursCheck.title = settings.t("Quiet hours")
         quietHoursCheck.isOn = QuietHours.isEnabled
-        quietRangeCaption.stringValue = settings.t("Hours") + ":"
+        setText(quietRangeCaption, settings.t("Hours") + ":")
         quietSeparatorLabel?.stringValue = settings.t("to")
         quietStartPicker.dateValue = date(fromMinutes: QuietHours.startMinutes)
         quietEndPicker.dateValue = date(fromMinutes: QuietHours.endMinutes)
         setQuietPickersEnabled(QuietHours.isEnabled)
-
-        aboutHeading.stringValue = settings.t("About Gantry")
-        appCaption.stringValue = Build.appName + ":"
-        appVersionLabel.stringValue = settings.t("Version {0} • {1}", version, AccessCodeStore.modeName)
-        githubCaption.stringValue = "GitHub:"
-        githubButton.title = "@parametryczny"
-        xCaption.stringValue = "X:"
-        xButton.title = "@_parametryczny"
-        supportButton.title = settings.t("Support the project")
-        supportSubtitle.stringValue = settings.t("I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
     }
 
-    private func refreshAppearance(_ settings: AppSettings) {
-        themeCaption.stringValue = settings.t("Appearance") + ":"
+    /// Version, the two profiles and the coffee. Lives under Advanced in the full edition and under
+    /// General in LITE, so it is filled from one place either way.
+    private func refreshAbout(_ settings: AppSettings) {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.19"
+        setText(aboutHeading, settings.t("About Gantry"))
+        setText(appCaption, Build.appName + ":")
+        setText(appVersionLabel, settings.t("Version {0} • {1}", version, AccessCodeStore.modeName))
+        setText(githubCaption, "GitHub:")
+        githubButton.title = "@parametryczny"
+        setText(xCaption, "X:")
+        xButton.title = "@_parametryczny"
+        supportButton.title = settings.t("Support the project")
+        setText(supportSubtitle, settings.t("I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”."))
+    }
+
+
+    private func refreshAppearancePane(_ settings: AppSettings) {
+        setText(themeCaption, settings.t("Appearance") + ":")
         themeControl.setLabel(settings.t("LIGHT"), forSegment: 0)
         themeControl.setLabel(settings.t("DARK"), forSegment: 1)
         themeControl.selectedSegment = settings.theme == .light ? 0 : 1
-        transparencyCaption.stringValue = settings.t("Transparency") + ":"
+        setText(transparencyCaption, settings.t("Transparency") + ":")
         transparencyControl.setLabel(settings.t("LOW"), forSegment: 0)
         transparencyControl.setLabel(settings.t("MEDIUM"), forSegment: 1)
         transparencyControl.setLabel(settings.t("HIGH"), forSegment: 2)
@@ -601,10 +670,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         monochromeCheck.setSubtitle(settings.t("No tint on temperatures and filaments"))
         monochromeCheck.isOn = settings.monochrome
 
-        cardsHeading.stringValue = settings.t("Printer cards")
-        cardScaleCaption.stringValue = settings.t("Card size") + ":"
+        setText(cardsHeading, settings.t("Printer cards"))
+        setText(cardScaleCaption, settings.t("Card size") + ":")
         cardScaleControl.configure(percent: settings.cardScalePercent, steps: AppSettings.cardScaleSteps)
-        cardContentCaption.stringValue = settings.t("Show on the card") + ":"
+        setText(cardContentCaption, settings.t("Show on the card") + ":")
         cardFileNameCheck.title = settings.t("File name")
         cardFileNameCheck.isOn = settings.cardShowFileName
         cardProgressCheck.title = settings.t("Progress")
@@ -621,25 +690,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         cardDetailsChipCheck.title = settings.t("Details chip on the card")
         cardDetailsChipCheck.setSubtitle(settings.t("Shortcut to the detail view; the ⋯ menu always has it"))
         cardDetailsChipCheck.isOn = settings.cardShowDetailsChip
+    }
 
-        floatingWindowCaption.stringValue = settings.t("Floating window") + ":"
+    private func refreshWindowsPane(_ settings: AppSettings) {
+        setText(floatingWindowCaption, settings.t("Floating window") + ":")
         floatingWindowCheck.title = settings.t("Show Gantry in a floating window")
         floatingWindowCheck.setSubtitle(settings.t("Resize it freely; use the pin in its top bar to keep it above other windows"))
         floatingWindowCheck.isOn = settings.floatingWindowEnabled
 
-        dockHeading.stringValue = settings.t("Edge dock")
+        setText(dockHeading, settings.t("Edge dock"))
         dockEnableCheck.title = settings.t("Show the strip on top")
         dockEnableCheck.isOn = settings.edgeDockEnabled
-        dockEdgeCaption.stringValue = settings.t("Edge") + ":"
+        setText(dockEdgeCaption, settings.t("Edge") + ":")
         dockEdgeControl.setLabel(settings.t("LEFT"), forSegment: 0)
         dockEdgeControl.setLabel(settings.t("RIGHT"), forSegment: 1)
         dockEdgeControl.selectedSegment = settings.edgeDockEdge == .left ? 0 : 1
         dockEdgeControl.isEnabled = settings.edgeDockEnabled
-        dockScaleCaption.stringValue = settings.t("Edge dock size") + ":"
+        setText(dockScaleCaption, settings.t("Edge dock size") + ":")
         dockScaleControl.configure(percent: settings.edgeDockScalePercent,
                                    steps: AppSettings.edgeDockScaleSteps,
                                    enabled: settings.edgeDockEnabled)
-        dockBehaviourCaption.stringValue = settings.t("Behaviour") + ":"
+        setText(dockBehaviourCaption, settings.t("Behaviour") + ":")
         dockPinnedCheck.title = settings.t("Keep the strip open")
         dockPinnedCheck.isOn = settings.edgeDockPinned
         dockPinnedCheck.setEnabled(settings.edgeDockEnabled)
@@ -650,13 +721,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         dockOnlyPrintingCheck.title = settings.t("Only printing")
         dockOnlyPrintingCheck.isOn = settings.edgeDockOnlyPrinting
         dockOnlyPrintingCheck.setEnabled(settings.edgeDockEnabled)
-        dockPrintersCaption.stringValue = settings.t("Which printers") + ":"
-        dockHint.stringValue = settings.t("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.")
+        setText(dockPrintersCaption, settings.t("Which printers") + ":")
+        setText(dockHint, settings.t("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details."))
         rebuildDockPrinters()
     }
 
-    private func refreshAdvanced(_ settings: AppSettings) {
-        featuresCaption.stringValue = settings.t("Features") + ":"
+
+    private func refreshAdvancedPane(_ settings: AppSettings) {
+        setText(featuresCaption, settings.t("Features") + ":")
         printerControlCheck.title = settings.t("Printer control")
         printerControlCheck.setSubtitle(settings.t("Enables temperature, fan and speed controls in Details. Off by default."))
         printerControlCheck.isOn = settings.printerControlEnabled
@@ -666,17 +738,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         scriptActionsCheck.title = settings.t("Scripts in automations")
         scriptActionsCheck.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
         scriptActionsCheck.isOn = settings.allowScriptActions
+    }
 
-        telegramHeading.stringValue = "Telegram"
+    private func refreshIntegrationsPane(_ settings: AppSettings) {
+        setText(telegramHeading, "Telegram")
         telegramEnableCheck.title = settings.t("Send notifications")
         telegramEnableCheck.isOn = settings.telegramEnabled
-        telegramTokenCaption.stringValue = settings.t("Bot token") + ":"
-        telegramChatCaption.stringValue = "Chat ID:"
-        telegramTestCaption.stringValue = settings.t("Connection test") + ":"
+        setText(telegramTokenCaption, settings.t("Bot token") + ":")
+        setText(telegramChatCaption, "Chat ID:")
+        setText(telegramTestCaption, settings.t("Connection test") + ":")
         telegramTestButton.title = settings.t("Send")
-        telegramHint.stringValue = settings.t("Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as the system notifications.")
-        telegramTokenField.stringValue = settings.telegramBotToken
-        telegramChatField.stringValue = settings.telegramChatID
+        setText(telegramHint, settings.t("Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as the system notifications."))
+        setText(telegramTokenField, settings.telegramBotToken)
+        setText(telegramChatField, settings.telegramChatID)
         telegramTokenField.isEnabled = settings.telegramEnabled
         telegramChatField.isEnabled = settings.telegramEnabled
         telegramTestButton.isEnabled = settings.telegramEnabled
@@ -685,12 +759,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
 
         refreshWebSection(settings)
+
+        refreshWebSection(settings)
     }
+
 
     /// Fills the web-dashboard section with the live LAN URLs and a scannable QR of the IP URL
     /// (the IP always resolves on the same network, unlike the friendlier `.local` name).
     private func refreshWebSection(_ settings: AppSettings) {
-        webHeading.stringValue = settings.t("Web dashboard")
+        setText(webHeading, settings.t("Web dashboard"))
         webEnableCheck.title = settings.t("Preview server")
         webEnableCheck.setSubtitle(settings.t("Local network, read only"))
         webEnableCheck.isOn = settings.webDashboardEnabled
@@ -699,15 +776,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let host = GantryWebServer.localHostName()
         let primary = GantryWebServer.primaryURL()
         let lan = GantryWebServer.lanURL()
-        webPrimaryURL.stringValue = primary
-        webLanURL.stringValue = lan ?? ""
+        setText(webPrimaryURL, primary)
+        setText(webLanURL, lan ?? "")
         webLanURL.isHidden = (lan == nil) || (lan == primary)
         if host?.lowercased() == "gantry" {
-            webHint.stringValue = settings.t("Open on a phone on the same Wi-Fi. View only.")
+            setText(webHint, settings.t("Open on a phone on the same Wi-Fi. View only."))
         } else {
-            webHint.stringValue = settings.t("Open on a phone on the same Wi-Fi (view only). Want gantry.local? Set the Mac's local hostname to “gantry”: System Settings → General → Sharing → Local hostname.")
+            setText(webHint, settings.t("Open on a phone on the same Wi-Fi (view only). Want gantry.local? Set the Mac's local hostname to “gantry”: System Settings → General → Sharing → Local hostname."))
         }
-        webQRImage.image = Self.makeQR(lan ?? primary, side: 320)
+        // The address changes when the Mac moves network, not when a checkbox is clicked, so the
+        // generated code is kept. Rendering it on every refresh was the single most expensive thing
+        // an unrelated click used to trigger.
+        let target = lan ?? primary
+        if qrCache?.url != target { qrCache = (target, Self.makeQR(target, side: 320)) }
+        webQRImage.image = qrCache?.image
     }
 
     /// A crisp black-on-white QR NSImage for a URL, using CoreImage's built-in generator.
@@ -906,50 +988,73 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             empty.textColor = .secondaryLabelColor
             dockPrintersStack.addView(empty, in: .top)
         }
-        for printer in store.printers {
-            // Two decisions per printer: is it in the strip at all, and does its picture hang under
-            // its row. The camera is the smaller control, because it is the rarer choice.
-            let box = NSButton(checkboxWithTitle: printer.name, target: self,
-                               action: #selector(dockPrinterToggled(_:)))
-            box.identifier = NSUserInterfaceItemIdentifier(printer.serial)
-            box.font = .systemFont(ofSize: 12)
-            box.toolTip = printer.model
-            let camera = NSButton()
-            camera.identifier = NSUserInterfaceItemIdentifier("camera:\(printer.serial)")
-            camera.setButtonType(.toggle)
-            camera.bezelStyle = .accessoryBarAction
-            camera.image = NSImage(systemSymbolName: "video", accessibilityDescription: nil)
-            camera.alternateImage = NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
-            camera.imagePosition = .imageOnly
-            camera.target = self
-            camera.action = #selector(dockPrinterCameraToggled(_:))
-            camera.toolTip = settings.t("Camera under the strip")
-
-            let row = NSView()
+        // Two across rather than one, because a five-printer fleet filled a one-column list past its
+        // height and put a scroller next to five items that had room to sit side by side. Three rows
+        // instead of five, and the scroller only appears for a fleet that genuinely needs it.
+        for pair in stride(from: 0, to: store.printers.count, by: Self.dockPrinterColumns).map({ start in
+            Array(store.printers[start..<min(start + Self.dockPrinterColumns, store.printers.count)])
+        }) {
+            let row = NSStackView(views: pair.map { printerCell(for: $0, settings: settings) })
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.distribution = .fillEqually
+            row.spacing = Self.dockPrinterGap
             row.translatesAutoresizingMaskIntoConstraints = false
-            for control in [box, camera] as [NSView] {
-                control.translatesAutoresizingMaskIntoConstraints = false
-                row.addSubview(control)
-            }
-            NSLayoutConstraint.activate([
-                box.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-                box.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-                camera.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-                camera.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-                box.trailingAnchor.constraint(lessThanOrEqualTo: camera.leadingAnchor, constant: -8),
-                row.heightAnchor.constraint(equalTo: camera.heightAnchor),
-                // The list is as wide as the control column minus the scroller's own insets, so the
-                // camera button lands on a straight right edge down the whole list.
-                row.widthAnchor.constraint(equalToConstant: SettingsMetrics.controlColumn - 18)
-            ])
+            row.widthAnchor.constraint(equalToConstant: Self.dockPrinterListWidth).isActive = true
             dockPrintersStack.addView(row, in: .top)
         }
-        // Fits the list to the fleet, up to four rows; a bigger fleet scrolls rather than pushing the
-        // window past the bottom of the screen.
-        let rows = max(1, store.printers.count)
+        let rows = max(1, Int(ceil(Double(store.printers.count) / Double(Self.dockPrinterColumns))))
         dockPrintersHeight?.constant = min(CGFloat(rows) * 27 + 12, 120)
         syncDockPrinterSwitches()
     }
+
+    /// One printer in the list: a checkbox carrying its name, and a small camera toggle on the right.
+    /// Two decisions per printer, because being in the strip and hanging a picture under its row are
+    /// separate choices. The camera is the smaller control, because it is the rarer one.
+    private func printerCell(for printer: SavedPrinter, settings: AppSettings) -> NSView {
+        let box = NSButton(checkboxWithTitle: printer.name, target: self,
+                           action: #selector(dockPrinterToggled(_:)))
+        box.identifier = NSUserInterfaceItemIdentifier(printer.serial)
+        box.font = .systemFont(ofSize: 12)
+        box.toolTip = printer.model
+        // Half a column is not much room, so a long name is clipped rather than allowed to push the
+        // camera button off the edge. The tooltip still carries the model.
+        box.lineBreakMode = .byTruncatingTail
+        box.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let camera = NSButton()
+        camera.identifier = NSUserInterfaceItemIdentifier("camera:\(printer.serial)")
+        camera.setButtonType(.toggle)
+        camera.bezelStyle = .accessoryBarAction
+        camera.image = NSImage(systemSymbolName: "video", accessibilityDescription: nil)
+        camera.alternateImage = NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
+        camera.imagePosition = .imageOnly
+        camera.target = self
+        camera.action = #selector(dockPrinterCameraToggled(_:))
+        camera.toolTip = settings.t("Camera under the strip")
+        camera.setContentHuggingPriority(.required, for: .horizontal)
+
+        let cell = NSView()
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        for control in [box, camera] as [NSView] {
+            control.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(control)
+        }
+        NSLayoutConstraint.activate([
+            box.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+            box.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            camera.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
+            camera.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            box.trailingAnchor.constraint(lessThanOrEqualTo: camera.leadingAnchor, constant: -6),
+            cell.heightAnchor.constraint(equalTo: camera.heightAnchor)
+        ])
+        return cell
+    }
+
+    /// Two columns, and the width they share. The list sits inside the control column, less the
+    /// scroller's bezel and the stack's own insets.
+    private static let dockPrinterColumns = 2
+    private static let dockPrinterGap: CGFloat = 10
+    private static let dockPrinterListWidth = SettingsMetrics.controlColumn - 20
 
     private func syncDockPrinterSwitches() {
         let settings = AppSettings.shared
@@ -991,7 +1096,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func telegramToggled() {
         AppSettings.shared.telegramEnabled = telegramEnableCheck.isOn
-        refreshAdvanced(AppSettings.shared)
+        refreshPane(.integrations, force: true)
         resizeToSelectedPane()
         TelegramBot.shared?.syncWithSettings()
     }
@@ -1007,18 +1112,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let settings = AppSettings.shared
         let token = settings.telegramBotToken, chat = settings.telegramChatID
         guard !token.isEmpty, !chat.isEmpty else {
-            telegramTestStatus.stringValue = settings.t("Enter a token and chat_id.")
+            setText(telegramTestStatus, settings.t("Enter a token and chat_id."))
             telegramTestStatus.textColor = GantryTheme.statusError
             return
         }
-        telegramTestStatus.stringValue = settings.t("Sending…")
+        setText(telegramTestStatus, settings.t("Sending…"))
         telegramTestStatus.textColor = .secondaryLabelColor
         let text = TelegramService.format(printer: "Gantry", title: settings.t("Test notification"),
                                           body: settings.t("The connection works."))
         Task { @MainActor in
             let ok = await TelegramService.sendMessage(token: token, chatID: chat, text: text)
-            telegramTestStatus.stringValue = ok ? settings.t("Sent ✓")
-                                                : settings.t("Failed. Check the token and chat_id.")
+            setText(telegramTestStatus, ok ? settings.t("Sent ✓")
+                                           : settings.t("Failed. Check the token and chat_id."))
             telegramTestStatus.textColor = ok ? GantryTheme.statusFinished : GantryTheme.statusError
         }
     }
@@ -1029,19 +1134,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
         updateStatus.textColor = .secondaryLabelColor
-        updateStatus.stringValue = settings.t("Checking…")
+        setText(updateStatus, settings.t("Checking…"))
         Task { @MainActor in
             defer { updateButton.isEnabled = true }
             do {
                 let release = try await UpdateService.latestRelease()
                 if UpdateService.isNewer(release.version, than: UpdateService.currentVersion) {
-                    updateStatus.stringValue = ""
+                    setText(updateStatus, "")
                     presentUpdateAvailable(release)
                 } else {
-                    updateStatus.stringValue = settings.t("You have the latest version.")
+                    setText(updateStatus, settings.t("You have the latest version."))
                 }
             } catch {
-                updateStatus.stringValue = ""
+                setText(updateStatus, "")
                 presentAlert(
                     title: settings.t("Could not check for updates"),
                     message: error.localizedDescription
@@ -1073,14 +1178,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
         updateStatus.textColor = .secondaryLabelColor
-        updateStatus.stringValue = settings.t("Downloading and installing…")
+        setText(updateStatus, settings.t("Downloading and installing…"))
         Task { @MainActor in
             do {
                 try await UpdateService.downloadAndInstall(release)
                 // The helper relaunches the app; this process is about to terminate.
             } catch {
                 updateButton.isEnabled = true
-                updateStatus.stringValue = ""
+                setText(updateStatus, "")
                 let alert = NSAlert()
                 alert.messageText = settings.t("Installation failed")
                 alert.informativeText = error.localizedDescription + "\n\n" + settings.t("Open the release page to download it manually.")

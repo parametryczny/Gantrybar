@@ -101,7 +101,10 @@ final class SettingsCheckbox: NSView {
     /// A checkbox carries its own label, so there is no separate caption to keep in step.
     var title: String {
         get { box.title }
-        set { box.title = newValue }
+        set {
+            guard box.title != newValue else { return }
+            box.title = newValue
+        }
     }
 
     var isOn: Bool {
@@ -112,6 +115,7 @@ final class SettingsCheckbox: NSView {
     var checkbox: NSButton { box }
 
     func setSubtitle(_ text: String) {
+        guard subtitleLabel.stringValue != text else { return }
         subtitleLabel.stringValue = text
         subtitleLabel.isHidden = text.isEmpty
     }
@@ -232,6 +236,8 @@ final class SettingsPane: NSViewController {
     private let content: NSGridView
     /// Filled in by the controller's refresh, because the toolbar label follows the app's language.
     var paneTitle: String = ""
+    /// Asked, on the way in, to bring this pane up to date if it was left stale while hidden.
+    var onWillAppear: (() -> Void)?
 
     init(identifier: String, symbolName: String, content: NSGridView) {
         self.paneIdentifier = identifier
@@ -265,6 +271,7 @@ final class SettingsPane: NSViewController {
 
     override func viewWillAppear() {
         super.viewWillAppear()
+        onWillAppear?()
         updatePreferredSize()
     }
 

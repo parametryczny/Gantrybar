@@ -85,6 +85,21 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/SettingsRowKit.swift",
         r"root\.autoresizingMask = \[\.width, \.height\]",
         "macOS settings pane opts out of autoresizing, so NSTabView cannot reposition it")
+# One refresh per run loop turn and only for the pane on screen. Measured before this: a single
+# notification click wrote six @Published properties and cost six whole-window refreshes, a
+# card-content click seven, and every one of them re-rendered the dashboard QR code.
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"guard !refreshScheduled else \{ return \}[\s\S]*?refreshScheduled = true",
+        "macOS settings refresh once per written setting instead of once per run loop turn")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"stale = Set\(SettingsPaneID\.visible\)[\s\S]*?if let id = selectedPaneID \{ refreshPane\(id\) \}",
+        "macOS settings refresh panes nobody is looking at")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"if qrCache\?\.url != target",
+        "macOS settings re-render the dashboard QR code on unrelated refreshes")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"dockPrinterColumns = 2",
+        "macOS edge-dock printer list is a single column, which scrolls for no reason")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
