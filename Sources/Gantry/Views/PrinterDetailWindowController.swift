@@ -386,12 +386,6 @@ final class PrinterDetailViewController: NSViewController {
         backButton.target = self
         backButton.action = #selector(backPressed)
 
-        stateDot.wantsLayer = true
-        stateDot.layer?.cornerRadius = 5
-        stateDot.widthAnchor.constraint(equalToConstant: 10).isActive = true
-        stateDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
-        stateLabel.font = .systemFont(ofSize: 11, weight: .semibold)
-
         skipObjectsButton.title = AppSettings.shared.t("Skip object…")
         skipObjectsButton.target = self
         skipObjectsButton.action = #selector(skipObjectsPressed)
@@ -401,7 +395,10 @@ final class PrinterDetailViewController: NSViewController {
         skipObjectsButton.controlSize = .small
         skipObjectsButton.isHidden = true
 
-        let row = NSStackView(views: [backButton, skipObjectsButton, NSView(), stateDot, stateLabel])
+        // The state used to sit at the far right of this row, a whole row away from the printer it
+        // described. It now rides next to the name inside the status card, which is where the eye
+        // already is, so this row carries only navigation.
+        let row = NSStackView(views: [backButton, skipObjectsButton, NSView()])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 7
@@ -448,10 +445,26 @@ final class PrinterDetailViewController: NSViewController {
         phaseStepper.translatesAutoresizingMaskIntoConstraints = false
         phaseStepper.heightAnchor.constraint(equalToConstant: 34).isActive = true
 
+        stateDot.wantsLayer = true
+        stateDot.layer?.cornerRadius = 5
+        stateDot.translatesAutoresizingMaskIntoConstraints = false
+        stateDot.widthAnchor.constraint(equalToConstant: 10).isActive = true
+        stateDot.heightAnchor.constraint(equalToConstant: 10).isActive = true
+        stateLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        // A long printer name gives way before the state does: the state is the shorter string and
+        // the one worth reading first when something is wrong.
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        for view in [stateDot, stateLabel] as [NSView] {
+            view.setContentHuggingPriority(.required, for: .horizontal)
+            view.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+
         layerLabel.setContentHuggingPriority(.required, for: .horizontal)
-        let topRow = NSStackView(views: [nameLabel, NSView(), percentLabel])
+        let topRow = NSStackView(views: [nameLabel, stateDot, stateLabel, NSView(), percentLabel])
         topRow.orientation = .horizontal
         topRow.alignment = .centerY
+        topRow.spacing = 7
+        topRow.setCustomSpacing(4, after: stateDot)
         // File name and layers share one line (name left, layers right).
         let fileRow = NSStackView(views: [fileLabel, NSView(), layerLabel])
         fileRow.orientation = .horizontal

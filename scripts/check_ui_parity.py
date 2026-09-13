@@ -211,6 +211,14 @@ require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
 require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
         r"flipped\.widthAnchor\.constraint\(equalTo: scroll\.contentView\.widthAnchor\)",
         "the macOS detail column does not track the visible width, so its edge can be clipped")
+# The state rides next to the printer's name inside the status card, not at the far right of the
+# navigation row a whole row away from the printer it describes.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"NSStackView\(views: \[nameLabel, stateDot, stateLabel, NSView\(\), percentLabel\]\)",
+        "the macOS detail state is not beside the printer's name")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"nameLabel\.setContentCompressionResistancePriority\(\.defaultLow, for: \.horizontal\)",
+        "a long printer name pushes the state out instead of truncating")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"dockPinnedCheck[\s\S]*?dockCameraCheck",
         "macOS settings are missing the edge-dock pin and camera switches")
