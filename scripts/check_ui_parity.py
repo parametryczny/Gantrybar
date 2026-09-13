@@ -97,9 +97,31 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"if qrCache\?\.url != target",
         "macOS settings re-render the dashboard QR code on unrelated refreshes")
+# The edge-dock choices are two plain columns of checkboxes, laid out like every other group in the
+# window. They were a bordered, scrolling list with a camera glyph button hanging off each row, which
+# read as a widget from another program and put a scroller next to five items that had room to sit
+# in the open.
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"dockPrinterColumns = 2",
-        "macOS edge-dock printer list is a single column, which scrolls for no reason")
+        r"grid\.field\(dockPrintersCaption, dockPrintersHolder\)[\s\S]*?"
+        r"grid\.field\(dockCamerasCaption, dockCamerasHolder\)",
+        "macOS edge-dock printers and cameras are not two plain checkbox columns")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"NSButton\(checkboxWithTitle: printer\.name[\s\S]*?"
+        r"NSButton\(checkboxWithTitle: printer\.name",
+        "macOS edge-dock camera choice is not a checkbox like the printer choice")
+# Switching a pane is dominated by laying it out and measuring it, and almost nothing a user clicks
+# changes any pane's height. Writes that can are counted, and a refresh that touched none of them
+# leaves the measured height alone: measured, this took layout and fitting from 18 ms to zero.
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"enum SettingsLayoutTouches[\s\S]*?static func touch\(\)",
+        "macOS settings do not track which writes can change a pane's height")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"let touchesBefore = SettingsLayoutTouches\.count[\s\S]*?"
+        r"if SettingsLayoutTouches\.count != touchesBefore \{ panes\[id\]\?\.contentDirty = true \}",
+        "macOS settings re-measure a pane whose content did not change")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"let info = webInfo \?\?",
+        "macOS settings re-read the network interfaces every time the Integrations pane opens")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",

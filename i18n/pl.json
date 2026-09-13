@@ -115,6 +115,7 @@
   "Camera IP / host (optional)": "IP / host kamery (opcjonalnie)",
   "Camera error: ": "Błąd kamery: ",
   "Camera error: {0}": "Błąd kamery: {0}",
+  "Camera for": "Kamera dla",
   "Camera in Bambu Studio": "Kamera w Bambu Studio",
   "Camera unavailable (no access code)": "Kamera niedostępna (brak kodu dostępu)",
   "Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)": "Kamera niedostępna — sprawdź konfigurację webcam w Moonraker (Fluidd/Mainsail)",

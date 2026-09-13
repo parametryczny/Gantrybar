@@ -12,6 +12,19 @@ import AppKit
 /// left-aligned in the second, both sharing one vertical axis down the whole pane. `NSGridView` is
 /// the AppKit class built for exactly this, so the alignment is not maintained by hand.
 
+/// Counts writes that can change a pane's height.
+///
+/// A pane switch is dominated by laying the pane out and asking for its fitting size, and almost
+/// nothing a user clicks in here changes any height: a boolean toggle rewrites no text at all. So the
+/// writes that *would* change a height report themselves, and a refresh that touched none of them
+/// leaves the pane's measured height alone. Ticking a checkbox therefore costs no layout pass, while
+/// switching language or showing the dashboard QR block still re-measures properly.
+@MainActor
+enum SettingsLayoutTouches {
+    private(set) static var count = 0
+    static func touch() { count += 1 }
+}
+
 @MainActor
 enum SettingsMetrics {
     /// Captions column. Wide enough for the longest Polish caption at 13 pt without wrapping.
@@ -104,6 +117,7 @@ final class SettingsCheckbox: NSView {
         set {
             guard box.title != newValue else { return }
             box.title = newValue
+            SettingsLayoutTouches.touch()
         }
     }
 
@@ -118,6 +132,7 @@ final class SettingsCheckbox: NSView {
         guard subtitleLabel.stringValue != text else { return }
         subtitleLabel.stringValue = text
         subtitleLabel.isHidden = text.isEmpty
+        SettingsLayoutTouches.touch()
     }
 
     /// A disabled checkbox greys its own title, so unlike the old switch row there is no need to dim
@@ -275,9 +290,16 @@ final class SettingsPane: NSViewController {
         updatePreferredSize()
     }
 
-    /// Re-measures after anything that changes the pane's height: a hidden section reappearing, a
-    /// longer explanation in another language, a printer joining the fleet.
+    /// Set whenever the controller refills this pane, because that is the only thing that can change
+    /// its height: a section appearing, a longer explanation in another language, a printer joining
+    /// the fleet. Measuring is the expensive half of a pane switch, so an unchanged pane reuses the
+    /// height it already reported instead of laying itself out again.
+    var contentDirty = true
+
+    /// Re-measures, but only when there is a reason to.
     func updatePreferredSize() {
+        guard contentDirty || preferredContentSize.height < 1 else { return }
+        contentDirty = false
         view.layoutSubtreeIfNeeded()
         let size = view.fittingSize
         guard size.height > 1, preferredContentSize != size else { return }

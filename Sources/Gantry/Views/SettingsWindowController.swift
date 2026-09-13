@@ -143,11 +143,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var dockCameraCheck = SettingsCheckbox(target: self, action: #selector(dockCameraToggled))
     private lazy var dockOnlyPrintingCheck = SettingsCheckbox(target: self, action: #selector(dockOnlyPrintingToggled))
     private let dockPrintersCaption = settingsCaption()
-    /// The per-printer list is a real list in a bordered scroller, so a large fleet scrolls instead of
-    /// stretching the window past the screen.
-    private let dockPrintersStack = NSStackView()
-    private let dockPrintersScroll = NSScrollView()
-    private var dockPrintersHeight: NSLayoutConstraint?
+    private let dockCamerasCaption = settingsCaption()
+    /// Two plain columns of checkboxes, filled when the fleet changes. They used to be one bordered,
+    /// scrolling list with a small camera button hanging off the right of every row, which looked like
+    /// a widget borrowed from another program. A column of checkboxes under a caption is what the rest
+    /// of this window does, so the two questions are now asked the same way everything else is.
+    private let dockPrintersHolder = NSStackView()
+    private let dockCamerasHolder = NSStackView()
     private var dockPrinterSerials: [String] = []
     private let dockHint = settingsNote()
 
@@ -183,6 +185,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var stale: Set<SettingsPaneID> = []
     /// The last URL a QR code was rendered for, so an unchanged dashboard address is not redrawn.
     private var qrCache: (url: String, image: NSImage?)?
+    /// The dashboard's addresses, read once per time the window is opened.
+    private var webInfo: (host: String?, primary: String, lan: String?)?
     var onClose: (() -> Void)?
 
     init(store: PrinterStore) {
@@ -218,6 +222,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// straight on top of the cards the user had just come to adjust. `companion` only lends its
     /// window level, so the panel cannot end up covering the settings window they are typing in.
     func presentCentered(levelMatching companion: NSWindow? = nil) {
+        webInfo = nil
         refresh()
         showWindow(nil)
         guard let window else { return }
@@ -329,33 +334,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func buildWindowsPane() -> NSGridView {
-        dockPrintersStack.orientation = .vertical
-        dockPrintersStack.alignment = .leading
-        dockPrintersStack.spacing = 5
-        dockPrintersStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
-        dockPrintersStack.translatesAutoresizingMaskIntoConstraints = false
-        let document = SettingsFlippedView()
-        document.translatesAutoresizingMaskIntoConstraints = false
-        document.addSubview(dockPrintersStack)
-        NSLayoutConstraint.activate([
-            dockPrintersStack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
-            dockPrintersStack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
-            dockPrintersStack.topAnchor.constraint(equalTo: document.topAnchor),
-            dockPrintersStack.bottomAnchor.constraint(equalTo: document.bottomAnchor)
-        ])
-        dockPrintersScroll.documentView = document
-        dockPrintersScroll.hasVerticalScroller = true
-        dockPrintersScroll.autohidesScrollers = true
-        dockPrintersScroll.borderType = .bezelBorder
-        dockPrintersScroll.drawsBackground = true
-        dockPrintersScroll.translatesAutoresizingMaskIntoConstraints = false
-        let height = dockPrintersScroll.heightAnchor.constraint(equalToConstant: 96)
-        dockPrintersHeight = height
-        NSLayoutConstraint.activate([
-            dockPrintersScroll.widthAnchor.constraint(equalToConstant: SettingsMetrics.controlColumn),
-            document.widthAnchor.constraint(equalTo: dockPrintersScroll.contentView.widthAnchor),
-            height
-        ])
+        for holder in [dockPrintersHolder, dockCamerasHolder] {
+            holder.orientation = .vertical
+            holder.alignment = .leading
+            holder.spacing = 6
+            holder.translatesAutoresizingMaskIntoConstraints = false
+        }
 
         let grid = SettingsGrid()
         grid.group(floatingWindowCaption, [floatingWindowCheck])
@@ -364,7 +348,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.field(dockEdgeCaption, dockEdgeControl)
         grid.field(dockScaleCaption, dockScaleControl, baseline: false)
         grid.group(dockBehaviourCaption, [dockPinnedCheck, dockCameraCheck, dockOnlyPrintingCheck])
-        grid.field(dockPrintersCaption, dockPrintersScroll, baseline: false)
+        grid.field(dockPrintersCaption, dockPrintersHolder)
+        grid.field(dockCamerasCaption, dockCamerasHolder)
         grid.aligned(dockHint)
         return grid.build()
     }
@@ -550,6 +535,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func refreshPane(_ id: SettingsPaneID, force: Bool = false) {
         guard force || stale.contains(id) else { return }
         stale.remove(id)
+        let touchesBefore = SettingsLayoutTouches.count
+        defer {
+            if SettingsLayoutTouches.count != touchesBefore { panes[id]?.contentDirty = true }
+        }
         let settings = AppSettings.shared
         switch id {
         case .general:
@@ -570,6 +559,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func setText(_ field: NSTextField, _ text: String) {
         guard field.stringValue != text else { return }
         field.stringValue = text
+        SettingsLayoutTouches.touch()
     }
 
     private func paneTitle(_ id: SettingsPaneID, _ settings: AppSettings) -> String {
@@ -722,6 +712,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         dockOnlyPrintingCheck.isOn = settings.edgeDockOnlyPrinting
         dockOnlyPrintingCheck.setEnabled(settings.edgeDockEnabled)
         setText(dockPrintersCaption, settings.t("Which printers") + ":")
+        setText(dockCamerasCaption, settings.t("Camera for") + ":")
         setText(dockHint, settings.t("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details."))
         rebuildDockPrinters()
     }
@@ -771,14 +762,29 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         webEnableCheck.title = settings.t("Preview server")
         webEnableCheck.setSubtitle(settings.t("Local network, read only"))
         webEnableCheck.isOn = settings.webDashboardEnabled
-        webContentStack.isHidden = !settings.webDashboardEnabled
+        if webContentStack.isHidden != !settings.webDashboardEnabled {
+            webContentStack.isHidden = !settings.webDashboardEnabled
+            SettingsLayoutTouches.touch()
+        }
         guard settings.webDashboardEnabled else { return }
-        let host = GantryWebServer.localHostName()
-        let primary = GantryWebServer.primaryURL()
-        let lan = GantryWebServer.lanURL()
+        // Asking for these three means looking at the machine's network interfaces and its local
+        // hostname, which took most of the 62 ms a switch to this pane used to cost. They change when
+        // the Mac changes network, not when a pane is opened, so they are read once per visit.
+        let info = webInfo ?? {
+            let value = (host: GantryWebServer.localHostName(),
+                         primary: GantryWebServer.primaryURL(),
+                         lan: GantryWebServer.lanURL())
+            webInfo = value
+            return value
+        }()
+        let host = info.host, primary = info.primary, lan = info.lan
         setText(webPrimaryURL, primary)
         setText(webLanURL, lan ?? "")
-        webLanURL.isHidden = (lan == nil) || (lan == primary)
+        let hideLan = (lan == nil) || (lan == primary)
+        if webLanURL.isHidden != hideLan {
+            webLanURL.isHidden = hideLan
+            SettingsLayoutTouches.touch()
+        }
         if host?.lowercased() == "gantry" {
             setText(webHint, settings.t("Open on a phone on the same Wi-Fi. View only."))
         } else {
@@ -811,6 +817,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func webEnabledChanged() {
         AppSettings.shared.webDashboardEnabled = webEnableCheck.isOn
+        webInfo = nil
         refreshWebSection(AppSettings.shared)
         resizeToSelectedPane()
     }
@@ -970,118 +977,70 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppSettings.shared.edgeDockHiddenPrinters = hidden
     }
 
-    /// Rebuilds the printer list only when the fleet itself changed; otherwise just re-syncs the
-    /// controls, so refresh() does not throw away and recreate views on every settings change.
+    /// Rebuilds both columns only when the fleet itself changed; otherwise just re-syncs the
+    /// checkboxes, so a refresh does not throw away and recreate views.
     private func rebuildDockPrinters() {
         let settings = AppSettings.shared
         let serials = store.printers.map(\.serial)
-        guard serials != dockPrinterSerials || dockPrintersStack.views.isEmpty else {
+        guard serials != dockPrinterSerials || dockPrintersHolder.views.isEmpty else {
             syncDockPrinterSwitches()
             return
         }
         dockPrinterSerials = serials
-        dockPrintersStack.views.forEach { $0.removeFromSuperview() }
+        SettingsLayoutTouches.touch()   // the fleet changed, so both columns change height
+        for holder in [dockPrintersHolder, dockCamerasHolder] {
+            holder.views.forEach { $0.removeFromSuperview() }
+        }
 
         if store.printers.isEmpty {
             let empty = NSTextField(labelWithString: settings.t("No printers"))
             empty.font = .systemFont(ofSize: 12)
             empty.textColor = .secondaryLabelColor
-            dockPrintersStack.addView(empty, in: .top)
+            dockPrintersHolder.addView(empty, in: .top)
         }
-        // Two across rather than one, because a five-printer fleet filled a one-column list past its
-        // height and put a scroller next to five items that had room to sit side by side. Three rows
-        // instead of five, and the scroller only appears for a fleet that genuinely needs it.
-        for pair in stride(from: 0, to: store.printers.count, by: Self.dockPrinterColumns).map({ start in
-            Array(store.printers[start..<min(start + Self.dockPrinterColumns, store.printers.count)])
-        }) {
-            let row = NSStackView(views: pair.map { printerCell(for: $0, settings: settings) })
-            row.orientation = .horizontal
-            row.alignment = .centerY
-            row.distribution = .fillEqually
-            row.spacing = Self.dockPrinterGap
-            row.translatesAutoresizingMaskIntoConstraints = false
-            row.widthAnchor.constraint(equalToConstant: Self.dockPrinterListWidth).isActive = true
-            dockPrintersStack.addView(row, in: .top)
+        for printer in store.printers {
+            let box = NSButton(checkboxWithTitle: printer.name, target: self,
+                               action: #selector(dockPrinterToggled(_:)))
+            box.identifier = NSUserInterfaceItemIdentifier(printer.serial)
+            box.font = .systemFont(ofSize: 13)
+            box.toolTip = printer.model
+            dockPrintersHolder.addView(box, in: .bottom)
+
+            // A brand with no stream Gantry can decode is simply not offered the choice, rather than
+            // being listed with a control that can never be used.
+            guard CameraFeedController.supportsCamera(printer.kind) else { continue }
+            let camera = NSButton(checkboxWithTitle: printer.name, target: self,
+                                  action: #selector(dockPrinterCameraToggled(_:)))
+            camera.identifier = NSUserInterfaceItemIdentifier("camera:\(printer.serial)")
+            camera.font = .systemFont(ofSize: 13)
+            camera.toolTip = printer.model
+            dockCamerasHolder.addView(camera, in: .bottom)
         }
-        let rows = max(1, Int(ceil(Double(store.printers.count) / Double(Self.dockPrinterColumns))))
-        dockPrintersHeight?.constant = min(CGFloat(rows) * 27 + 12, 120)
         syncDockPrinterSwitches()
     }
-
-    /// One printer in the list: a checkbox carrying its name, and a small camera toggle on the right.
-    /// Two decisions per printer, because being in the strip and hanging a picture under its row are
-    /// separate choices. The camera is the smaller control, because it is the rarer one.
-    private func printerCell(for printer: SavedPrinter, settings: AppSettings) -> NSView {
-        let box = NSButton(checkboxWithTitle: printer.name, target: self,
-                           action: #selector(dockPrinterToggled(_:)))
-        box.identifier = NSUserInterfaceItemIdentifier(printer.serial)
-        box.font = .systemFont(ofSize: 12)
-        box.toolTip = printer.model
-        // Half a column is not much room, so a long name is clipped rather than allowed to push the
-        // camera button off the edge. The tooltip still carries the model.
-        box.lineBreakMode = .byTruncatingTail
-        box.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let camera = NSButton()
-        camera.identifier = NSUserInterfaceItemIdentifier("camera:\(printer.serial)")
-        camera.setButtonType(.toggle)
-        camera.bezelStyle = .accessoryBarAction
-        camera.image = NSImage(systemSymbolName: "video", accessibilityDescription: nil)
-        camera.alternateImage = NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)
-        camera.imagePosition = .imageOnly
-        camera.target = self
-        camera.action = #selector(dockPrinterCameraToggled(_:))
-        camera.toolTip = settings.t("Camera under the strip")
-        camera.setContentHuggingPriority(.required, for: .horizontal)
-
-        let cell = NSView()
-        cell.translatesAutoresizingMaskIntoConstraints = false
-        for control in [box, camera] as [NSView] {
-            control.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(control)
-        }
-        NSLayoutConstraint.activate([
-            box.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
-            box.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            camera.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
-            camera.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            box.trailingAnchor.constraint(lessThanOrEqualTo: camera.leadingAnchor, constant: -6),
-            cell.heightAnchor.constraint(equalTo: camera.heightAnchor)
-        ])
-        return cell
-    }
-
-    /// Two columns, and the width they share. The list sits inside the control column, less the
-    /// scroller's bezel and the stack's own insets.
-    private static let dockPrinterColumns = 2
-    private static let dockPrinterGap: CGFloat = 10
-    private static let dockPrinterListWidth = SettingsMetrics.controlColumn - 20
 
     private func syncDockPrinterSwitches() {
         let settings = AppSettings.shared
         let hidden = settings.edgeDockHiddenPrinters
         let withCamera = settings.edgeDockCameraSerials
-        for row in dockPrintersStack.views {
-            for control in identifiedControls(in: row) {
-                guard let name = control.identifier?.rawValue else { continue }
-                guard let button = control as? NSButton else { continue }
-                guard name.hasPrefix("camera:") else {
-                    button.state = hidden.contains(name) ? .off : .on
-                    button.isEnabled = settings.edgeDockEnabled
-                    continue
-                }
-                let serial = String(name.dropFirst("camera:".count))
-                let kind = store.printers.first(where: { $0.serial == serial })?.kind
-                let on = withCamera.contains(serial)
-                button.state = on ? .on : .off
-                // The filled glyph alone is a subtle difference at this size; the accent colour makes
-                // "this printer is streaming" readable at a glance.
-                button.contentTintColor = on ? .controlAccentColor : .secondaryLabelColor
-                // A brand with no stream Gantry can decode never gets the choice offered.
-                button.isEnabled = settings.edgeDockEnabled && settings.edgeDockCamera
-                    && !hidden.contains(serial) && CameraFeedController.supportsCamera(kind)
-                button.isHidden = !CameraFeedController.supportsCamera(kind)
-            }
+        for control in identifiedControls(in: dockPrintersHolder) {
+            guard let button = control as? NSButton, let serial = button.identifier?.rawValue else { continue }
+            button.state = hidden.contains(serial) ? .off : .on
+            button.isEnabled = settings.edgeDockEnabled
         }
+        for control in identifiedControls(in: dockCamerasHolder) {
+            guard let button = control as? NSButton,
+                  let name = button.identifier?.rawValue, name.hasPrefix("camera:") else { continue }
+            let serial = String(name.dropFirst("camera:".count))
+            button.state = withCamera.contains(serial) ? .on : .off
+            // A picture only makes sense for a printer that is in the strip in the first place, and
+            // only while the master camera switch is on.
+            button.isEnabled = settings.edgeDockEnabled && settings.edgeDockCamera
+                && !hidden.contains(serial)
+        }
+        dockCamerasCaption.textColor = settings.edgeDockEnabled && settings.edgeDockCamera
+            ? .labelColor : .tertiaryLabelColor
+        dockPrintersCaption.textColor = settings.edgeDockEnabled ? .labelColor : .tertiaryLabelColor
     }
 
     /// The per-printer row nests its controls, so a flat pass over `subviews` misses them.
