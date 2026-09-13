@@ -33,6 +33,7 @@ row_gap = FLEET["rowGap"]["cards"]
 theme_gap = TOKENS["gap"]
 radius = TOKENS["radius"]["card"]
 settings = CONTRACT["settingsWindow"]["window"]
+macos_settings = CONTRACT["settingsWindow"]["macOS"]
 floating = CONTRACT["floatingWindow"]
 
 # macOS is the visual reference, but it is checked too so a macOS change must update the contract.
@@ -47,9 +48,32 @@ require("Sources/Gantry/App/GantryTheme.swift", rf"cardRadius:\s*CGFloat\s*=\s*{
         "card radius differs from the contract")
 require("Sources/Gantry/App/GantryTheme.swift", rf"gap:\s*CGFloat\s*=\s*{theme_gap}\b",
         "theme gap differs from the contract")
+# macOS no longer pins a settings-window size: the window fits whichever pane is showing, which is
+# what a system settings window does. Windows and GNU/Linux still use the contract's fixed size, and
+# their rules further down still enforce it.
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        rf"contentRect:\s*NSRect\(x:\s*0,\s*y:\s*0,\s*width:\s*{settings['width']},\s*height:\s*{settings['height']}\)",
-        "settings window size differs from the contract")
+        r"tabStyle = \.toolbar",
+        "macOS settings window does not use the system's toolbar-style pane switcher")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"toolbarStyle = \.preference",
+        "macOS settings window lays its toolbar out like a document window's")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        rf"enum SettingsPaneID: String \{{\s*case (?:\w+, ){{{len(macos_settings['panes']) - 1}}}\w+",
+        "macOS settings pane count differs from the contract")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"\.general, \.appearance, \.notifications, \.windows, \.integrations, \.advanced",
+        "macOS settings panes are not in the contract's order")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        rf"captionColumn: CGFloat = {macos_settings['metrics']['captionColumn']}[\s\S]*?"
+        rf"controlColumn: CGFloat = {macos_settings['metrics']['controlColumn']}",
+        "macOS settings columns differ from the contract")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"NSGridView\(numberOfColumns: 2[\s\S]*?column\(at: 0\)\.xPlacement = \.trailing"
+        r"[\s\S]*?column\(at: 1\)\.xPlacement = \.leading",
+        "macOS settings do not use the two-column preferences grid")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"NSButton\(checkboxWithTitle:",
+        "macOS settings booleans are not checkboxes")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
@@ -74,7 +98,7 @@ require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         r"measuredContent \* cardScale",
         "macOS popover height does not include printer card magnification")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"cardScaleRow[\s\S]*?dockScaleRow",
+        r"cardScaleControl[\s\S]*?dockScaleControl",
         "macOS settings are missing card and edge-dock scale controls")
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"edgeDockScalePercent[\s\S]*?Self\.collapsedWidth \* scale",
@@ -98,7 +122,7 @@ require("Sources/Gantry/Views/CameraFeed.swift",
         r"final class CameraFeedController[\s\S]*?func start\(\)[\s\S]*?func stop\(\)",
         "the camera feed is not reusable outside the detail view")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"dockPinnedRow[\s\S]*?dockCameraRow",
+        r"dockPinnedCheck[\s\S]*?dockCameraCheck",
         "macOS settings are missing the edge-dock pin and camera switches")
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"pinButtonRect\(\)[\s\S]*?onUnpin\?\(\)",

@@ -2,167 +2,191 @@ import AppKit
 import Combine
 import CoreImage
 
-/// The settings window: three tabs (General / Appearance / Advanced), each a scrolling column of
-/// grouped cards. Every line is a `SettingsRowView`, so labels share one left column and controls one
-/// right column across the whole window instead of each section inventing its own layout.
-private enum SettingsTab: Int, CaseIterable {
-    case general, appearance, advanced
+/// The settings window, built the way macOS builds its own: an `NSTabViewController` in toolbar mode
+/// inside a close-only title bar. AppKit then owns the toolbar, the icons, the switching animation,
+/// the window title (it is always the active pane's name, so it also reads correctly in the Window
+/// menu) and the resize between panes. None of that is drawn here any more.
+///
+/// What this replaced: a fixed 640 by 720 window with its own `#0C0D0E` canvas, a hand-built pill tab
+/// bar, a large bold header, rounded sections with hairline borders, a footer with a Done button, and
+/// three tabs, one of which carried the whole look-and-feel, the card contents, the floating window
+/// and the entire edge dock with its printer list. That tab was the reason the window felt scattered.
+///
+/// Six panes now, one idea each, and none of them scrolls. Only the chrome and the layout changed:
+/// every setting, every action and the whole refresh path are the ones that were already here.
+private enum SettingsPaneID: String {
+    case general, appearance, notifications, windows, integrations, advanced
 
-    /// LITE has nothing to put under Advanced (no developer mode, no Telegram, no web dashboard), so
-    /// it shows two tabs. The bar addresses tabs by position in this list, not by rawValue.
-    static var visible: [SettingsTab] { Build.isLite ? [.general, .appearance] : allCases }
+    /// LITE has no Spoolbase, no updates, no floating window, no edge dock, no Telegram, no web
+    /// dashboard and no developer switches, which empties three of the six panes. It therefore shows
+    /// the first three, and the About section moves into General because there is no Advanced pane
+    /// left to hold it.
+    static var visible: [SettingsPaneID] {
+        Build.isLite ? [.general, .appearance, .notifications]
+                     : [.general, .appearance, .notifications, .windows, .integrations, .advanced]
+    }
+
+    var symbolName: String {
+        switch self {
+        case .general: "gearshape"
+        case .appearance: "paintbrush"
+        case .notifications: "bell"
+        case .windows: "macwindow.on.rectangle"
+        case .integrations: "antenna.radiowaves.left.and.right"
+        case .advanced: "slider.horizontal.3"
+        }
+    }
 }
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: PrinterStore
-
-    // Chrome
-    private let headerTitle = NSTextField(labelWithString: "")
-    private let headerSubtitle = NSTextField(labelWithString: "")
-    private let tabBar = SettingsTabBar(count: SettingsTab.visible.count)
-    private let pagesContainer = NSView()
-    private var pages: [SettingsTab: NSScrollView] = [:]
-    private var currentTab: SettingsTab = .general
-    private let closeButton = NSButton()
-    private let footerVersion = NSTextField(labelWithString: "")
+    private let tabController = SettingsTabViewController()
+    private var panes: [SettingsPaneID: SettingsPane] = [:]
 
     // MARK: General
-    private let basicsGroupLabel = NSTextField(labelWithString: "")
     /// A popup, not a two-way segment: the list is whatever catalogs i18n/ contains, so a new
     /// language file appears here on its own.
     private let languageControl = NSPopUpButton(frame: .zero, pullsDown: false)
-    private lazy var languageRow = SettingsRowView(control: languageControl)
-    private lazy var launchRow = SettingsToggleRow(target: self, action: #selector(launchAtLoginChanged))
-    private lazy var spoolbaseRow = SettingsToggleRow(target: self, action: #selector(spoolbaseToggled))
+    private let languageCaption = settingsCaption()
+    private lazy var launchCheck = SettingsCheckbox(target: self, action: #selector(launchAtLoginChanged))
+    private lazy var spoolbaseCheck = SettingsCheckbox(target: self, action: #selector(spoolbaseToggled))
+    private let basicsCaption = settingsCaption()
 
-    private let notificationsGroupLabel = NSTextField(labelWithString: "")
-    private lazy var notifyFinishedRow = SettingsToggleRow(target: self, action: #selector(notificationToggled))
-    private lazy var notifyFinishingSoonRow = SettingsToggleRow(target: self, action: #selector(notificationToggled))
-    private lazy var notifyErrorRow = SettingsToggleRow(target: self, action: #selector(notificationToggled))
-    private lazy var notifyPausedRow = SettingsToggleRow(target: self, action: #selector(notificationToggled))
-    private lazy var notifyLowFilamentRow = SettingsToggleRow(target: self, action: #selector(notificationToggled))
-    private lazy var notifyHumidityRow = SettingsToggleRow(target: self, action: #selector(notificationToggled))
-    // Quiet hours keeps its two clocks on the same line as the label, so the control column stays a
-    // single column: [from]–[to] then the switch, like every other row.
+    private let updatesHeading = settingsHeading()
+    private let updateButton = NSButton()
+    private let updateCaption = settingsCaption()
+    private let updateStatus = settingsNote()
+    private lazy var autoUpdateCheck = SettingsCheckbox(target: self, action: #selector(autoUpdateToggled))
+
+    private let aboutHeading = settingsHeading()
+    private let appCaption = settingsCaption()
+    private let appVersionLabel = NSTextField(labelWithString: "")
+    private let githubCaption = settingsCaption()
+    private let xCaption = settingsCaption()
+    private let githubButton = NSButton()
+    private let xButton = NSButton()
+    private let supportButton = NSButton()
+    private let supportSubtitle = settingsNote()
+
+    // MARK: Notifications
+    private let notificationsCaption = settingsCaption()
+    private lazy var notifyFinishedCheck = SettingsCheckbox(target: self, action: #selector(notificationToggled))
+    private lazy var notifyFinishingSoonCheck = SettingsCheckbox(target: self, action: #selector(notificationToggled))
+    private lazy var notifyErrorCheck = SettingsCheckbox(target: self, action: #selector(notificationToggled))
+    private lazy var notifyPausedCheck = SettingsCheckbox(target: self, action: #selector(notificationToggled))
+    private lazy var notifyLowFilamentCheck = SettingsCheckbox(target: self, action: #selector(notificationToggled))
+    private lazy var notifyHumidityCheck = SettingsCheckbox(target: self, action: #selector(notificationToggled))
+    private lazy var quietHoursCheck = SettingsCheckbox(target: self, action: #selector(quietHoursChanged))
     private let quietStartPicker = NSDatePicker()
     private let quietEndPicker = NSDatePicker()
-    private let quietHoursSwitch = NSSwitch()
-    private lazy var quietHoursRow = SettingsRowView(control: quietControls)
+    private let quietRangeCaption = settingsCaption()
     private lazy var quietControls: NSStackView = {
-        let dash = NSTextField(labelWithString: "–")
-        dash.textColor = GantryTheme.secondary
+        let separator = NSTextField(labelWithString: "")
+        separator.font = .systemFont(ofSize: 13)
+        separator.textColor = .secondaryLabelColor
+        quietSeparatorLabel = separator
         // Every piece must hug its content, or whichever one hugs loosest absorbs the row's slack.
-        for view in [dash, quietHoursSwitch] as [NSView] {
+        for view in [separator, quietStartPicker, quietEndPicker] as [NSView] {
             view.setContentHuggingPriority(.required, for: .horizontal)
         }
-        let stack = NSStackView(views: [quietStartPicker, dash, quietEndPicker, quietHoursSwitch])
+        let stack = NSStackView(views: [quietStartPicker, separator, quietEndPicker])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 6
-        stack.setCustomSpacing(12, after: quietEndPicker)
-        // NSStackView keeps its own hugging priority, and the horizontal default is low: without this
-        // the stack stretches across the free width and its contents bunch up at the left end instead
-        // of sitting in the control column with every other row.
         stack.setHuggingPriority(.required, for: .horizontal)
         return stack
     }()
-
-    private let updatesGroupLabel = NSTextField(labelWithString: "")
-    private let updateButton = NSButton()
-    private lazy var updateRow = SettingsRowView(control: updateButton)
-    private lazy var autoUpdateRow = SettingsToggleRow(target: self, action: #selector(autoUpdateToggled))
-
-    private let aboutGroupLabel = NSTextField(labelWithString: "")
-    private lazy var appRow = SettingsRowView(control: nil)
-    private let githubButton = NSButton()
-    private let xButton = NSButton()
-    private lazy var githubRow = SettingsRowView(control: githubButton)
-    private lazy var xRow = SettingsRowView(control: xButton)
-    private let supportButton = NSButton()
-    private let supportSubtitle = NSTextField(wrappingLabelWithString: "")
+    private var quietSeparatorLabel: NSTextField?
 
     // MARK: Appearance
-    private let themeGroupLabel = NSTextField(labelWithString: "")
     private let themeControl = NSSegmentedControl(labels: ["LIGHT", "DARK"], trackingMode: .selectOne, target: nil, action: nil)
     private let transparencyControl = NSSegmentedControl(labels: ["1", "2", "3"], trackingMode: .selectOne, target: nil, action: nil)
-    private lazy var themeRow = SettingsRowView(control: themeControl)
-    private lazy var transparencyRow = SettingsRowView(control: transparencyControl)
-    private lazy var monochromeRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
+    private let themeCaption = settingsCaption()
+    private let transparencyCaption = settingsCaption()
+    private lazy var monochromeCheck = SettingsCheckbox(target: self, action: #selector(cardContentToggled))
 
-    private let cardsGroupLabel = NSTextField(labelWithString: "")
-    private lazy var cardFileNameRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
-    private lazy var cardProgressRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
-    private lazy var cardTempsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
-    private lazy var cardFilamentsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
+    private let cardsHeading = settingsHeading()
+    private let cardScaleCaption = settingsCaption()
     private let cardScaleControl = SettingsScaleControl()
-    private lazy var cardScaleRow = SettingsRowView(control: cardScaleControl)
-    private lazy var cardSpoolGramsRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
-    private lazy var cardDetailsChipRow = SettingsToggleRow(target: self, action: #selector(cardContentToggled))
+    private let cardContentCaption = settingsCaption()
+    private lazy var cardFileNameCheck = SettingsCheckbox(target: self, action: #selector(cardContentToggled))
+    private lazy var cardProgressCheck = SettingsCheckbox(target: self, action: #selector(cardContentToggled))
+    private lazy var cardTempsCheck = SettingsCheckbox(target: self, action: #selector(cardContentToggled))
+    private lazy var cardFilamentsCheck = SettingsCheckbox(target: self, action: #selector(cardContentToggled))
+    private lazy var cardSpoolGramsCheck = SettingsCheckbox(target: self, action: #selector(cardContentToggled))
+    private lazy var cardDetailsChipCheck = SettingsCheckbox(target: self, action: #selector(cardContentToggled))
 
-    private let floatingWindowGroupLabel = NSTextField(labelWithString: "")
-    private lazy var floatingWindowEnableRow = SettingsToggleRow(target: self, action: #selector(floatingWindowToggled))
+    // MARK: Windows and the strip
+    private let floatingWindowCaption = settingsCaption()
+    private lazy var floatingWindowCheck = SettingsCheckbox(target: self, action: #selector(floatingWindowToggled))
 
-    private let dockGroupLabel = NSTextField(labelWithString: "")
-    private lazy var dockEnableRow = SettingsToggleRow(target: self, action: #selector(dockEnableToggled))
+    private let dockHeading = settingsHeading()
+    private lazy var dockEnableCheck = SettingsCheckbox(target: self, action: #selector(dockEnableToggled))
     private let dockEdgeControl = NSSegmentedControl(labels: ["L", "R"], trackingMode: .selectOne, target: nil, action: nil)
-    private lazy var dockEdgeRow = SettingsRowView(control: dockEdgeControl)
+    private let dockEdgeCaption = settingsCaption()
     private let dockScaleControl = SettingsScaleControl()
-    private lazy var dockScaleRow = SettingsRowView(control: dockScaleControl)
-    private lazy var dockPinnedRow = SettingsToggleRow(target: self, action: #selector(dockPinnedToggled))
-    private lazy var dockCameraRow = SettingsToggleRow(target: self, action: #selector(dockCameraToggled))
-    private lazy var dockOnlyPrintingRow = SettingsToggleRow(target: self, action: #selector(dockOnlyPrintingToggled))
-    private let dockPrintersCaption = NSTextField(labelWithString: "")
-    /// The per-printer list is its own card so it can be rebuilt wholesale when printers come and go,
-    /// without disturbing the fixed rows above it.
-    private let dockPrintersHolder = NSView()
+    private let dockScaleCaption = settingsCaption()
+    private let dockBehaviourCaption = settingsCaption()
+    private lazy var dockPinnedCheck = SettingsCheckbox(target: self, action: #selector(dockPinnedToggled))
+    private lazy var dockCameraCheck = SettingsCheckbox(target: self, action: #selector(dockCameraToggled))
+    private lazy var dockOnlyPrintingCheck = SettingsCheckbox(target: self, action: #selector(dockOnlyPrintingToggled))
+    private let dockPrintersCaption = settingsCaption()
+    /// The per-printer list is a real list in a bordered scroller, so a large fleet scrolls instead of
+    /// stretching the window past the screen.
+    private let dockPrintersStack = NSStackView()
+    private let dockPrintersScroll = NSScrollView()
+    private var dockPrintersHeight: NSLayoutConstraint?
     private var dockPrinterSerials: [String] = []
-    private let dockHint = NSTextField(wrappingLabelWithString: "")
+    private let dockHint = settingsNote()
 
-    // MARK: Advanced
-    private let developerGroupLabel = NSTextField(labelWithString: "")
-    private lazy var developerRow = SettingsToggleRow(target: self, action: #selector(developerToggled))
-    private lazy var printerControlRow = SettingsToggleRow(target: self, action: #selector(printerControlToggled))
-    private lazy var scriptActionsRow = SettingsToggleRow(target: self, action: #selector(scriptActionsToggled))
-
-    private let telegramGroupLabel = NSTextField(labelWithString: "")
-    private lazy var telegramEnableRow = SettingsToggleRow(target: self, action: #selector(telegramToggled))
+    // MARK: Integrations
+    private let telegramHeading = settingsHeading()
+    private lazy var telegramEnableCheck = SettingsCheckbox(target: self, action: #selector(telegramToggled))
     private let telegramTokenField = NSTextField()
     private let telegramChatField = NSTextField()
-    private lazy var telegramTokenRow = SettingsRowView(control: telegramTokenField)
-    private lazy var telegramChatRow = SettingsRowView(control: telegramChatField)
+    private let telegramTokenCaption = settingsCaption()
+    private let telegramChatCaption = settingsCaption()
     private let telegramTestButton = NSButton()
-    private lazy var telegramTestRow = SettingsRowView(control: telegramTestButton)
-    private let telegramHint = NSTextField(wrappingLabelWithString: "")
+    private let telegramTestCaption = settingsCaption()
+    private let telegramTestStatus = settingsNote()
+    private let telegramHint = settingsNote()
 
-    private let webGroupLabel = NSTextField(labelWithString: "")
-    private lazy var webEnableRow = SettingsToggleRow(target: self, action: #selector(webEnabledChanged))
+    private let webHeading = settingsHeading()
+    private lazy var webEnableCheck = SettingsCheckbox(target: self, action: #selector(webEnabledChanged))
     private let webPrimaryURL = NSTextField(labelWithString: "")
     private let webLanURL = NSTextField(labelWithString: "")
-    private let webHint = NSTextField(wrappingLabelWithString: "")
+    private let webHint = settingsNote(width: 200)
     private let webQRImage = NSImageView()
     private let webContentStack = NSStackView()
-    private var webContentRow: SettingsContentRow?
 
+    // MARK: Advanced
+    private let featuresCaption = settingsCaption()
+    private lazy var developerCheck = SettingsCheckbox(target: self, action: #selector(developerToggled))
+    private lazy var printerControlCheck = SettingsCheckbox(target: self, action: #selector(printerControlToggled))
+    private lazy var scriptActionsCheck = SettingsCheckbox(target: self, action: #selector(scriptActionsToggled))
 
     private var settingsSubscription: AnyCancellable?
     var onClose: (() -> Void)?
 
     init(store: PrinterStore) {
         self.store = store
+        // No size here on purpose. The window takes its size from the active pane, which is what a
+        // system settings window does, and it is why the contract no longer pins one.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
-            styleMask: [.titled, .closable, .resizable],
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 320),
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.contentMinSize = NSSize(width: 600, height: 520)
+        // The toolbar style that puts the pane icons under the title, centred, the way every system
+        // settings pane looks. Without this AppKit lays the toolbar out like a document window's.
+        window.toolbarStyle = .preference
         super.init(window: window)
         window.delegate = self
-        buildInterface()
+        buildPanes()
+        window.contentViewController = tabController
         refresh()
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
@@ -171,9 +195,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     required init?(coder: NSCoder) { nil }
 
-    /// Keeps the dashboard visible as a live preview while appearance settings are edited. The
-    /// settings window uses the dashboard's level (important when "always on top" is enabled) and
-    /// is centered over it without becoming its child, so switching window mode cannot hide both.
     /// Centred on the screen, always. It used to be centred on the fleet panel, which parked it
     /// straight on top of the cards the user had just come to adjust. `companion` only lends its
     /// window level, so the panel cannot end up covering the settings window they are typing in.
@@ -182,6 +203,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         showWindow(nil)
         guard let window else { return }
         window.level = companion?.level ?? .normal
+        resizeToSelectedPane()
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -192,116 +214,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         onClose?()
     }
 
-    // MARK: Layout helpers
+    // MARK: Panes
 
-    /// Stacks rows into one rounded card, separated by hairlines that start where the labels do.
-    private func makeCard(_ rows: [NSView]) -> NSView {
-        var interleaved: [NSView] = []
-        for (index, row) in rows.enumerated() {
-            if index > 0 { interleaved.append(makeSeparator()) }
-            interleaved.append(row)
-        }
-        let stack = NSStackView(views: interleaved)
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 0
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.cornerRadius = 12
-        container.layer?.backgroundColor = GantryTheme.card.withAlphaComponent(0.55).cgColor
-        container.layer?.borderWidth = 1
-        container.layer?.borderColor = GantryTheme.line.cgColor
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ] + interleaved.map { $0.widthAnchor.constraint(equalTo: stack.widthAnchor) })
-        return container
-    }
-
-    private func makeSeparator() -> NSView {
-        let line = NSView()
-        line.wantsLayer = true
-        line.layer?.backgroundColor = GantryTheme.line.cgColor
-        line.translatesAutoresizingMaskIntoConstraints = false
-        line.heightAnchor.constraint(equalToConstant: 1).isActive = true
-        return line
-    }
-
-    /// A quiet uppercase caption above a card.
-    private func makeGroup(_ title: NSTextField, _ rows: [NSView]) -> NSView {
-        title.font = .systemFont(ofSize: 10, weight: .semibold)
-        title.textColor = GantryTheme.muted
-        let card = makeCard(rows)
-        let stack = NSStackView(views: [title, card])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 7
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        card.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return stack
-    }
-
-    /// One tab's scrolling column of groups.
-    private func makePage(_ groups: [NSView]) -> NSScrollView {
-        let stack = NSStackView(views: groups)
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 18
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let scroll = NSScrollView()
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        let document = SettingsFlippedView()
-        document.translatesAutoresizingMaskIntoConstraints = false
-        document.addSubview(stack)
-        scroll.documentView = document
-        NSLayoutConstraint.activate([
-            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 22),
-            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -22),
-            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 4),
-            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -22)
-        ] + groups.map { $0.widthAnchor.constraint(equalTo: stack.widthAnchor) })
-        return scroll
-    }
-
-    private func caption(_ field: NSTextField) -> NSTextField {
-        field.font = .systemFont(ofSize: 11)
-        field.textColor = GantryTheme.muted
-        return field
-    }
-
-    // MARK: Interface
-
-    private func buildInterface() {
-        guard let content = window?.contentView else { return }
-        content.wantsLayer = true
-        content.layer?.backgroundColor = GantryTheme.canvas.cgColor
-
-        headerTitle.font = .systemFont(ofSize: 19, weight: .bold)
-        headerTitle.textColor = GantryTheme.text
-        headerSubtitle.font = .systemFont(ofSize: 11)
-        headerSubtitle.textColor = GantryTheme.muted
-        let headerText = NSStackView(views: [headerTitle, headerSubtitle])
-        headerText.orientation = .vertical
-        headerText.alignment = .leading
-        headerText.spacing = 1
-
-        tabBar.onSelect = { [weak self] index in
-            let tabs = SettingsTab.visible
-            guard index >= 0, index < tabs.count else { return }
-            self?.show(tab: tabs[index])
-        }
-
+    private func buildPanes() {
         languageControl.target = self
         languageControl.action = #selector(languageChanged)
         configureSegmented(themeControl, action: #selector(themeChanged), widths: [82, 82])
@@ -310,64 +225,218 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         cardScaleControl.onStep = { [weak self] direction in self?.changeCardScale(direction) }
         dockScaleControl.onStep = { [weak self] direction in self?.changeDockScale(direction) }
 
-        pages[.general] = makePage(buildGeneralGroups())
-        pages[.appearance] = makePage(buildAppearanceGroups())
-        if Build.hasExtras { pages[.advanced] = makePage(buildAdvancedGroups()) }
+        var items: [NSTabViewItem] = []
+        for id in SettingsPaneID.visible {
+            let pane = SettingsPane(identifier: id.rawValue, symbolName: id.symbolName,
+                                    content: content(for: id))
+            panes[id] = pane
+            let item = NSTabViewItem(viewController: pane)
+            item.image = NSImage(systemSymbolName: id.symbolName, accessibilityDescription: nil)
+            item.identifier = id.rawValue
+            items.append(item)
+        }
+        tabController.tabViewItems = items
+        tabController.onSelect = { [weak self] in self?.resizeToSelectedPane(animated: true) }
+    }
 
-        pagesContainer.translatesAutoresizingMaskIntoConstraints = false
-        for page in pages.values {
-            pagesContainer.addSubview(page)
-            NSLayoutConstraint.activate([
-                page.leadingAnchor.constraint(equalTo: pagesContainer.leadingAnchor),
-                page.trailingAnchor.constraint(equalTo: pagesContainer.trailingAnchor),
-                page.topAnchor.constraint(equalTo: pagesContainer.topAnchor),
-                page.bottomAnchor.constraint(equalTo: pagesContainer.bottomAnchor)
-            ])
+    private func content(for id: SettingsPaneID) -> NSGridView {
+        switch id {
+        case .general: buildGeneralPane()
+        case .appearance: buildAppearancePane()
+        case .notifications: buildNotificationsPane()
+        case .windows: buildWindowsPane()
+        case .integrations: buildIntegrationsPane()
+        case .advanced: buildAdvancedPane()
+        }
+    }
+
+    private func buildGeneralPane() -> NSGridView {
+        updateButton.target = self
+        updateButton.action = #selector(checkForUpdates)
+        updateButton.bezelStyle = .rounded
+        updateButton.controlSize = .regular
+
+        let grid = SettingsGrid()
+        grid.field(languageCaption, languageControl)
+        // Spoolbase is a full-edition tool, so LITE's basics are language and launch at login only.
+        grid.group(basicsCaption, Build.hasExtras ? [launchCheck, spoolbaseCheck] : [launchCheck])
+        if Build.hasExtras {
+            // LITE never checks for or installs updates, so it has no updates section at all.
+            grid.section(updatesHeading)
+            grid.field(updateCaption, updateButton)
+            grid.aligned(updateStatus)
+            grid.aligned(autoUpdateCheck)
+        } else {
+            appendAbout(to: grid)
+        }
+        return grid.build()
+    }
+
+    private func buildAppearancePane() -> NSGridView {
+        let grid = SettingsGrid()
+        grid.field(themeCaption, themeControl)
+        grid.field(transparencyCaption, transparencyControl)
+        grid.aligned(monochromeCheck)
+        grid.section(cardsHeading)
+        grid.field(cardScaleCaption, cardScaleControl, baseline: false)
+        // The card-content switches LITE does not build would otherwise write their default back over
+        // the stored value the moment the user touched any other one.
+        let cardContent: [NSView] = Build.hasExtras
+            ? [cardFileNameCheck, cardProgressCheck, cardTempsCheck, cardFilamentsCheck,
+               cardSpoolGramsCheck, cardDetailsChipCheck]
+            : [cardFileNameCheck, cardProgressCheck, cardTempsCheck, cardFilamentsCheck]
+        grid.group(cardContentCaption, cardContent)
+        return grid.build()
+    }
+
+    private func buildNotificationsPane() -> NSGridView {
+        for picker in [quietStartPicker, quietEndPicker] {
+            picker.datePickerStyle = .textFieldAndStepper
+            picker.datePickerElements = .hourMinute
+            picker.target = self
+            picker.action = #selector(quietHoursChanged)
+            picker.setContentHuggingPriority(.required, for: .horizontal)
         }
 
-        closeButton.target = self
-        closeButton.action = #selector(closeSettings)
-        closeButton.bezelStyle = .rounded
-        closeButton.keyEquivalent = "\r"
-        footerVersion.font = .systemFont(ofSize: 11)
-        footerVersion.textColor = GantryTheme.muted
-        let footer = NSStackView(views: [footerVersion, NSView(), closeButton])
-        footer.orientation = .horizontal
-        footer.alignment = .centerY
-        footer.spacing = 8
-        footer.translatesAutoresizingMaskIntoConstraints = false
-        let footerLine = makeSeparator()
+        let grid = SettingsGrid()
+        grid.group(notificationsCaption, [notifyFinishedCheck, notifyFinishingSoonCheck,
+                                          notifyErrorCheck, notifyPausedCheck,
+                                          notifyLowFilamentCheck, notifyHumidityCheck])
+        grid.separator()
+        grid.aligned(quietHoursCheck)
+        grid.field(quietRangeCaption, quietControls, baseline: false)
+        return grid.build()
+    }
 
-        for view in [headerText, tabBar, pagesContainer, footer, footerLine] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            content.addSubview(view)
-        }
-
+    private func buildWindowsPane() -> NSGridView {
+        dockPrintersStack.orientation = .vertical
+        dockPrintersStack.alignment = .leading
+        dockPrintersStack.spacing = 5
+        dockPrintersStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+        dockPrintersStack.translatesAutoresizingMaskIntoConstraints = false
+        let document = SettingsFlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(dockPrintersStack)
         NSLayoutConstraint.activate([
-            // The title bar is transparent, so the header clears the traffic lights by hand.
-            headerText.topAnchor.constraint(equalTo: content.topAnchor, constant: 30),
-            headerText.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 22),
-            headerText.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -22),
-
-            tabBar.topAnchor.constraint(equalTo: headerText.bottomAnchor, constant: 14),
-            tabBar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 22),
-            tabBar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -22),
-
-            pagesContainer.topAnchor.constraint(equalTo: tabBar.bottomAnchor, constant: 14),
-            pagesContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            pagesContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            pagesContainer.bottomAnchor.constraint(equalTo: footerLine.topAnchor),
-
-            footerLine.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            footerLine.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            footerLine.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -11),
-
-            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 22),
-            footer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -22),
-            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -14)
+            dockPrintersStack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            dockPrintersStack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            dockPrintersStack.topAnchor.constraint(equalTo: document.topAnchor),
+            dockPrintersStack.bottomAnchor.constraint(equalTo: document.bottomAnchor)
+        ])
+        dockPrintersScroll.documentView = document
+        dockPrintersScroll.hasVerticalScroller = true
+        dockPrintersScroll.autohidesScrollers = true
+        dockPrintersScroll.borderType = .bezelBorder
+        dockPrintersScroll.drawsBackground = true
+        dockPrintersScroll.translatesAutoresizingMaskIntoConstraints = false
+        let height = dockPrintersScroll.heightAnchor.constraint(equalToConstant: 96)
+        dockPrintersHeight = height
+        NSLayoutConstraint.activate([
+            dockPrintersScroll.widthAnchor.constraint(equalToConstant: SettingsMetrics.controlColumn),
+            document.widthAnchor.constraint(equalTo: dockPrintersScroll.contentView.widthAnchor),
+            height
         ])
 
-        show(tab: .general)
+        let grid = SettingsGrid()
+        grid.group(floatingWindowCaption, [floatingWindowCheck])
+        grid.section(dockHeading)
+        grid.aligned(dockEnableCheck)
+        grid.field(dockEdgeCaption, dockEdgeControl)
+        grid.field(dockScaleCaption, dockScaleControl, baseline: false)
+        grid.group(dockBehaviourCaption, [dockPinnedCheck, dockCameraCheck, dockOnlyPrintingCheck])
+        grid.field(dockPrintersCaption, dockPrintersScroll, baseline: false)
+        grid.aligned(dockHint)
+        return grid.build()
+    }
+
+    private func buildIntegrationsPane() -> NSGridView {
+        for field in [telegramTokenField, telegramChatField] {
+            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            field.bezelStyle = .roundedBezel
+            field.target = self
+            field.action = #selector(telegramFieldChanged)
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
+        }
+        telegramTokenField.placeholderString = "123456:ABC-DEF..."
+        telegramChatField.placeholderString = "123456789"
+        telegramTestButton.target = self
+        telegramTestButton.action = #selector(telegramTest)
+        telegramTestButton.bezelStyle = .rounded
+
+        webPrimaryURL.font = .monospacedSystemFont(ofSize: 12, weight: .semibold)
+        webPrimaryURL.textColor = .labelColor
+        webPrimaryURL.isSelectable = true
+        webLanURL.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        webLanURL.textColor = .secondaryLabelColor
+        webLanURL.isSelectable = true
+        let webURLs = NSStackView(views: [webPrimaryURL, webLanURL, webHint])
+        webURLs.orientation = .vertical
+        webURLs.alignment = .leading
+        webURLs.spacing = 5
+        webQRImage.imageScaling = .scaleProportionallyUpOrDown
+        webQRImage.wantsLayer = true
+        webQRImage.layer?.magnificationFilter = .nearest
+        let qrHolder = NSView()
+        qrHolder.wantsLayer = true
+        qrHolder.layer?.backgroundColor = NSColor.white.cgColor
+        qrHolder.layer?.cornerRadius = 8
+        qrHolder.translatesAutoresizingMaskIntoConstraints = false
+        webQRImage.translatesAutoresizingMaskIntoConstraints = false
+        qrHolder.addSubview(webQRImage)
+        NSLayoutConstraint.activate([
+            qrHolder.widthAnchor.constraint(equalToConstant: 104),
+            qrHolder.heightAnchor.constraint(equalToConstant: 104),
+            webQRImage.leadingAnchor.constraint(equalTo: qrHolder.leadingAnchor, constant: 8),
+            webQRImage.trailingAnchor.constraint(equalTo: qrHolder.trailingAnchor, constant: -8),
+            webQRImage.topAnchor.constraint(equalTo: qrHolder.topAnchor, constant: 8),
+            webQRImage.bottomAnchor.constraint(equalTo: qrHolder.bottomAnchor, constant: -8)
+        ])
+        webContentStack.setViews([webURLs, qrHolder], in: .leading)
+        webContentStack.orientation = .horizontal
+        webContentStack.alignment = .top
+        webContentStack.spacing = 12
+
+        let grid = SettingsGrid()
+        grid.wide(telegramHeading)
+        grid.aligned(telegramEnableCheck)
+        grid.field(telegramTokenCaption, telegramTokenField)
+        grid.field(telegramChatCaption, telegramChatField)
+        grid.field(telegramTestCaption, telegramTestButton)
+        grid.aligned(telegramTestStatus)
+        grid.aligned(telegramHint)
+        grid.section(webHeading)
+        grid.aligned(webEnableCheck)
+        grid.aligned(webContentStack)
+        return grid.build()
+    }
+
+    private func buildAdvancedPane() -> NSGridView {
+        let grid = SettingsGrid()
+        grid.group(featuresCaption, [printerControlCheck, developerCheck, scriptActionsCheck])
+        appendAbout(to: grid)
+        return grid.build()
+    }
+
+    /// Version, the two profiles and the coffee. Its own section under Advanced in the full edition,
+    /// and folded into General in LITE, which builds no Advanced pane.
+    private func appendAbout(to grid: SettingsGrid) {
+        configureProfileButton(githubButton, action: #selector(openGitHub))
+        configureProfileButton(xButton, action: #selector(openX))
+        supportButton.target = self
+        supportButton.action = #selector(openSupport)
+        supportButton.bezelStyle = .rounded
+        supportButton.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Support")
+        supportButton.imagePosition = .imageLeading
+        appVersionLabel.font = .systemFont(ofSize: 13)
+        appVersionLabel.textColor = .secondaryLabelColor
+
+        grid.section(aboutHeading)
+        grid.field(appCaption, appVersionLabel)
+        grid.field(githubCaption, githubButton)
+        grid.field(xCaption, xButton)
+        grid.aligned(supportButton)
+        grid.aligned(supportSubtitle)
     }
 
     private func configureSegmented(_ control: NSSegmentedControl, action: Selector, widths: [CGFloat]) {
@@ -377,167 +446,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         for (index, width) in widths.enumerated() { control.setWidth(width, forSegment: index) }
     }
 
-    private func show(tab: SettingsTab) {
-        currentTab = tab
-        for (key, page) in pages { page.isHidden = key != tab }
-        if let index = SettingsTab.visible.firstIndex(of: tab) { tabBar.select(index) }
-    }
-
-    // MARK: Page contents
-
-    private func buildGeneralGroups() -> [NSView] {
-        for picker in [quietStartPicker, quietEndPicker] {
-            picker.datePickerStyle = .textFieldAndStepper
-            picker.datePickerElements = .hourMinute
-            picker.target = self
-            picker.action = #selector(quietHoursChanged)
-            // Date pickers hug loosely, so the first one would swallow the row's free width.
-            picker.setContentHuggingPriority(.required, for: .horizontal)
-        }
-        quietHoursSwitch.target = self
-        quietHoursSwitch.action = #selector(quietHoursChanged)
-
-        updateButton.target = self
-        updateButton.action = #selector(checkForUpdates)
-        updateButton.bezelStyle = .rounded
-        updateButton.controlSize = .small
-        updateButton.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Updates")
-        updateButton.imagePosition = .imageLeading
-
-        configureProfileButton(githubButton, action: #selector(openGitHub))
-        configureProfileButton(xButton, action: #selector(openX))
-        supportButton.target = self
-        supportButton.action = #selector(openSupport)
-        supportButton.bezelStyle = .rounded
-        supportButton.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Support")
-        supportButton.imagePosition = .imageLeading
-        supportSubtitle.font = .systemFont(ofSize: 10)
-        supportSubtitle.textColor = GantryTheme.muted
-        let supportStack = NSStackView(views: [supportButton, supportSubtitle])
-        supportStack.orientation = .vertical
-        supportStack.alignment = .leading
-        supportStack.spacing = 6
-        let supportRow = SettingsContentRow(supportStack)
-        supportSubtitle.widthAnchor.constraint(equalTo: supportStack.widthAnchor).isActive = true
-
-        // Spoolbase is a full-edition tool, so LITE's basics are language + launch at login only.
-        let basics: [NSView] = Build.hasExtras ? [languageRow, launchRow, spoolbaseRow]
-                                               : [languageRow, launchRow]
-        // LITE never checks for or installs updates, so it has no UPDATES section.
-        var groups: [NSView] = [
-            makeGroup(basicsGroupLabel, basics),
-            makeGroup(notificationsGroupLabel, [notifyFinishedRow, notifyFinishingSoonRow, notifyErrorRow,
-                                                notifyPausedRow, notifyLowFilamentRow, notifyHumidityRow,
-                                                quietHoursRow])
-        ]
-        if Build.hasExtras { groups.append(makeGroup(updatesGroupLabel, [updateRow, autoUpdateRow])) }
-        groups.append(makeGroup(aboutGroupLabel, [appRow, githubRow, xRow, supportRow]))
-        return groups
-    }
-
-    private func buildAppearanceGroups() -> [NSView] {
-        // LITE keeps the look-and-feel controls and the card content switches; the second and third
-        // surfaces (floating window, edge dock) and the Spoolbase/details extras on the card are gone.
-        if Build.isLite {
-            return [
-                makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
-                makeGroup(cardsGroupLabel, [cardScaleRow, cardFileNameRow, cardProgressRow,
-                                            cardTempsRow, cardFilamentsRow])
-            ]
-        }
-
-        dockHint.font = .systemFont(ofSize: 11)
-        dockHint.textColor = GantryTheme.muted
-        _ = caption(dockPrintersCaption)
-        dockPrintersCaption.font = .systemFont(ofSize: 10, weight: .semibold)
-        dockPrintersHolder.translatesAutoresizingMaskIntoConstraints = false
-
-        // The dock section is one heading over two cards: the fixed switches, then the printer list.
-        dockGroupLabel.font = .systemFont(ofSize: 10, weight: .semibold)
-        dockGroupLabel.textColor = GantryTheme.muted
-        let dockSettingsCard = makeCard([dockEnableRow, dockEdgeRow, dockScaleRow,
-                                         dockPinnedRow, dockCameraRow, dockOnlyPrintingRow])
-        let dockGroup = NSStackView(views: [dockGroupLabel, dockSettingsCard,
-                                            dockPrintersCaption, dockPrintersHolder, dockHint])
-        dockGroup.orientation = .vertical
-        dockGroup.alignment = .leading
-        dockGroup.spacing = 7
-        dockGroup.setCustomSpacing(16, after: dockSettingsCard)
-        dockGroup.setCustomSpacing(10, after: dockPrintersHolder)
-        dockGroup.translatesAutoresizingMaskIntoConstraints = false
-        for view in [dockSettingsCard, dockPrintersHolder, dockHint] {
-            view.widthAnchor.constraint(equalTo: dockGroup.widthAnchor).isActive = true
-        }
-
-        return [
-            makeGroup(themeGroupLabel, [themeRow, transparencyRow, monochromeRow]),
-            makeGroup(cardsGroupLabel, [cardScaleRow, cardFileNameRow, cardProgressRow, cardTempsRow,
-                                        cardFilamentsRow, cardSpoolGramsRow, cardDetailsChipRow]),
-            makeGroup(floatingWindowGroupLabel, [floatingWindowEnableRow]),
-            dockGroup
-        ]
-    }
-
-    private func buildAdvancedGroups() -> [NSView] {
-        for field in [telegramTokenField, telegramChatField] {
-            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-            field.bezelStyle = .roundedBezel
-            field.target = self
-            field.action = #selector(telegramFieldChanged)
-            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
-        }
-        telegramTokenField.placeholderString = "123456:ABC-DEF..."
-        telegramChatField.placeholderString = "123456789"
-        configureTextButton(telegramTestButton, action: #selector(telegramTest))
-        telegramHint.font = .systemFont(ofSize: 11)
-        telegramHint.textColor = GantryTheme.muted
-        let telegramHintRow = SettingsContentRow(telegramHint)
-
-        webPrimaryURL.font = .monospacedSystemFont(ofSize: 13, weight: .semibold)
-        webPrimaryURL.textColor = GantryTheme.text
-        webPrimaryURL.isSelectable = true
-        webLanURL.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        webLanURL.textColor = GantryTheme.secondary
-        webLanURL.isSelectable = true
-        webHint.font = .systemFont(ofSize: 11)
-        webHint.textColor = GantryTheme.muted
-        let webURLs = NSStackView(views: [webPrimaryURL, webLanURL, webHint])
-        webURLs.orientation = .vertical
-        webURLs.alignment = .leading
-        webURLs.spacing = 6
-        webURLs.setHuggingPriority(.defaultLow, for: .horizontal)
-        webQRImage.imageScaling = .scaleProportionallyUpOrDown
-        webQRImage.wantsLayer = true
-        webQRImage.layer?.magnificationFilter = .nearest
-        let qrHolder = NSView()
-        qrHolder.wantsLayer = true
-        qrHolder.layer?.backgroundColor = NSColor.white.cgColor
-        qrHolder.layer?.cornerRadius = 10
-        qrHolder.translatesAutoresizingMaskIntoConstraints = false
-        webQRImage.translatesAutoresizingMaskIntoConstraints = false
-        qrHolder.addSubview(webQRImage)
-        NSLayoutConstraint.activate([
-            qrHolder.widthAnchor.constraint(equalToConstant: 116),
-            qrHolder.heightAnchor.constraint(equalToConstant: 116),
-            webQRImage.leadingAnchor.constraint(equalTo: qrHolder.leadingAnchor, constant: 9),
-            webQRImage.trailingAnchor.constraint(equalTo: qrHolder.trailingAnchor, constant: -9),
-            webQRImage.topAnchor.constraint(equalTo: qrHolder.topAnchor, constant: 9),
-            webQRImage.bottomAnchor.constraint(equalTo: qrHolder.bottomAnchor, constant: -9)
-        ])
-        webContentStack.setViews([webURLs, qrHolder], in: .leading)
-        webContentStack.orientation = .horizontal
-        webContentStack.alignment = .top
-        webContentStack.spacing = 14
-        let webRow = SettingsContentRow(webContentStack)
-        webContentRow = webRow
-
-
-        return [
-            makeGroup(developerGroupLabel, [printerControlRow, developerRow, scriptActionsRow]),
-            makeGroup(telegramGroupLabel, [telegramEnableRow, telegramTokenRow, telegramChatRow,
-                                           telegramTestRow, telegramHintRow]),
-            makeGroup(webGroupLabel, [webEnableRow, webRow])
-        ]
+    /// Resizes the window around the active pane, and titles it after that pane.
+    ///
+    /// Both are done by hand on purpose. Handing the pane's `preferredContentSize` up to the tab
+    /// controller and letting AppKit propagate it only worked for some panes: measured across all six,
+    /// the window took the first pane's height, ignored the next two, then took the fourth's and kept
+    /// it. The window title had the same problem, staying on whichever pane happened to be selected
+    /// first, because AppKit syncs it from the toolbar's own selection rather than from the tab view.
+    /// Setting the frame and the title here is a line of code either way and it is deterministic.
+    ///
+    /// The top edge stays put while the bottom moves, which is what a settings window does; letting
+    /// `setContentSize` keep the origin instead would grow the window upward off the screen.
+    private func resizeToSelectedPane(animated: Bool = false) {
+        let index = tabController.selectedTabViewItemIndex
+        guard let window, index >= 0, index < tabController.tabViewItems.count else { return }
+        let item = tabController.tabViewItems[index]
+        window.title = item.label
+        guard let pane = item.viewController as? SettingsPane else { return }
+        pane.updatePreferredSize()
+        let target = pane.preferredContentSize
+        guard target.height > 1 else { return }
+        let top = window.frame.maxY
+        window.setContentSize(target)
+        var frame = window.frame
+        frame.origin.y = top - frame.height
+        window.setFrame(frame, display: true, animate: animated && window.isVisible)
     }
 
     // MARK: Refresh
@@ -546,91 +479,98 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         guard let window else { return }
         let settings = AppSettings.shared
         window.appearance = settings.appearance
-        window.title = settings.t("Gantry Settings")
-        headerTitle.stringValue = settings.t("Settings")
-        headerSubtitle.stringValue = "\(Build.appName) · @parametryczny"
-        tabBar.setTitles(SettingsTab.visible.map {
-            switch $0 {
-            case .general: settings.t("General")
-            case .appearance: settings.t("Appearance")
-            case .advanced: settings.t("Advanced")
-            }
-        })
+
+        // The toolbar labels follow the app's language, and AppKit takes the window title from the
+        // active one, so both are set from the same place.
+        for item in tabController.tabViewItems {
+            guard let id = (item.identifier as? String).flatMap(SettingsPaneID.init(rawValue:)) else { continue }
+            item.label = paneTitle(id, settings)
+        }
+        let index = tabController.selectedTabViewItemIndex
+        if index >= 0, index < tabController.tabViewItems.count {
+            window.title = tabController.tabViewItems[index].label
+        }
 
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.19"
-        footerVersion.stringValue = settings.t("Version {0}", version) + " • \(AccessCodeStore.modeName)"
-        closeButton.title = settings.t("Done")
-
         refreshGeneral(settings, version: version)
         refreshAppearance(settings)
         if Build.hasExtras { refreshAdvanced(settings) }
+        resizeToSelectedPane()
+    }
+
+    private func paneTitle(_ id: SettingsPaneID, _ settings: AppSettings) -> String {
+        switch id {
+        case .general: settings.t("General")
+        case .appearance: settings.t("Appearance")
+        case .notifications: settings.t("Notifications")
+        case .windows: settings.t("Windows and strip")
+        case .integrations: settings.t("Integrations")
+        case .advanced: settings.t("Advanced")
+        }
     }
 
     private func refreshGeneral(_ settings: AppSettings, version: String) {
-        basicsGroupLabel.stringValue = settings.t("BASICS")
-        languageRow.titleLabel.stringValue = settings.t("Language")
+        languageCaption.stringValue = settings.t("Language") + ":"
         let languages = Localization.available()
         languageControl.removeAllItems()
         for language in languages { languageControl.addItem(withTitle: language.name) }
         if let index = languages.firstIndex(where: { $0.code == settings.language }) {
             languageControl.selectItem(at: index)
         }
-        launchRow.titleLabel.stringValue = settings.t("Launch at login")
-        launchRow.isOn = LaunchAtLoginManager.isEnabled
+        basicsCaption.stringValue = settings.t("Options") + ":"
+        launchCheck.title = settings.t("Launch at login")
+        launchCheck.isOn = LaunchAtLoginManager.isEnabled
         if Build.hasExtras {
-            spoolbaseRow.titleLabel.stringValue = settings.t("Spoolbase")
-            spoolbaseRow.setSubtitle(settings.t("Filament stock in the menu"))
-            spoolbaseRow.isOn = settings.spoolbaseEnabled
+            spoolbaseCheck.title = settings.t("Spoolbase")
+            spoolbaseCheck.setSubtitle(settings.t("Filament stock in the menu"))
+            spoolbaseCheck.isOn = settings.spoolbaseEnabled
+
+            updatesHeading.stringValue = settings.t("Updates")
+            updateCaption.stringValue = settings.t("Check for updates") + ":"
+            updateButton.title = settings.t("Check")
+            autoUpdateCheck.title = settings.t("Install automatically")
+            autoUpdateCheck.setSubtitle(settings.t("Downloads and verifies the release signature"))
+            autoUpdateCheck.isOn = settings.autoUpdate
         }
 
-        notificationsGroupLabel.stringValue = settings.t("NOTIFICATIONS")
-        notifyFinishedRow.titleLabel.stringValue = settings.t("Print finished")
-        notifyFinishedRow.isOn = settings.notifyFinished
-        notifyFinishingSoonRow.titleLabel.stringValue = settings.t("Finishing in {0} minutes", settings.finishingSoonMinutes)
-        notifyFinishingSoonRow.isOn = settings.notifyFinishingSoon
-        notifyErrorRow.titleLabel.stringValue = settings.t("Printer error")
-        notifyErrorRow.isOn = settings.notifyError
-        notifyPausedRow.titleLabel.stringValue = settings.t("Print paused")
-        notifyPausedRow.isOn = settings.notifyPaused
-        notifyLowFilamentRow.titleLabel.stringValue = settings.t("Low filament")
-        notifyLowFilamentRow.isOn = settings.notifyLowFilament
-        notifyHumidityRow.titleLabel.stringValue = settings.t("High AMS humidity")
-        notifyHumidityRow.isOn = settings.notifyHumidity
-        // No explanatory line here: the two clocks already sit in the control column and would squeeze
-        // a subtitle into four wrapped lines.
-        quietHoursRow.titleLabel.stringValue = settings.t("Quiet hours")
-        quietHoursSwitch.state = QuietHours.isEnabled ? .on : .off
+        notificationsCaption.stringValue = settings.t("Notify me") + ":"
+        notifyFinishedCheck.title = settings.t("Print finished")
+        notifyFinishedCheck.isOn = settings.notifyFinished
+        notifyFinishingSoonCheck.title = settings.t("Finishing in {0} minutes", settings.finishingSoonMinutes)
+        notifyFinishingSoonCheck.isOn = settings.notifyFinishingSoon
+        notifyErrorCheck.title = settings.t("Printer error")
+        notifyErrorCheck.isOn = settings.notifyError
+        notifyPausedCheck.title = settings.t("Print paused")
+        notifyPausedCheck.isOn = settings.notifyPaused
+        notifyLowFilamentCheck.title = settings.t("Low filament")
+        notifyLowFilamentCheck.isOn = settings.notifyLowFilament
+        notifyHumidityCheck.title = settings.t("High AMS humidity")
+        notifyHumidityCheck.isOn = settings.notifyHumidity
+        quietHoursCheck.title = settings.t("Quiet hours")
+        quietHoursCheck.isOn = QuietHours.isEnabled
+        quietRangeCaption.stringValue = settings.t("Hours") + ":"
+        quietSeparatorLabel?.stringValue = settings.t("to")
         quietStartPicker.dateValue = date(fromMinutes: QuietHours.startMinutes)
         quietEndPicker.dateValue = date(fromMinutes: QuietHours.endMinutes)
         setQuietPickersEnabled(QuietHours.isEnabled)
 
-        if Build.hasExtras {
-            updatesGroupLabel.stringValue = settings.t("UPDATES")
-            updateRow.titleLabel.stringValue = settings.t("Check for updates")
-            updateButton.title = settings.t("Check")
-            autoUpdateRow.titleLabel.stringValue = settings.t("Install automatically")
-            autoUpdateRow.setSubtitle(settings.t("Downloads and verifies the release signature"))
-            autoUpdateRow.isOn = settings.autoUpdate
-        }
-
-        aboutGroupLabel.stringValue = settings.t("ABOUT GANTRY")
-        appRow.titleLabel.stringValue = Build.appName
-        appRow.setSubtitle(settings.t("Version {0} • {1}", version, AccessCodeStore.modeName))
-        githubRow.titleLabel.stringValue = "GitHub"
+        aboutHeading.stringValue = settings.t("About Gantry")
+        appCaption.stringValue = Build.appName + ":"
+        appVersionLabel.stringValue = settings.t("Version {0} • {1}", version, AccessCodeStore.modeName)
+        githubCaption.stringValue = "GitHub:"
         githubButton.title = "@parametryczny"
-        xRow.titleLabel.stringValue = "X"
+        xCaption.stringValue = "X:"
         xButton.title = "@_parametryczny"
         supportButton.title = settings.t("Support the project")
         supportSubtitle.stringValue = settings.t("I never say no to good coffee, and this virtual one gives me a caffeine kick for my next projects! 🚀 If you'd like to chip in for my next cup and support what I do, click “Support the project”.")
     }
 
     private func refreshAppearance(_ settings: AppSettings) {
-        themeGroupLabel.stringValue = settings.t("THEME")
-        themeRow.titleLabel.stringValue = settings.t("Appearance")
+        themeCaption.stringValue = settings.t("Appearance") + ":"
         themeControl.setLabel(settings.t("LIGHT"), forSegment: 0)
         themeControl.setLabel(settings.t("DARK"), forSegment: 1)
         themeControl.selectedSegment = settings.theme == .light ? 0 : 1
-        transparencyRow.titleLabel.stringValue = settings.t("Transparency")
+        transparencyCaption.stringValue = settings.t("Transparency") + ":"
         transparencyControl.setLabel(settings.t("LOW"), forSegment: 0)
         transparencyControl.setLabel(settings.t("MEDIUM"), forSegment: 1)
         transparencyControl.setLabel(settings.t("HIGH"), forSegment: 2)
@@ -639,82 +579,82 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .medium: transparencyControl.selectedSegment = 1
         case .high: transparencyControl.selectedSegment = 2
         }
-        monochromeRow.titleLabel.stringValue = settings.t("Monochrome colours")
-        monochromeRow.setSubtitle(settings.t("No tint on temperatures and filaments"))
-        monochromeRow.isOn = settings.monochrome
+        monochromeCheck.title = settings.t("Monochrome colours")
+        monochromeCheck.setSubtitle(settings.t("No tint on temperatures and filaments"))
+        monochromeCheck.isOn = settings.monochrome
 
-        cardsGroupLabel.stringValue = settings.t("PRINTER CARDS")
-        cardScaleRow.titleLabel.stringValue = settings.t("Card size")
+        cardsHeading.stringValue = settings.t("Printer cards")
+        cardScaleCaption.stringValue = settings.t("Card size") + ":"
         cardScaleControl.configure(percent: settings.cardScalePercent, steps: AppSettings.cardScaleSteps)
-        cardFileNameRow.titleLabel.stringValue = settings.t("File name")
-        cardFileNameRow.isOn = settings.cardShowFileName
-        cardProgressRow.titleLabel.stringValue = settings.t("Progress")
-        cardProgressRow.isOn = settings.cardShowProgress
-        cardTempsRow.titleLabel.stringValue = settings.t("Temperatures")
-        cardTempsRow.isOn = settings.cardShowTemperatures
-        cardFilamentsRow.titleLabel.stringValue = settings.t("Filaments / AMS")
-        cardFilamentsRow.isOn = settings.cardShowFilaments
-        // Everything below belongs to rows LITE never builds.
+        cardContentCaption.stringValue = settings.t("Show on the card") + ":"
+        cardFileNameCheck.title = settings.t("File name")
+        cardFileNameCheck.isOn = settings.cardShowFileName
+        cardProgressCheck.title = settings.t("Progress")
+        cardProgressCheck.isOn = settings.cardShowProgress
+        cardTempsCheck.title = settings.t("Temperatures")
+        cardTempsCheck.isOn = settings.cardShowTemperatures
+        cardFilamentsCheck.title = settings.t("Filaments / AMS")
+        cardFilamentsCheck.isOn = settings.cardShowFilaments
+        // Everything below belongs to controls LITE never builds.
         guard Build.hasExtras else { return }
-        cardSpoolGramsRow.titleLabel.stringValue = settings.t("Grams on spool")
-        cardSpoolGramsRow.setSubtitle("AMS NFC / Spoolbase")
-        cardSpoolGramsRow.isOn = settings.cardShowSpoolGrams
-        cardDetailsChipRow.titleLabel.stringValue = settings.t("Details chip on the card")
-        cardDetailsChipRow.setSubtitle(settings.t("Shortcut to the detail view; the ⋯ menu always has it"))
-        cardDetailsChipRow.isOn = settings.cardShowDetailsChip
+        cardSpoolGramsCheck.title = settings.t("Grams on spool")
+        cardSpoolGramsCheck.setSubtitle("AMS NFC / Spoolbase")
+        cardSpoolGramsCheck.isOn = settings.cardShowSpoolGrams
+        cardDetailsChipCheck.title = settings.t("Details chip on the card")
+        cardDetailsChipCheck.setSubtitle(settings.t("Shortcut to the detail view; the ⋯ menu always has it"))
+        cardDetailsChipCheck.isOn = settings.cardShowDetailsChip
 
-        floatingWindowGroupLabel.stringValue = settings.t("FLOATING WINDOW")
-        floatingWindowEnableRow.titleLabel.stringValue = settings.t("Show Gantry in a floating window")
-        floatingWindowEnableRow.setSubtitle(settings.t("Resize it freely; use the pin in its top bar to keep it above other windows"))
-        floatingWindowEnableRow.isOn = settings.floatingWindowEnabled
+        floatingWindowCaption.stringValue = settings.t("Floating window") + ":"
+        floatingWindowCheck.title = settings.t("Show Gantry in a floating window")
+        floatingWindowCheck.setSubtitle(settings.t("Resize it freely; use the pin in its top bar to keep it above other windows"))
+        floatingWindowCheck.isOn = settings.floatingWindowEnabled
 
-        dockGroupLabel.stringValue = settings.t("EDGE DOCK")
-        dockEnableRow.titleLabel.stringValue = settings.t("Show the strip on top")
-        dockEnableRow.isOn = settings.edgeDockEnabled
-        dockEdgeRow.titleLabel.stringValue = settings.t("Edge")
+        dockHeading.stringValue = settings.t("Edge dock")
+        dockEnableCheck.title = settings.t("Show the strip on top")
+        dockEnableCheck.isOn = settings.edgeDockEnabled
+        dockEdgeCaption.stringValue = settings.t("Edge") + ":"
         dockEdgeControl.setLabel(settings.t("LEFT"), forSegment: 0)
         dockEdgeControl.setLabel(settings.t("RIGHT"), forSegment: 1)
         dockEdgeControl.selectedSegment = settings.edgeDockEdge == .left ? 0 : 1
         dockEdgeControl.isEnabled = settings.edgeDockEnabled
-        dockEdgeRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
-        dockScaleRow.titleLabel.stringValue = settings.t("Edge dock size")
+        dockScaleCaption.stringValue = settings.t("Edge dock size") + ":"
         dockScaleControl.configure(percent: settings.edgeDockScalePercent,
                                    steps: AppSettings.edgeDockScaleSteps,
                                    enabled: settings.edgeDockEnabled)
-        dockScaleRow.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
-        dockPinnedRow.titleLabel.stringValue = settings.t("Keep the strip open")
-        dockPinnedRow.isOn = settings.edgeDockPinned
-        dockPinnedRow.setEnabled(settings.edgeDockEnabled)
-        dockCameraRow.titleLabel.stringValue = settings.t("Camera under the strip")
-        dockCameraRow.setSubtitle(settings.t("With nothing picked it follows the printer that is printing. Pick printers below and each picture sits under its own row."))
-        dockCameraRow.isOn = settings.edgeDockCamera
-        dockCameraRow.setEnabled(settings.edgeDockEnabled)
-        dockOnlyPrintingRow.titleLabel.stringValue = settings.t("Only printing")
-        dockOnlyPrintingRow.isOn = settings.edgeDockOnlyPrinting
-        dockOnlyPrintingRow.setEnabled(settings.edgeDockEnabled)
-        dockPrintersCaption.stringValue = settings.t("Which printers")
+        dockBehaviourCaption.stringValue = settings.t("Behaviour") + ":"
+        dockPinnedCheck.title = settings.t("Keep the strip open")
+        dockPinnedCheck.isOn = settings.edgeDockPinned
+        dockPinnedCheck.setEnabled(settings.edgeDockEnabled)
+        dockCameraCheck.title = settings.t("Camera under the strip")
+        dockCameraCheck.setSubtitle(settings.t("With nothing picked it follows the printer that is printing. Pick printers below and each picture sits under its own row."))
+        dockCameraCheck.isOn = settings.edgeDockCamera
+        dockCameraCheck.setEnabled(settings.edgeDockEnabled)
+        dockOnlyPrintingCheck.title = settings.t("Only printing")
+        dockOnlyPrintingCheck.isOn = settings.edgeDockOnlyPrinting
+        dockOnlyPrintingCheck.setEnabled(settings.edgeDockEnabled)
+        dockPrintersCaption.stringValue = settings.t("Which printers") + ":"
         dockHint.stringValue = settings.t("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.")
         rebuildDockPrinters()
     }
 
     private func refreshAdvanced(_ settings: AppSettings) {
-        developerGroupLabel.stringValue = settings.t("DEVELOPER")
-        printerControlRow.titleLabel.stringValue = settings.t("Printer control")
-        printerControlRow.setSubtitle(settings.t("Enables temperature, fan and speed controls in Details. Off by default."))
-        printerControlRow.isOn = settings.printerControlEnabled
-        developerRow.titleLabel.stringValue = settings.t("Developer mode")
-        developerRow.setSubtitle(settings.t("Reveals control and automations"))
-        developerRow.isOn = settings.developerMode
-        scriptActionsRow.titleLabel.stringValue = settings.t("Scripts in automations")
-        scriptActionsRow.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
-        scriptActionsRow.isOn = settings.allowScriptActions
+        featuresCaption.stringValue = settings.t("Features") + ":"
+        printerControlCheck.title = settings.t("Printer control")
+        printerControlCheck.setSubtitle(settings.t("Enables temperature, fan and speed controls in Details. Off by default."))
+        printerControlCheck.isOn = settings.printerControlEnabled
+        developerCheck.title = settings.t("Developer mode")
+        developerCheck.setSubtitle(settings.t("Reveals control and automations"))
+        developerCheck.isOn = settings.developerMode
+        scriptActionsCheck.title = settings.t("Scripts in automations")
+        scriptActionsCheck.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
+        scriptActionsCheck.isOn = settings.allowScriptActions
 
-        telegramGroupLabel.stringValue = "TELEGRAM"
-        telegramEnableRow.titleLabel.stringValue = settings.t("Send notifications")
-        telegramEnableRow.isOn = settings.telegramEnabled
-        telegramTokenRow.titleLabel.stringValue = settings.t("Bot token")
-        telegramChatRow.titleLabel.stringValue = "Chat ID"
-        telegramTestRow.titleLabel.stringValue = settings.t("Connection test")
+        telegramHeading.stringValue = "Telegram"
+        telegramEnableCheck.title = settings.t("Send notifications")
+        telegramEnableCheck.isOn = settings.telegramEnabled
+        telegramTokenCaption.stringValue = settings.t("Bot token") + ":"
+        telegramChatCaption.stringValue = "Chat ID:"
+        telegramTestCaption.stringValue = settings.t("Connection test") + ":"
         telegramTestButton.title = settings.t("Send")
         telegramHint.stringValue = settings.t("Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as the system notifications.")
         telegramTokenField.stringValue = settings.telegramBotToken
@@ -722,8 +662,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         telegramTokenField.isEnabled = settings.telegramEnabled
         telegramChatField.isEnabled = settings.telegramEnabled
         telegramTestButton.isEnabled = settings.telegramEnabled
-        for row in [telegramTokenRow, telegramChatRow, telegramTestRow] {
-            row.alphaValue = settings.telegramEnabled ? 1 : 0.45
+        for caption in [telegramTokenCaption, telegramChatCaption, telegramTestCaption] {
+            caption.textColor = settings.telegramEnabled ? .labelColor : .tertiaryLabelColor
         }
 
         refreshWebSection(settings)
@@ -732,11 +672,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// Fills the web-dashboard section with the live LAN URLs and a scannable QR of the IP URL
     /// (the IP always resolves on the same network, unlike the friendlier `.local` name).
     private func refreshWebSection(_ settings: AppSettings) {
-        webGroupLabel.stringValue = settings.t("WEB DASHBOARD")
-        webEnableRow.titleLabel.stringValue = settings.t("Preview server")
-        webEnableRow.setSubtitle(settings.t("Local network, read only"))
-        webEnableRow.isOn = settings.webDashboardEnabled
-        webContentRow?.isHidden = !settings.webDashboardEnabled
+        webHeading.stringValue = settings.t("Web dashboard")
+        webEnableCheck.title = settings.t("Preview server")
+        webEnableCheck.setSubtitle(settings.t("Local network, read only"))
+        webEnableCheck.isOn = settings.webDashboardEnabled
+        webContentStack.isHidden = !settings.webDashboardEnabled
         guard settings.webDashboardEnabled else { return }
         let host = GantryWebServer.localHostName()
         let primary = GantryWebServer.primaryURL()
@@ -755,15 +695,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// A crisp black-on-white QR NSImage for a URL, using CoreImage's built-in generator.
     private static func makeQR(_ string: String, side: CGFloat) -> NSImage? {
         guard let data = string.data(using: .ascii),
-              let generator = CIFilter(name: "CIQRCodeGenerator") else { return nil }
-        generator.setValue(data, forKey: "inputMessage")
-        generator.setValue("M", forKey: "inputCorrectionLevel")
-        guard let coded = generator.outputImage else { return nil }
-        guard let colored = CIFilter(name: "CIFalseColor") else { return nil }
-        colored.setValue(coded, forKey: "inputImage")
-        colored.setValue(CIColor(red: 0, green: 0, blue: 0), forKey: "inputColor0")
-        colored.setValue(CIColor(red: 1, green: 1, blue: 1), forKey: "inputColor1")
-        guard let output = colored.outputImage else { return nil }
+              let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
         let scale = side / output.extent.width
         let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let rep = NSCIImageRep(ciImage: scaled)
@@ -775,8 +710,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Actions
 
     @objc private func webEnabledChanged() {
-        AppSettings.shared.webDashboardEnabled = webEnableRow.isOn
+        AppSettings.shared.webDashboardEnabled = webEnableCheck.isOn
         refreshWebSection(AppSettings.shared)
+        resizeToSelectedPane()
     }
 
     @objc private func languageChanged() {
@@ -787,19 +723,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func quietHoursChanged() {
-        let enabled = quietHoursSwitch.state == .on
+        let enabled = quietHoursCheck.isOn
         QuietHours.isEnabled = enabled
         QuietHours.startMinutes = minutes(from: quietStartPicker.dateValue)
         QuietHours.endMinutes = minutes(from: quietEndPicker.dateValue)
         setQuietPickersEnabled(enabled)
     }
 
-    /// Only the clocks dim when quiet hours are off; the switch itself has to stay fully legible.
+    /// Only the clocks dim when quiet hours are off; the checkbox itself has to stay fully legible.
     private func setQuietPickersEnabled(_ enabled: Bool) {
-        for picker in [quietStartPicker, quietEndPicker] {
-            picker.isEnabled = enabled
-            picker.alphaValue = enabled ? 1 : 0.4
-        }
+        for picker in [quietStartPicker, quietEndPicker] { picker.isEnabled = enabled }
+        quietRangeCaption.textColor = enabled ? .labelColor : .tertiaryLabelColor
+        quietSeparatorLabel?.textColor = enabled ? .secondaryLabelColor : .tertiaryLabelColor
     }
 
     private func date(fromMinutes total: Int) -> Date {
@@ -821,59 +756,59 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func launchAtLoginChanged() {
         do {
-            try LaunchAtLoginManager.setEnabled(launchRow.isOn)
+            try LaunchAtLoginManager.setEnabled(launchCheck.isOn)
         } catch {
-            launchRow.isOn = LaunchAtLoginManager.isEnabled
+            launchCheck.isOn = LaunchAtLoginManager.isEnabled
             NotificationService.post(title: "Gantry", body: error.localizedDescription)
         }
     }
 
     @objc private func developerToggled() {
-        AppSettings.shared.developerMode = developerRow.isOn
+        AppSettings.shared.developerMode = developerCheck.isOn
     }
 
     @objc private func printerControlToggled() {
-        AppSettings.shared.printerControlEnabled = printerControlRow.isOn
+        AppSettings.shared.printerControlEnabled = printerControlCheck.isOn
     }
 
     @objc private func scriptActionsToggled() {
-        AppSettings.shared.allowScriptActions = scriptActionsRow.isOn
+        AppSettings.shared.allowScriptActions = scriptActionsCheck.isOn
     }
 
     @objc private func spoolbaseToggled() {
-        AppSettings.shared.spoolbaseEnabled = spoolbaseRow.isOn
+        AppSettings.shared.spoolbaseEnabled = spoolbaseCheck.isOn
     }
 
     @objc private func autoUpdateToggled() {
-        AppSettings.shared.autoUpdate = autoUpdateRow.isOn
+        AppSettings.shared.autoUpdate = autoUpdateCheck.isOn
     }
 
     @objc private func notificationToggled() {
         let settings = AppSettings.shared
-        settings.notifyFinished = notifyFinishedRow.isOn
-        settings.notifyError = notifyErrorRow.isOn
-        settings.notifyPaused = notifyPausedRow.isOn
-        settings.notifyFinishingSoon = notifyFinishingSoonRow.isOn
-        settings.notifyLowFilament = notifyLowFilamentRow.isOn
-        settings.notifyHumidity = notifyHumidityRow.isOn
+        settings.notifyFinished = notifyFinishedCheck.isOn
+        settings.notifyError = notifyErrorCheck.isOn
+        settings.notifyPaused = notifyPausedCheck.isOn
+        settings.notifyFinishingSoon = notifyFinishingSoonCheck.isOn
+        settings.notifyLowFilament = notifyLowFilamentCheck.isOn
+        settings.notifyHumidity = notifyHumidityCheck.isOn
     }
 
     @objc private func cardContentToggled() {
         let settings = AppSettings.shared
-        settings.cardShowFileName = cardFileNameRow.isOn
-        settings.cardShowProgress = cardProgressRow.isOn
-        settings.cardShowTemperatures = cardTempsRow.isOn
-        settings.cardShowFilaments = cardFilamentsRow.isOn
-        settings.monochrome = monochromeRow.isOn
-        // These two rows only exist in the full edition; in LITE they are never built, so reading them
+        settings.cardShowFileName = cardFileNameCheck.isOn
+        settings.cardShowProgress = cardProgressCheck.isOn
+        settings.cardShowTemperatures = cardTempsCheck.isOn
+        settings.cardShowFilaments = cardFilamentsCheck.isOn
+        settings.monochrome = monochromeCheck.isOn
+        // These two only exist in the full edition; in LITE they are never built, so reading them
         // here would only write a default back over the stored value.
         guard Build.hasExtras else { return }
-        settings.cardShowSpoolGrams = cardSpoolGramsRow.isOn
-        settings.cardShowDetailsChip = cardDetailsChipRow.isOn
+        settings.cardShowSpoolGrams = cardSpoolGramsCheck.isOn
+        settings.cardShowDetailsChip = cardDetailsChipCheck.isOn
     }
 
     @objc private func floatingWindowToggled() {
-        AppSettings.shared.floatingWindowEnabled = floatingWindowEnableRow.isOn
+        AppSettings.shared.floatingWindowEnabled = floatingWindowCheck.isOn
     }
 
     private func changeCardScale(_ direction: Int) {
@@ -886,7 +821,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Edge dock
 
     @objc private func dockEnableToggled() {
-        AppSettings.shared.edgeDockEnabled = dockEnableRow.isOn
+        AppSettings.shared.edgeDockEnabled = dockEnableCheck.isOn
     }
 
     @objc private func dockEdgeChanged() {
@@ -901,15 +836,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func dockPinnedToggled() {
-        AppSettings.shared.edgeDockPinned = dockPinnedRow.isOn
+        AppSettings.shared.edgeDockPinned = dockPinnedCheck.isOn
     }
 
     @objc private func dockCameraToggled() {
-        AppSettings.shared.edgeDockCamera = dockCameraRow.isOn
+        AppSettings.shared.edgeDockCamera = dockCameraCheck.isOn
         syncDockPrinterSwitches()
     }
 
-    /// Which printers hang a picture under their row. Same identifier trick as the visibility switch,
+    /// Which printers hang a picture under their row. Same identifier trick as the visibility box,
     /// prefixed so one recursive pass can tell the two controls apart.
     @objc private func dockPrinterCameraToggled(_ sender: NSButton) {
         let name = sender.identifier?.rawValue ?? ""
@@ -922,12 +857,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func dockOnlyPrintingToggled() {
-        AppSettings.shared.edgeDockOnlyPrinting = dockOnlyPrintingRow.isOn
+        AppSettings.shared.edgeDockOnlyPrinting = dockOnlyPrintingCheck.isOn
     }
 
-    /// The serial rides in the switch's identifier because the list is rebuilt whenever refresh()
+    /// The serial rides in the checkbox's identifier because the list is rebuilt whenever refresh()
     /// runs, so a captured index would go stale.
-    @objc private func dockPrinterToggled(_ sender: NSSwitch) {
+    @objc private func dockPrinterToggled(_ sender: NSButton) {
         let serial = sender.identifier?.rawValue ?? ""
         guard !serial.isEmpty else { return }
         var hidden = AppSettings.shared.edgeDockHiddenPrinters
@@ -935,32 +870,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppSettings.shared.edgeDockHiddenPrinters = hidden
     }
 
-    /// Rebuilds the printer card only when the fleet itself changed; otherwise just re-syncs the
-    /// switches, so refresh() does not throw away and recreate views on every settings change.
+    /// Rebuilds the printer list only when the fleet itself changed; otherwise just re-syncs the
+    /// controls, so refresh() does not throw away and recreate views on every settings change.
     private func rebuildDockPrinters() {
         let settings = AppSettings.shared
         let serials = store.printers.map(\.serial)
-        guard serials != dockPrinterSerials || dockPrintersHolder.subviews.isEmpty else {
+        guard serials != dockPrinterSerials || dockPrintersStack.views.isEmpty else {
             syncDockPrinterSwitches()
             return
         }
         dockPrinterSerials = serials
-        dockPrintersHolder.subviews.forEach { $0.removeFromSuperview() }
+        dockPrintersStack.views.forEach { $0.removeFromSuperview() }
 
-        var rows: [NSView] = []
         if store.printers.isEmpty {
-            let empty = SettingsRowView(control: nil, minHeight: 40)
-            empty.titleLabel.stringValue = settings.t("No printers")
-            empty.titleLabel.textColor = GantryTheme.muted
-            rows.append(empty)
+            let empty = NSTextField(labelWithString: settings.t("No printers"))
+            empty.font = .systemFont(ofSize: 12)
+            empty.textColor = .secondaryLabelColor
+            dockPrintersStack.addView(empty, in: .top)
         }
         for printer in store.printers {
-            let toggle = NSSwitch()
-            toggle.identifier = NSUserInterfaceItemIdentifier(printer.serial)
-            toggle.target = self
-            toggle.action = #selector(dockPrinterToggled(_:))
             // Two decisions per printer: is it in the strip at all, and does its picture hang under
-            // its row. The camera is the smaller button, because it is the rarer choice.
+            // its row. The camera is the smaller control, because it is the rarer choice.
+            let box = NSButton(checkboxWithTitle: printer.name, target: self,
+                               action: #selector(dockPrinterToggled(_:)))
+            box.identifier = NSUserInterfaceItemIdentifier(printer.serial)
+            box.font = .systemFont(ofSize: 12)
+            box.toolTip = printer.model
             let camera = NSButton()
             camera.identifier = NSUserInterfaceItemIdentifier("camera:\(printer.serial)")
             camera.setButtonType(.toggle)
@@ -970,27 +905,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             camera.imagePosition = .imageOnly
             camera.target = self
             camera.action = #selector(dockPrinterCameraToggled(_:))
-            camera.toolTip = AppSettings.shared.t("Camera under the strip")
-            let controls = NSStackView(views: [camera, toggle])
-            controls.orientation = .horizontal
-            controls.alignment = .centerY
-            controls.spacing = 10
-            // A stack view ignores contentHuggingPriority along its own axis, so without this it
-            // stretches to fill the row and squeezes the printer name down to one letter per line.
-            controls.setHuggingPriority(.required, for: .horizontal)
-            let row = SettingsRowView(control: controls, minHeight: 40)
-            row.titleLabel.stringValue = printer.name
-            row.setSubtitle(printer.model)
-            rows.append(row)
+            camera.toolTip = settings.t("Camera under the strip")
+
+            let row = NSView()
+            row.translatesAutoresizingMaskIntoConstraints = false
+            for control in [box, camera] as [NSView] {
+                control.translatesAutoresizingMaskIntoConstraints = false
+                row.addSubview(control)
+            }
+            NSLayoutConstraint.activate([
+                box.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+                box.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                camera.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+                camera.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                box.trailingAnchor.constraint(lessThanOrEqualTo: camera.leadingAnchor, constant: -8),
+                row.heightAnchor.constraint(equalTo: camera.heightAnchor),
+                // The list is as wide as the control column minus the scroller's own insets, so the
+                // camera button lands on a straight right edge down the whole list.
+                row.widthAnchor.constraint(equalToConstant: SettingsMetrics.controlColumn - 18)
+            ])
+            dockPrintersStack.addView(row, in: .top)
         }
-        let card = makeCard(rows)
-        dockPrintersHolder.addSubview(card)
-        NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: dockPrintersHolder.leadingAnchor),
-            card.trailingAnchor.constraint(equalTo: dockPrintersHolder.trailingAnchor),
-            card.topAnchor.constraint(equalTo: dockPrintersHolder.topAnchor),
-            card.bottomAnchor.constraint(equalTo: dockPrintersHolder.bottomAnchor)
-        ])
+        // Fits the list to the fleet, up to four rows; a bigger fleet scrolls rather than pushing the
+        // window past the bottom of the screen.
+        let rows = max(1, store.printers.count)
+        dockPrintersHeight?.constant = min(CGFloat(rows) * 27 + 12, 120)
         syncDockPrinterSwitches()
     }
 
@@ -998,24 +937,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let settings = AppSettings.shared
         let hidden = settings.edgeDockHiddenPrinters
         let withCamera = settings.edgeDockCameraSerials
-        for row in dockPrintersHolder.subviews.first?.subviews.first?.subviews ?? [] {
-            guard let row = row as? SettingsRowView else { continue }
-            row.alphaValue = settings.edgeDockEnabled ? 1 : 0.45
+        for row in dockPrintersStack.views {
             for control in identifiedControls(in: row) {
                 guard let name = control.identifier?.rawValue else { continue }
-                if let toggle = control as? NSSwitch {
-                    toggle.state = hidden.contains(name) ? .off : .on
-                    toggle.isEnabled = settings.edgeDockEnabled
+                guard let button = control as? NSButton else { continue }
+                guard name.hasPrefix("camera:") else {
+                    button.state = hidden.contains(name) ? .off : .on
+                    button.isEnabled = settings.edgeDockEnabled
                     continue
                 }
-                guard let button = control as? NSButton, name.hasPrefix("camera:") else { continue }
                 let serial = String(name.dropFirst("camera:".count))
                 let kind = store.printers.first(where: { $0.serial == serial })?.kind
                 let on = withCamera.contains(serial)
                 button.state = on ? .on : .off
                 // The filled glyph alone is a subtle difference at this size; the accent colour makes
                 // "this printer is streaming" readable at a glance.
-                button.contentTintColor = on ? .controlAccentColor : GantryTheme.secondary
+                button.contentTintColor = on ? .controlAccentColor : .secondaryLabelColor
                 // A brand with no stream Gantry can decode never gets the choice offered.
                 button.isEnabled = settings.edgeDockEnabled && settings.edgeDockCamera
                     && !hidden.contains(serial) && CameraFeedController.supportsCamera(kind)
@@ -1024,7 +961,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// The per-printer row nests its controls in a stack, so a flat pass over `subviews` misses them.
+    /// The per-printer row nests its controls, so a flat pass over `subviews` misses them.
     private func identifiedControls(in view: NSView) -> [NSControl] {
         view.subviews.flatMap { subview -> [NSControl] in
             if let control = subview as? NSControl, control.identifier != nil { return [control] }
@@ -1035,8 +972,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Telegram
 
     @objc private func telegramToggled() {
-        AppSettings.shared.telegramEnabled = telegramEnableRow.isOn
+        AppSettings.shared.telegramEnabled = telegramEnableCheck.isOn
         refreshAdvanced(AppSettings.shared)
+        resizeToSelectedPane()
         TelegramBot.shared?.syncWithSettings()
     }
 
@@ -1051,19 +989,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let settings = AppSettings.shared
         let token = settings.telegramBotToken, chat = settings.telegramChatID
         guard !token.isEmpty, !chat.isEmpty else {
-            telegramTestRow.setSubtitle(settings.t("Enter a token and chat_id."))
-            telegramTestRow.subtitleLabel.textColor = GantryTheme.statusError
+            telegramTestStatus.stringValue = settings.t("Enter a token and chat_id.")
+            telegramTestStatus.textColor = GantryTheme.statusError
             return
         }
-        telegramTestRow.setSubtitle(settings.t("Sending…"))
-        telegramTestRow.subtitleLabel.textColor = GantryTheme.muted
+        telegramTestStatus.stringValue = settings.t("Sending…")
+        telegramTestStatus.textColor = .secondaryLabelColor
         let text = TelegramService.format(printer: "Gantry", title: settings.t("Test notification"),
                                           body: settings.t("The connection works."))
         Task { @MainActor in
             let ok = await TelegramService.sendMessage(token: token, chatID: chat, text: text)
-            telegramTestRow.setSubtitle(ok ? settings.t("Sent ✓")
-                                           : settings.t("Failed. Check the token and chat_id."))
-            telegramTestRow.subtitleLabel.textColor = ok ? GantryTheme.statusFinished : GantryTheme.statusError
+            telegramTestStatus.stringValue = ok ? settings.t("Sent ✓")
+                                                : settings.t("Failed. Check the token and chat_id.")
+            telegramTestStatus.textColor = ok ? GantryTheme.statusFinished : GantryTheme.statusError
         }
     }
 
@@ -1072,20 +1010,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func checkForUpdates() {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
-        updateRow.subtitleLabel.textColor = GantryTheme.muted
-        updateRow.setSubtitle(settings.t("Checking…"))
+        updateStatus.textColor = .secondaryLabelColor
+        updateStatus.stringValue = settings.t("Checking…")
         Task { @MainActor in
             defer { updateButton.isEnabled = true }
             do {
                 let release = try await UpdateService.latestRelease()
                 if UpdateService.isNewer(release.version, than: UpdateService.currentVersion) {
-                    updateRow.setSubtitle("")
+                    updateStatus.stringValue = ""
                     presentUpdateAvailable(release)
                 } else {
-                    updateRow.setSubtitle(settings.t("You have the latest version."))
+                    updateStatus.stringValue = settings.t("You have the latest version.")
                 }
             } catch {
-                updateRow.setSubtitle("")
+                updateStatus.stringValue = ""
                 presentAlert(
                     title: settings.t("Could not check for updates"),
                     message: error.localizedDescription
@@ -1116,15 +1054,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func installUpdate(_ release: UpdateService.Release) {
         let settings = AppSettings.shared
         updateButton.isEnabled = false
-        updateRow.subtitleLabel.textColor = GantryTheme.muted
-        updateRow.setSubtitle(settings.t("Downloading and installing…"))
+        updateStatus.textColor = .secondaryLabelColor
+        updateStatus.stringValue = settings.t("Downloading and installing…")
         Task { @MainActor in
             do {
                 try await UpdateService.downloadAndInstall(release)
                 // The helper relaunches the app; this process is about to terminate.
             } catch {
                 updateButton.isEnabled = true
-                updateRow.setSubtitle("")
+                updateStatus.stringValue = ""
                 let alert = NSAlert()
                 alert.messageText = settings.t("Installation failed")
                 alert.informativeText = error.localizedDescription + "\n\n" + settings.t("Open the release page to download it manually.")
@@ -1167,20 +1105,35 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         button.target = self
         button.action = action
         button.isBordered = false
-        button.font = .systemFont(ofSize: 12, weight: .medium)
+        button.font = .systemFont(ofSize: 13)
         button.contentTintColor = .linkColor
     }
+}
 
-    private func configureTextButton(_ button: NSButton, action: Selector) {
-        button.target = self
-        button.action = action
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 11, weight: .medium)
+/// The toolbar itself. `NSTabViewController` in `.toolbar` mode builds the toolbar, the pane icons,
+/// the crossfade between panes and the window title, so all that is left here is telling the window
+/// controller when the pane changed, and remembering which one it was.
+@MainActor
+private final class SettingsTabViewController: NSTabViewController {
+    var onSelect: (() -> Void)?
+    private static let lastPaneKey = "settings.last-pane"
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        tabStyle = .toolbar
+        transitionOptions = [.crossfade]
+        let remembered = BambuDefaults.shared.integer(forKey: Self.lastPaneKey)
+        if remembered > 0, remembered < tabViewItems.count { selectedTabViewItemIndex = remembered }
     }
 
-    @objc private func closeSettings() {
-        close()
+    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        super.tabView(tabView, didSelect: tabViewItem)
+        BambuDefaults.shared.set(selectedTabViewItemIndex, forKey: Self.lastPaneKey)
+        onSelect?()
     }
+}
 
+/// Top-down document view, so the printer list fills from the top rather than the bottom.
+final class SettingsFlippedView: NSView {
+    override var isFlipped: Bool { true }
 }
