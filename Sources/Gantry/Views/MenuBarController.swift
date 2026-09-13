@@ -643,7 +643,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             self.popover.contentSize = size
         }
         detailViewController = detail
-        swapPopoverContent(to: detail, size: NSSize(width: 600, height: 720))
+        // The same width the detail view lays itself out at; a wider popover is 120 points of empty
+        // strip down its right-hand side.
+        swapPopoverContent(to: detail,
+                           size: NSSize(width: PrinterDetailViewController.popoverContentWidth,
+                                        height: 720))
     }
 
     /// Opens (or re-focuses) the per-printer automations editor window.

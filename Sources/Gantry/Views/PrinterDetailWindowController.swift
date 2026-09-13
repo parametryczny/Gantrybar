@@ -77,12 +77,19 @@ final class PrinterDetailViewController: NSViewController {
     /// Reported whenever the cards change the height the panel needs, so the popover can follow.
     var onPreferredContentSize: ((NSSize) -> Void)?
     private var popoverHeightConstraint: NSLayoutConstraint?
+    private var hasReportedSize = false
     private weak var headerRow: NSView?
     /// The height the panel used to be nailed to. It survives as a floor, so a short detail view
     /// looks the way it always did, and only a taller one is allowed past it.
     private static let minimumPopoverHeight: CGFloat = 700
-    /// The width the popover is asked for; kept as it was so only the height changes.
-    private static let popoverReportedWidth: CGFloat = 600
+    /// The one width the detail view has.
+    ///
+    /// There used to be two. The root view was pinned to 480 while the host was told 600, both for
+    /// the initial `swapPopoverContent` and for every size reported afterwards, so the popover was
+    /// 120 points wider than anything drawn in it and the surplus showed as an empty strip down the
+    /// right-hand side. It surfaced with an error because the report only went out when the height
+    /// changed, and an error changes the height: 0%, a different layer line, different rows.
+    static let popoverContentWidth: CGFloat = 480
 
     init(store: PrinterStore, serial: String, onBack: @escaping () -> Void,
          onOpenAutomations: @escaping () -> Void, onOpenAdvanced: @escaping () -> Void,
@@ -101,7 +108,8 @@ final class PrinterDetailViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: Self.minimumPopoverHeight))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: Self.popoverContentWidth,
+                                        height: Self.minimumPopoverHeight))
         // The popover needs a definite fitting size, but the height is no longer a constant: it
         // follows the cards and stops at the screen, so a tall detail view on a tall display is not
         // forced to scroll inside a number picked by hand. In the detached window the host controls
@@ -111,7 +119,7 @@ final class PrinterDetailViewController: NSViewController {
             let height = root.heightAnchor.constraint(equalToConstant: Self.minimumPopoverHeight)
             popoverHeightConstraint = height
             NSLayoutConstraint.activate([
-                root.widthAnchor.constraint(equalToConstant: 480),
+                root.widthAnchor.constraint(equalToConstant: Self.popoverContentWidth),
                 height
             ])
         }
@@ -124,13 +132,22 @@ final class PrinterDetailViewController: NSViewController {
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        // Not autohiding, on purpose. A legacy scroller (the system setting "Show scroll bars:
+        // Always") takes 15 points out of the clip view, and the cards are laid out against that clip
+        // view: measured, they were 437 points wide while printing, when the content needs scrolling,
+        // and 452 in an error state, when it happens to fit. The whole column therefore shifted
+        // sideways as the state changed. Always asking for the scroller makes the lane constant, and
+        // with overlay scrollers, the usual case, it costs nothing because they never take space.
+        scroll.autohidesScrollers = false
         scroll.scrollerStyle = .overlay
         root.addSubview(scroll)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
+            // Tied to the clip view, not to the root, so the header and the cards keep one right
+            // edge. Pinned to the root it sat 15 points further out whenever a scroller was taking
+            // its lane, which is why "Back" and the state dot did not line up with the cards.
+            header.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor, constant: -14),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -147,6 +164,10 @@ final class PrinterDetailViewController: NSViewController {
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         flipped.addSubview(contentStack)
         NSLayoutConstraint.activate([
+            // The clip view, always. Reserving a fixed lane for the scroller instead was tried and
+            // was worse: the lane has to be known when the view is built, and the effective scroller
+            // style is not, so the document came out wider than the clip view and the right edge of
+            // every card was clipped away. Tracking the clip view can never do that.
             flipped.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
             contentStack.topAnchor.constraint(equalTo: flipped.topAnchor),
             contentStack.leadingAnchor.constraint(equalTo: flipped.leadingAnchor),
@@ -241,9 +262,14 @@ final class PrinterDetailViewController: NSViewController {
             let screen = self.view.window?.screen ?? NSScreen.main
             let available = (screen?.visibleFrame.height ?? 900) - 40
             let target = min(max(Self.minimumPopoverHeight, header + content), max(320, available))
-            guard abs(constraint.constant - target) >= 1 else { return }
+            // The first report always goes out, even when the height happens to match the floor.
+            // Reporting only on a change meant the popover could keep whatever width the panel it
+            // replaced had, which is its own version of the same gap.
+            let changed = abs(constraint.constant - target) >= 1
+            guard changed || !self.hasReportedSize else { return }
+            self.hasReportedSize = true
             constraint.constant = target
-            self.onPreferredContentSize?(NSSize(width: Self.popoverReportedWidth, height: target))
+            self.onPreferredContentSize?(NSSize(width: Self.popoverContentWidth, height: target))
         }
     }
 

@@ -189,6 +189,28 @@ require("Sources/Gantry/Services/RTSPCameraStream.swift",
 require("Sources/Gantry/Views/CameraFeed.swift",
         r"private func checkForSilence\(\)[\s\S]*?restartDelay \* 2[\s\S]*?start\(\)",
         "a camera feed that goes silent is never restarted")
+# The detail popover has one width. It used to have two: the root view was pinned to 480 while the
+# host was told 600, both when the popover was opened and in every size reported afterwards, so 120
+# points of it were empty down the right-hand side. It showed up in an error state because the report
+# only went out when the height changed, and an error changes the height.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"static let popoverContentWidth: CGFloat = 480[\s\S]*?"
+        r"root\.widthAnchor\.constraint\(equalToConstant: Self\.popoverContentWidth\)",
+        "the macOS detail view lays itself out at a width of its own")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"NSSize\(width: Self\.popoverContentWidth, height: target\)",
+        "the macOS detail view reports a width it does not lay itself out at")
+require("Sources/Gantry/Views/MenuBarController.swift",
+        r"PrinterDetailViewController\.popoverContentWidth",
+        "the popover opens the detail view at a width of its own")
+# Both the header and the cards hang off the clip view, so they keep one right edge whether or not a
+# scroller is taking its lane, and the document can never come out wider than what is visible.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"header\.trailingAnchor\.constraint\(equalTo: scroll\.contentView\.trailingAnchor",
+        "the macOS detail header does not share its right edge with the cards")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"flipped\.widthAnchor\.constraint\(equalTo: scroll\.contentView\.widthAnchor\)",
+        "the macOS detail column does not track the visible width, so its edge can be clipped")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"dockPinnedCheck[\s\S]*?dockCameraCheck",
         "macOS settings are missing the edge-dock pin and camera switches")
