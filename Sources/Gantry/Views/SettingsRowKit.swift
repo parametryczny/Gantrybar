@@ -251,8 +251,6 @@ final class SettingsPane: NSViewController {
     private let content: NSGridView
     /// Filled in by the controller's refresh, because the toolbar label follows the app's language.
     var paneTitle: String = ""
-    /// Asked, on the way in, to bring this pane up to date if it was left stale while hidden.
-    var onWillAppear: (() -> Void)?
 
     init(identifier: String, symbolName: String, content: NSGridView) {
         self.paneIdentifier = identifier
@@ -286,7 +284,6 @@ final class SettingsPane: NSViewController {
 
     override func viewWillAppear() {
         super.viewWillAppear()
-        onWillAppear?()
         updatePreferredSize()
     }
 

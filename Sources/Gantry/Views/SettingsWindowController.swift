@@ -181,8 +181,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private var settingsSubscription: AnyCancellable?
     private var refreshScheduled = false
-    /// Panes whose contents no longer match the settings. Everything except the visible one waits.
-    private var stale: Set<SettingsPaneID> = []
     /// The last URL a QR code was rendered for, so an unchanged dashboard address is not redrawn.
     private var qrCache: (url: String, image: NSImage?)?
     /// The dashboard's addresses, read once per time the window is opened.
@@ -253,7 +251,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         for id in SettingsPaneID.visible {
             let pane = SettingsPane(identifier: id.rawValue, symbolName: id.symbolName,
                                     content: content(for: id))
-            pane.onWillAppear = { [weak self] in self?.refreshPane(id) }
             panes[id] = pane
             let item = NSTabViewItem(viewController: pane)
             item.image = NSImage(systemSymbolName: id.symbolName, accessibilityDescription: nil)
@@ -261,7 +258,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             items.append(item)
         }
         tabController.tabViewItems = items
-        tabController.onSelect = { [weak self] in self?.resizeToSelectedPane(animated: true) }
+        // Before the swap, so the window is already the right size when the new pane appears.
+        tabController.onWillSelect = { [weak self] index in self?.resizeToPane(at: index) }
+        tabController.onSelect = { [weak self] in self?.resizeToSelectedPane() }
     }
 
     private func content(for id: SettingsPaneID) -> NSGridView {
@@ -462,24 +461,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     ///
     /// The top edge stays put while the bottom moves, which is what a settings window does; letting
     /// `setContentSize` keep the origin instead would grow the window upward off the screen.
-    private func resizeToSelectedPane(animated: Bool = false) {
-        let index = tabController.selectedTabViewItemIndex
+    private func resizeToSelectedPane() {
+        resizeToPane(at: tabController.selectedTabViewItemIndex)
+    }
+
+    /// Titles the window after a pane and sizes the window around it.
+    ///
+    /// Done by hand because neither half happens on its own. Handing the pane's `preferredContentSize`
+    /// up to the tab controller and letting AppKit propagate it only worked for some panes: measured
+    /// across all six, the window took the first pane's height, ignored the next two, then took the
+    /// fourth's and kept it. AppKit syncs the window title from the toolbar's own selection, so a
+    /// programmatic switch left it on whichever pane was selected first.
+    private func resizeToPane(at index: Int) {
         guard let window, index >= 0, index < tabController.tabViewItems.count else { return }
-        window.title = tabController.tabViewItems[index].label
-        guard let pane = tabController.tabViewItems[index].viewController as? SettingsPane else { return }
+        let item = tabController.tabViewItems[index]
+        window.title = item.label
+        guard let pane = item.viewController as? SettingsPane else { return }
         pane.updatePreferredSize()
         let target = pane.preferredContentSize.height
         guard target > 1, let height = paneHeight, abs(height.constant - target) > 0.5 else { return }
-        guard animated, window.isVisible else {
-            height.constant = target
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            context.allowsImplicitAnimation = true
-            height.constant = target
-            window.contentView?.layoutSubtreeIfNeeded()
-        }
+        height.constant = target
+        // Applied in the same layout pass as the view swap, so no intermediate size is ever drawn.
+        window.contentView?.layoutSubtreeIfNeeded()
     }
 
     // MARK: Refresh
@@ -500,11 +503,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             window.title = tabController.tabViewItems[index].label
         }
 
-        // Only the pane on screen is filled in. The others are marked stale and refreshed on their
-        // way in, which is the same reasoning as the dashboard: laying out and measuring a pane
-        // nobody is looking at costs exactly as much as one they are.
-        stale = Set(SettingsPaneID.visible)
-        if let id = selectedPaneID { refreshPane(id) }
+        // Every pane, not just the one on screen.
+        //
+        // This deliberately undoes an earlier optimisation of mine. Filling only the visible pane and
+        // letting the others catch up in `viewWillAppear` meant a hidden pane held the previous
+        // values, and the switch itself was when they changed: audited, eight controls across five of
+        // the six panes were wrong until visited, and the crossfade showed each one flipping. That is
+        // what "the values jump" was.
+        //
+        // It is affordable now because the three things that actually made a refresh expensive are
+        // gone: one click no longer publishes six times, the QR code is not re-rendered, and the
+        // dashboard's addresses are not re-read from the network interfaces. Measured, a pane costs
+        // 0.0 to 0.2 ms to fill, so all six together are about a millisecond.
+        for id in SettingsPaneID.visible { refreshPane(id) }
+        // And measured here, while they are all up to date, so a pane's height is known *before* it is
+        // switched to. Left to `viewWillAppear` it resized the window after the pane was already on
+        // screen, which was the other half of the jump. Only panes whose content actually changed are
+        // laid out again.
+        for pane in panes.values { pane.updatePreferredSize() }
         resizeToSelectedPane()
     }
 
@@ -531,10 +547,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             .flatMap(SettingsPaneID.init(rawValue:))
     }
 
-    /// Fills one pane, and only if something has changed since it was last filled.
-    private func refreshPane(_ id: SettingsPaneID, force: Bool = false) {
-        guard force || stale.contains(id) else { return }
-        stale.remove(id)
+    /// Fills one pane. `contentDirty` is set only when a write actually landed, which is what keeps
+    /// the measuring pass below from laying out panes nothing changed in.
+    private func refreshPane(_ id: SettingsPaneID) {
         let touchesBefore = SettingsLayoutTouches.count
         defer {
             if SettingsLayoutTouches.count != touchesBefore { panes[id]?.contentDirty = true }
@@ -1055,7 +1070,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func telegramToggled() {
         AppSettings.shared.telegramEnabled = telegramEnableCheck.isOn
-        refreshPane(.integrations, force: true)
+        refreshPane(.integrations)
         resizeToSelectedPane()
         TelegramBot.shared?.syncWithSettings()
     }
@@ -1198,6 +1213,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 @MainActor
 private final class SettingsTabViewController: NSTabViewController {
     var onSelect: (() -> Void)?
+    var onWillSelect: ((Int) -> Void)?
     private static let lastPaneKey = "settings.last-pane"
 
     override func viewDidLoad() {
@@ -1206,6 +1222,12 @@ private final class SettingsTabViewController: NSTabViewController {
         transitionOptions = [.crossfade]
         let remembered = BambuDefaults.shared.integer(forKey: Self.lastPaneKey)
         if remembered > 0, remembered < tabViewItems.count { selectedTabViewItemIndex = remembered }
+    }
+
+    override func tabView(_ tabView: NSTabView, willSelect tabViewItem: NSTabViewItem?) {
+        super.tabView(tabView, willSelect: tabViewItem)
+        guard let item = tabViewItem, let index = tabViewItems.firstIndex(of: item) else { return }
+        onWillSelect?(index)
     }
 
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {

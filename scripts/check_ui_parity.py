@@ -91,9 +91,16 @@ require("Sources/Gantry/Views/SettingsRowKit.swift",
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"guard !refreshScheduled else \{ return \}[\s\S]*?refreshScheduled = true",
         "macOS settings refresh once per written setting instead of once per run loop turn")
+# Every pane is filled on every refresh, and every pane whose content changed is measured in the same
+# pass. Filling only the visible one was audited and cost eight controls across five of the six panes
+# that were wrong until visited, so the switch itself was when they visibly changed.
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"stale = Set\(SettingsPaneID\.visible\)[\s\S]*?if let id = selectedPaneID \{ refreshPane\(id\) \}",
-        "macOS settings refresh panes nobody is looking at")
+        r"for id in SettingsPaneID\.visible \{ refreshPane\(id\) \}[\s\S]*?"
+        r"for pane in panes\.values \{ pane\.updatePreferredSize\(\) \}",
+        "macOS settings leave hidden panes showing stale values until they are switched to")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"onWillSelect = \{ \[weak self\] index in self\?\.resizeToPane\(at: index\) \}",
+        "macOS settings resize the window after the new pane is already on screen")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"if qrCache\?\.url != target",
         "macOS settings re-render the dashboard QR code on unrelated refreshes")
