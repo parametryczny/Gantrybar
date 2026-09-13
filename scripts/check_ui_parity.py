@@ -176,6 +176,19 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/CameraFeed.swift",
         r"final class CameraFeedController[\s\S]*?func start\(\)[\s\S]*?func stop\(\)",
         "the camera feed is not reusable outside the detail view")
+# A camera stream that dies loudly is handled by its state callback. One that simply goes quiet was
+# handled by nothing: measured on an X1, frames stopped after five to ten seconds with no error, no
+# teardown and no state change, and the last frame stayed on screen for ever, which is what a camera
+# "lagging" in the strip actually was. The keep-alive is the cause, the watchdog is the net.
+require("Sources/Gantry/Services/RTSPCameraStream.swift",
+        r"private func startKeepAlive\(\)[\s\S]*?OPTIONS \\\(self\.requestURL\)",
+        "the RTSP session is never kept alive, so a printer stops feeding it")
+require("Sources/Gantry/Services/RTSPCameraStream.swift",
+        r"timeout=[\s\S]*?sessionTimeout = max\(5, seconds\)",
+        "the RTSP session timeout is parsed away instead of driving the keep-alive")
+require("Sources/Gantry/Views/CameraFeed.swift",
+        r"private func checkForSilence\(\)[\s\S]*?restartDelay \* 2[\s\S]*?start\(\)",
+        "a camera feed that goes silent is never restarted")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"dockPinnedCheck[\s\S]*?dockCameraCheck",
         "macOS settings are missing the edge-dock pin and camera switches")

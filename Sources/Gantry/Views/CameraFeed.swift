@@ -15,6 +15,7 @@ import CoreMedia
 final class CameraFeedController {
     let view = CameraView()
 
+
     private let store: PrinterStore
     private let serial: String
 
@@ -26,6 +27,19 @@ final class CameraFeedController {
     private var anycubicStream: AnycubicCameraStream?
     private var timeout: DispatchWorkItem?
     private var receivedFrame = false
+    /// When the last frame arrived, and the machinery that notices it stopped arriving.
+    ///
+    /// A stream that dies loudly is handled by `handleCameraState`. A stream that simply goes quiet
+    /// was handled by nothing at all: measured on an X1, frames stopped after five to ten seconds
+    /// with no error, no teardown and no state change, and the last frame stayed on screen for ever.
+    /// That is what a camera "lagging" in the strip actually was. The keep-alive added to the RTSP
+    /// client should stop most of these; this is the net under it.
+    private var lastFrameAt = Date()
+    private var watchdogGeneration = 0
+    private var restartDelay: TimeInterval = CameraFeedController.minimumRestartDelay
+    private static let minimumRestartDelay: TimeInterval = 8
+    private static let maximumRestartDelay: TimeInterval = 30
+    private static let watchdogInterval: TimeInterval = 2
 
     /// True between `start()` and `stop()`, so a surface can avoid restarting a feed it already runs.
     private(set) var isRunning = false
@@ -72,6 +86,33 @@ final class CameraFeedController {
         }
         timeout = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: work)
+        lastFrameAt = Date()
+        armWatchdog()
+    }
+
+    private func armWatchdog() {
+        watchdogGeneration += 1
+        let generation = watchdogGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.watchdogInterval) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.isRunning, generation == self.watchdogGeneration else { return }
+                self.checkForSilence()
+            }
+        }
+    }
+
+    /// Restarts a feed that was working and then stopped, backing off so a camera that is genuinely
+    /// gone is not hammered. A feed that never produced a frame is left to the 12 second message.
+    private func checkForSilence() {
+        guard receivedFrame, Date().timeIntervalSince(lastFrameAt) > restartDelay else {
+            armWatchdog()
+            return
+        }
+        restartDelay = min(Self.maximumRestartDelay, restartDelay * 2)
+        let wasRunning = isRunning
+        stop()
+        guard wasRunning else { return }
+        start()
     }
 
     func stop() {
@@ -156,16 +197,29 @@ final class CameraFeedController {
     }
 
     private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {
-        receivedFrame = true
+        noteFrame()
         timeout?.cancel()
         view.enqueue(avcc, keyframe: keyframe)
     }
 
     private func handleImageFrame(_ data: Data) {
-        receivedFrame = true
+        noteFrame()
         timeout?.cancel()
         if let image = NSImage(data: data) { view.show(image) }
     }
+
+    /// A frame arrived, so the feed is alive. Sustained flow also earns back the short retry delay,
+    /// otherwise one bad patch would leave a healthy camera on a 30 second leash for the session.
+    private func noteFrame() {
+        receivedFrame = true
+        lastFrameAt = Date()
+        if restartDelay > Self.minimumRestartDelay,
+           Date().timeIntervalSince(lastHealthyReset) > 60 {
+            restartDelay = Self.minimumRestartDelay
+            lastHealthyReset = Date()
+        }
+    }
+    private var lastHealthyReset = Date()
 
     /// The X1 answers on RTSP(S); the P1 and A1 do not have that endpoint at all and serve JPEG frames
     /// on port 6000 instead. So a failed RTSP attempt is not the end of the road, it is the cue to try
@@ -345,3 +399,4 @@ final class CameraView: NSView {
         statusLabel.isHidden = false
     }
 }
+
