@@ -186,14 +186,13 @@ final class EdgeDockWindowController {
             return
         }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.unfoldDuration
+            context.duration = EdgeDockView.unfoldDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().setFrame(frame, display: true)
         }
     }
 
-    /// Short enough to feel like a response to the pointer rather than a transition of its own.
-    private static let unfoldDuration: TimeInterval = 0.18
+
 }
 
 /// Borderless panels refuse key status by default, which is what we want: clicking the strip must not
@@ -226,6 +225,7 @@ private final class EdgeDockView: NSView {
     var pinned = false {
         didSet {
             guard pinned != oldValue else { return }
+            animateUnfold(to: isExpanded ? 1 : 0)
             onLayoutChange?(true)
             needsLayout = true
             needsDisplay = true
@@ -259,6 +259,37 @@ private final class EdgeDockView: NSView {
     private var isExpanded: Bool { pinned || isHovering }
     private var trackingArea: NSTrackingArea?
     private var collapseTimer: Timer?
+    /// 0 folded, 1 unfolded. The window's own resize is smooth on its own, but the rows used to be
+    /// fully drawn in the first frame of it, which read as a snap rather than a transition. This
+    /// drives their opacity so they surface out of the frost while the strip is still opening.
+    private var unfoldProgress: CGFloat = 0
+    private var unfoldTimer: Timer?
+
+    /// Runs `unfoldProgress` to its target on the same curve and over the same time as the window.
+    /// Each tick schedules the next one instead of repeating, so a view that goes away simply ends
+    /// the chain rather than leaving a timer firing at nothing.
+    private func animateUnfold(to target: CGFloat) {
+        unfoldTimer?.invalidate()
+        unfoldTimer = nil
+        let from = unfoldProgress
+        guard abs(target - from) > 0.001 else { return }
+        stepUnfold(from: from, to: target, began: Date())
+    }
+
+    private func stepUnfold(from: CGFloat, to target: CGFloat, began: Date) {
+        let elapsed = Date().timeIntervalSince(began) / Self.unfoldDuration
+        let linear = CGFloat(min(1, max(0, elapsed)))
+        let eased = 1 - pow(1 - linear, 3)   // ease-out cubic, matching the window's curve
+        unfoldProgress = from + (target - from) * eased
+        needsDisplay = true
+        guard linear < 1 else {
+            unfoldTimer = nil
+            return
+        }
+        unfoldTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stepUnfold(from: from, to: target, began: began) }
+        }
+    }
 
     // Geometry. The strip is deliberately narrow: at rest a printer is one 14 pt ring and nothing else.
     private static let ring: CGFloat = 14
@@ -276,8 +307,11 @@ private final class EdgeDockView: NSView {
     private static let pinRow: CGFloat = 14
     private static let pinGap: CGFloat = 4
     private static let pinGlyph: CGFloat = 10
+    /// One number for both halves of the gesture: the window's own resize and the fade of the rows
+    /// inside it. They have to agree, or the text would settle before the strip stops moving.
+    static let unfoldDuration: TimeInterval = 0.26
     /// Grace period before folding, long enough to outlast the unfold animation's own leave event.
-    private static let collapseDelay: TimeInterval = 0.2
+    private static let collapseDelay: TimeInterval = 0.28
     private static let cameraGap: CGFloat = 8
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private static let cameraMinStripWidth: CGFloat = 236
@@ -389,10 +423,11 @@ private final class EdgeDockView: NSView {
 
     private func drawPinButton() {
         guard let rect = pinButtonRect() else { return }
-        NSColor.white.withAlphaComponent(0.1).setFill()
+        let fade = max(0, min(1, unfoldProgress))
+        NSColor.white.withAlphaComponent(0.1 * fade).setFill()
         NSBezierPath(ovalIn: rect).fill()
         let configuration = NSImage.SymbolConfiguration(pointSize: Self.pinGlyph * scale, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [GantryTheme.secondary]))
+            .applying(NSImage.SymbolConfiguration(paletteColors: [GantryTheme.secondary.withAlphaComponent(fade)]))
         guard let glyph = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration) else { return }
         let size = glyph.size
@@ -533,12 +568,15 @@ private final class EdgeDockView: NSView {
             let nameColor = entry.state == .error || entry.state == .offline ? GantryTheme.statusError
                           : (dim ? GantryTheme.secondary : GantryTheme.text)
             let halo = labelShadow
+            // The labels arrive with the strip rather than before it.
+            let fade = max(0, min(1, unfoldProgress))
             let name = NSAttributedString(string: entry.name,
-                                          attributes: [.font: nameFont, .foregroundColor: nameColor,
+                                          attributes: [.font: nameFont,
+                                                       .foregroundColor: nameColor.withAlphaComponent(fade),
                                                        .shadow: halo])
             let value = NSAttributedString(string: valueText(entry),
                                            attributes: [.font: valueFont,
-                                                        .foregroundColor: GantryTheme.secondary,
+                                                        .foregroundColor: GantryTheme.secondary.withAlphaComponent(fade),
                                                         .shadow: halo])
             let textLeft = edge == .right
                 ? Self.expandedPadX * scale
@@ -616,6 +654,7 @@ private final class EdgeDockView: NSView {
         guard !isHovering else { return }
         isHovering = true
         guard !pinned else { return }   // already unfolded, nothing to re-lay out
+        animateUnfold(to: 1)
         onLayoutChange?(true)
         needsDisplay = true
     }
@@ -641,6 +680,7 @@ private final class EdgeDockView: NSView {
         guard isHovering else { return }
         isHovering = false
         guard !pinned else { return }
+        animateUnfold(to: 0)
         onLayoutChange?(true)
         needsDisplay = true
     }
