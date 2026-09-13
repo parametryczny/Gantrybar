@@ -303,10 +303,11 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         dialog.destroy()
 
     dialog.connect("response", on_response)
-    if not app.window.tray_mode:
-        app.window.embed_dialog(dialog)
-    else:
-        dialog.show_all()
+    # Its own window, centred, in both presentations. As an overlay the roll list could never be
+    # taller than the fleet window it was pulled into.
+    dialog.set_position(Gtk.WindowPosition.CENTER)
+    app.window.hold_fleet_panel(dialog)
+    dialog.show_all()
 
 
 def _refresh(app: Any, serial: str) -> None:

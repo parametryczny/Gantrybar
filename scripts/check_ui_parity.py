@@ -306,6 +306,41 @@ require("Sources/Gantry/Spoolbase/SpoolbaseController.swift",
         r"panel = PanelWindowController\.present\(",
         "Spoolbase is not its own window")
 
+# GNU/Linux: the same detachment, with the tray panel's focus-out hide held off instead of a
+# popover's behaviour. Measured here: focus-out with a panel open leaves the fleet up, and with
+# nothing open it still hides, which is what a tray panel is supposed to do.
+require("linux/gantry/panelwindow.py", r"self\.set_position\(Gtk\.WindowPosition\.CENTER\)",
+        "a GNU/Linux panel window is not centred on the screen")
+require("linux/gantry/panelwindow.py", r"if event\.keyval == Gdk\.KEY_Escape",
+        "a GNU/Linux panel window cannot be closed with Escape")
+require("linux/gantry/panelwindow.py", r"app\.window\.hold_fleet_panel\(self\)",
+        "a GNU/Linux panel window does not hold the fleet panel open")
+require("linux/gantry/dashboard.py",
+        r"self\._hide_holds = max\(0, self\._hide_holds \+ \(1 if value else -1\)\)",
+        "the GNU/Linux fleet hold is a flag, so closing one of two dialogs lets the panel hide")
+require("linux/gantry/dashboard.py",
+        r'widget\.connect\("map"[\s\S]{0,160}?widget\.connect\("unmap"',
+        "the GNU/Linux fleet hold is not bound to the panel being on screen")
+require("linux/gantry/dashboard.py", r"from \.panelwindow import PanelWindow",
+        "GNU/Linux maintenance is not presented as its own window")
+# embed_dialog pulled a dialog apart and re-hosted its child as a dimmed overlay in the fleet window.
+forbid("linux/gantry/presentation.py", r"def embed_dialog",
+       "the GNU/Linux dialog-into-overlay host is back")
+forbid("linux/gantry/app.py", r"embed_dialog",
+       "a GNU/Linux dialog is embedded in the fleet window again")
+forbid("linux/gantry/spoolassign.py", r"embed_dialog",
+       "the GNU/Linux slot-assignment dialog is embedded in the fleet window again")
+require("linux/gantry/spoolassign.py", r"app\.window\.hold_fleet_panel\(dialog\)",
+        "the GNU/Linux slot-assignment dialog does not hold the fleet panel open")
+require("linux/gantry/spoolbase.py", r"app\.window\.hold_fleet_panel\(self\)",
+        "the GNU/Linux Spoolbase window does not hold the fleet panel open")
+forbid("linux/gantry/spoolbase.py", r"_position_top_right",
+       "GNU/Linux Spoolbase is pinned to the corner again instead of centred")
+for holder in ("open_diagnostics", "open_fleet_stats"):
+    require("linux/gantry/app.py",
+            rf"def {holder}\(self\)[\s\S]{{0,400}}?hold_fleet_panel\(dialog\)",
+            f"GNU/Linux {holder} does not hold the fleet panel open")
+
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf"width:\s*{floating['initialSize']['width']},\s*height:\s*{floating['initialSize']['height']}",

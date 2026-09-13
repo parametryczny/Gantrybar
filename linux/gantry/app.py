@@ -721,10 +721,7 @@ class Gantry:
     def open_fleet_stats(self) -> None:
         from .fleetstats import FleetStatsDialog
         dialog = FleetStatsDialog(self)
-        if not self.window.tray_mode:
-            self.show()
-            self.window.embed_dialog(dialog)
-            return
+        self.window.hold_fleet_panel(dialog)
         dialog.run()
         dialog.destroy()
 
@@ -742,14 +739,6 @@ class Gantry:
         self.window.show_panel(panel, 500, 680)
 
     def toggle_spoolbase(self) -> None:
-        if not self.window.tray_mode:
-            from .spoolbase import SpoolbaseWindow
-            self.show()
-            window = SpoolbaseWindow(self)
-            child = window.get_child()
-            window.remove(child)
-            self.window.show_panel(child, 520, 620, cleanup=window.destroy)
-            return
         window = getattr(self, "spoolbase_window", None)
         if window is None:
             from .spoolbase import SpoolbaseWindow
@@ -1188,12 +1177,12 @@ class Gantry:
 
     def open_diagnostics(self) -> None:
         from .diagnostics import DiagnosticsDialog
+        # A window of its own in both presentations. In the desktop window it used to be pulled apart
+        # and re-hosted as a dimmed overlay inside the fleet, which capped it at the fleet's size and
+        # greyed out the cards behind it.
         dialog = DiagnosticsDialog(self)
-        if not self.window.tray_mode:
-            self.show()
-            self.window.embed_dialog(dialog)
-        else:
-            dialog.present()
+        self.window.hold_fleet_panel(dialog)
+        dialog.present()
 
     def open_settings(self) -> None:
         existing = getattr(self, "settings_dialog", None)
