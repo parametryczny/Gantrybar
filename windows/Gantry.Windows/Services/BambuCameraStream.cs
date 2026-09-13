@@ -105,15 +105,31 @@ public sealed class BambuCameraStream
         _parameterSets.AddRange(sets);
         var trackUrl = ResolveControlUrl(baseUrl, control, scheme, port);
         var setup = await AuthorizedRequestAsync("SETUP", trackUrl, ("Transport", "RTP/AVP/TCP;unicast;interleaved=0-1"));
-        var session = setup.Header("session")?.Split(';')[0];
+        var sessionHeader = setup.Header("session");
+        var session = sessionHeader?.Split(';')[0];
         if (string.IsNullOrEmpty(session)) throw new Exception("Drukarka nie zwróciła identyfikatora sesji wideo.");
 
         await AuthorizedRequestAsync("PLAY", baseUrl, ("Session", session!));
+        // The printer drops an idle session, and then simply stops sending video with no error and no
+        // EOS — the X1 went quiet after about a minute. It states its patience in the Session header
+        // as "timeout=<seconds>"; 60 is the RTSP convention when it says nothing. A third of that is
+        // the keep-alive interval, so two missed pings still leave room before the drop.
+        var timeoutSeconds = 60.0;
+        foreach (var part in sessionHeader!.Split(';'))
+        {
+            var index = part.IndexOf("timeout=", StringComparison.OrdinalIgnoreCase);
+            if (index < 0) continue;
+            if (double.TryParse(part.Substring(index + 8).Trim(), System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                timeoutSeconds = Math.Max(5, parsed);
+            break;
+        }
+        var keepaliveMs = (int)(Math.Max(2, timeoutSeconds / 3) * 1000);
         _keepalive = new Timer(async _ =>
         {
             try { await AuthorizedRequestAsync("GET_PARAMETER", baseUrl, ("Session", session!)); }
             catch { }
-        }, null, 15000, 15000);
+        }, null, keepaliveMs, keepaliveMs);
 
         var first = await Task.WhenAny(_firstVideo.Task, Task.Delay(FirstFrameTimeoutMs));
         if (first != _firstVideo.Task)

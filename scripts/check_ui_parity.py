@@ -25,6 +25,21 @@ def require(relative: str, pattern: str, description: str) -> None:
         ERRORS.append(f"{relative}: {description}")
 
 
+def forbid(relative: str, pattern: str, description: str) -> None:
+    """For a shape that was removed on purpose and must not come back."""
+    if re.search(pattern, source(relative), re.MULTILINE) is not None:
+        ERRORS.append(f"{relative}: {description}")
+
+
+def require_count(relative: str, pattern: str, expected: int, description: str) -> None:
+    """Counts occurrences in Python instead of asking one regex to. A repeated group wrapped around
+    a wildcard bridge — (?:[\\s\\S]*?X[\\s\\S]*?){n} — backtracks exponentially the moment it fails
+    to match, which turns a broken rule into a hung check instead of a reported one."""
+    found = len(re.findall(pattern, source(relative), re.MULTILINE))
+    if found != expected:
+        ERRORS.append(f"{relative}: {description} (found {found}, expected {expected})")
+
+
 one = FLEET["panelWidth"]["oneColumn"]
 two = FLEET["panelWidth"]["twoColumns"]
 compact = FLEET["panelWidth"]["list"]
@@ -32,8 +47,8 @@ column_gap = FLEET["columnGap"]
 row_gap = FLEET["rowGap"]["cards"]
 theme_gap = TOKENS["gap"]
 radius = TOKENS["radius"]["card"]
-settings = CONTRACT["settingsWindow"]["window"]
-macos_settings = CONTRACT["settingsWindow"]["macOS"]
+settings_window = CONTRACT["settingsWindow"]
+settings_metrics = settings_window["metrics"]
 floating = CONTRACT["floatingWindow"]
 
 # macOS is the visual reference, but it is checked too so a macOS change must update the contract.
@@ -48,9 +63,8 @@ require("Sources/Gantry/App/GantryTheme.swift", rf"cardRadius:\s*CGFloat\s*=\s*{
         "card radius differs from the contract")
 require("Sources/Gantry/App/GantryTheme.swift", rf"gap:\s*CGFloat\s*=\s*{theme_gap}\b",
         "theme gap differs from the contract")
-# macOS no longer pins a settings-window size: the window fits whichever pane is showing, which is
-# what a system settings window does. Windows and GNU/Linux still use the contract's fixed size, and
-# their rules further down still enforce it.
+# No platform pins a settings-window size any more: the window fits whichever pane is showing,
+# which is what a system settings window does. The per-platform chrome rules live further down.
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"tabStyle = \.toolbar",
         "macOS settings window does not use the system's toolbar-style pane switcher")
@@ -58,14 +72,14 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"toolbarStyle = \.preference",
         "macOS settings window lays its toolbar out like a document window's")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        rf"enum SettingsPaneID: String \{{\s*case (?:\w+, ){{{len(macos_settings['panes']) - 1}}}\w+",
+        rf"enum SettingsPaneID: String \{{\s*case (?:\w+, ){{{len(settings_window['panes']) - 1}}}\w+",
         "macOS settings pane count differs from the contract")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"\.general, \.appearance, \.notifications, \.windows, \.integrations, \.advanced",
         "macOS settings panes are not in the contract's order")
 require("Sources/Gantry/Views/SettingsRowKit.swift",
-        rf"captionColumn: CGFloat = {macos_settings['metrics']['captionColumn']}[\s\S]*?"
-        rf"controlColumn: CGFloat = {macos_settings['metrics']['controlColumn']}",
+        rf"captionColumn: CGFloat = {settings_metrics['captionColumn']}[\s\S]*?"
+        rf"controlColumn: CGFloat = {settings_metrics['controlColumn']}",
         "macOS settings columns differ from the contract")
 require("Sources/Gantry/Views/SettingsRowKit.swift",
         r"NSGridView\(numberOfColumns: 2[\s\S]*?column\(at: 0\)\.xPlacement = \.trailing"
@@ -129,6 +143,96 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"let info = webInfo \?\?",
         "macOS settings re-read the network interfaces every time the Integrations pane opens")
+
+# The same window on Windows and GNU/Linux: the system's own frame, a sidebar of panes in the
+# contract's order, captions in a fixed trailing column, plain check boxes, and a height that
+# follows the pane instead of one size for all six.
+pane_count = len(settings_window["panes"])
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'WindowStyle="SingleBorderWindow"',
+        "the Windows settings window still draws its own chrome, so the system title bar, dark "
+        "mode and rounded corners it asks DWM for do nothing")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'SizeToContent="Height"',
+        "the Windows settings window does not fit the pane on screen")
+require_count("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'<ListBoxItem x:Name="PaneItem',
+              pane_count,
+              "the Windows settings sidebar does not carry one row per contract pane")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
+        rf'x:Key="PaneCaption"[\s\S]*?Value="{settings_metrics["captionColumn"]}"',
+        "the Windows settings caption column differs from the contract")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
+        r'x:Key="PaneCaption"[\s\S]*?Property="TextAlignment" Value="Right"',
+        "Windows settings captions are not trailing in their column")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml.cs",
+        r'"General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Advanced"',
+        "the Windows settings panes are not in the contract's order")
+# The hand-drawn switch track is what made it look like something other than a Windows window.
+forbid("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'x:Name="track"',
+       "the Windows settings booleans are switch rows again instead of check boxes")
+
+require("linux/gantry/settings.py", r"use_header_bar=True",
+        "the GNU/Linux settings window is not a header-bar preferences window")
+require("linux/gantry/settings.py", r"Gtk\.StackSidebar\(\)",
+        "the GNU/Linux settings panes are not picked from a sidebar")
+require("linux/gantry/settings.py", r"set_vhomogeneous\(False\)",
+        "the GNU/Linux settings stack asks for the tallest pane's height, so the window cannot fit "
+        "the pane on screen")
+require("linux/gantry/settings.py",
+        rf"CAPTION_COLUMN = {settings_metrics['captionColumn']}[\s\S]*?"
+        rf"CONTROL_COLUMN = {settings_metrics['controlColumn']}",
+        "the GNU/Linux settings columns differ from the contract")
+require("linux/gantry/settings.py",
+        rf"PANES = \((?:\s*\"\w[\w ]*\",){{{pane_count - 1}}}\s*\"\w[\w ]*\",?\s*\)",
+        "the GNU/Linux settings pane count differs from the contract")
+require("linux/gantry/settings.py", r"xalign=1[\s\S]*?set_size_request\(self\.CAPTION_COLUMN",
+        "GNU/Linux settings captions are not trailing in a fixed column")
+
+# Ported with the settings window: the panel stops laying itself out when nobody is looking at it,
+# and catches up before it comes back. The tray text and the strip keep running either way.
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"if \(!IsVisible\) \{ _dashboardStale = true; return; \}",
+        "the Windows panel rebuilds its cards while hidden")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"IsVisibleChanged \+= .*_dashboardStale.*Rebuild\(\)",
+        "the Windows panel does not catch up on telemetry it skipped while hidden")
+require("linux/gantry/app.py", r"if not self\.dashboard_visible\(\):\s*\n\s*self\._dashboard_stale = True",
+        "the GNU/Linux panel updates its cards while hidden")
+require("linux/gantry/app.py",
+        r"if getattr\(self, \"_dashboard_stale\", False\):[\s\S]*?self\.rebuild_cards\(\)",
+        "the GNU/Linux panel does not catch up on telemetry it skipped while hidden")
+require("linux/gantry/edgedock.py", r"signature == getattr\(self, \"_drawn_signature\", None\)",
+        "the GNU/Linux strip repositions and redraws for telemetry that says nothing new")
+require("linux/gantry/edgedock.py", r"_expanded_width_cache",
+        "the GNU/Linux strip re-measures every row through Pango on every draw")
+
+# A camera that produced frames and then went silent is restarted, with a growing delay. The X1
+# stops without an error or an EOS, so nothing else notices.
+require("windows/Gantry.Windows/UI/DetailWindow.cs",
+        r"MinimumCameraRestartDelay = 8[\s\S]*?MaximumCameraRestartDelay = 30",
+        "the Windows camera has no silence watchdog")
+require("windows/Gantry.Windows/UI/DetailWindow.cs",
+        r"private void StopCamera\(\)\s*\{[\s\S]{0,400}?_cameraStarted = false;",
+        "Windows StopCamera leaves _cameraStarted set, so the camera cannot be restarted")
+require("windows/Gantry.Windows/Services/BambuCameraStream.cs",
+        r"timeout=\", StringComparison\.OrdinalIgnoreCase",
+        "the Windows RTSP client ignores the session timeout the printer declares")
+require("linux/gantry/camera.py",
+        r"MINIMUM_RESTART_DELAY = 8\.0[\s\S]*?MAXIMUM_RESTART_DELAY = 30\.0",
+        "the GNU/Linux camera has no silence watchdog")
+require("linux/gantry/camera.py", r"def _run\(self, stop: threading\.Event\)",
+        "a restarted GNU/Linux camera worker shares the stop flag with the run it replaced")
+
+# The state belongs beside the printer's name, in the card, not at the end of a navigation row.
+require("windows/Gantry.Windows/UI/DetailWindow.cs",
+        r"titleRow\.Children\.Add\(_name\);\s*\n\s*Grid\.SetColumn\(_state, 1\)",
+        "the Windows detail state is not beside the printer's name")
+require("windows/Gantry.Windows/UI/DetailWindow.cs", r"_name\.MaxWidth = room > 40",
+        "a long printer name can push the Windows detail state out of its card")
+require("linux/gantry/details.py",
+        r"top\.pack_start\(self\.name[\s\S]{0,200}?top\.pack_start\(self\.state_dot"
+        r"[\s\S]{0,120}?top\.pack_start\(self\.state_label",
+        "the GNU/Linux detail state is not beside the printer's name")
+require("linux/gantry/details.py", r"if color != getattr\(self, \"_state_color\", None\)",
+        "the GNU/Linux detail view attaches a new style provider per telemetry packet")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
@@ -303,9 +407,6 @@ require("linux/gantry/layout.py", rf"return\s+{one}\s+if.*else\s+{two}\b",
 require("linux/gantry/layout.py", rf"return\s+{compact}\b", "compact width does not match macOS")
 require("linux/gantry/dashboard.py", rf"CARD_GAP\s*=\s*{column_gap}\b", "column gap does not match macOS")
 require("linux/gantry/dashboard.py", rf"CARD_ROW_GAP\s*=\s*{row_gap}\b", "row gap does not match macOS")
-require("linux/gantry/settings.py",
-        rf"set_default_size\({settings['width']},\s*{settings['height']}\)",
-        "settings window size does not match macOS")
 
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", rf"Width\s*=\s*{compact};",
         "compact width does not match macOS")
@@ -319,9 +420,6 @@ require("windows/Gantry.Windows/UI/GantryTheme.cs", rf"CardRadius\s*=\s*{radius}
         "card radius differs from the contract")
 require("windows/Gantry.Windows/UI/GantryTheme.cs", rf"public const double Gap\s*=\s*{theme_gap};",
         "theme gap differs from the contract")
-require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
-        rf"Width=\"{settings['width']}\"\s+Height=\"{settings['height']}\"",
-        "settings window size does not match macOS")
 
 # Compact card variant B (macOS is authoritative): percentage is part of the status row, the
 # segmented bar shares one row with ETA/layers, temperatures are 22 px and the Details shortcut is

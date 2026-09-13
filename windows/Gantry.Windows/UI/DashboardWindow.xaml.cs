@@ -38,6 +38,9 @@ public partial class DashboardWindow : Window
         CompactButton.Click += (_, _) => ToggleCompact();
         ColumnsButton.Click += (_, _) => { AppSettings.DashboardColumns = AppSettings.DashboardColumns == 2 ? 1 : 2; Rebuild(); };
         _store.Updated += OnStoreUpdated;
+        // Catch-up hook. IsVisibleChanged rather than ShowPopover, because the panel also becomes
+        // visible from the tray menu, from the dock and from a window-mode restore.
+        IsVisibleChanged += (_, _) => { if (IsVisible && _dashboardStale) { _dashboardStale = false; Rebuild(); } };
         PrinterInsights.Changed += OnInsightsChanged;
         Closed += (_, _) => { _store.Updated -= OnStoreUpdated; PrinterInsights.Changed -= OnInsightsChanged; StopTransparencyRefresh(); };
         // A spool assignment should reflect on the cards immediately.
@@ -483,7 +486,18 @@ public partial class DashboardWindow : Window
     // a language switch rather than reusing the old-language instances.
     public void RefreshLanguage() { _views.Clear(); _renderedSerials = new(); Rebuild(); }
 
-    private void OnStoreUpdated(object? sender, EventArgs e) => Dispatcher.Invoke(Rebuild);
+    /// <summary>Set when telemetry arrives at a hidden panel; cleared by the catch-up in ShowPopover.</summary>
+    private bool _dashboardStale;
+
+    // Rebuilding the cards, refitting the height and re-laying out the panel only matters when
+    // somebody can see it. With the flyout hidden this was the whole cost of a telemetry packet,
+    // several times a second, for nothing. Notifications, Telegram, the tray text and the edge strip
+    // are untouched: they are what the app is for while the panel is closed.
+    private void OnStoreUpdated(object? sender, EventArgs e) => Dispatcher.Invoke(() =>
+    {
+        if (!IsVisible) { _dashboardStale = true; return; }
+        Rebuild();
+    });
 
     private void OpenAddWindow()
     {

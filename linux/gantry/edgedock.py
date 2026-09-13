@@ -108,10 +108,18 @@ class EdgeDock:
                 "progress": int(getattr(telemetry, "progress", 0) or 0) if telemetry else 0,
                 "remaining": getattr(telemetry, "remaining_minutes", None) if telemetry else None,
             })
-        self.entries = entries
         if not entries:
+            self.entries = entries
             self.window.hide()
             return
+        # Telemetry arrives several times a second and usually says the same thing the strip already
+        # draws. Repositioning and redrawing an identical strip is pure waste, so it is skipped.
+        signature = (tuple(tuple(sorted(entry.items())) for entry in entries),
+                     self._scale(), str(config.get("edge-dock-edge", "right")), self.expanded)
+        self.entries = entries
+        if signature == getattr(self, "_drawn_signature", None) and self.window.get_visible():
+            return
+        self._drawn_signature = signature
         self._reposition()
         self.window.show_all()
         self.area.queue_draw()
@@ -148,6 +156,14 @@ class EdgeDock:
         return max(1.0, min(1.5, value / 100))
 
     def _expanded_width(self) -> float:
+        # Measuring every row through Pango is the most expensive thing the strip does, and _size()
+        # is asked for it on every draw and every reposition. The answer only changes when the rows
+        # or the language do, so it is kept until then.
+        key = (tuple((entry["name"], self._value_text(entry)) for entry in self.entries),
+               self.app.language)
+        cached = getattr(self, "_expanded_width_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1]
         layout = self.area.create_pango_layout("")
         widest = 0.0
         for entry in self.entries:
@@ -156,7 +172,9 @@ class EdgeDock:
             layout.set_text(self._value_text(entry), -1)
             widest = max(widest, name + layout.get_pixel_size()[0])
         content = EXPANDED_PAD_X * 2 + RING + EXPANDED_TEXT_GAP + widest + 14
-        return min(max(content, 150.0), 260.0)
+        width = min(max(content, 150.0), 260.0)
+        self._expanded_width_cache = (key, width)
+        return width
 
     def _reposition(self) -> None:
         width, height = self._size()

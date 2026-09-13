@@ -306,6 +306,8 @@ class Gantry:
         self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
         self.detail_window: Any | None = None
         self.expanded_compact_serial: str | None = None
+        # Set when telemetry lands on a hidden panel, cleared by the catch-up rebuild in show().
+        self._dashboard_stale = False
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         GLib.timeout_add_seconds(15, self._finish_startup)
         self.reconnect_all()
@@ -758,7 +760,21 @@ class Gantry:
         else:
             window.present_panel()
 
+    def dashboard_visible(self) -> bool:
+        """True when the fleet panel is actually on screen. A hidden tray popover still holds all
+        its widgets, so the window object alone says nothing."""
+        window = getattr(self, "window", None)
+        getter = getattr(window, "get_visible", None)
+        if not callable(getter):
+            return True  # headless/kiosk harnesses have no real window; never skip their updates
+        return bool(getter())
+
     def show(self) -> None:
+        # Telemetry that arrived while the panel was hidden was not drawn. Catch up before it shows,
+        # so the first frame the user sees is already current instead of settling afterwards.
+        if getattr(self, "_dashboard_stale", False):
+            self._dashboard_stale = False
+            self.rebuild_cards()
         self.window.show_all()
         self.window.deiconify()
         self.window.update_startup()
@@ -1023,13 +1039,20 @@ class Gantry:
                 card = self.cards.get(serial)
                 if card is not None:
                     card.show_notice(msg)
-        if (first_report and serial in self.startup.received) or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()):
+        # Card layout, header and window fitting only matter when somebody can see them. With the
+        # popover hidden this was the whole cost of a telemetry packet, several times a second, for
+        # nothing. Notifications, Telegram, the tray label and the strip below are unaffected: they
+        # are what the app is for while the panel is closed.
+        if not self.dashboard_visible():
+            self._dashboard_stale = True
+        elif (first_report and serial in self.startup.received) or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()):
             self.rebuild_cards()
-        elif card := self.cards.get(serial):
-            card.update(current, str(value) if event == "disconnected" else None)
-        self.window.update_header()
-        if hasattr(self.window, "update_startup"):
-            self.window.update_startup()
+        else:
+            if card := self.cards.get(serial):
+                card.update(current, str(value) if event == "disconnected" else None)
+            self.window.update_header()
+            if hasattr(self.window, "update_startup"):
+                self.window.update_startup()
         self._refresh_progress_indicators()
         dock = getattr(self, "edge_dock", None)
         if dock is not None:

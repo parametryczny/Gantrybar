@@ -77,15 +77,29 @@ public sealed class DetailView : UserControl
         var stack = new StackPanel { Margin = new Thickness(14) };
 
         // --- Status card ---
+        // The state belongs next to the printer it describes: [name] [state] ...gap... [percent], on
+        // one line, like macOS. It used to sit on a line of its own above the name.
         _name = Text(20, FontWeights.Bold);
         _percent = Text(28, FontWeights.Bold);
-        var titleRow = new Grid();
-        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        titleRow.Children.Add(_name);
-        Grid.SetColumn(_percent, 1); titleRow.Children.Add(_percent);
-
         _state = Text(12, FontWeights.SemiBold);
+        _state.Margin = new Thickness(8, 0, 0, 0);
+        var titleRow = new Grid();
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // name
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // state
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // percent
+        titleRow.Children.Add(_name);
+        Grid.SetColumn(_state, 1); titleRow.Children.Add(_state);
+        Grid.SetColumn(_percent, 3); titleRow.Children.Add(_percent);
+        // An Auto column asks for the text's full width, so a long name would push the state out of
+        // the card. Capping the name is what makes it — and only it — give way, the same job macOS
+        // does with a low horizontal compression resistance on the name.
+        titleRow.SizeChanged += (_, _) =>
+        {
+            var taken = _state.ActualWidth + _percent.ActualWidth + _state.Margin.Left + 10;
+            var room = titleRow.ActualWidth - taken;
+            _name.MaxWidth = room > 40 ? room : 40;
+        };
         _bar = new Grid { Height = 8, Margin = new Thickness(0, 8, 0, 8) };
         for (int i = 0; i < 32; i++)
         {
@@ -100,7 +114,7 @@ public sealed class DetailView : UserControl
         bottomRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bottomRow.Children.Add(_remaining);
         Grid.SetColumn(_layers, 1); bottomRow.Children.Add(_layers);
-        stack.Children.Add(Draggable("status", Card(new StackPanel { Children = { _state, titleRow, _bar, bottomRow } })));
+        stack.Children.Add(Draggable("status", Card(new StackPanel { Children = { titleRow, _bar, bottomRow } })));
 
         // --- Recent prints / maintenance / statistics (same cards and order as macOS) ---
         _recentPrints = new StackPanel();
@@ -542,6 +556,7 @@ public sealed class DetailView : UserControl
         var over = PrinterOverridesStore.For(_serial).CameraHost;
         var host = string.IsNullOrEmpty(over) ? printer.Host : over!;
         _cameraStatus.Text = AppSettings.T("Connecting to camera…");
+        ArmCameraWatchdog();
 
         if (_kind == PrinterKind.Bambu)
         {
@@ -588,6 +603,7 @@ public sealed class DetailView : UserControl
     // Paints one JPEG frame (from the Bambu native client or the Klipper poller) into the camera Image.
     private void ShowJpegFrame(byte[] jpeg)
     {
+        NoteCameraFrame();
         try
         {
             var bmp = new BitmapImage();
@@ -671,6 +687,7 @@ public sealed class DetailView : UserControl
             bitmap.StreamSource = ms;
             bitmap.EndInit();
             bitmap.Freeze();
+            NoteCameraFrame();
             _cameraImage.Source = bitmap;
             if (_cameraStatus is not null) _cameraStatus.Visibility = Visibility.Collapsed;
         }
@@ -679,6 +696,11 @@ public sealed class DetailView : UserControl
 
     private void StopCamera()
     {
+        // Clearing the flag is what makes a restart possible at all: without it, hiding the camera
+        // module and showing it again left StartCamera returning early on a stream already stopped.
+        _cameraStarted = false;
+        _cameraWatchdog?.Stop();
+        _cameraWatchdog = null;
         _cameraTimer?.Stop();
         try { _bambuCam?.Stop(); } catch { }
         _bambuCam = null;
@@ -686,6 +708,52 @@ public sealed class DetailView : UserControl
         _elegooCam = null;
         try { _anycubicCam?.Stop(); } catch { }
         _anycubicCam = null;
+    }
+
+    // A feed that worked and then went quiet is restarted, backing off so a camera that is genuinely
+    // gone is not hammered. A feed that never produced a frame is left to its status message: a
+    // restart would not help it. Same contract as the macOS CameraFeedController watchdog.
+    private const double MinimumCameraRestartDelay = 8;
+    private const double MaximumCameraRestartDelay = 30;
+    private DispatcherTimer? _cameraWatchdog;
+    private bool _cameraReceivedFrame;
+    private DateTime _cameraLastFrame = DateTime.UtcNow;
+    private DateTime _cameraLastHealthyReset = DateTime.UtcNow;
+    private double _cameraRestartDelay = MinimumCameraRestartDelay;
+
+    private void ArmCameraWatchdog()
+    {
+        _cameraWatchdog?.Stop();
+        _cameraReceivedFrame = false;
+        _cameraLastFrame = DateTime.UtcNow;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        timer.Tick += (_, _) => CheckCameraForSilence();
+        _cameraWatchdog = timer;
+        timer.Start();
+    }
+
+    private void CheckCameraForSilence()
+    {
+        if (!_cameraStarted) return;
+        if (!_cameraReceivedFrame) return;
+        if ((DateTime.UtcNow - _cameraLastFrame).TotalSeconds <= _cameraRestartDelay) return;
+        _cameraRestartDelay = Math.Min(MaximumCameraRestartDelay, _cameraRestartDelay * 2);
+        StopCamera();
+        StartCamera();
+    }
+
+    /// <summary>A frame arrived, so the feed is alive. Sustained flow also earns back the short retry
+    /// delay, otherwise one bad patch would leave a healthy camera on a 30 second leash.</summary>
+    private void NoteCameraFrame()
+    {
+        _cameraReceivedFrame = true;
+        var now = DateTime.UtcNow;
+        _cameraLastFrame = now;
+        if (_cameraRestartDelay > MinimumCameraRestartDelay && (now - _cameraLastHealthyReset).TotalSeconds > 60)
+        {
+            _cameraRestartDelay = MinimumCameraRestartDelay;
+            _cameraLastHealthyReset = now;
+        }
     }
 
     // --- small builders ---

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import urllib.request
 from typing import Any
 
@@ -37,6 +38,12 @@ except (ImportError, ValueError):
 
 
 class CameraView(Gtk.Box):
+    # A feed that worked and then went quiet is restarted, with a growing delay so a camera that is
+    # genuinely gone is not hammered. Matches the macOS CameraFeedController watchdog.
+    MINIMUM_RESTART_DELAY = 8.0
+    MAXIMUM_RESTART_DELAY = 30.0
+    WATCHDOG_INTERVAL_MS = 2000
+
     def __init__(self, app: Any, serial: str, access_code: str | None) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.app = app
@@ -47,6 +54,12 @@ class CameraView(Gtk.Box):
             (self.printer.host if self.printer is not None else "")
         self._stop = threading.Event()
         self._pipeline: Any | None = None
+        self._running = False
+        self._received_frame = False
+        self._last_frame_at = time.monotonic()
+        self._last_healthy_reset = time.monotonic()
+        self._restart_delay = CameraView.MINIMUM_RESTART_DELAY
+        self._watchdog_generation = 0
         pl = app.language == "pl"
 
         self.set_border_width(2)
@@ -68,10 +81,22 @@ class CameraView(Gtk.Box):
 
     # --- lifecycle ------------------------------------------------------------
     def start(self) -> None:
-        self._stop.clear()
-        threading.Thread(target=self._run, name=f"camera-{self.serial}", daemon=True).start()
+        if self._running:
+            return
+        self._running = True
+        # A fresh event per run, not a cleared one: a worker from the previous run keeps the event it
+        # was started with, which stays set, so it can never push frames into the new run.
+        stop = threading.Event()
+        self._stop = stop
+        self._received_frame = False
+        self._last_frame_at = time.monotonic()
+        threading.Thread(target=self._run, args=(stop,),
+                         name=f"camera-{self.serial}", daemon=True).start()
+        self._arm_watchdog()
 
     def stop(self) -> None:
+        self._running = False
+        self._watchdog_generation += 1  # any armed watchdog tick is now stale
         self._stop.set()
         pipeline = self._pipeline
         if pipeline is not None and Gst is not None:
@@ -80,23 +105,52 @@ class CameraView(Gtk.Box):
             except Exception:
                 pass
 
+    def _arm_watchdog(self) -> None:
+        self._watchdog_generation += 1
+        generation = self._watchdog_generation
+        GLib.timeout_add(CameraView.WATCHDOG_INTERVAL_MS,
+                         lambda: self._check_for_silence(generation))
+
+    def _check_for_silence(self, generation: int) -> bool:
+        """Restarts a feed that produced frames and then stopped. A feed that never produced one is
+        left to the status label: restarting it would not help and would only churn the network."""
+        if not self._running or generation != self._watchdog_generation:
+            return False
+        if not self._received_frame or time.monotonic() - self._last_frame_at <= self._restart_delay:
+            return True
+        self._restart_delay = min(CameraView.MAXIMUM_RESTART_DELAY, self._restart_delay * 2)
+        self.stop()
+        self.start()
+        return False
+
+    def _note_frame(self) -> None:
+        """A frame arrived, so the feed is alive. Sustained flow also earns back the short retry
+        delay, otherwise one bad patch would leave a healthy camera on a 30 second leash."""
+        self._received_frame = True
+        now = time.monotonic()
+        self._last_frame_at = now
+        if self._restart_delay > CameraView.MINIMUM_RESTART_DELAY and now - self._last_healthy_reset > 60:
+            self._restart_delay = CameraView.MINIMUM_RESTART_DELAY
+            self._last_healthy_reset = now
+
     def _on_destroy(self, *_a: Any) -> None:
         self.stop()
 
     # --- workers --------------------------------------------------------------
-    def _run(self) -> None:
+    def _run(self, stop: threading.Event) -> None:
         try:
             if self.printer is not None and self.printer.kind in {PrinterKind.BAMBU, PrinterKind.ANYCUBIC_KOBRA_S1}:
                 if self.printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
-                    self._run_anycubic()
+                    self._run_anycubic(stop)
                     return
-                self._run_bambu()
+                self._run_bambu(stop)
             else:
-                self._run_mjpeg()
+                self._run_mjpeg(stop)
         except Exception as exc:  # noqa: BLE001 - surface, never crash the thread
-            self._set_status(i18n.t("Camera error: {0}").format(exc))
+            if not stop.is_set():
+                self._set_status(i18n.t("Camera error: {0}").format(exc))
 
-    def _run_bambu(self) -> None:
+    def _run_bambu(self, stop: threading.Event) -> None:
         pl = self.app.language == "pl"
         if Gst is None:
             self._set_status(i18n.t("GStreamer is unavailable — install GStreamer and the H.264 decoder."))
@@ -168,7 +222,7 @@ class CameraView(Gtk.Box):
             return
 
         bus = pipeline.get_bus()
-        while not self._stop.is_set():
+        while not stop.is_set():
             message = bus.timed_pop_filtered(
                 250 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if message is None:
@@ -183,7 +237,7 @@ class CameraView(Gtk.Box):
         if self._pipeline is pipeline:
             self._pipeline = None
 
-    def _run_anycubic(self) -> None:
+    def _run_anycubic(self, stop: threading.Event) -> None:
         pl = self.app.language == "pl"
         if Gst is None:
             self._set_status(i18n.t("GStreamer is unavailable for FLV decoding."))
@@ -226,7 +280,7 @@ class CameraView(Gtk.Box):
             self._set_status(i18n.t("Could not start the FLV camera."))
             pipeline.set_state(Gst.State.NULL); self._pipeline = None; return
         bus = pipeline.get_bus()
-        while not self._stop.is_set():
+        while not stop.is_set():
             message = bus.timed_pop_filtered(250 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if message is None: continue
             if message.type == Gst.MessageType.ERROR:
@@ -235,7 +289,7 @@ class CameraView(Gtk.Box):
         pipeline.set_state(Gst.State.NULL)
         if self._pipeline is pipeline: self._pipeline = None
 
-    def _run_mjpeg(self) -> None:
+    def _run_mjpeg(self, stop: threading.Event) -> None:
         pl = self.app.language == "pl"
         url = self._mjpeg_url()
         if not url:
@@ -245,7 +299,7 @@ class CameraView(Gtk.Box):
         request = urllib.request.Request(url)
         with urllib.request.urlopen(request, timeout=10) as stream:
             buffer = bytearray()
-            while not self._stop.is_set():
+            while not stop.is_set():
                 chunk = stream.read(16384)
                 if not chunk:
                     break
@@ -282,6 +336,8 @@ class CameraView(Gtk.Box):
 
     # --- UI updates -----------------------------------------------------------
     def _push_jpeg(self, data: bytes) -> None:
+        self._note_frame()
+
         def apply() -> bool:
             if self._stop.is_set():
                 return False

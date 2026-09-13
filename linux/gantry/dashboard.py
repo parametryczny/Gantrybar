@@ -123,10 +123,7 @@ button.printer-alert { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .card-notice { background: alpha(#ff6857, 0.16); border: 1px solid alpha(#ff6857, 0.34); border-radius: 9px; padding: 5px 6px 5px 9px; }
 .card-notice label { color: #f0d9d5; font-size: 10px; }
 .settings-root { padding: 18px 20px 16px; }
-.settings-header { padding: 1px 2px 4px; }
 .settings-title { color: %(text)s; font-size: 22px; font-weight: 700; }
-.settings-author { color: %(secondary)s; font-size: 13px; font-weight: 600; }
-.settings-links { padding-top: 2px; }
 .settings-card { background: alpha(%(card)s, 0.72); border: 1px solid alpha(#ffffff, 0.09); border-radius: 16px; padding: 12px 14px; }
 .maintenance-backdrop { background: alpha(#000000, 0.30); }
 .maintenance-panel { background: alpha(%(card)s, 0.98); border: 1px solid %(line)s; border-radius: 16px; }
@@ -147,6 +144,10 @@ button.guide-action:disabled { color: %(muted)s; }
 .maintenance-stat-value { color: %(text)s; font-size: 14px; font-weight: 700; }
 .maintenance-stat-label { color: %(muted)s; font-size: 9px; }
 .settings-section { color: %(muted)s; font-size: 10px; font-weight: 700; }
+/* The settings window is drawn by the system theme, so its own type sets size and weight only and
+   leaves every colour to GTK. The rules above still dress the card-based windows (diagnostics,
+   fleet statistics, maintenance), which are not preferences windows. */
+.settings-heading { font-size: 13px; font-weight: 600; padding-top: 2px; }
 .settings-label { color: %(secondary)s; font-size: 12px; }
 .settings-hint { color: %(muted)s; font-size: 10px; }
 .settings-version { color: %(muted)s; font-size: 10px; }

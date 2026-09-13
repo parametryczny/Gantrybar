@@ -507,60 +507,33 @@
     }
   },
   "settingsWindow": {
-    "macOS": {
-      "note": "macOS only for now. Windows and GNU/Linux still build the card design described by the sibling keys below, and are ported next.",
-      "chrome": "NSTabViewController tabStyle .toolbar inside a close-only title bar, NSWindow.toolbarStyle .preference",
-      "title": "the active pane's name, so the Window menu reads correctly too",
-      "panes": [
-        "General",
-        "Appearance",
-        "Notifications",
-        "Windows and strip",
-        "Integrations",
-        "Advanced"
-      ],
-      "layout": "one NSGridView per pane: captions trailing in column 0, controls leading in column 1, one shared vertical axis down the whole window",
-      "booleans": "checkbox under a right-aligned category caption, not a switch row",
-      "sections": "system NSBox separator plus a 13 pt semibold heading spanning both columns",
-      "colors": "system only: labelColor, secondaryLabelColor, the window's own material",
-      "sizing": "the window fits the active pane and carries no fixed size; the top edge stays put while the bottom moves",
-      "metrics": {
-        "captionColumn": 164,
-        "controlColumn": 336,
-        "columnSpacing": 10,
-        "rowSpacing": 9,
-        "paneInset": 20,
-        "contentWidth": 550
-      }
+    "note": "One design on all three platforms, each drawn by its own system's widgets. The card design with a pill tab bar is gone: it was the thing that made the window look like an app pretending to be a preferences window.",
+    "chrome": {
+      "macOS": "NSTabViewController tabStyle .toolbar inside a close-only title bar, NSWindow.toolbarStyle .preference",
+      "windows": "SingleBorderWindow so the system title bar, immersive dark mode and rounded corners apply, a ListBox sidebar, SizeToContent Height",
+      "linux": "Gtk.Dialog with use_header_bar, Gtk.StackSidebar over a non-homogeneous Gtk.Stack"
     },
-    "canvas": "#0C0D0E",
-    "sectionCard": {
-      "bg": "card @0.5",
-      "border": "line 1px",
-      "radius": 16,
-      "inset": {
-        "x": 14,
-        "y": 12
-      }
-    },
-    "sectionTitle": {
-      "size": 10,
-      "weight": "semibold",
-      "color": "muted",
-      "uppercase": true
-    },
-    "tabs": [
-      "GENERAL",
-      "APPEARANCE",
-      "ADVANCED"
+    "title": "the active pane's name, so the Window menu reads correctly too",
+    "panes": [
+      "General",
+      "Appearance",
+      "Notifications",
+      "Windows and strip",
+      "Integrations",
+      "Advanced"
     ],
-    "scroll": true,
-    "window": {
-      "width": 640,
-      "height": 720,
-      "resizable": true,
-      "minWidth": 600,
-      "minHeight": 520
+    "layout": "one two-column grid per pane: captions trailing in column 0, controls leading in column 1, one shared vertical axis down the whole window",
+    "booleans": "checkbox under a right-aligned category caption, not a switch row",
+    "sections": "a system separator plus a 13 pt semibold heading spanning both columns",
+    "colors": "system only: labelColor, secondaryLabelColor, the window's own material",
+    "sizing": "the window fits the active pane and carries no fixed size; the top edge stays put while the bottom moves",
+    "metrics": {
+      "captionColumn": 164,
+      "controlColumn": 336,
+      "columnSpacing": 10,
+      "rowSpacing": 9,
+      "paneInset": 20,
+      "contentWidth": 550
     }
   }
 }
