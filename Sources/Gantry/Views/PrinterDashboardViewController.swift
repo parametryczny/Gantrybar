@@ -765,21 +765,15 @@ final class PrinterDashboardViewController: NSViewController {
     private var spoolOverlaySizingActive = false
     private static weak var overlaySizingHost: PrinterDashboardViewController?
 
-    /// Grow the popover to a tall, comfortable size for the open assignment overlay (spec: a small app
-    /// window must not squeeze the filament list). Keeps the current height if it is already taller.
+    /// While the assignment overlay is open the popover holds still. It used to be grown so the roll
+    /// list had room, but a menu-bar popover gaining hundreds of points in one step throws the whole
+    /// window down the screen, and that is worse than a list you scroll. Nothing is resized here:
+    /// this only suspends the per-tick auto-size, so telemetry cannot move the window under an open
+    /// panel either.
     func beginSpoolOverlaySizing() {
         guard presentation == .popover else { return }
         spoolOverlaySizingActive = true
         PrinterDashboardViewController.overlaySizingHost = self
-        let screenH = (view.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
-        // Grow only the height: the popover width is pinned by the cards' own layout, so forcing it wider
-        // has no effect (the panel is instead sized to fit the narrowest popover). Make it tall enough to
-        // show plenty of the list; restored on close.
-        let width = preferredContentSize.width > 0 ? preferredContentSize.width : 540
-        let height = min(screenH - 24, max(preferredContentSize.height, 780))
-        let size = NSSize(width: width, height: height)
-        preferredContentSize = size
-        onPreferredContentSize(size)
     }
 
     /// Restore the popover to its natural content-driven height once the overlay closes.
@@ -2278,17 +2272,26 @@ final class PrinterCardView: NSView, NSDraggingSource {
                     onDismiss: { PrinterCardView.dismissSpoolOverlay() })
                 return
             }
+            let panel = vc.view
+            panel.translatesAutoresizingMaskIntoConstraints = false
+            // The popover does not resize for this panel. Growing it threw the whole window across
+            // the screen in one step, which is worse than a shorter list: the panel is capped to the
+            // popover and scrolls its own rolls instead. This call only freezes the size.
+            (self.window?.contentViewController as? PrinterDashboardViewController)?
+                .beginSpoolOverlaySizing()
+
             let backdrop = SpoolBackdropView(frame: host.bounds)
             backdrop.autoresizingMask = [.width, .height]
             backdrop.wantsLayer = true
             backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.3).cgColor
             backdrop.onClickOutside = { PrinterCardView.dismissSpoolOverlay() }
-            let panel = vc.view
-            panel.translatesAutoresizingMaskIntoConstraints = false
             backdrop.addSubview(panel)
             NSLayoutConstraint.activate([
                 panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
-                panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
+                // Pinned to the top, not centred: the popover's resize is not instantaneous, so a
+                // centred panel slides as the height settles. Anchored at the top it is drawn once
+                // and every extra point the popover gains appears below it.
+                panel.topAnchor.constraint(equalTo: backdrop.topAnchor, constant: 12),
                 // The panel sizes itself to its content (longest filament name + padding); here we only
                 // cap it so it can never be wider than the popover. Rows fill whatever width results.
                 panel.widthAnchor.constraint(lessThanOrEqualTo: backdrop.widthAnchor, constant: -24),
@@ -2297,8 +2300,6 @@ final class PrinterCardView: NSView, NSDraggingSource {
             host.addSubview(backdrop)
             PrinterCardView.activeSpoolBackdrop = backdrop
             PrinterCardView.activeSpoolVC = vc
-            // Grow the popover so the roll/filament list has room even when the app window is short.
-            (self.window?.contentViewController as? PrinterDashboardViewController)?.beginSpoolOverlaySizing()
             _ = anchor
         })
         }

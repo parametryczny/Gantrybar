@@ -267,6 +267,19 @@ require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         r"func apply\(color: NSColor, fraction: CGFloat\)",
         "the macOS filament swatch needs a new view for a new level")
 
+# Opening the spool-assignment panel used to grow the popover, which threw the whole menu-bar window
+# down the screen in one step. The panel is capped to the popover and scrolls; while it is open the
+# popover holds still, telemetry included.
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"func beginSpoolOverlaySizing\(\) \{[\s\S]{0,240}?spoolOverlaySizingActive = true",
+        "the spool overlay no longer just freezes the popover size")
+forbid("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+       r"func beginSpoolOverlaySizing\(\) \{[\s\S]{0,400}?onPreferredContentSize\(",
+       "opening the spool panel resizes the popover again, which jumps the whole window")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"panel\.topAnchor\.constraint\(equalTo: backdrop\.topAnchor",
+        "the spool panel is centred, so any height change slides it instead of leaving it put")
+
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf"width:\s*{floating['initialSize']['width']},\s*height:\s*{floating['initialSize']['height']}",
