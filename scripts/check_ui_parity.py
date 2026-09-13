@@ -74,6 +74,17 @@ require("Sources/Gantry/Views/SettingsRowKit.swift",
 require("Sources/Gantry/Views/SettingsRowKit.swift",
         r"NSButton\(checkboxWithTitle:",
         "macOS settings booleans are not checkboxes")
+# The two things that make the window fit its pane. Both were bugs first, both are one line, and both
+# fail silently: the content simply sits at the wrong offset and runs off the bottom edge. A height
+# constraint on the content view controller's own view is the only mechanism the window honours
+# (preferredContentSize did nothing on the child and raced on the parent), and a pane root view must
+# keep autoresizing because NSTabView positions its children by frame, not by constraint.
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"heightAnchor\.constraint\(equalToConstant:[\s\S]*?paneHeight = height",
+        "macOS settings window height is not driven by a constraint on the content view controller")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"root\.autoresizingMask = \[\.width, \.height\]",
+        "macOS settings pane opts out of autoresizing, so NSTabView cannot reposition it")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",

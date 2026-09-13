@@ -43,6 +43,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: PrinterStore
     private let tabController = SettingsTabViewController()
     private var panes: [SettingsPaneID: SettingsPane] = [:]
+    /// The one thing that actually sets the window's height.
+    ///
+    /// Measured, not assumed. A pane's own view knows its height from its content, but `NSTabView`
+    /// gives its children frames rather than constraints, so that height never reaches the window:
+    /// the width did reach it, because every pane carries an explicit width constraint, and the
+    /// heights were simply ignored. `preferredContentSize` was no better, on the child (nothing
+    /// happened at all) or on the tab controller (the window took the first pane's height, then the
+    /// tallest pane's, and kept it). This constraint lives on the content view controller's own view,
+    /// which is inside the window's constraint chain, so changing it resizes the window and nothing
+    /// races it.
+    private var paneHeight: NSLayoutConstraint?
 
     // MARK: General
     /// A popup, not a two-way segment: the list is whatever catalogs i18n/ contains, so a new
@@ -187,6 +198,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
         buildPanes()
         window.contentViewController = tabController
+        let height = tabController.view.heightAnchor.constraint(equalToConstant: 274)
+        height.isActive = true
+        paneHeight = height
         refresh()
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
@@ -460,17 +474,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func resizeToSelectedPane(animated: Bool = false) {
         let index = tabController.selectedTabViewItemIndex
         guard let window, index >= 0, index < tabController.tabViewItems.count else { return }
-        let item = tabController.tabViewItems[index]
-        window.title = item.label
-        guard let pane = item.viewController as? SettingsPane else { return }
+        window.title = tabController.tabViewItems[index].label
+        guard let pane = tabController.tabViewItems[index].viewController as? SettingsPane else { return }
         pane.updatePreferredSize()
-        let target = pane.preferredContentSize
-        guard target.height > 1 else { return }
-        let top = window.frame.maxY
-        window.setContentSize(target)
-        var frame = window.frame
-        frame.origin.y = top - frame.height
-        window.setFrame(frame, display: true, animate: animated && window.isVisible)
+        let target = pane.preferredContentSize.height
+        guard target > 1, let height = paneHeight, abs(height.constant - target) > 0.5 else { return }
+        guard animated, window.isVisible else {
+            height.constant = target
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.allowsImplicitAnimation = true
+            height.constant = target
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
     }
 
     // MARK: Refresh

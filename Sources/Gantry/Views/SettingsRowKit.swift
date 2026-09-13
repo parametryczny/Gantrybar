@@ -244,7 +244,11 @@ final class SettingsPane: NSViewController {
 
     override func loadView() {
         let root = NSView()
-        root.translatesAutoresizingMaskIntoConstraints = false
+        // Autoresizing on purpose, and this is load-bearing. `NSTabView` positions and sizes its
+        // children by setting frames, so a root view that had opted out of autoresizing kept whatever
+        // frame it was first given: the pane came out the right size but at the previous pane's
+        // offset, which is why the content sat far from the top and ran off the bottom edge.
+        root.autoresizingMask = [.width, .height]
         root.addSubview(content)
         let inset = SettingsMetrics.paneInset
         NSLayoutConstraint.activate([
