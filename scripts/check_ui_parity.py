@@ -234,6 +234,19 @@ require("linux/gantry/details.py",
 require("linux/gantry/details.py", r"if color != getattr\(self, \"_state_color\", None\)",
         "the GNU/Linux detail view attaches a new style provider per telemetry packet")
 
+# Found by sampling the live macOS app: the detail popover was where the main thread's busy time
+# went, and most of it was rebuilding the history/maintenance/statistics labels behind a popover
+# nobody had open. Same two guards as the dashboard: visibility, then rebuild only on a change.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"guard self\.view\.window\?\.isVisible == true else \{[\s\S]{0,120}?refreshStale = true",
+        "the macOS detail view refreshes behind a dismissed popover")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"override func viewWillAppear\(\)[\s\S]{0,400}?if refreshStale \{",
+        "the macOS detail view does not catch up on telemetry it skipped while dismissed")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"guard signature != renderedInsightsSignature else \{ return \}",
+        "macOS detail insights are rebuilt per telemetry packet instead of on a real change")
+
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf"width:\s*{floating['initialSize']['width']},\s*height:\s*{floating['initialSize']['height']}",

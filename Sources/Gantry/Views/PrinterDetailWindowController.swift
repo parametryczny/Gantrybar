@@ -61,6 +61,7 @@ final class PrinterDetailViewController: NSViewController {
 
     // AMS / filaments — reuse the fleet card's dock so the layout logic stays identical.
     private let filamentDock = FilamentDockView()
+    private var renderedInsightsSignature = ""
     private var renderedFilamentGroups: [FilamentGroup]?
     private var renderedFilamentShowsGrams: Bool?
     private var renderedFilamentMonochrome: Bool?
@@ -346,6 +347,16 @@ final class PrinterDetailViewController: NSViewController {
         refresh()
     }
 
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        // Telemetry that arrived while the popover was dismissed was not drawn. Catch up before it
+        // is on screen, so the first frame is already current instead of settling afterwards.
+        if refreshStale {
+            refreshStale = false
+            refresh()
+        }
+    }
+
     override func viewDidAppear() {
         super.viewDidAppear()
         startCamera()
@@ -366,12 +377,23 @@ final class PrinterDetailViewController: NSViewController {
 
     private func stopCamera() { cameraFeed.stop() }
 
+    /// Set when telemetry arrives at a dismissed popover; cleared by the catch-up in viewWillAppear.
+    private var refreshStale = false
+
     private func scheduleRefresh() {
         guard !refreshScheduled else { return }
         refreshScheduled = true
         DispatchQueue.main.async { [weak self] in
-            self?.refreshScheduled = false
-            self?.refresh()
+            guard let self else { return }
+            self.refreshScheduled = false
+            // Sibling of the dashboard's own gate. A dismissed popover keeps its window, so the
+            // window alone says nothing — only isVisible does. Sampling the live app found this
+            // refresh spending most of the main thread's busy time behind a closed popover.
+            guard self.view.window?.isVisible == true else {
+                self.refreshStale = true
+                return
+            }
+            self.refresh()
         }
     }
 
@@ -776,6 +798,25 @@ final class PrinterDetailViewController: NSViewController {
 
     private func refreshInsights(settings: AppSettings) {
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: serial, polish: settings.isPolish)
+        let recentEntries = Array(snapshot.history.prefix(3))
+        let dueTasks = Array(snapshot.tasks.sorted { a, b in
+            if a.isUrgent != b.isUrgent { return a.isUrgent }
+            if a.isDue != b.isDue { return a.isDue }
+            return a.remainingHours < b.remainingHours
+        }.prefix(2))
+        // History, maintenance and statistics change on the scale of whole prints, but telemetry
+        // arrives several times a second, and each rebuild made three stacks of fresh NSTextFields
+        // and measured every one of them. Sampling the live app found this alone taking most of the
+        // main thread's busy time. Same guard as renderAMS below: rebuild only on a real change.
+        let signature = recentEntries.map { "\($0.result)|\($0.job)|\(Int($0.durationSeconds))" }
+            .joined(separator: ";")
+            + "#" + dueTasks.map { "\($0.title)|\($0.isUrgent)|\($0.isDue)|"
+                + "\(Int($0.remainingHours))|\(Int($0.overdueHours))" }.joined(separator: ";")
+            + "#\(Int(snapshot.totalPrintHours * 10))|\(snapshot.successPercent ?? -1)"
+            + "|\(Int(snapshot.consumedGrams))|\(settings.isPolish)"
+        guard signature != renderedInsightsSignature else { return }
+        renderedInsightsSignature = signature
+
         func clear(_ stack: NSStackView) {
             stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
         }
@@ -788,7 +829,7 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         clear(recentPrintsStack)
-        let recent = Array(snapshot.history.prefix(3))
+        let recent = recentEntries
         if recent.isEmpty {
             recentPrintsStack.addArrangedSubview(line(settings.t("No recorded history.")))
         } else {
@@ -804,12 +845,7 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         clear(maintenanceStack)
-        let shown = Array(snapshot.tasks.sorted { a, b in
-            if a.isUrgent != b.isUrgent { return a.isUrgent }
-            if a.isDue != b.isDue { return a.isDue }
-            return a.remainingHours < b.remainingHours
-        }.prefix(2))
-        for task in shown {
+        for task in dueTasks {
             let timing = task.isDue
                 ? settings.t("overdue by {0} h", String(format: "%.0f", task.overdueHours))
                 : settings.t("in {0} print h", String(format: "%.0f", task.remainingHours))
