@@ -1,21 +1,16 @@
 import AppKit
 import Network
 
-/// Dimmed in-window backdrop. Clicking outside the diagnostics card closes it.
-private final class DiagnosticBackdropView: NSView {
-    var onClickOutside: (() -> Void)?
-    override func mouseDown(with event: NSEvent) { onClickOutside?() }
-}
-
-/// Fleet-wide connectivity check, presented inside Gantry's existing popover/window.
+/// Fleet-wide connectivity check in a window of its own, centred on the screen.
 ///
-/// This used to be a standalone NSWindow owned by the Settings controller. Closing Settings released
-/// the controller while its window was still on screen, so AppKit kept hit-testing freed views and the
-/// app died with EXC_BAD_ACCESS on the next mouse move. Living in the popover as an overlay (like the
-/// maintenance panel) keeps the controller retained for exactly as long as its views are visible.
+/// This was a standalone NSWindow owned by the Settings controller once before. Closing Settings
+/// released the controller while its window was still on screen, so AppKit kept hit-testing freed
+/// views and the app died with EXC_BAD_ACCESS on the next mouse move. `PanelWindowController` is why
+/// it can be a window again: the panel holds itself, and its controller, for exactly as long as the
+/// window is up, with no second owner able to release it early.
 @MainActor
 final class DiagnosticCenterViewController: NSViewController {
-    private static weak var activeBackdrop: NSView?
+    private static var activePanel: PanelWindowController?
     private static var activeController: DiagnosticCenterViewController?
 
     private let store: PrinterStore
@@ -31,48 +26,25 @@ final class DiagnosticCenterViewController: NSViewController {
     private var runStarted = Date()
     private var probeStarted = Date()
 
-    static func show(store: PrinterStore, in host: NSView) {
+    static func show(store: PrinterStore) {
         dismiss()
         let controller = DiagnosticCenterViewController(store: store)
-        if host.window?.windowController is FloatingDashboardWindowController {
-            activeController = controller
-            activeBackdrop = EmbeddedPanelView.show(controller.view, in: host,
-                size: NSSize(width: 470, height: 560), fillsViewport: true, showsCloseButton: false,
-                onDismiss: { Self.dismiss() })
-            return
-        }
-        let backdrop = DiagnosticBackdropView(frame: host.bounds)
-        backdrop.autoresizingMask = [.width, .height]
-        backdrop.wantsLayer = true
-        backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.30).cgColor
-        backdrop.onClickOutside = { DiagnosticCenterViewController.dismiss() }
-
-        let panel = controller.view
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        backdrop.addSubview(panel)
-        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 470)
-        preferredWidth.priority = .defaultHigh
-        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 560)
-        preferredHeight.priority = .defaultHigh
-        NSLayoutConstraint.activate([
-            panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
-            panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
-            panel.widthAnchor.constraint(lessThanOrEqualTo: backdrop.widthAnchor, constant: -24),
-            panel.heightAnchor.constraint(lessThanOrEqualTo: backdrop.heightAnchor, constant: -24),
-            preferredWidth,
-            preferredHeight
-        ])
-        host.addSubview(backdrop)
-        activeBackdrop = backdrop
         activeController = controller
+        activePanel = PanelWindowController.present(controller.view,
+            title: AppSettings.shared.t("Diagnostic Center"),
+            size: NSSize(width: 470, height: 560),
+            onDismiss: { Self.dismiss() })
     }
 
+    /// The statics are cleared before the window is closed, not after: closing it runs the dismissal
+    /// callback, which lands back here, and an already-empty static is what stops the recursion.
     static func dismiss() {
         activeController?.pollTimer?.invalidate()
         activeController?.pollTimer = nil
-        activeBackdrop?.removeFromSuperview()
-        activeBackdrop = nil
+        let panel = activePanel
+        activePanel = nil
         activeController = nil
+        panel?.dismiss()
     }
 
     init(store: PrinterStore) {

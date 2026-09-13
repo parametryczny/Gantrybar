@@ -1,8 +1,8 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.5.2",
-    "date": "2026-09-07",
+    "version": "1.6.0",
+    "date": "2026-09-13",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
   "tokens": {
@@ -535,5 +535,56 @@
       "paneInset": 20,
       "contentWidth": 550
     }
+  },
+  "panelWindow": {
+    "note": "Every auxiliary panel is a window of its own, centred on the screen, not an overlay inside the fleet panel. As overlays they could never be larger than their host, they dimmed the cards the user had come to read, and on macOS growing the popover to fit the roll list threw the whole menu-bar window down the screen.",
+    "panels": [
+      "Diagnostics",
+      "Fleet statistics",
+      "Maintenance",
+      "Slot assignment",
+      "Spoolbase"
+    ],
+    "staysEmbedded": {
+      "onboarding guide": "it points at the live cards behind it and dims them on purpose",
+      "startup overlay": "it is the fleet panel's own loading state, not a panel",
+      "quick stock stepper": "190 points, anchored to the roll it adjusts inside the Spoolbase window",
+      "printer details and skip objects": "navigation, not a modal: a page inside the fleet panel with a back button to the cards, so it keeps one window per fleet instead of one per printer"
+    },
+    "chrome": {
+      "macOS": "PanelWindowController: NSWindow [.titled, .closable, .resizable], titleVisibility .hidden and a transparent title bar, the same frame as the other nine windows; Escape closes via cancelOperation",
+      "windows": "a WPF Window with the system title bar, WindowStartupLocation CenterScreen, Escape closes",
+      "linux": "a Gtk.Window with a header bar, centred on the parent's monitor, Escape closes"
+    },
+    "position": "centred on the screen, not on the fleet panel, so it never opens on top of the cards",
+    "fleetPanelStaysOpen": {
+      "rule": "the fleet panel must remain visible and live while any panel is on screen",
+      "macOS": "the popover's behavior is switched from .transient to .applicationDefined and the outside-click monitor is suspended; a reference count, not a flag, so closing one of two open panels does not hand the popover back to AppKit",
+      "windows": "the dashboard's Deactivated handler returns while any panel window is visible",
+      "linux": "_suppress_hide is held while any panel window is mapped"
+    },
+    "sizes": {
+      "diagnostics": {
+        "width": 470,
+        "height": 560
+      },
+      "fleetStatistics": {
+        "width": 470,
+        "height": 560
+      },
+      "maintenance": {
+        "width": 470,
+        "height": "measured, and also the window's minimum so it cannot clip"
+      },
+      "slotAssignment": {
+        "width": 460,
+        "height": 640
+      },
+      "spoolbase": {
+        "width": 500,
+        "height": 640
+      }
+    },
+    "clamp": "never wider or taller than the screen's visible frame less 40 points"
   }
 }

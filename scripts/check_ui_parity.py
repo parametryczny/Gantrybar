@@ -267,18 +267,44 @@ require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         r"func apply\(color: NSColor, fraction: CGFloat\)",
         "the macOS filament swatch needs a new view for a new level")
 
-# Opening the spool-assignment panel used to grow the popover, which threw the whole menu-bar window
-# down the screen in one step. The panel is capped to the popover and scrolls; while it is open the
-# popover holds still, telemetry included.
+# Every auxiliary panel is its own screen-centred window, not an overlay on the fleet panel. As an
+# overlay the slot-assignment list could not be larger than the popover, and growing the popover to
+# fit it threw the whole menu-bar window down the screen in one step.
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"window\.center\(\)[\s\S]{0,120}?makeKeyAndOrderFront",
+        "a detached panel does not open centred on the screen")
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"window\.level = PanelWindowController\.companionWindow\?\(\)\?\.level",
+        "a detached panel does not borrow the fleet panel's window level, so it opens behind it")
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"if holds == 1 \{ onHoldChanged\?\(true\) \}[\s\S]{0,240}?if holds == 0 \{ onHoldChanged\?\(false\) \}",
+        "the fleet-panel hold is not reference counted, so closing one of two panels drops it")
+forbid("Sources/Gantry/Views/PanelWindowController.swift",
+       r"(?:onPreferredContentSize|popover\.contentSize)",
+       "a detached panel resizes the fleet panel again, which jumps the whole window")
+require("Sources/Gantry/Views/MenuBarController.swift",
+        r"popover\.behavior = held \? \.applicationDefined : \.transient",
+        "the fleet popover is not held open while a panel is on screen, so it closes under it")
+require("Sources/Gantry/Views/MenuBarController.swift",
+        r"PanelWindowController\.onHoldChanged = \{[\s\S]{0,200}?PanelWindowController\.companionWindow = \{",
+        "the panel hooks are not installed, so panels cannot reach the live fleet presentation")
+for panel_name, panel_file in (
+    ("FleetStatsViewController", "Sources/Gantry/Views/FleetStatsViewController.swift"),
+    ("DiagnosticCenterViewController", "Sources/Gantry/Views/DiagnosticCenterWindowController.swift"),
+    ("MaintenancePanelViewController", "Sources/Gantry/Views/MaintenancePanelWindowController.swift"),
+):
+    require(panel_file, r"activePanel = PanelWindowController\.present\(",
+            f"{panel_name} is not presented as its own window")
+    # The static is emptied before the window closes; closing it runs the dismissal callback, which
+    # lands back in dismiss(), and the empty static is the only thing that stops the recursion.
+    require(panel_file, r"let panel = activePanel\s*\n\s*activePanel = nil[\s\S]{0,160}?panel\?\.dismiss\(\)",
+            f"{panel_name}.dismiss() closes the window before clearing its static, which recurses")
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        r"func beginSpoolOverlaySizing\(\) \{[\s\S]{0,240}?spoolOverlaySizingActive = true",
-        "the spool overlay no longer just freezes the popover size")
-forbid("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-       r"func beginSpoolOverlaySizing\(\) \{[\s\S]{0,400}?onPreferredContentSize\(",
-       "opening the spool panel resizes the popover again, which jumps the whole window")
-require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        r"panel\.topAnchor\.constraint\(equalTo: backdrop\.topAnchor",
-        "the spool panel is centred, so any height change slides it instead of leaving it put")
+        r"PrinterCardView\.activeSpoolPanel = PanelWindowController\.present\(",
+        "the slot-assignment panel is not its own window")
+require("Sources/Gantry/Spoolbase/SpoolbaseController.swift",
+        r"panel = PanelWindowController\.present\(",
+        "Spoolbase is not its own window")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",

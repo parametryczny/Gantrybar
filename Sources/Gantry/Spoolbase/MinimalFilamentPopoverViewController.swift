@@ -19,8 +19,6 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     private var lowStockOnly = false
     private var filterPanel: NSVisualEffectView?
     private var quickStockPopover: NSPopover?
-    private var embeddedQuickStock: NSView?
-    private var embeddedQuickStockController: QuickStockViewController?
     private var editorController: FilamentEditorWindowController?
     private var catalogController: CatalogPickerWindowController?
     private var auxiliaryCloseObserver: NSObjectProtocol?
@@ -440,13 +438,9 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         dismissEmbeddedQuickStock()
         quickStockPopover?.performClose(nil)
         let controller = QuickStockViewController(filament: filament)
-        if let host = view.window?.contentView,
-           view.window?.windowController is FloatingDashboardWindowController {
-            embeddedQuickStockController = controller
-            embeddedQuickStock = EmbeddedPanelView.show(controller.view, in: host,
-                size: NSSize(width: 190, height: 104)) { [weak self] in self?.dismissEmbeddedQuickStock() }
-            return
-        }
+        // Anchored to the row it adjusts. This used to fall back to a dimmed overlay in the middle of
+        // the window whenever Spoolbase was embedded in the floating dashboard; Spoolbase has its own
+        // window now, and a 190-point stepper belongs next to its row in any of them.
         let popover = NSPopover()
         popover.contentViewController = controller
         popover.behavior = .transient
@@ -465,14 +459,10 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         if delta != 0 { store.adjust(id: controller.filamentID, spools: delta) }
     }
 
+    /// Closes an open quick-stock stepper, committing whatever the user dialled in. Called when the
+    /// Spoolbase window itself goes away, so the adjustment is not lost with it.
     func dismissEmbeddedQuickStock() {
-        guard let controller = embeddedQuickStockController else { return }
-        view.window?.makeFirstResponder(nil)
-        embeddedQuickStock?.removeFromSuperview()
-        embeddedQuickStock = nil
-        embeddedQuickStockController = nil
-        let delta = controller.currentValue - controller.initialValue
-        if delta != 0 { store.adjust(id: controller.filamentID, spools: delta) }
+        quickStockPopover?.performClose(nil)
     }
 
     @objc private func addPressed() {
