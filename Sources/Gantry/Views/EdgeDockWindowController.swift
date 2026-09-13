@@ -212,7 +212,7 @@ private final class EdgeDockPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-struct EdgeDockEntry {
+struct EdgeDockEntry: Equatable {
     let serial: String
     let name: String
     let state: PrinterState
@@ -221,11 +221,26 @@ struct EdgeDockEntry {
 }
 
 private final class EdgeDockView: NSView {
-    var entries: [EdgeDockEntry] = [] { didSet { needsLayout = true; needsDisplay = true } }
-    var edge: EdgeDockEdge = .right { didSet { needsDisplay = true } }
+    /// Telemetry arrives twice a second whether or not it changed anything the strip shows, so the
+    /// comparison is what keeps an idle fleet from redrawing, re-measuring and re-masking for ever.
+    var entries: [EdgeDockEntry] = [] {
+        didSet {
+            guard entries != oldValue else { return }
+            invalidateMeasurements()
+            needsLayout = true
+            needsDisplay = true
+        }
+    }
+    var edge: EdgeDockEdge = .right {
+        didSet {
+            guard edge != oldValue else { return }
+            needsDisplay = true
+        }
+    }
     var scale: CGFloat = 1 {
         didSet {
             guard abs(scale - oldValue) > 0.001 else { return }
+            invalidateMeasurements()
             onLayoutChange?(false)
             needsLayout = true
             needsDisplay = true
@@ -235,7 +250,6 @@ private final class EdgeDockView: NSView {
     var pinned = false {
         didSet {
             guard pinned != oldValue else { return }
-            animateUnfold(to: isExpanded ? 1 : 0)
             onLayoutChange?(true)
             needsLayout = true
             needsDisplay = true
@@ -253,6 +267,7 @@ private final class EdgeDockView: NSView {
                 view.translatesAutoresizingMaskIntoConstraints = true
                 addSubview(view)
             }
+            invalidateMeasurements()
             onLayoutChange?(false)
             needsLayout = true
             needsDisplay = true
@@ -269,13 +284,15 @@ private final class EdgeDockView: NSView {
     private var isExpanded: Bool { pinned || isHovering }
     private var trackingArea: NSTrackingArea?
     private var collapseTimer: Timer?
-    /// 0 folded, 1 unfolded. The window's own resize is smooth on its own, but the rows used to be
-    /// fully drawn in the first frame of it, which read as a snap rather than a transition. This
-    /// drives their opacity so they surface out of the frost while the strip is still opening.
+    /// 0 folded, 1 unfolded. Read off the window's own width rather than kept on a clock of its own.
+    /// There used to be a second animation here, a 60 Hz timer running the same curve alongside the
+    /// window's resize, and the two disagreed: the window is driven by the display link, so on a
+    /// 120 Hz panel it stepped twice as often and the floor, the labels and the blur trailed it by up
+    /// to a frame. The strip was also redrawn 71 times for 42 real width changes. Derived, they cannot
+    /// drift, the drawing happens once per change, and the transition literally follows the scale.
     private var unfoldProgress: CGFloat = 0 {
         didSet { updateTransitionBlur() }
     }
-    private var unfoldTimer: Timer?
     private lazy var rowsView: EdgeDockRowsView = {
         let view = EdgeDockRowsView()
         view.owner = self
@@ -283,30 +300,20 @@ private final class EdgeDockView: NSView {
         return view
     }()
 
-    /// Runs `unfoldProgress` to its target on the same curve and over the same time as the window.
-    /// Each tick schedules the next one instead of repeating, so a view that goes away simply ends
-    /// the chain rather than leaving a timer firing at nothing.
-    private func animateUnfold(to target: CGFloat) {
-        unfoldTimer?.invalidate()
-        unfoldTimer = nil
-        let from = unfoldProgress
-        guard abs(target - from) > 0.001 else { return }
-        stepUnfold(from: from, to: target, began: Date())
+    /// The window resizes the content view, which resizes us, so this is the one hook that sees every
+    /// frame of the unfold without asking anybody when the next one is due.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        syncUnfoldProgress()
     }
 
-    private func stepUnfold(from: CGFloat, to target: CGFloat, began: Date) {
-        let elapsed = Date().timeIntervalSince(began) / Self.unfoldDuration
-        let linear = CGFloat(min(1, max(0, elapsed)))
-        let eased = 1 - pow(1 - linear, 3)   // ease-out cubic, matching the window's curve
-        unfoldProgress = from + (target - from) * eased
+    private func syncUnfoldProgress() {
+        let folded = Self.collapsedWidth * scale
+        let span = max(1, expandedWidth() - folded)
+        let progress = min(1, max(0, (bounds.width - folded) / span))
+        guard abs(progress - unfoldProgress) > 0.001 else { return }
+        unfoldProgress = progress
         needsDisplay = true
-        guard linear < 1 else {
-            unfoldTimer = nil
-            return
-        }
-        unfoldTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.stepUnfold(from: from, to: target, began: began) }
-        }
     }
 
     // Geometry. The strip is deliberately narrow: at rest a printer is one 14 pt ring and nothing else.
@@ -359,11 +366,15 @@ private final class EdgeDockView: NSView {
 
     /// A soft dark halo under the labels. This is what lets the floor be thin enough to see the blur
     /// through; without it the names would smear into a bright desktop showing through the frost.
+    /// One object per size rather than a new one per label per frame: the attributed strings only read
+    /// it, and it changes with nothing but `scale`.
     private var labelShadow: NSShadow {
+        if let shadowCache, abs(shadowCache.scale - scale) < 0.001 { return shadowCache.shadow }
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.75)
         shadow.shadowBlurRadius = 3 * scale
         shadow.shadowOffset = .zero
+        shadowCache = (scale, shadow)
         return shadow
     }
 
@@ -383,8 +394,31 @@ private final class EdgeDockView: NSView {
         return NSSize(width: Self.collapsedWidth * scale, height: body + Self.notch * 2 * scale)
     }
 
+    /// Measuring text is the one genuinely slow thing the strip does, and the unfold now asks for this
+    /// width on every frame to know how far along it is. Everything feeding it changes only when the
+    /// fleet, the pictures or the size setting do, so it is computed then and not 120 times a second.
+    private var expandedWidthCache: CGFloat?
+    private var shadowCache: (scale: CGFloat, shadow: NSShadow)?
+    private var pinGlyphCache: (scale: CGFloat, glyph: NSImage)?
+
+    /// The silhouette cache is deliberately not cleared here: its key already carries everything the
+    /// shape depends on, so it invalidates itself and a language change never re-rasterises a mask.
+    fileprivate func invalidateMeasurements() {
+        expandedWidthCache = nil
+        shadowCache = nil
+        pinGlyphCache = nil
+    }
+
     private func expandedWidth() -> CGFloat {
+        if let expandedWidthCache { return expandedWidthCache }
+        let width = measureExpandedWidth()
+        expandedWidthCache = width
+        return width
+    }
+
+    private func measureExpandedWidth() -> CGFloat {
         var widest: CGFloat = 0
+        let nameFont = self.nameFont, valueFont = self.valueFont
         for entry in entries {
             let name = (entry.name as NSString).size(withAttributes: [.font: nameFont]).width
             let value = (valueText(entry) as NSString).size(withAttributes: [.font: valueFont]).width
@@ -456,13 +490,24 @@ private final class EdgeDockView: NSView {
         let fade = max(0, min(1, unfoldProgress))
         NSColor.white.withAlphaComponent(0.1 * fade).setFill()
         NSBezierPath(ovalIn: rect).fill()
-        let configuration = NSImage.SymbolConfiguration(pointSize: Self.pinGlyph * scale, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [GantryTheme.secondary.withAlphaComponent(fade)]))
-        guard let glyph = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: nil)?
-            .withSymbolConfiguration(configuration) else { return }
+        // Rendering an SF Symbol means looking it up and rasterising it, which is far too much work to
+        // repeat on every frame of the unfold. The colour is baked in at full strength and the fade is
+        // applied to the draw instead, so one glyph per size serves the whole gesture.
+        guard let glyph = pinGlyph() else { return }
         let size = glyph.size
         glyph.draw(in: NSRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
-                              width: size.width, height: size.height))
+                              width: size.width, height: size.height),
+                   from: .zero, operation: .sourceOver, fraction: fade)
+    }
+
+    private func pinGlyph() -> NSImage? {
+        if let pinGlyphCache, abs(pinGlyphCache.scale - scale) < 0.001 { return pinGlyphCache.glyph }
+        let configuration = NSImage.SymbolConfiguration(pointSize: Self.pinGlyph * scale, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [GantryTheme.secondary]))
+        guard let glyph = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return nil }
+        pinGlyphCache = (scale, glyph)
+        return glyph
     }
 
     private func cameraWidth(stripWidth: CGFloat) -> CGFloat {
@@ -476,17 +521,51 @@ private final class EdgeDockView: NSView {
     /// Clips the frosted backdrop to the strip's outline. Without this the blur would be a rectangle
     /// with the silhouette merely painted inside it, and the concave fillets would sit on a frosted
     /// square. Runs on every layout pass, so the outline keeps up while the panel animates open.
+    /// Everything the outline depends on. A layout pass runs for reasons that leave the shape alone
+    /// too, a camera picture arriving or a row's remaining time gaining a digit, and handing the
+    /// effect view a mask makes the window server recompute the whole behind-window blur region.
+    private struct MaskKey: Equatable {
+        let width: CGFloat, height: CGFloat, scale: CGFloat, edge: EdgeDockEdge, backing: CGFloat
+    }
+    private var maskKey: MaskKey?
+
     private func clipBackdropToSilhouette() {
         guard let backdrop, bounds.width > 0, bounds.height > 0 else { return }
-        let size = bounds.size
-        let outline = shapePath()
-        let mask = NSImage(size: size, flipped: false) { _ in
-            NSColor.black.setFill()
-            outline.fill()
-            return true
-        }
-        mask.capInsets = NSEdgeInsets()   // 1:1 with the window, never stretched
+        let backing = window?.backingScaleFactor ?? 2
+        let key = MaskKey(width: bounds.width, height: bounds.height,
+                          scale: scale, edge: edge, backing: backing)
+        guard key != maskKey else { return }
+        guard let mask = silhouetteMask(size: bounds.size, backing: backing) else { return }
+        maskKey = key
         backdrop.maskImage = mask
+    }
+
+    /// Rasterised here and now, at the screen's own resolution. `NSImage(size:flipped:drawingHandler:)`
+    /// draws lazily, which meant the effect view paid for the fill at some later point in the frame
+    /// and did so again every time it needed the mask at another scale.
+    private func silhouetteMask(size: NSSize, backing: CGFloat) -> NSImage? {
+        let pixels = NSSize(width: (size.width * backing).rounded(.up),
+                            height: (size.height * backing).rounded(.up))
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                         pixelsWide: Int(pixels.width), pixelsHigh: Int(pixels.height),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        // The effect view reads the mask's alpha, so outside the outline has to stay genuinely empty
+        // rather than merely black; a fresh bitmap starts as undefined bytes, not as transparent.
+        context.cgContext.clear(CGRect(origin: .zero, size: pixels))
+        context.cgContext.scaleBy(x: backing, y: backing)
+        NSColor.black.setFill()
+        shapePath(in: size).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        let mask = NSImage(size: size)
+        mask.addRepresentation(rep)
+        mask.capInsets = NSEdgeInsets()   // 1:1 with the window, never stretched
+        return mask
     }
 
     override func layout() {
@@ -508,10 +587,14 @@ private final class EdgeDockView: NSView {
                 continue
             }
             view.isHidden = false
-            view.frame = NSRect(x: x,
-                                y: contentTop - metric.top - metric.height
-                                   - Self.cameraGap * scale - metric.cameraHeight,
-                                width: width, height: metric.cameraHeight)
+            let frame = NSRect(x: x,
+                               y: contentTop - metric.top - metric.height
+                                  - Self.cameraGap * scale - metric.cameraHeight,
+                               width: width, height: metric.cameraHeight)
+            // A live picture is a layer that reflows when its frame is set, so setting the same frame
+            // again on every layout pass is pure cost. Most passes during an unfold move it, but the
+            // ones telemetry and camera frames cause do not.
+            if view.frame != frame { view.frame = frame }
             placed.insert(metric.entry.serial)
         }
         // A picture whose printer dropped out of the strip this refresh has no row to sit under.
@@ -537,8 +620,10 @@ private final class EdgeDockView: NSView {
 
     /// The silhouette: a rounded body flush against the screen edge, plus a concave fillet at each end
     /// so the strip appears to flow out of the edge rather than sit next to it.
-    private func shapePath() -> NSBezierPath {
-        let w = bounds.width, h = bounds.height
+    private func shapePath() -> NSBezierPath { shapePath(in: bounds.size) }
+
+    private func shapePath(in size: NSSize) -> NSBezierPath {
+        let w = size.width, h = size.height
         let r = min(Self.notch * scale, w)
         let bodyRadius = min(w / 2, 12 * scale)
         let top = h - r, bottom = r
@@ -588,13 +673,31 @@ private final class EdgeDockView: NSView {
     private func updateTransitionBlur() {
         let progress = max(0, min(1, unfoldProgress))
         let strength = sin(CGFloat.pi * progress)
-        guard strength > 0.01, let blur = CIFilter(name: "CIGaussianBlur") else {
+        guard strength > 0.01 else {
+            // Nothing to blur at either rest state, and an empty chain is what lets the layer go back
+            // to being composited directly instead of through an offscreen pass.
             if !rowsView.contentFilters.isEmpty { rowsView.contentFilters = [] }
             return
         }
-        blur.setValue(strength * Self.transitionBlurRadius * scale, forKey: kCIInputRadiusKey)
-        rowsView.contentFilters = [blur]
+        let radius = strength * Self.transitionBlurRadius * scale
+        guard let blur = transitionBlur else { return }
+        // Assigning `contentFilters` tears the layer's filter chain down and builds it again, which is
+        // not what you want 120 times a second. Named once, the radius can be poked straight into the
+        // live chain instead, and the layer keeps the render target it already has.
+        if rowsView.contentFilters.isEmpty {
+            blur.setValue(radius, forKey: kCIInputRadiusKey)
+            rowsView.contentFilters = [blur]
+            return
+        }
+        rowsView.layer?.setValue(radius, forKeyPath: "filters.\(Self.transitionBlurName).inputRadius")
     }
+
+    private lazy var transitionBlur: CIFilter? = {
+        guard let blur = CIFilter(name: "CIGaussianBlur") else { return nil }
+        blur.name = Self.transitionBlurName
+        return blur
+    }()
+    private static let transitionBlurName = "gantryDockUnfoldBlur"
     /// Peak radius at the middle of the gesture, in points before the strip's own scale.
     private static let transitionBlurRadius: CGFloat = 7
 
@@ -721,7 +824,6 @@ private final class EdgeDockView: NSView {
         guard !isHovering else { return }
         isHovering = true
         guard !pinned else { return }   // already unfolded, nothing to re-lay out
-        animateUnfold(to: 1)
         onLayoutChange?(true)
         needsDisplay = true
     }
@@ -747,7 +849,6 @@ private final class EdgeDockView: NSView {
         guard isHovering else { return }
         isHovering = false
         guard !pinned else { return }
-        animateUnfold(to: 0)
         onLayoutChange?(true)
         needsDisplay = true
     }

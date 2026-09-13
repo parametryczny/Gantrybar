@@ -123,6 +123,22 @@ require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"class EdgeDockRowsView[\s\S]*?owner\?\.drawRows\(\)",
         "macOS edge dock draws its rows into the silhouette, so a blur would soften its edges")
 
+# Smoothness, measured rather than assumed. Each of these replaced work that ran on every frame or
+# every telemetry packet; a sample of the running app put two thirds of the main thread in the last
+# one. They are invariants, not preferences: undo any of them and the stutter comes straight back.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"override func setFrameSize[\s\S]*?syncUnfoldProgress\(\)",
+        "macOS edge dock runs a second animation clock instead of following the window's own width")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"guard key != maskKey else \{ return \}",
+        "macOS edge dock re-masks its frosted backdrop on layout passes that never changed the shape")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"guard view\.window\?\.isVisible == true else \{ return \}",
+        "macOS dashboard lays out and measures its cards while nobody is looking at them")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"if shape != zoneShape \{[\s\S]*?ThermalZoneView\(label: zone\.0,",
+        "macOS temperature tiles are rebuilt per telemetry packet instead of updated in place")
+
 # Issue #34, the second half: the detail panel must take the height its cards need, capped by the
 # screen, instead of the constant it used to be nailed to. GNU/Linux already sizes to content through
 # set_propagate_natural_height, so only the two ports that hard-coded a number are checked here.

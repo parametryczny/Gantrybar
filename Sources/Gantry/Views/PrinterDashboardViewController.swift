@@ -466,6 +466,13 @@ final class PrinterDashboardViewController: NSViewController {
         footerHeightConstraint?.constant = footerLabel.isHidden ? 0 : 14
     }
 
+    /// Before the first frame, not after it: the popover takes its size from what this reports, so a
+    /// refresh that only ran in `viewDidAppear` would show the previous fleet's height for one frame.
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        refreshDashboard()
+    }
+
     override func viewDidAppear() {
         super.viewDidAppear()
         refreshDashboard()
@@ -541,6 +548,20 @@ final class PrinterDashboardViewController: NSViewController {
 
     private func refreshDashboard() {
         guard isViewLoaded else { return }
+        // A closed menu-bar popover keeps its view controller alive, and telemetry kept driving a full
+        // refresh through it several times a second for nobody to see. Worse than wasted: with the view
+        // out of any window, AppKit has to build a throwaway Auto Layout engine for the whole card tree
+        // on each of the two measuring passes at the end of this method, install it into every
+        // descendant, solve, and tear it down. A sample of the running app put 1134 of 1447 main-thread
+        // samples in exactly those two lines. `viewWillAppear` refreshes on the way back in, so nothing
+        // is stale when the panel opens.
+        //
+        // The test is visibility, not `view.window != nil`: a dismissed popover keeps its window and
+        // its whole view tree, only marking the window invisible, so the obvious check would have been
+        // a no-op here. This is a skip and not a latch, which is what makes it safe for a minimised
+        // floating window too: telemetry keeps calling in, so the first packet after the window comes
+        // back renders it again.
+        guard view.window?.isVisible == true else { return }
         let settings = AppSettings.shared
         updateStartupPresentation(settings: settings)
         let visiblePrinters = store.dashboardPrinters
@@ -2716,11 +2737,6 @@ private final class TemperatureBentoView: NSView {
                 bedCurrent: Double?, bedTarget: Double?,
                 chamberCurrent: Double?, chamberTarget: Double?,
                 printing: Bool, error: Bool, settings: AppSettings) {
-        row.arrangedSubviews.forEach {
-            row.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
-
         var zones: [(String, Double?, Double?, NSColor)] = []
         if dual {
             let left = nozzles.first { $0.position == .left } ?? nozzles.first
@@ -2746,30 +2762,60 @@ private final class TemperatureBentoView: NSView {
         // printer holds it during a print), cold/idle muted, firmware alarm red. In monochrome mode hue is
         // dropped but a leading glyph (↑ ● ↓ ○ ! —) keeps the state readable.
         let mono = settings.monochrome
-        for (index, zone) in zones.enumerated() {
+        let nozzleCount = dual ? 2 : 1
+        // What a zone *is*, as opposed to what it currently reads. Labels, icons and the L/R suffix
+        // change when the printer's hardware or the language does, which is to say almost never; the
+        // temperatures change twice a second. Tearing the tiles down and building them again on every
+        // packet, as this did, meant an SF Symbol lookup and a fresh constraint set per reading, and it
+        // dirtied the whole card's layout so the two measuring passes in refreshDashboard had to solve
+        // from scratch. Rebuild on identity, update in place on value.
+        let shape = zones.enumerated().map { index, zone in
+            let icon = index < nozzleCount ? "line.3.horizontal.decrease"
+                     : index == nozzleCount ? "square.3.layers.3d" : "cube"
+            let side = dual && index < 2 ? (index == 0 ? "L" : "R") : nil
+            return "\(zone.0)|\(icon)|\(side ?? "")"
+        } + (chamberCurrent == nil ? ["spacer"] : [])
+
+        if shape != zoneShape {
+            zoneShape = shape
+            zoneViews = []
+            row.arrangedSubviews.forEach {
+                row.removeArrangedSubview($0)
+                $0.removeFromSuperview()
+            }
+            for (index, zone) in zones.enumerated() {
+                let icon = index < nozzleCount ? "line.3.horizontal.decrease"
+                         : index == nozzleCount ? "square.3.layers.3d" : "cube"
+                let view = ThermalZoneView(label: zone.0,
+                                           icon: icon,
+                                           side: dual && index < 2 ? (index == 0 ? "L" : "R") : nil,
+                                           separated: index > 0)
+                zoneViews.append(view)
+                row.addArrangedSubview(view)
+            }
+            // Preserve the chamber's grid cell even when telemetry omits it. The spacer is invisible,
+            // but prevents the bed from sliding sideways as partial MQTT reports arrive.
+            if chamberCurrent == nil { row.addArrangedSubview(NSView()) }
+        }
+
+        for (index, zone) in zones.enumerated() where index < zoneViews.count {
             // The chamber has no target and never triggers a thermal alarm on its own; only the nozzle/bed
             // carry the printer's error state here.
             let zoneError = error && zone.2 != nil
             let state = GantryTheme.tempState(current: zone.1, target: zone.2, printing: printing, error: zoneError)
-            let nozzleCount = dual ? 2 : 1
-            let icon = index < nozzleCount ? "line.3.horizontal.decrease" : index == nozzleCount ? "square.3.layers.3d" : "cube"
-            row.addArrangedSubview(ThermalZoneView(label: zone.0,
-                                                   icon: icon,
-                                                   side: dual && index < 2 ? (index == 0 ? "L" : "R") : nil,
-                                                   current: Self.value(zone.1),
-                                                   target: showTargets
-                                                       ? (zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "")
-                                                       : "",
-                                                   tooltipTarget: zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "",
-                                                   tint: GantryTheme.tempColor(state, mono: mono),
-                                                   separated: index > 0,
-                                                   symbol: mono ? GantryTheme.tempSymbol(state) : nil,
-                                                   bold: GantryTheme.tempBold(state)))
+            zoneViews[index].apply(current: Self.value(zone.1),
+                                   target: showTargets
+                                       ? (zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "")
+                                       : "",
+                                   tooltipTarget: zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "",
+                                   tint: GantryTheme.tempColor(state, mono: mono),
+                                   symbol: mono ? GantryTheme.tempSymbol(state) : nil,
+                                   bold: GantryTheme.tempBold(state))
         }
-        // Preserve the chamber's grid cell even when telemetry omits it. The spacer is invisible,
-        // but prevents the bed from sliding sideways as partial MQTT reports arrive.
-        if chamberCurrent == nil { row.addArrangedSubview(NSView()) }
     }
+
+    private var zoneShape: [String] = []
+    private var zoneViews: [ThermalZoneView] = []
 
     private static func value(_ value: Double?) -> String {
         value.map { "\(Int($0.rounded()))°" } ?? "—"
@@ -2787,9 +2833,13 @@ private final class ThermalZoneView: NSView {
     private let separator = CALayer()
     private let ambient = CAGradientLayer()
 
-    init(label: String, icon: String, side: String?, current: String, target: String,
-         tooltipTarget: String? = nil, tint: NSColor, separated: Bool,
-         symbol: String? = nil, bold: Bool = false) {
+    private let currentField = NSTextField(labelWithString: "")
+    private let targetField = NSTextField(labelWithString: "")
+    private let zoneLabel: String
+    private var appliedBold: Bool?
+
+    init(label: String, icon: String, side: String?, separated: Bool) {
+        zoneLabel = label
         super.init(frame: .zero)
         wantsLayer = true
         // Neutral tile: the hue lives only on the temperature value below, so a wall of zones reads
@@ -2805,8 +2855,6 @@ private final class ThermalZoneView: NSView {
         layer?.addSublayer(accent)
         layer?.addSublayer(separator)
 
-        toolTip = label + ": " + current + " " + (tooltipTarget ?? target)
-        setAccessibilityLabel(toolTip)
         let iconView = NSImageView(image: NSImage(systemSymbolName: icon, accessibilityDescription: label) ?? NSImage())
         iconView.contentTintColor = GantryTheme.secondary
         iconView.symbolConfiguration = .init(pointSize: 12, weight: .regular)
@@ -2818,17 +2866,9 @@ private final class ThermalZoneView: NSView {
         labelField.textColor = .tertiaryLabelColor
         labelField.lineBreakMode = .byTruncatingTail
 
-        // In monochrome mode a leading glyph (↑ ● ↓ ○ ! —) carries the state that colour otherwise would.
-        let currentField = NSTextField(labelWithString: symbol.map { "\($0) \(current)" } ?? current)
-        currentField.font = .monospacedDigitSystemFont(ofSize: 14, weight: bold ? .bold : .semibold)
-        // The one spot of colour per zone: the live temperature carries its state colour so the tile
-        // itself can stay neutral.
-        currentField.textColor = tint
-        let targetField = NSTextField(labelWithString: target)
         // Quiet target: small and faint so the eye catches the big current value, the target just hints.
         targetField.font = .monospacedDigitSystemFont(ofSize: 9, weight: .regular)
         targetField.textColor = GantryTheme.secondary
-        targetField.isHidden = target.isEmpty
         currentField.maximumNumberOfLines = 1
         targetField.maximumNumberOfLines = 1
         let values = NSStackView(views: [currentField, targetField])
@@ -2854,6 +2894,29 @@ private final class ThermalZoneView: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// Everything that changes with a reading. Each assignment is guarded, because writing a text
+    /// field's string or font invalidates its intrinsic size and with it the whole card's layout, and
+    /// most packets leave most of these identical.
+    func apply(current: String, target: String, tooltipTarget: String?,
+               tint: NSColor, symbol: String?, bold: Bool) {
+        // In monochrome mode a leading glyph (↑ ● ↓ ○ ! —) carries the state that colour otherwise would.
+        let text = symbol.map { "\($0) \(current)" } ?? current
+        if currentField.stringValue != text { currentField.stringValue = text }
+        if appliedBold != bold {
+            appliedBold = bold
+            currentField.font = .monospacedDigitSystemFont(ofSize: 14, weight: bold ? .bold : .semibold)
+        }
+        // The one spot of colour per zone: the live temperature carries its state colour so the tile
+        // itself can stay neutral.
+        if currentField.textColor != tint { currentField.textColor = tint }
+        if targetField.stringValue != target { targetField.stringValue = target }
+        if targetField.isHidden != target.isEmpty { targetField.isHidden = target.isEmpty }
+        let tip = zoneLabel + ": " + current + " " + (tooltipTarget ?? target)
+        guard toolTip != tip else { return }
+        toolTip = tip
+        setAccessibilityLabel(tip)
+    }
 
     override func layout() {
         super.layout()
