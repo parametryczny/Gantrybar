@@ -341,6 +341,45 @@ for holder in ("open_diagnostics", "open_fleet_stats"):
             rf"def {holder}\(self\)[\s\S]{{0,400}}?hold_fleet_panel\(dialog\)",
             f"GNU/Linux {holder} does not hold the fleet panel open")
 
+# Windows: the same detachment. The hold is the dashboard's own Deactivated handler, which walks
+# OwnedWindows and refuses to hide while any of them is visible — so it is only a hold if every
+# panel actually sets Owner, which nothing on the auxiliary path did before.
+require("windows/Gantry.Windows/UI/PanelWindow.cs",
+        r"WindowStartupLocation = WindowStartupLocation\.CenterScreen",
+        "a Windows panel window is not centred on the screen")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"if \(owner\.IsLoaded\) Owner = owner;",
+        "a Windows panel window is not owned by the fleet panel, so it hides from under it")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"if \(e\.Key != Key\.Escape\) return;",
+        "a Windows panel window cannot be closed with Escape")
+require("windows/Gantry.Windows/UI/TrayIcon.cs",
+        r"private void ShowAuxiliary\(System\.Windows\.Window controller\)[\s\S]{0,400}?"
+        r"if \(dashboard\.IsLoaded\) controller\.Owner = dashboard;",
+        "Windows auxiliary windows are not owned by the fleet panel, so it hides from under them")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"_spoolAssignWindow = PanelWindow\.Present\(",
+        "the Windows slot-assignment panel is not its own window")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"_maintenanceWindow = PanelWindow\.Present\(",
+        "the Windows maintenance panel is not its own window")
+for field in ("_spoolAssignWindow", "_maintenanceWindow"):
+    require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+            rf"var window = {field};\s*\n\s*{field} = null;\s*\n\s*window\?\.Close\(\);",
+            f"Windows {field} is closed before it is cleared, which recurses")
+forbid("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs", r"internal void EmbedWindow",
+       "the Windows dialog-into-overlay host is back")
+forbid("windows/Gantry.Windows/UI/TrayIcon.cs", r"EmbedWindow",
+       "a Windows dialog is embedded in the fleet panel again")
+forbid("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r"area\.Right - Width",
+       "Windows Spoolbase is pinned to the corner again instead of centred")
+forbid("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r"WindowStyle = WindowStyle\.None",
+       "Windows Spoolbase drops its title bar again, which also makes the DWM calls inert")
+require("windows/Gantry.Windows/UI/SpoolbaseWindow.cs",
+        r"WindowStartupLocation = WindowStartupLocation\.CenterScreen",
+        "Windows Spoolbase does not open centred on the screen")
+for centred in ("SettingsWindow.xaml", "AddPrinterWindow.xaml"):
+    forbid(f"windows/Gantry.Windows/UI/{centred}", r'WindowStartupLocation="CenterOwner"',
+           f"Windows {centred} centres on the fleet panel, which sits in a screen corner")
+
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf"width:\s*{floating['initialSize']['width']},\s*height:\s*{floating['initialSize']['height']}",

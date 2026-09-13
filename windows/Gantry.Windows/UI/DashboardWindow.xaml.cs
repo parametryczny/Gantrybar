@@ -47,7 +47,10 @@ public partial class DashboardWindow : Window
         SpoolbaseShared.Spools.Changed += OnSpoolsChanged;
         Closed += (_, _) => SpoolbaseShared.Spools.Changed -= OnSpoolsChanged;
         // Popover behaviour: dismiss when the user clicks away, like the macOS menu-bar panel —
-        // but stay open while one of our own dialogs (add printer) sits on top.
+        // but stay open while any window of ours sits on top of it. Now that every panel is its own
+        // window, this OwnedWindows walk is the whole hold, and every panel must set Owner to get
+        // it. Being a walk rather than a flag it is inherently counted: two panels open, closing one
+        // still finds the other, which is the bug the macOS and Linux counters had to fix by hand.
         Deactivated += (_, _) =>
         {
             if (WindowMode || _boundedLayer is not null) return;
@@ -94,13 +97,44 @@ public partial class DashboardWindow : Window
     private void OnSpoolsChanged() => Dispatcher.Invoke(Rebuild);
     private void OnInsightsChanged() => Dispatcher.Invoke(Rebuild);
 
-    /// <summary>Bounded in-window assignment and maintenance panels, shared with window mode.</summary>
+    // Both were dimmed overlays on the cards. Own windows now, centred on the screen: the roll list
+    // needs more height than the fleet panel has, and the cards behind stay lit and live.
+    private PanelWindow? _spoolAssignWindow;
+    private PanelWindow? _maintenanceWindow;
+
     internal void ShowSpoolAssign(SpoolLocation location, string title, string? material, string? colorHex)
-        => ShowPanel(SpoolAssignPanel.Build(location, title, material, colorHex, ClosePanel), 470, 650);
+    {
+        CloseSpoolAssign();
+        _spoolAssignWindow = PanelWindow.Present(this,
+            SpoolAssignPanel.Build(location, title, material, colorHex, CloseSpoolAssign),
+            title, 470, 650, cleanup: CloseSpoolAssign);
+    }
+
+    /// <summary>The field is cleared before the window is closed, not after: closing it runs the
+    /// cleanup, which lands back here, and an already-empty field is what stops the recursion.</summary>
+    private void CloseSpoolAssign()
+    {
+        var window = _spoolAssignWindow;
+        _spoolAssignWindow = null;
+        window?.Close();
+    }
 
     internal void ShowMaintenance(SavedPrinter printer, PrinterTelemetry telemetry)
-        => ShowPanel(MaintenancePanel.Build(printer, telemetry, ClosePanel,
-            () => Dispatcher.BeginInvoke(new Action(Rebuild))), 470, 570);
+    {
+        CloseMaintenance();
+        _maintenanceWindow = PanelWindow.Present(this,
+            MaintenancePanel.Build(printer, telemetry, CloseMaintenance,
+                () => Dispatcher.BeginInvoke(new Action(Rebuild))),
+            string.Format(AppSettings.T("Maintenance · {0}"), printer.Name), 470, 570,
+            scrolls: true, cleanup: CloseMaintenance);
+    }
+
+    private void CloseMaintenance()
+    {
+        var window = _maintenanceWindow;
+        _maintenanceWindow = null;
+        window?.Close();
+    }
 
     internal void ShowSkipObjects(string serial)
         => ShowPanel(new SkipObjectsPanel(_store, serial, ClosePanel), 500, 680);

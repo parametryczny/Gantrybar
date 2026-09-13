@@ -553,14 +553,14 @@
     },
     "chrome": {
       "macOS": "PanelWindowController: NSWindow [.titled, .closable, .resizable], titleVisibility .hidden and a transparent title bar, the same frame as the other nine windows; Escape closes via cancelOperation",
-      "windows": "a WPF Window with the system title bar, WindowStartupLocation CenterScreen, Escape closes",
+      "windows": "PanelWindow: a WPF Window with the system title bar, WindowStartupLocation CenterScreen, ShowInTaskbar false, Escape closes; panels that were already Windows are simply no longer re-hosted as overlays, and a wrapper ScrollViewer is opt-in so content with its own is not nested inside a second one",
       "linux": "PanelWindow: a Gtk.Window with a HeaderBar and a close button, Gtk.WindowPosition.CENTER, Escape closes; panels that were already Gtk.Dialogs stay dialogs and are simply no longer re-hosted as overlays"
     },
     "position": "centred on the screen, not on the fleet panel, so it never opens on top of the cards",
     "fleetPanelStaysOpen": {
       "rule": "the fleet panel must remain visible and live while any panel is on screen",
       "macOS": "the popover's behavior is switched from .transient to .applicationDefined and the outside-click monitor is suspended; a reference count, not a flag, so closing one of two open panels does not hand the popover back to AppKit",
-      "windows": "the dashboard's Deactivated handler returns while any panel window is visible",
+      "windows": "the dashboard's Deactivated handler walks OwnedWindows and returns while any is visible, so every panel must set Owner; inherently counted, unlike the macOS and Linux flags",
       "linux": "Dashboard._suppress_hide is a reference count behind a property, held while any panel window is mapped, so the tray panel's focus-out hide cannot fire under it"
     },
     "sizes": {

@@ -299,21 +299,6 @@ public partial class DashboardWindow
         FitHeightToContent();
     }
 
-    /// <summary>Reuse the existing controller, retain its commands and clean up on dismissal.</summary>
-    internal void EmbedWindow(Window controller, double width = 520)
-    {
-        if (controller.Content is not FrameworkElement content) return;
-        controller.Content = null;
-        controller.Owner = this; // nested native dialogs use the actual, visible dashboard owner
-        var root = new DockPanel();
-        var heading = new DockPanel { Margin = new Thickness(16, 12, 16, 8) };
-        var close = GuideButtonFor("Close", ClosePanel);
-        DockPanel.SetDock(close, Dock.Right); heading.Children.Add(close);
-        heading.Children.Add(GuideText(controller.Title, 18, translate: false));
-        DockPanel.SetDock(heading, Dock.Top); root.Children.Add(heading); root.Children.Add(content);
-        ShowPanel(root, width, 650, controller.Close);
-    }
-
     private void UpdateStartup()
     {
         if (_startupLayer == null || _startupCount == null) return;

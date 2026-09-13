@@ -29,7 +29,6 @@ public sealed class SpoolbaseWindow : Window
     private bool _lowOnly;
     private Point _dragStart;
     private bool _dragging;
-    private bool _modalOpen;
 
     private static Brush Ink => GTheme.Brush(GTheme.Text);
     private static Brush Muted() => GTheme.Brush(GTheme.Muted);
@@ -37,18 +36,20 @@ public sealed class SpoolbaseWindow : Window
 
     public SpoolbaseWindow()
     {
+        // An ordinary, resizable window with the system title bar. It used to be a chromeless,
+        // always-on-top panel pinned to the bottom-right corner that hid itself the moment it lost
+        // focus. A stock list you work in for minutes at a time is not a menu.
         Title = "Spoolbase";
         Width = 500;
-        Height = 600;
-        WindowStyle = WindowStyle.None;
-        ResizeMode = ResizeMode.NoResize;
+        Height = 640;
+        MinWidth = 420;
+        MinHeight = 420;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ShowInTaskbar = false;
-        Topmost = true;
         AllowsTransparency = false;
-        Background = Brushes.Transparent;
+        Background = GTheme.Brush(GTheme.Canvas);
         Foreground = Ink;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
-        Deactivated += (_, _) => { if (!_modalOpen) Hide(); };
 
         Content = BuildChrome();
         _store.Changed += OnInventoryChanged;
@@ -62,10 +63,13 @@ public sealed class SpoolbaseWindow : Window
 
     private Border BuildChrome()
     {
+        // Square and opaque: this used to be a chromeless panel, where the rounded translucent card
+        // *was* the window. Inside a real titled window those corners would show the window's own
+        // background through them.
         var root = new Border
         {
-            CornerRadius = new CornerRadius(12),
-            Background = GTheme.Brush(Color.FromArgb(0xF0, GTheme.Canvas.R, GTheme.Canvas.G, GTheme.Canvas.B)),
+            CornerRadius = new CornerRadius(0),
+            Background = GTheme.Brush(GTheme.Canvas),
             SnapsToDevicePixels = true
         };
         var dock = new DockPanel { Margin = new Thickness(2) };
@@ -431,21 +435,19 @@ public sealed class SpoolbaseWindow : Window
 
     private void OpenCatalog()
     {
-        _modalOpen = true;
-        try { new SpoolbaseCatalogWindow(_store) { Owner = Owner ?? this }.ShowDialog(); }
-        finally { _modalOpen = false; (Owner ?? this).Activate(); }
+        try { new SpoolbaseCatalogWindow(_store) { Owner = this }.ShowDialog(); }
+        finally { Activate(); }
     }
 
     private void OpenEditor(Filament item, bool countOnly)
     {
-        _modalOpen = true;
-        try { new SpoolbaseEditWindow(_store, item, countOnly) { Owner = Owner ?? this }.ShowDialog(); }
-        finally { _modalOpen = false; (Owner ?? this).Activate(); }
+        try { new SpoolbaseEditWindow(_store, item, countOnly) { Owner = this }.ShowDialog(); }
+        finally { Activate(); }
     }
 
     private void ConfirmDelete(Filament item)
     {
-        var result = MessageBox.Show(Owner ?? this,
+        var result = MessageBox.Show(this,
             $"{item.Brand} • {item.Name} • {item.ColorName}\n" + (AppSettings.T("The product stays in the catalog.")),
             AppSettings.T("Remove from my filaments?"),
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
@@ -453,21 +455,6 @@ public sealed class SpoolbaseWindow : Window
     }
 
     // ---- Show / positioning / DWM ---------------------------------------------------------
-
-    public void TogglePopover()
-    {
-        if (IsVisible) { Hide(); return; }
-        ShowPopover();
-    }
-
-    public void ShowPopover()
-    {
-        var area = SystemParameters.WorkArea;
-        Left = area.Right - Width - 8;
-        Top = area.Bottom - Height - 8;
-        Show();
-        Activate();
-    }
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
