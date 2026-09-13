@@ -31,6 +31,8 @@ final class EdgeDockWindowController {
     private var screenSubscription: AnyCancellable?
     /// One feed per printer the user ticked for a picture, keyed by serial.
     private var cameraFeeds: [String: CameraFeedController] = [:]
+    /// When the running unfold animation is due to finish, so a routine refresh can keep its hands off.
+    private var unfoldingUntil: Date?
 
     init(store: PrinterStore, onSelect: @escaping (String) -> Void) {
         self.store = store
@@ -182,9 +184,16 @@ final class EdgeDockWindowController {
         // also change the width, by a few points when a remaining time gains a digit, and animating
         // that would make the strip breathe for no reason.
         guard animated, panel.isVisible else {
+            // ...but it must not land in the middle of an unfold. `panel.frame` reports the in-flight
+            // frame during an animation, so an unconditional setFrame here saw a difference and
+            // snapped straight to the end. With telemetry arriving every 500 ms and the unfold taking
+            // 260, that cut the animation short almost every time, which is why there appeared to be
+            // none. The animation is already heading for this state; the next refresh trims the width.
+            if unfoldingUntil.map({ $0 > Date() }) == true { return }
             panel.setFrame(frame, display: true)
             return
         }
+        unfoldingUntil = Date().addingTimeInterval(EdgeDockView.unfoldDuration)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = EdgeDockView.unfoldDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -309,9 +318,9 @@ private final class EdgeDockView: NSView {
     private static let pinGlyph: CGFloat = 10
     /// One number for both halves of the gesture: the window's own resize and the fade of the rows
     /// inside it. They have to agree, or the text would settle before the strip stops moving.
-    static let unfoldDuration: TimeInterval = 0.26
+    static let unfoldDuration: TimeInterval = 0.42
     /// Grace period before folding, long enough to outlast the unfold animation's own leave event.
-    private static let collapseDelay: TimeInterval = 0.28
+    private static let collapseDelay: TimeInterval = 0.44
     private static let cameraGap: CGFloat = 8
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private static let cameraMinStripWidth: CGFloat = 236
@@ -326,6 +335,18 @@ private final class EdgeDockView: NSView {
     /// reason. Measured on a pure white desktop, the worst case: at 0.86 the value text clears 6:1,
     /// at 0.68 it is near 3:1 and leans on the shadow.
     private static let shapeColor = NSColor(srgbRed: 0.031, green: 0.035, blue: 0.043, alpha: 1)
+
+    /// The floor thins as the strip opens, so the glass visibly clears instead of arriving already
+    /// frosted. Folded it is as solid as it always was, which also keeps the bare rings crisp; fully
+    /// open it reaches whatever the panel-transparency setting asks for. This is the blur actually
+    /// animating: there is no blur radius to tune on a `.behindWindow` effect view, so what changes
+    /// is how much of it is allowed through.
+    private var currentFloorAlpha: CGFloat {
+        let open = AppSettings.shared.panelTransparency.edgeDockFloorAlpha
+        let fade = max(0, min(1, unfoldProgress))
+        return Self.foldedFloorAlpha + (open - Self.foldedFloorAlpha) * fade
+    }
+    private static let foldedFloorAlpha: CGFloat = 0.96
 
     /// A soft dark halo under the labels. This is what lets the floor be thin enough to see the blur
     /// through; without it the names would smear into a bright desktop showing through the frost.
@@ -533,9 +554,7 @@ private final class EdgeDockView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         NSGraphicsContext.current?.cgContext.setShouldAntialias(true)
-        Self.shapeColor
-            .withAlphaComponent(AppSettings.shared.panelTransparency.edgeDockFloorAlpha)
-            .setFill()
+        Self.shapeColor.withAlphaComponent(currentFloorAlpha).setFill()
         shapePath().fill()
         guard !entries.isEmpty else { return }
         if isExpanded {
