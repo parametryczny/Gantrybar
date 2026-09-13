@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreImage
 
 /// A narrow always-on-top strip that grows out of a screen edge, showing one progress ring per
 /// printer. Collapsed it is 22 points wide and carries only colour and fill; hovering expands it into
@@ -271,8 +272,16 @@ private final class EdgeDockView: NSView {
     /// 0 folded, 1 unfolded. The window's own resize is smooth on its own, but the rows used to be
     /// fully drawn in the first frame of it, which read as a snap rather than a transition. This
     /// drives their opacity so they surface out of the frost while the strip is still opening.
-    private var unfoldProgress: CGFloat = 0
+    private var unfoldProgress: CGFloat = 0 {
+        didSet { updateTransitionBlur() }
+    }
     private var unfoldTimer: Timer?
+    private lazy var rowsView: EdgeDockRowsView = {
+        let view = EdgeDockRowsView()
+        view.owner = self
+        view.autoresizingMask = [.width, .height]
+        return view
+    }()
 
     /// Runs `unfoldProgress` to its target on the same curve and over the same time as the window.
     /// Each tick schedules the next one instead of repeating, so a view that goes away simply ends
@@ -483,6 +492,7 @@ private final class EdgeDockView: NSView {
     override func layout() {
         super.layout()
         clipBackdropToSilhouette()
+        rowsView.frame = bounds
         guard !cameraViews.isEmpty else { return }
         guard isExpanded else {
             cameraViews.values.forEach { $0.isHidden = true }
@@ -552,11 +562,18 @@ private final class EdgeDockView: NSView {
         return path
     }
 
+    /// Only the silhouette. Everything inside it is drawn by `rowsView`, which carries the transition
+    /// blur; blurring it here would soften the strip's own edges and bleed them outside the shape.
     override func draw(_ dirtyRect: NSRect) {
         NSGraphicsContext.current?.cgContext.setShouldAntialias(true)
         Self.shapeColor.withAlphaComponent(currentFloorAlpha).setFill()
         shapePath().fill()
+    }
+
+    /// The contents of the strip, called by `rowsView` in its own drawing pass.
+    fileprivate func drawRows() {
         guard !entries.isEmpty else { return }
+        NSGraphicsContext.current?.cgContext.setShouldAntialias(true)
         if isExpanded {
             drawPinButton()
             drawExpanded()
@@ -564,6 +581,22 @@ private final class EdgeDockView: NSView {
             drawCollapsed()
         }
     }
+
+    /// Core Image blur on the rows, strongest halfway through the gesture and gone at both rest
+    /// states, so neither the folded strip nor the open one is ever left soft. This is the part that
+    /// follows the window's scale: the same progress drives the width, the labels' opacity and this.
+    private func updateTransitionBlur() {
+        let progress = max(0, min(1, unfoldProgress))
+        let strength = sin(CGFloat.pi * progress)
+        guard strength > 0.01, let blur = CIFilter(name: "CIGaussianBlur") else {
+            if !rowsView.contentFilters.isEmpty { rowsView.contentFilters = [] }
+            return
+        }
+        blur.setValue(strength * Self.transitionBlurRadius * scale, forKey: kCIInputRadiusKey)
+        rowsView.contentFilters = [blur]
+    }
+    /// Peak radius at the middle of the gesture, in points before the strip's own scale.
+    private static let transitionBlurRadius: CGFloat = 7
 
     private func drawCollapsed() {
         var y = bounds.height - (Self.notch + Self.padY + Self.ring / 2) * scale
@@ -657,6 +690,21 @@ private final class EdgeDockView: NSView {
 
     // MARK: Interaction
 
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        guard rowsView.superview !== self else { return }
+        rowsView.frame = bounds
+        // Below everything added later, so a camera picture is never behind the rows it belongs to.
+        addSubview(rowsView, positioned: .below, relativeTo: nil)
+    }
+
+    /// Every `needsDisplay = true` in this class funnels through here, so the rows redraw with the
+    /// silhouette instead of needing their own invalidation at a dozen call sites.
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        rowsView.needsDisplay = true
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
@@ -737,4 +785,15 @@ private final class EdgeDockView: NSView {
         }
         return nil
     }
+}
+
+/// The strip's contents on their own layer. Split from `EdgeDockView` for one reason: the transition
+/// blur has to apply to the rings, labels and pin without touching the silhouette, whose edges would
+/// otherwise soften and bleed outside the shape. It draws nothing of its own and takes no clicks.
+private final class EdgeDockRowsView: NSView {
+    weak var owner: EdgeDockView?
+
+    override func draw(_ dirtyRect: NSRect) { owner?.drawRows() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var isOpaque: Bool { false }
 }

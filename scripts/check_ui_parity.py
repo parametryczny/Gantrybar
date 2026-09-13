@@ -116,6 +116,12 @@ require("Sources/Gantry/Views/EdgeDockWindowController.swift",
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"collapseTimer = Timer\.scheduledTimer[\s\S]*?collapseIfPointerLeft",
         "macOS edge dock can fold on the leave event its own animation causes")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"sin\(CGFloat\.pi \* progress\)[\s\S]*?kCIInputRadiusKey[\s\S]*?rowsView\.contentFilters = \[blur\]",
+        "macOS edge dock rows do not blur along the unfold")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"class EdgeDockRowsView[\s\S]*?owner\?\.drawRows\(\)",
+        "macOS edge dock draws its rows into the silhouette, so a blur would soften its edges")
 
 # Issue #34, the second half: the detail panel must take the height its cards need, capped by the
 # screen, instead of the constant it used to be nailed to. GNU/Linux already sizes to content through
