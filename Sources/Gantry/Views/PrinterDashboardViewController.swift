@@ -2254,6 +2254,13 @@ final class PrinterCardView: NSView, NSDraggingSource {
         if filamentSig != lastFilamentSignature {
         lastFilamentSignature = filamentSig
         renderedGroups = groups
+        // Remaining percent, grams and the active slot move on every telemetry packet; the dock's
+        // shape moves only when a spool appears or goes, a module changes, or a setting flips. The
+        // signature above catches both, so ask the dock to write the new readings into the views
+        // that are already there, and rebuild only when it reports it cannot. Rebuilding was tearing
+        // down and recreating every filament chip on every card several times a second, which is
+        // what made them blink.
+        if !filamentDock.apply(groups, settings: settings) {
         filamentDock.setGroups(groups, settings: settings, showRemaining: true,
                                printerSerial: printer.serial,
                                onSlotTapped: { [weak self] location, title, material, colorHex, anchor in
@@ -2294,6 +2301,7 @@ final class PrinterCardView: NSView, NSDraggingSource {
             (self.window?.contentViewController as? PrinterDashboardViewController)?.beginSpoolOverlaySizing()
             _ = anchor
         })
+        }
         }
 
         // User-controlled card content (Settings → "Karty drukarek"). Hidden modules simply collapse
@@ -3050,7 +3058,19 @@ private final class LabeledMetricView: NSView {
 @MainActor
 final class FilamentSwatchView: NSView {
     private let fillLayer = CAShapeLayer()
-    private let fraction: CGFloat
+    private var fraction: CGFloat
+
+    /// Level and colour change while a printer prints, and that must not cost a new view: the dock
+    /// used to be rebuilt for it, which visibly blinked every filament chip on every card.
+    func apply(color: NSColor, fraction: CGFloat) {
+        let clamped = max(0, min(1, fraction))
+        let sameColor = fillLayer.fillColor.map { NSColor(cgColor: $0) == color } ?? false
+        guard abs(clamped - self.fraction) > 0.0001 || !sameColor else { return }
+        self.fraction = clamped
+        layer?.backgroundColor = color.withAlphaComponent(0.20).cgColor
+        fillLayer.fillColor = color.cgColor
+        needsLayout = true
+    }
 
     init(color: NSColor, fraction: CGFloat) {
         self.fraction = max(0, min(1, fraction))
@@ -3123,10 +3143,30 @@ private final class EmptyFilamentSwatchView: NSView {
 final class FilamentSlotView: NSView {
     private let onTap: ((NSView) -> Void)?
 
-    init(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool = false,
-         location: SpoolLocation? = nil, onTap: ((NSView) -> Void)? = nil, isSingle: Bool = false) {
-        self.onTap = onTap
-        super.init(frame: .zero)
+    /// Everything a slot draws, derived once so the initial build and the in-place update can never
+    /// disagree about what the slot currently shows.
+    struct Resolved {
+        let present: Bool
+        let effectivePct: Int?
+        let materialText: String
+        let color: NSColor
+        let gramsValue: Double?
+        let reservesGramsRow: Bool
+        let showGrams: Bool
+        let showsChip: Bool
+        let showsLowWarning: Bool
+        let isActive: Bool
+        let label: String
+
+        /// What the view hierarchy depends on. Anything not in here is a value that can be written
+        /// into the views that already exist.
+        var shape: String {
+            "\(label)|\(present)|\(showsChip)|\(reservesGramsRow)|\(showsLowWarning)"
+        }
+    }
+
+    static func resolve(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool,
+                        location: SpoolLocation?) -> Resolved {
         // A manually-assigned physical spool wins over the (often unknown) AMS reading: its % and colour
         // come from Spoolbase, so a gauge-less EXT/AMS slot still shows a real level and grams.
         let assignedSpool = location.flatMap { SpoolbaseShared.spools.spool(at: $0) }
@@ -3144,18 +3184,102 @@ final class FilamentSlotView: NSView {
             color = NSColor.secondaryLabelColor.withAlphaComponent(0.18)
         }
         if AppSettings.shared.monochrome { color = color.mutedTowardGrey() }
-        // Flexible width so the slots stretch to fill their module (distribution .fillEqually).
-        setContentHuggingPriority(.defaultLow, for: .horizontal)
-
         let gramsValue = assignedSpool.map { $0.remainingWeightGrams } ?? slot.remainingWeightGrams
         let reservesGramsRow = AppSettings.shared.cardShowSpoolGrams
-        let showGrams = reservesGramsRow && present && (gramsValue ?? 0) > 0
+        // External spools report remain=0 as "unknown" (Bambu doesn't gauge them), so a low-filament
+        // dot there is a false alarm. A chipless AMS spool is the same: remain reads 0 but is not real,
+        // so only warn when the level is trustworthy — an RFID tag (weight) or an assigned Spoolbase
+        // spool (issue #27).
+        let trustedLevel = slot.remainingWeightGrams != nil || assignedSpool != nil
+        return Resolved(present: present, effectivePct: effectivePct, materialText: materialText,
+                        color: color, gramsValue: gramsValue, reservesGramsRow: reservesGramsRow,
+                        showGrams: reservesGramsRow && present && (gramsValue ?? 0) > 0,
+                        showsChip: showRemaining && present && effectivePct != nil,
+                        showsLowWarning: present && !isExternal && trustedLevel
+                            && (effectivePct ?? 100) <= 15,
+                        isActive: slot.isActive, label: slot.label)
+    }
+
+    private var builtShape = ""
+    private weak var swatchRef: NSView?
+    private weak var chipLabel: NSTextField?
+    private weak var materialRef: NSTextField?
+    private weak var gramsRef: NSTextField?
+
+    /// Writes new readings into the views that are already there. Returns false when the slot's
+    /// shape changed (a spool appeared, the low-filament badge is now due), which is the only case
+    /// that still needs a rebuild. Every telemetry tick used to take that path.
+    func apply(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool,
+               location: SpoolLocation?) -> Bool {
+        let r = Self.resolve(slot: slot, isExternal: isExternal, showRemaining: showRemaining,
+                             location: location)
+        guard r.shape == builtShape else { return false }
+        (swatchRef as? FilamentSwatchView)?.apply(color: r.color,
+                                                  fraction: CGFloat(r.effectivePct ?? 0) / 100)
+        if let swatch = swatchRef, !(swatch is FilamentSwatchView), r.present {
+            swatch.layer?.backgroundColor = r.color.cgColor
+        }
+        if let swatch = swatchRef {
+            swatch.layer?.borderColor = r.isActive
+                ? NSColor.white.withAlphaComponent(0.8).cgColor : GantryTheme.line.cgColor
+            swatch.layer?.borderWidth = r.isActive ? 1.5 : 1
+        }
+        if let chip = chipLabel, let pct = r.effectivePct {
+            chip.attributedStringValue = Self.chipString(pct: pct, color: r.color)
+        }
+        if let material = materialRef {
+            let text = r.present ? r.materialText : "—"
+            if material.stringValue != text { material.stringValue = text }
+            material.textColor = r.present ? GantryTheme.metric : GantryTheme.muted
+            material.toolTip = "\(r.label) • \(r.materialText) • \(r.effectivePct.map { "\($0)%" } ?? "—")"
+        }
+        if let grams = gramsRef {
+            let text = r.showGrams ? "\(Int(r.gramsValue ?? 0)) g" : "0 g"
+            if grams.stringValue != text { grams.stringValue = text }
+            grams.alphaValue = r.showGrams ? 1 : 0
+            grams.setAccessibilityElement(r.showGrams)
+        }
+        return true
+    }
+
+    /// The in-chip percentage, in contrast ink so it stays legible on any filament colour.
+    static func chipString(pct: Int, color: NSColor) -> NSAttributedString {
+        let overSolid = CGFloat(pct) / 100 >= 0.5
+        let inkIsDark = overSolid && color.contrastingTextColor == .black
+        let ink: NSColor = inkIsDark ? .black : NSColor.white.withAlphaComponent(0.95)
+        let shadow = NSShadow()
+        shadow.shadowColor = (inkIsDark ? NSColor.white : NSColor.black).withAlphaComponent(0.4)
+        shadow.shadowBlurRadius = 1.5
+        shadow.shadowOffset = .zero
+        return NSAttributedString(string: "\(pct)%", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .bold),
+            .foregroundColor: ink,
+            .shadow: shadow
+        ])
+    }
+
+    init(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool = false,
+         location: SpoolLocation? = nil, onTap: ((NSView) -> Void)? = nil, isSingle: Bool = false) {
+        self.onTap = onTap
+        super.init(frame: .zero)
+        let resolved = Self.resolve(slot: slot, isExternal: isExternal, showRemaining: showRemaining,
+                                    location: location)
+        builtShape = resolved.shape
+        let present = resolved.present
+        let effectivePct = resolved.effectivePct
+        let materialText = resolved.materialText
+        let color = resolved.color
+        let gramsValue = resolved.gramsValue
+        let reservesGramsRow = resolved.reservesGramsRow
+        let showGrams = resolved.showGrams
+        // Flexible width so the slots stretch to fill their module (distribution .fillEqually).
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         // Compact vertical slot: a colour chip on top (filling its cell), then the values UNDER it — the
         // percent inside the chip, the material + grams as a quiet caption below. This keeps the slot as
         // narrow as its column so four AMS slots + EXT still fit a card.
         let swatch: NSView
-        if showRemaining, present, let pct = effectivePct {
+        if resolved.showsChip, let pct = effectivePct {
             swatch = FilamentSwatchView(color: color, fraction: CGFloat(pct) / 100)
         } else if present {
             swatch = NSView()
@@ -3172,6 +3296,7 @@ final class FilamentSlotView: NSView {
             swatch.layer?.borderColor = GantryTheme.line.cgColor
             swatch.layer?.borderWidth = 1
         }
+        swatchRef = swatch
         swatch.translatesAutoresizingMaskIntoConstraints = false
         swatch.heightAnchor.constraint(equalToConstant: 18).isActive = true
         if !isSingle {
@@ -3181,21 +3306,11 @@ final class FilamentSlotView: NSView {
         }
 
         // Remaining % lives inside the chip, in contrast ink so it's legible on any filament colour.
-        if showRemaining, present, let pct = effectivePct {
-            let overSolid = CGFloat(pct) / 100 >= 0.5
-            let inkIsDark = overSolid && color.contrastingTextColor == .black
-            let ink: NSColor = inkIsDark ? .black : NSColor.white.withAlphaComponent(0.95)
-            let shadow = NSShadow()
-            shadow.shadowColor = (inkIsDark ? NSColor.white : NSColor.black).withAlphaComponent(0.4)
-            shadow.shadowBlurRadius = 1.5
-            shadow.shadowOffset = .zero
+        if resolved.showsChip, let pct = effectivePct {
             let inChip = NSTextField(labelWithString: "")
-            inChip.attributedStringValue = NSAttributedString(string: "\(pct)%", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .bold),
-                .foregroundColor: ink,
-                .shadow: shadow
-            ])
+            inChip.attributedStringValue = Self.chipString(pct: pct, color: color)
             inChip.alignment = .center
+            chipLabel = inChip
             inChip.translatesAutoresizingMaskIntoConstraints = false
             swatch.addSubview(inChip)
             NSLayoutConstraint.activate([
@@ -3216,6 +3331,7 @@ final class FilamentSlotView: NSView {
         material.textColor = present ? GantryTheme.metric : GantryTheme.muted
         material.lineBreakMode = .byTruncatingTail
         material.toolTip = "\(slot.label) • \(materialText) • \(effectivePct.map { "\($0)%" } ?? "—")"
+        materialRef = material
         let meta = NSView()
         meta.translatesAutoresizingMaskIntoConstraints = false
         meta.heightAnchor.constraint(equalToConstant: 11).isActive = true
@@ -3243,6 +3359,7 @@ final class FilamentSlotView: NSView {
             grams.alignment = .center
             grams.alphaValue = showGrams ? 1 : 0
             grams.setAccessibilityElement(showGrams)
+            gramsRef = grams
             slotViews.append(grams)
         }
         let stack = NSStackView(views: slotViews)
@@ -3269,12 +3386,7 @@ final class FilamentSlotView: NSView {
             NSLayoutConstraint.activate([target, floor, ceiling])
         }
 
-        // External spools report remain=0 as "unknown" (Bambu doesn't gauge them), so a low-filament
-        // dot there is a false alarm. A chipless AMS spool is the same: remain reads 0 but is not real,
-        // so only warn when the level is trustworthy — an RFID tag (weight) or an assigned Spoolbase
-        // spool (issue #27).
-        let trustedLevel = slot.remainingWeightGrams != nil || assignedSpool != nil
-        if present, !isExternal, trustedLevel, (effectivePct ?? 100) <= 15 {
+        if resolved.showsLowWarning {
             // The badge sits on the chip's top-right, never over the % / grams. In colour mode it's a red
             // dot; in monochrome it becomes an outlined "!" so the warning never relies on colour alone.
             let warning = NSView()
@@ -3324,6 +3436,38 @@ final class FilamentSlotView: NSView {
 /// its slots, so an AMS, AMS HT, CFS or EXT reads as one distinct unit.
 @MainActor
 final class FilamentGroupView: NSView {
+    private var builtShape = ""
+    private var slotRefs: [FilamentSlotView] = []
+    private var builtSerial = ""
+    private var builtIndex = 0
+    private var builtShowsRemaining = false
+    private var builtAssignable = false
+
+    /// The module's own hierarchy: its header row and how many slots it holds. The environment
+    /// readings are in here too, because the header builds a cluster per available measurement and
+    /// updating those in place would mean holding on to two more labels for a value that moves at
+    /// most once every few seconds.
+    static func shapeKey(_ group: FilamentGroup) -> String {
+        "\(group.displayName)|\(group.isExternal)|\(group.declaredCapacity)|\(group.slots.count)"
+            + "|\(group.temperatureCelsius.map { Int($0.rounded()) } ?? -1)"
+            + "|\(group.humidityPercent ?? -1)"
+    }
+
+    /// Pushes new readings into the slots that are already on screen. False means something changed
+    /// that the existing views cannot represent, and the caller rebuilds.
+    func apply(group: FilamentGroup, settings: AppSettings) -> Bool {
+        guard Self.shapeKey(group) == builtShape, slotRefs.count == group.slots.count else { return false }
+        let feeder: SpoolLocation.Feeder = group.isExternal ? .ext : .ams
+        for (slotIndex, slot) in group.slots.enumerated() {
+            let location = SpoolLocation(printerSerial: builtSerial.isEmpty ? nil : builtSerial,
+                                         feeder: feeder, amsIndex: builtIndex, slot: slotIndex)
+            guard slotRefs[slotIndex].apply(slot: slot, isExternal: group.isExternal,
+                                            showRemaining: builtShowsRemaining,
+                                            location: builtAssignable ? location : nil) else { return false }
+        }
+        return true
+    }
+
     init(group: FilamentGroup, settings: AppSettings, showRemaining: Bool = false,
          printerSerial: String = "", groupIndex: Int = 0,
          onSlotTapped: ((SpoolLocation, String, String?, String?, NSView) -> Void)? = nil) {
@@ -3387,6 +3531,12 @@ final class FilamentGroupView: NSView {
         // swatch then takes a fixed fraction of that width (see FilamentSlotView), so a lone slot is a
         // wide rectangle and two side-by-side single groups (HT + EXT) match — and never jump, because
         // the width is a definite proportion rather than an ambiguous fill.
+        builtShape = Self.shapeKey(group)
+        slotRefs = slotViews
+        builtSerial = printerSerial
+        builtIndex = groupIndex
+        builtShowsRemaining = showRemaining
+        builtAssignable = !printerSerial.isEmpty && settings.spoolbaseEnabled
         let slots = NSStackView(views: slotViews)
         slots.orientation = .horizontal
         slots.alignment = .top
@@ -3464,10 +3614,35 @@ final class FilamentDockView: NSView {
     }
     required init?(coder: NSCoder) { nil }
 
+    private var groupRefs: [FilamentGroupView] = []
+    private var builtSettingsKey = ""
+
+    /// The settings that decide what a slot is made of: whether it reserves a grams row, whether it
+    /// has a Spoolbase identity to look up and click, and whether the low-filament badge is drawn as
+    /// a dot or an outlined "!". A slot cannot notice these changing on its own, so they are checked
+    /// here and force a rebuild.
+    static func settingsKey(_ settings: AppSettings) -> String {
+        "\(settings.cardShowSpoolGrams)|\(settings.cardShowFilaments)"
+            + "|\(settings.spoolbaseEnabled)|\(settings.monochrome)"
+    }
+
+    /// Writes new readings into the modules already on screen, without touching the hierarchy.
+    /// False means a rebuild is needed after all.
+    func apply(_ groups: [FilamentGroup], settings: AppSettings) -> Bool {
+        guard groupRefs.count == groups.count,
+              builtSettingsKey == Self.settingsKey(settings) else { return false }
+        for (view, group) in zip(groupRefs, groups) {
+            guard view.apply(group: group, settings: settings) else { return false }
+        }
+        return true
+    }
+
     func setGroups(_ groups: [FilamentGroup], settings: AppSettings, showRemaining: Bool = false,
                    printerSerial: String = "",
                    onSlotTapped: ((SpoolLocation, String, String?, String?, NSView) -> Void)? = nil) {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        groupRefs = []
+        builtSettingsKey = Self.settingsKey(settings)
         var index = 0
         while index < groups.count {
             let rowGroups = Array(groups[index ..< min(index + 2, groups.count)])
@@ -3478,6 +3653,7 @@ final class FilamentDockView: NSView {
                                   printerSerial: printerSerial, groupIndex: rowStartIndex + offset,
                                   onSlotTapped: onSlotTapped)
             }
+            groupRefs.append(contentsOf: views)
             let row = NSStackView(views: views)
             row.orientation = .horizontal
             row.alignment = .top

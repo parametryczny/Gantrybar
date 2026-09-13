@@ -247,6 +247,26 @@ require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
         r"guard signature != renderedInsightsSignature else \{ return \}",
         "macOS detail insights are rebuilt per telemetry packet instead of on a real change")
 
+# Remaining percent, grams and the active slot change on every telemetry packet, so a signature that
+# includes them can never spare the dock a rebuild — and rebuilding it tore down and recreated every
+# filament chip on every card, several times a second. The readings are written into the views that
+# are already there; only a shape change (a spool appears or goes, a setting flips) rebuilds.
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"if !filamentDock\.apply\(groups, settings: settings\) \{",
+        "the macOS filament dock is rebuilt for a reading change instead of updated in place")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"func apply\(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool,",
+        "a macOS filament slot cannot take a new reading without being rebuilt")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"var shape: String \{[\s\S]{0,200}?showsLowWarning",
+        "the macOS filament slot does not separate its shape from its readings")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"static func settingsKey\(_ settings: AppSettings\) -> String",
+        "the macOS filament dock does not notice the settings that change what a slot is made of")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"func apply\(color: NSColor, fraction: CGFloat\)",
+        "the macOS filament swatch needs a new view for a new level")
+
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf"width:\s*{floating['initialSize']['width']},\s*height:\s*{floating['initialSize']['height']}",
