@@ -107,7 +107,7 @@ public sealed class BambuCameraStream
         var setup = await AuthorizedRequestAsync("SETUP", trackUrl, ("Transport", "RTP/AVP/TCP;unicast;interleaved=0-1"));
         var sessionHeader = setup.Header("session");
         var session = sessionHeader?.Split(';')[0];
-        if (string.IsNullOrEmpty(session)) throw new Exception("Drukarka nie zwróciła identyfikatora sesji wideo.");
+        if (string.IsNullOrEmpty(session)) throw new Exception(AppSettings.T("The printer did not return a video session ID."));
 
         await AuthorizedRequestAsync("PLAY", baseUrl, ("Session", session!));
         // The printer drops an idle session, and then simply stops sending video with no error and no
@@ -133,7 +133,7 @@ public sealed class BambuCameraStream
 
         var first = await Task.WhenAny(_firstVideo.Task, Task.Delay(FirstFrameTimeoutMs));
         if (first != _firstVideo.Task)
-            throw new Exception("Połączenie RTSP działa, ale nie nadszedł obraz. Sprawdź „LAN Mode Live View”.");
+            throw new Exception(AppSettings.T("The RTSP connection works, but no picture arrived. Check “LAN Mode Live View”."));
         return true;
     }
 
@@ -168,7 +168,7 @@ public sealed class BambuCameraStream
             }
         }
         catch { }
-        if (!_stopped && _receivedVideo) Failed?.Invoke("Połączenie z kamerą zostało przerwane.");
+        if (!_stopped && _receivedVideo) Failed?.Invoke(AppSettings.T("The camera connection was interrupted."));
     }
 
     private void ParseRtspIncoming(List<byte> b)
@@ -226,13 +226,13 @@ public sealed class BambuCameraStream
             var challenge = resp.Header("www-authenticate") ?? "";
             if (challenge.StartsWith("digest", StringComparison.OrdinalIgnoreCase)) { _authScheme = "digest"; _digestChallenge = challenge; _digestNc = 0; }
             else if (challenge.StartsWith("basic", StringComparison.OrdinalIgnoreCase)) _authScheme = "basic";
-            else throw new Exception("Nieobsługiwany sposób logowania kamery.");
+            else throw new Exception(AppSettings.T("Unsupported camera sign-in method."));
             resp = await RequestAsync(method, uri, headers, AuthorizationFor(method, uri));
         }
         if (resp.Status < 200 || resp.Status >= 300)
         {
-            if (resp.Status == 401) throw new AuthException("Drukarka odrzuciła kod dostępu LAN. Włącz „LAN Mode Live View” i odśwież Access Code.");
-            throw new Exception($"Drukarka zwróciła błąd RTSP {resp.Status}.");
+            if (resp.Status == 401) throw new AuthException(AppSettings.T("The printer rejected the LAN access code. Turn on “LAN Mode Live View” and refresh the Access Code."));
+            throw new Exception(string.Format(AppSettings.T("The printer returned RTSP error {0}."), resp.Status));
         }
         return resp;
     }
@@ -264,7 +264,7 @@ public sealed class BambuCameraStream
         catch (Exception ex) { _pending.Remove(cseq); tcs.TrySetException(ex); }
         _ = Task.Delay(ConnectTimeoutMs).ContinueWith(_ =>
         {
-            if (_pending.Remove(cseq)) tcs.TrySetException(new Exception($"Brak odpowiedzi na żądanie RTSP {method}."));
+            if (_pending.Remove(cseq)) tcs.TrySetException(new TimeoutException(string.Format(AppSettings.T("No reply to the RTSP {0} request."), method)));
         });
         return tcs.Task;
     }
@@ -288,7 +288,7 @@ public sealed class BambuCameraStream
                         try { var nal = Convert.FromBase64String(enc); if (nal.Length > 0) sets.Add(WithStartCode(nal)); } catch { }
             }
         }
-        if (control is null) throw new Exception("Nie znaleziono ścieżki wideo w odpowiedzi drukarki.");
+        if (control is null) throw new Exception(AppSettings.T("No video track found in the printer's reply."));
         return (control, sets);
     }
 
@@ -329,7 +329,7 @@ public sealed class BambuCameraStream
         });
 
         var done = await Task.WhenAny(firstFrame.Task, Task.Delay(FirstFrameTimeoutMs));
-        if (done != firstFrame.Task) throw new Exception("Drukarka odpowiedziała, ale nie wysłała obrazu. Sprawdź kod i podgląd LAN.");
+        if (done != firstFrame.Task) throw new Exception(AppSettings.T("The printer answered but sent no picture. Check the code and LAN live view."));
         return true;
     }
 
@@ -441,14 +441,14 @@ public sealed class BambuCameraStream
     }
 
     private static bool IsUnreachable(Exception ex) =>
-        System.Text.RegularExpressions.Regex.IsMatch(ex.Message, "refused|unreachable|timed out|Brak odpowiedzi", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-        || ex is SocketException || ex is OperationCanceledException;
+        System.Text.RegularExpressions.Regex.IsMatch(ex.Message, "refused|unreachable|timed out", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        || ex is TimeoutException || ex is SocketException || ex is OperationCanceledException;
 
     private static string Friendly(string? message)
     {
-        message ??= "Nieznany błąd połączenia.";
-        if (message.Contains("refused", StringComparison.OrdinalIgnoreCase)) return "Drukarka odrzuciła połączenie. Sprawdź IP i włącz podgląd LAN.";
-        if (System.Text.RegularExpressions.Regex.IsMatch(message, "unreachable|timed out", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return "Nie można znaleźć drukarki w sieci lokalnej.";
+        message ??= AppSettings.T("Unknown connection error.");
+        if (message.Contains("refused", StringComparison.OrdinalIgnoreCase)) return AppSettings.T("The printer refused the connection. Check the IP and turn on LAN live view.");
+        if (System.Text.RegularExpressions.Regex.IsMatch(message, "unreachable|timed out", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return AppSettings.T("The printer cannot be found on the local network.");
         return message;
     }
 

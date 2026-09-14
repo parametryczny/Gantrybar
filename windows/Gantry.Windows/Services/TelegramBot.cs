@@ -90,7 +90,7 @@ public sealed class TelegramBot
         {
             var id = callback.TryGetProperty("id", out var cid) ? cid.GetString() ?? "" : "";
             int? messageId = callback.TryGetProperty("message", out var m) && m.TryGetProperty("message_id", out var mid) ? mid.GetInt32() : null;
-            if (!Authorized(callback.TryGetProperty("message", out var cm) ? cm : default)) { await AnswerAsync(id, "Brak dostępu"); return; }
+            if (!Authorized(callback.TryGetProperty("message", out var cm) ? cm : default)) { await AnswerAsync(id, AppSettings.T("Access denied")); return; }
             var data = callback.TryGetProperty("data", out var d) ? d.GetString() ?? "" : "";
             await HandleCallbackAsync(data, id, messageId);
         }
@@ -159,10 +159,10 @@ public sealed class TelegramBot
         void Exec(string kind) => OnUi(() => { _store.RunAutomation(new PrinterAutomation { Name = "telegram", ActionKind = kind }, serial); return 0; });
         switch (action)
         {
-            case "pause": Exec("pause"); await AnswerAsync(cbId, "⏸ Wstrzymano"); break;
-            case "resume": Exec("resume"); await AnswerAsync(cbId, "▶️ Wznowiono"); break;
-            case "lighton": Exec("lightOn"); await AnswerAsync(cbId, "💡 Włączono"); break;
-            case "lightoff": Exec("lightOff"); await AnswerAsync(cbId, "🌑 Wyłączono"); break;
+            case "pause": Exec("pause"); await AnswerAsync(cbId, AppSettings.T("⏸ Paused")); break;
+            case "resume": Exec("resume"); await AnswerAsync(cbId, AppSettings.T("▶️ Resumed")); break;
+            case "lighton": Exec("lightOn"); await AnswerAsync(cbId, AppSettings.T("💡 Light on")); break;
+            case "lightoff": Exec("lightOff"); await AnswerAsync(cbId, AppSettings.T("🌑 Light off")); break;
             case "stopask":
                 if (messageId is { } mid)
                     await EditAsync(mid, string.Format(AppSettings.T("⏹ Cancel the print on {0}? This cannot be undone."), name),
@@ -171,7 +171,7 @@ public sealed class TelegramBot
                             Btn(AppSettings.T("Back"), $"p:{serial}") } }));
                 await AnswerAsync(cbId, "");
                 return;
-            case "stop": Exec("stop"); await AnswerAsync(cbId, "⏹ Zatrzymano"); break;
+            case "stop": Exec("stop"); await AnswerAsync(cbId, AppSettings.T("⏹ Stopped")); break;
             default: await AnswerAsync(cbId, ""); return;
         }
         await Task.Delay(700);

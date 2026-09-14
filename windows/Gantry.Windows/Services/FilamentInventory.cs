@@ -101,27 +101,28 @@ public static class FilamentCatalog
 
     public static List<CatalogFilament> Load()
     {
-        if (File.Exists(EditablePath))
-        {
-            try
-            {
-                var items = JsonSerializer.Deserialize<List<CatalogFilament>>(File.ReadAllText(EditablePath), Options);
-                if (items != null) return items;
-            }
-            catch { /* fall back to bundled */ }
-        }
-        return Bundled();
+        List<CatalogFilament>? edited = null;
+        AtomicFile.ReadAllText(EditablePath, text => (edited = Parse(text)) is not null);
+        return edited ?? Bundled();
+    }
+
+    private static List<CatalogFilament>? Parse(string text)
+    {
+        try { return JsonSerializer.Deserialize<List<CatalogFilament>>(text, Options); }
+        catch (JsonException) { return null; }
     }
 
     public static void Save(List<CatalogFilament> catalog)
     {
         try
         {
-            Directory.CreateDirectory(EditableDir);
             var json = JsonSerializer.Serialize(catalog, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(EditablePath, json);
+            AtomicFile.WriteAllText(EditablePath, json, text => Parse(text) is not null);
         }
-        catch { /* non-fatal */ }
+        catch (Exception e)
+        {
+            App.LogError("Saving the filament catalog", e);
+        }
     }
 
     private static List<CatalogFilament> Bundled()
@@ -156,22 +157,17 @@ public sealed class FilamentStore
     {
         var dir = Path.Combine(AppDataRoot.Folder, "Spoolbase");
         _path = Path.Combine(dir, "inventory-v2.json");
-        try
-        {
-            if (File.Exists(_path))
-            {
-                _filaments = JsonSerializer.Deserialize<List<Filament>>(File.ReadAllText(_path), ReadOptions) ?? new();
-            }
-            else
-            {
-                _filaments = new();
-                Save();
-            }
-        }
-        catch
-        {
-            _filaments = new();
-        }
+        List<Filament>? stored = null;
+        AtomicFile.ReadAllText(_path, text => (stored = ParseInventory(text)) is not null);
+        _filaments = stored ?? new();
+        // A new store is written out; a damaged one is not overwritten with an empty list.
+        if (!File.Exists(_path) && !File.Exists(_path + ".bak")) Save();
+    }
+
+    private static List<Filament>? ParseInventory(string text)
+    {
+        try { return JsonSerializer.Deserialize<List<Filament>>(text, ReadOptions); }
+        catch (JsonException) { return null; }
     }
 
     public void Add(Filament filament)
@@ -239,9 +235,11 @@ public sealed class FilamentStore
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(_filaments, WriteOptions));
+            AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(_filaments, WriteOptions), text => ParseInventory(text) is not null);
         }
-        catch { /* non-fatal */ }
+        catch (Exception e)
+        {
+            App.LogError("Saving the filament inventory", e);
+        }
     }
 }

@@ -58,7 +58,9 @@ final class ScriptRunner {
         // Python (or any language) works. Otherwise the content runs as a zsh command.
         let tempURL: URL?
         if script.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#!") {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("gantry-\(id.uuidString)")
+            // A file per run: the replaced run's exit deletes its own file, and used to delete this one.
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("gantry-\(id.uuidString)-\(UUID().uuidString)")
             do {
                 try script.write(to: url, atomically: true, encoding: .utf8)
                 try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
@@ -73,9 +75,14 @@ final class ScriptRunner {
 
         process.terminationHandler = { [weak self] proc in
             let status = proc.terminationStatus
+            let identity = ObjectIdentifier(proc)
             if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
             Task { @MainActor in
-                self?.processes.removeValue(forKey: id)
+                // Only this run's own entry. Removing by id alone let a replaced run's exit unregister the
+                // run that replaced it, leaving a script the UI could no longer stop.
+                if let current = self?.processes[id], ObjectIdentifier(current) == identity {
+                    self?.processes.removeValue(forKey: id)
+                }
                 onFinish(status)
             }
         }

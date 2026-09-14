@@ -96,7 +96,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
         connection.start(queue: queue)
         let timeout = DispatchWorkItem { [weak self] in
             guard let self, !self.stopped else { return }
-            self.reportDisconnected("Przekroczono czas połączenia z drukarką")
+            self.reportDisconnected(Localization.t("Connection to the printer timed out"))
             self.connection?.cancel()
         }
         connectTimeout = timeout
@@ -154,7 +154,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
                     let result = packet.body.count >= 2 ? packet.body[1] : 255
                     Self.logger.error("MQTT authentication rejected, CONNACK=\(result, privacy: .public)")
                     connectTimeout?.cancel()
-                    reportDisconnected("Drukarka odrzuciła kod dostępu")
+                    reportDisconnected(Localization.t("The printer rejected the access code"))
                     connection?.cancel()
                     return
                 }
@@ -208,7 +208,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
     }
 
     private var certificateMismatchMessage: String {
-        "Certyfikat drukarki zmienił się. Połączenie zablokowano; sprawdź sieć, a następnie usuń i dodaj drukarkę ponownie."
+        Localization.t("The printer certificate changed. The connection was blocked; check the network, then remove and add the printer again.")
     }
 
     // Turns a raw NWError (e.g. "Network.NWError error 61") into a message a person can act on.
@@ -216,16 +216,16 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
         if case let .posix(code) = error {
             switch code {
             case .ECONNREFUSED:
-                return "Drukarka odrzuca połączenie — sprawdź, czy jest w trybie LAN i czy kod dostępu jest poprawny"
+                return Localization.t("The printer refuses the connection. Check that it is in LAN mode and that the access code is correct.")
             case .ETIMEDOUT, .EHOSTDOWN, .EHOSTUNREACH, .ENETUNREACH, .ENETDOWN:
-                return "Offline — sprawdź, czy drukarka jest włączona i w tej samej sieci"
+                return Localization.t("Offline: check that the printer is on and on the same network")
             case .ECONNRESET, .ECONNABORTED, .ENOTCONN, .EPIPE:
-                return "Połączenie przerwane — ponawiam próbę"
+                return Localization.t("Connection interrupted, retrying")
             default:
                 break
             }
         }
-        return "Brak połączenia — sprawdź, czy drukarka jest włączona"
+        return Localization.t("No connection: check that the printer is on")
     }
 
 }

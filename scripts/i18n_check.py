@@ -89,6 +89,40 @@ def used_keys() -> set[str]:
     return keys
 
 
+# Files where every message a person reads goes through the catalog. A Polish literal here reaches an
+# English user untranslated, and the key checks above cannot see it (audit 2026-09-14: A23). Tables that
+# carry both languages side by side (PrinterInsights) and the web dashboard pages are left out.
+MESSAGE_SOURCES: list[tuple[str, str, set[str]]] = [
+    ("Sources/Gantry/Services", "*.swift", {"PrinterInsights.swift", "GantryWebServer.swift"}),
+    ("Sources/Gantry/App", "PrinterStore.swift", set()),
+    ("Sources/Gantry/Models", "Printer.swift", set()),
+    ("windows/Gantry.Windows/Services", "*.cs", {"PrinterInsights.cs", "GantryWebServer.cs"}),
+    ("linux/gantry", "telegram.py", set()),
+    ("linux/gantry", "anycubic.py", set()),
+    ("linux/gantry", "elegoo.py", set()),
+    ("linux/gantry", "http_clients.py", set()),
+    ("linux/gantry", "mqtt.py", set()),
+]
+POLISH_LITERAL = re.compile(
+    r'"[^"\n]*(?:[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]|\b(?:Brak|Wstrzymano|Wznowiono|Zatrzymano|Nie udało)\b)[^"\n]*"')
+
+
+def hardcoded_polish() -> list[str]:
+    found = []
+    for folder, glob, skipped in MESSAGE_SOURCES:
+        for path in sorted((ROOT / folder).glob(glob)):
+            if path.name in skipped:
+                continue
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            for number, line in enumerate(lines, 1):
+                code = line.strip()
+                if code.startswith(("//", "#", "*")):
+                    continue
+                if POLISH_LITERAL.search(code):
+                    found.append(f"{path.relative_to(ROOT)}:{number}: {code[:110]}")
+    return found
+
+
 def main() -> int:
     # CI runs with --strict, which fails on a catalog entry nothing references any more. Without the
     # flag those are only a warning, which is handy while a migration is half done.
@@ -133,6 +167,13 @@ def main() -> int:
             print(f"{path.name}: {len(dead)} wpisow bez uzycia w kodzie{label}", file=sys.stderr)
             for key in dead[:20] if strict else dead[:5]:
                 print(f"    {key!r}", file=sys.stderr)
+
+    polish = hardcoded_polish()
+    if polish:
+        problems += len(polish)
+        print(f"{len(polish)} komunikatow po polsku na sztywno, poza katalogiem:", file=sys.stderr)
+        for entry in polish[:20]:
+            print(f"    {entry}", file=sys.stderr)
 
     if problems:
         print("\nUzupelnij katalog albo popraw klucz w kodzie.", file=sys.stderr)

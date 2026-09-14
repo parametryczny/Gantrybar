@@ -1,44 +1,83 @@
 using System;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Gantry.Services;
 
 /// <summary>Downloads the printed <c>.gcode.3mf</c> from a Bambu printer over its local FTPS (implicit
-/// TLS, port 990, user <c>bblp</c>, password = access code, self-signed accepted). Fully local. Untested
-/// against hardware at build time; tuned live like the camera.</summary>
+/// TLS, port 990, user <c>bblp</c>, password = access code, self-signed accepted). Fully local.
+///
+/// Like macOS: one transfer per printer at a time, and a whole transfer ends after 60 s with its sockets
+/// closed. Before, a printer that stopped answering held the download forever, and a refused login or a
+/// failed transfer skipped closing the connection.</summary>
 public sealed class BambuFileClient
 {
+    private static readonly TimeSpan TransferTimeout = TimeSpan.FromSeconds(60);
+    // Bambu's FTPS service handles one transfer at a time: a second control connection never gets a greeting.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> HostGates = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly string _host;
     private readonly string _accessCode;
     private TcpClient? _control;
     private SslStream? _stream;
+    private CancellationToken _token;
 
     public BambuFileClient(string host, string accessCode) { _host = host; _accessCode = accessCode; }
 
     public async Task<byte[]> FetchAsync(string fileName)
     {
+        using var timeout = new CancellationTokenSource(TransferTimeout);
+        _token = timeout.Token;
+        var gate = HostGates.GetOrAdd(_host, _ => new SemaphoreSlim(1, 1));
+        try
+        {
+            await gate.WaitAsync(_token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw TimedOut();
+        }
+        try
+        {
+            return await FetchUncoordinatedAsync(fileName);
+        }
+        catch (Exception e) when (timeout.IsCancellationRequested && e is OperationCanceledException or IOException or SocketException)
+        {
+            throw TimedOut();
+        }
+        finally
+        {
+            Close();
+            gate.Release();
+        }
+    }
+
+    private IOException TimedOut() => new($"FTPS transfer from {_host} timed out after {TransferTimeout.TotalSeconds:0} s");
+
+    private async Task<byte[]> FetchUncoordinatedAsync(string fileName)
+    {
         await OpenControlAsync();
         await ExpectAsync(220);
-        await SendAsync($"USER bblp"); await ExpectAsync(331);
+        await SendAsync("USER bblp"); await ExpectAsync(331);
         await SendAsync($"PASS {_accessCode}"); await ExpectAsync(230);
         await SendAsync("PBSZ 0"); await ReadResponseAsync();
         await SendAsync("PROT P"); await ReadResponseAsync();
         await SendAsync("TYPE I"); await ReadResponseAsync();
 
         var baseName = Path.GetFileName(fileName);
-        string[] candidates = { fileName, "/" + baseName, baseName, "/cache/" + baseName, "/model/" + baseName };
+        var candidates = BambuPaths.CandidatePaths(fileName);
         string lastError = "no candidate path worked";
         foreach (var path in candidates)
         {
             try { return await RetrAsync(path); }
-            catch (Exception e) { lastError = e.Message; }
+            catch (Exception e) when (e is not OperationCanceledException && !_token.IsCancellationRequested) { lastError = e.Message; }
         }
-        Close();
         throw new IOException($"RETR failed for {baseName}: {lastError}");
     }
 
@@ -49,9 +88,9 @@ public sealed class BambuFileClient
         int port = ParsePasv(pasv.Text) ?? throw new IOException($"bad PASV: {pasv.Text}");
 
         using var dataClient = new TcpClient();
-        await dataClient.ConnectAsync(_host, port);
+        await dataClient.ConnectAsync(_host, port, _token);
         using var dataSsl = new SslStream(dataClient.GetStream(), false, (_, _, _, _) => true);
-        await dataSsl.AuthenticateAsClientAsync(_host);
+        await dataSsl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = _host }, _token);
 
         await SendAsync($"RETR {path}");
         var mark = await ReadResponseAsync();
@@ -60,10 +99,9 @@ public sealed class BambuFileClient
         using var outMs = new MemoryStream();
         var buf = new byte[65536];
         int n;
-        while ((n = await dataSsl.ReadAsync(buf)) > 0) outMs.Write(buf, 0, n);
+        while ((n = await dataSsl.ReadAsync(buf.AsMemory(), _token)) > 0) outMs.Write(buf, 0, n);
 
         await ReadResponseAsync();   // 226
-        Close();
         return outMs.ToArray();
     }
 
@@ -81,9 +119,9 @@ public sealed class BambuFileClient
     private async Task OpenControlAsync()
     {
         _control = new TcpClient();
-        await _control.ConnectAsync(_host, 990);
+        await _control.ConnectAsync(_host, 990, _token);
         _stream = new SslStream(_control.GetStream(), false, (_, _, _, _) => true);
-        await _stream.AuthenticateAsClientAsync(_host);
+        await _stream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = _host }, _token);
     }
 
     private void Close()
@@ -97,8 +135,8 @@ public sealed class BambuFileClient
     {
         if (_stream is null) throw new IOException("no control connection");
         var bytes = Encoding.ASCII.GetBytes(line + "\r\n");
-        await _stream.WriteAsync(bytes);
-        await _stream.FlushAsync();
+        await _stream.WriteAsync(bytes.AsMemory(), _token);
+        await _stream.FlushAsync(_token);
     }
 
     private async Task ExpectAsync(int code)
@@ -136,7 +174,7 @@ public sealed class BambuFileClient
                 _pending.Append(text.AsSpan(nl + 2));
                 return text.Substring(0, nl);
             }
-            int n = await _stream.ReadAsync(buf);
+            int n = await _stream.ReadAsync(buf.AsMemory(), _token);
             if (n <= 0) throw new IOException("control closed");
             _pending.Append(Encoding.ASCII.GetString(buf, 0, n));
         }

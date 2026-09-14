@@ -77,7 +77,7 @@ actor BambuTunnelFileClient {
         }
         guard let selected = Self.bestMatch(in: archives, hint: hint) else {
             if let lastError { throw lastError }
-            throw TunnelError(message: "pamięć wewnętrzna X2D nie zwróciła aktywnego pliku 3MF")
+            throw TunnelError(message: Localization.t("X2D internal storage did not return the active 3MF file"))
         }
         Self.logger.info("X2D tunnel: downloading \(selected.name, privacy: .public), \(selected.size, privacy: .public) bytes")
         return try await download(selected)
@@ -101,7 +101,7 @@ actor BambuTunnelFileClient {
                     continuation.resume(throwing: error)
                 case .cancelled:
                     conn.stateUpdateHandler = nil
-                    continuation.resume(throwing: TunnelError(message: "tunel X2D został zamknięty"))
+                    continuation.resume(throwing: TunnelError(message: Localization.t("the X2D tunnel was closed")))
                 default: break
                 }
             }
@@ -126,7 +126,7 @@ actor BambuTunnelFileClient {
         let ack = try await readJSONFrame()
         Self.logger.info("X2D tunnel: setup result \(self.int(ack["result"]) ?? -1, privacy: .public)")
         guard int(ack["result"]) == 0 else {
-            throw TunnelError(message: "X2D odrzucił inicjalizację tunelu plików")
+            throw TunnelError(message: Localization.t("X2D rejected the file tunnel setup"))
         }
     }
 
@@ -136,7 +136,7 @@ actor BambuTunnelFileClient {
         let reply = try await rpc(command: 1, request: request)
         Self.logger.info("X2D tunnel: LIST_INFO \(storage.isEmpty ? "default" : storage, privacy: .public) result \(self.int(reply["result"]) ?? -1, privacy: .public)")
         guard [0, 1].contains(int(reply["result"]) ?? -1) else {
-            throw TunnelError(message: "X2D nie udostępnia listy modeli z pamięci \(storage.isEmpty ? "domyślnej" : storage)")
+            throw TunnelError(message: storage.isEmpty ? Localization.t("X2D does not list models from the default storage") : Localization.t("X2D does not list models from storage {0}", storage))
         }
         let body = reply["reply"] as? [String: Any]
         let rows = body?["file_lists"] as? [[String: Any]] ?? []
@@ -170,15 +170,15 @@ actor BambuTunnelFileClient {
             case 0:
                 let expected = int(details["total"]) ?? file.size
                 if expected > 0, output.count != expected {
-                    throw TunnelError(message: "niepełny 3MF z X2D: \(output.count) z \(expected) bajtów")
+                    throw TunnelError(message: Localization.t("incomplete 3MF from X2D: {0} of {1} bytes", output.count, expected))
                 }
                 guard output.count >= 4, output.prefix(2) == Data([0x50, 0x4b]) else {
-                    throw TunnelError(message: "X2D nie zwrócił poprawnego archiwum 3MF")
+                    throw TunnelError(message: Localization.t("X2D did not return a valid 3MF archive"))
                 }
                 return output
             default:
                 Self.logger.error("X2D tunnel: FILE_DOWNLOAD rejected with result \(self.int(reply["result"]) ?? -1, privacy: .public)")
-                throw TunnelError(message: "firmware X2D odmówił pobrania 3MF (kod \(int(reply["result"]) ?? -1))")
+                throw TunnelError(message: Localization.t("X2D firmware refused to send the 3MF (code {0})", int(reply["result"]) ?? -1))
             }
         }
     }
@@ -213,11 +213,11 @@ actor BambuTunnelFileClient {
                 guard headerSize > 0, binary.count >= headerSize,
                       let response = try JSONSerialization.jsonObject(with: binary.prefix(headerSize)) as? [String: Any],
                       int(response["result"]) != 1 else {
-                    throw TunnelError(message: "drukarka odrzuciła \(relativePath)")
+                    throw TunnelError(message: Localization.t("the printer rejected {0}", relativePath))
                 }
                 Self.logger.info("Project-file tunnel: \(relativePath, privacy: .public) accepted, size=\(self.int(response["size"]) ?? -1, privacy: .public)")
                 if let size = int(response["size"]), size == 0 {
-                    throw TunnelError(message: "drukarka zwróciła pusty \(relativePath)")
+                    throw TunnelError(message: Localization.t("the printer returned an empty {0}", relativePath))
                 }
                 if binary.count > headerSize { output.append(binary.dropFirst(headerSize)) }
             } else {
@@ -229,15 +229,15 @@ actor BambuTunnelFileClient {
             case 1: continue
             case 0:
                 guard !output.isEmpty else {
-                    throw TunnelError(message: "drukarka nie zwróciła \(relativePath)")
+                    throw TunnelError(message: Localization.t("the printer did not return {0}", relativePath))
                 }
                 if expected > 0, output.count != expected {
-                    throw TunnelError(message: "niepełny \(relativePath): \(output.count) z \(expected) bajtów")
+                    throw TunnelError(message: Localization.t("incomplete {0}: {1} of {2} bytes", relativePath, output.count, expected))
                 }
                 Self.logger.info("Project-file tunnel: \(relativePath, privacy: .public) complete, bytes=\(output.count, privacy: .public)")
                 return output
             default:
-                throw TunnelError(message: "get_project_file dla \(relativePath) zakończył się kodem \(int(reply["result"]) ?? -1)")
+                throw TunnelError(message: Localization.t("get_project_file for {0} ended with code {1}", relativePath, int(reply["result"]) ?? -1))
             }
         }
     }
@@ -283,7 +283,7 @@ actor BambuTunnelFileClient {
         let header = try await readExactly(16)
         let length = Int(readUInt32(header, at: 0))
         guard length >= 0, length <= 128 * 1024 * 1024 else {
-            throw TunnelError(message: "nieprawidłowa ramka tunelu X2D")
+            throw TunnelError(message: Localization.t("invalid X2D tunnel frame"))
         }
         return (readUInt32(header, at: 4), readUInt32(header, at: 8), try await readExactly(length))
     }
@@ -296,7 +296,7 @@ actor BambuTunnelFileClient {
     private func splitJSONAndBinary(_ data: Data) throws -> ([String: Any], Data) {
         guard let end = jsonPrefixEnd(data),
               let object = try JSONSerialization.jsonObject(with: data.prefix(end)) as? [String: Any] else {
-            throw TunnelError(message: "nieprawidłowa odpowiedź JSON z X2D")
+            throw TunnelError(message: Localization.t("invalid JSON reply from X2D"))
         }
         var binaryStart = end
         if data.count >= end + 2, data[end..<(end + 2)] == Data([10, 10]) { binaryStart += 2 }
@@ -323,7 +323,7 @@ actor BambuTunnelFileClient {
     }
 
     private func send(_ data: Data) async throws {
-        guard let connection else { throw TunnelError(message: "brak połączenia z tunelem X2D") }
+        guard let connection else { throw TunnelError(message: Localization.t("no connection to the X2D tunnel")) }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(content: data, completion: .contentProcessed { error in
                 if let error { continuation.resume(throwing: error) }
@@ -334,13 +334,13 @@ actor BambuTunnelFileClient {
 
     private func readExactly(_ count: Int) async throws -> Data {
         while receiveBuffer.count < count {
-            guard let connection else { throw TunnelError(message: "tunel X2D jest zamknięty") }
+            guard let connection else { throw TunnelError(message: Localization.t("the X2D tunnel is closed")) }
             let chunk: Data = try await withCheckedThrowingContinuation { continuation in
                 connection.receive(minimumIncompleteLength: 1, maximumLength: max(65536, count)) {
                     data, _, complete, error in
                     if let error { continuation.resume(throwing: error) }
                     else if let data, !data.isEmpty { continuation.resume(returning: data) }
-                    else if complete { continuation.resume(throwing: TunnelError(message: "X2D zamknął tunel plików")) }
+                    else if complete { continuation.resume(throwing: TunnelError(message: Localization.t("X2D closed the file tunnel"))) }
                     else { continuation.resume(returning: Data()) }
                 }
             }

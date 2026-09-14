@@ -15,6 +15,7 @@ import io
 import ssl
 import threading
 import time
+import urllib.parse
 import xml.etree.ElementTree as ET
 import zipfile
 from ftplib import FTP_TLS
@@ -85,11 +86,61 @@ class _ImplicitFTPTLS(FTP_TLS):
         return self.welcome
 
 
+def candidate_paths(file_name: str) -> list[str]:
+    """Where the printed archive may sit on the printer's card, in the order macOS tries them
+    (BambuFileClient.candidatePaths): the name as reported and its last component, with .gcode.3mf and .3mf
+    added when missing and spaces as underscores, each at the root and under cache/, model/ and data/.
+    Linux used to try five paths, so a job reported without an extension was never found. One fixture
+    (design/fixtures/bambu-3mf-candidates.json) holds all three platforms to the same list."""
+    raw = urllib.parse.unquote(file_name).strip()
+    if not raw:
+        return []
+    names: list[str] = []
+
+    def add_name(value: str) -> None:
+        value = value.strip("/")
+        if value and value not in names:
+            names.append(value)
+
+    last = _last_component(raw)
+    add_name(raw)
+    add_name(last)
+    for seed in (raw, last):
+        if not seed.lower().endswith(".3mf"):
+            add_name(seed + ".gcode.3mf")
+            add_name(seed + ".3mf")
+    # Studio and cloud jobs sometimes replace spaces with underscores in the file name on the card.
+    for name in list(names):
+        if " " in name:
+            add_name(name.replace(" ", "_"))
+    paths: list[str] = []
+
+    def add_path(value: str) -> None:
+        if value not in paths:
+            paths.append(value)
+
+    for name in names:
+        add_path(name)
+        add_path("/" + name)
+        leaf = _last_component(name)
+        for root in ("cache", "model", "data"):
+            add_path(f"/{root}/{leaf}")
+            add_path(f"{root}/{leaf}")
+    return paths
+
+
+def _last_component(path: str) -> str:
+    """NSString.lastPathComponent: the part after the last slash, trailing slashes ignored."""
+    trimmed = path.rstrip("/")
+    if not trimmed:
+        return "/" if path else ""
+    return trimmed.rsplit("/", 1)[-1]
+
+
 def fetch_bambu_3mf(host: str, access_code: str, filename: str) -> bytes | None:
     """Download the printed .gcode.3mf over the printer's local FTPS. Accepts the self-signed cert.
     Returns the bytes, or None on any failure (never raises)."""
-    base = filename.replace("\\", "/").rsplit("/", 1)[-1]
-    candidates = [filename, f"/{base}", base, f"/cache/{base}", f"/model/{base}"]
+    candidates = candidate_paths(filename.replace("\\", "/"))
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -189,21 +240,26 @@ def bambu_charges(serial: str, groups: list, filaments: list[dict[str, Any]],
     def hex6(value: Any) -> str:
         return (value or "").lstrip("#").upper()[:6]
 
-    def by_color(color_hex: str) -> tuple[int, int] | None:
-        wanted = hex6(color_hex)
+    def by_color(fil: dict[str, Any]) -> tuple[int, int] | None:
+        """The slot a filament was printed from, by colour. Two slots of one colour are told apart by
+        material; still more than one means the job cannot say which roll it used, so nothing is charged
+        rather than the first match (two black rolls used to be charged as one)."""
+        wanted = hex6(fil.get("color"))
         if not wanted:
             return None
-        for gi, group in enumerate(groups):
-            for si, slot in enumerate(group.slots):
-                if hex6(getattr(slot, "color", "")) == wanted:
-                    return gi, si
-        return None
+        matches = [(gi, si, (getattr(slot, "material", "") or "").upper())
+                   for gi, group in enumerate(groups) for si, slot in enumerate(group.slots)
+                   if hex6(getattr(slot, "color", "")) == wanted]
+        material = str(fil.get("type") or "").upper()
+        if len(matches) > 1 and material:
+            matches = [match for match in matches if match[2] == material]
+        return (matches[0][0], matches[0][1]) if len(matches) == 1 else None
 
     charges: list[tuple[str, float, Any]] = []
     for fil in filaments:
         if fil["used_g"] <= 0:
             continue
-        target = by_color(fil["color"])
+        target = by_color(fil)
         if target is None and len(filaments) == 1:
             chosen = loaded_slot(serial, groups, lambda loc: (loc["amsIndex"], loc["slot"]) in assigned)
             target = (chosen[0]["amsIndex"], chosen[0]["slot"]) if chosen else None

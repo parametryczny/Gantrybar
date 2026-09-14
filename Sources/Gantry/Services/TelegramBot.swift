@@ -59,7 +59,7 @@ final class TelegramBot {
         } else if let callback = update["callback_query"] as? [String: Any] {
             let id = callback["id"] as? String ?? ""
             let message = callback["message"] as? [String: Any]
-            guard authorized(message?["chat"] as? [String: Any]) else { await answer(id, "Brak dostępu"); return }
+            guard authorized(message?["chat"] as? [String: Any]) else { await answer(id, AppSettings.shared.t("Access denied")); return }
             await handleCallback(callback["data"] as? String ?? "", cbID: id, messageID: message?["message_id"] as? Int)
         }
     }
@@ -242,7 +242,7 @@ final class TelegramBot {
 
     private func sendPrinterMenu(messageID: Int?) async {
         let printers = store?.printers ?? []
-        guard !printers.isEmpty else { await send(text: "Brak drukarek.", replyMarkup: commandKeyboard()); return }
+        guard !printers.isEmpty else { await send(text: AppSettings.shared.t("No printers."), replyMarkup: commandKeyboard()); return }
         let rows = printers.map { [(iconFor($0.serial) + " " + $0.name, "p:\($0.serial)")] }
         let text = AppSettings.shared.t("Pick a printer:")
         if let messageID { await edit(messageID: messageID, text: text, replyMarkup: keyboard(rows)) }
@@ -262,10 +262,10 @@ final class TelegramBot {
             store?.runAutomation(PrinterAutomation(name: "telegram", action: a), serial: serial)
         }
         switch action {
-        case "pause":  exec(.pause);        await answer(cbID, "⏸ Wstrzymano")
-        case "resume": exec(.resume);       await answer(cbID, "▶️ Wznowiono")
-        case "lighton":  exec(.light(true));  await answer(cbID, "💡 Włączono")
-        case "lightoff": exec(.light(false)); await answer(cbID, "🌑 Wyłączono")
+        case "pause":  exec(.pause);        await answer(cbID, AppSettings.shared.t("⏸ Paused"))
+        case "resume": exec(.resume);       await answer(cbID, AppSettings.shared.t("▶️ Resumed"))
+        case "lighton":  exec(.light(true));  await answer(cbID, AppSettings.shared.t("💡 Light on"))
+        case "lightoff": exec(.light(false)); await answer(cbID, AppSettings.shared.t("🌑 Light off"))
         case "stopask":
             // Stop cancels the print and is not reversible, so ask once before doing it.
             if let messageID {
@@ -277,7 +277,7 @@ final class TelegramBot {
             }
             await answer(cbID, "")
             return
-        case "stop":   exec(.stop);         await answer(cbID, "⏹ Zatrzymano")
+        case "stop":   exec(.stop);         await answer(cbID, AppSettings.shared.t("⏹ Stopped"))
         default:       await answer(cbID, ""); return
         }
         // Reflect the new state right in the message (small settle delay so telemetry can catch up).

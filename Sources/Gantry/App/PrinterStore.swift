@@ -243,7 +243,7 @@ final class PrinterStore: ObservableObject {
                 return .loaded(layout)
             }
             projectFileError = BambuTunnelFileClient.TunnelError(
-                message: "slice_info.config nie zawiera obiektów dla płyty \(plateIndex)")
+                message: AppSettings.shared.t("slice_info.config has no objects for plate {0}", plateIndex))
         } catch {
             projectFileError = error
         }
@@ -257,7 +257,7 @@ final class PrinterStore: ObservableObject {
             // X2D can expose the plate g-code referenced by MQTT through FTPS even though the
             // containing 3MF remains on internal eMMC. Treat a non-archive/non-layout payload as a
             // miss so the internal-storage tunnel below is still attempted.
-            throw BambuFileClient.FTPError(message: "pobrany plik nie jest archiwum 3MF z listą obiektów")
+            throw BambuFileClient.FTPError(message: AppSettings.shared.t("the downloaded file is not a 3MF archive with an object list"))
         } catch {
             let model = printer.model.uppercased()
             let name = printer.name.uppercased()
@@ -454,19 +454,19 @@ final class PrinterStore: ObservableObject {
             discovered = results.filter { candidate in !printers.contains { $0.serial == candidate.serial } }
                 .sorted { $0.host.compare($1.host, options: .numeric) == .orderedAscending }
             isScanning = false
-            if discovered.isEmpty { globalMessage = "Nie znaleziono nowych drukarek po 4 sekundach." }
+            if discovered.isEmpty { globalMessage = AppSettings.shared.t("No new printers found after 4 seconds.") }
         }
         Task {
             try? await Task.sleep(for: .seconds(8))
             guard scanToken == token, isScanning else { return }
             isScanning = false
-            globalMessage = "Skanowanie przekroczyło 8 sekund. Sprawdź dostęp Gantry do sieci lokalnej."
+            globalMessage = AppSettings.shared.t("Scan exceeded 8 seconds. Check Gantry's access to the local network.")
         }
     }
 
     func add(_ discovered: DiscoveredPrinter, accessCode: String, customName: String? = nil) throws {
         let code = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty else { throw ValidationError("Podaj kod PIN / Access Code drukarki.") }
+        guard !code.isEmpty else { throw ValidationError(AppSettings.shared.t("Enter the printer's PIN / Access Code.")) }
         let name = customName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let printer = SavedPrinter(
             serial: discovered.serial,
@@ -483,7 +483,7 @@ final class PrinterStore: ObservableObject {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanCode = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanSerial.isEmpty, !cleanHost.isEmpty, !cleanCode.isEmpty else {
-            throw ValidationError("Adres IP, numer seryjny i kod dostępu są wymagane.")
+            throw ValidationError(AppSettings.shared.t("IP address, serial number and access code are required."))
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         try upsert(SavedPrinter(serial: cleanSerial, name: cleanName.isEmpty ? "Bambu \(cleanSerial.suffix(4))" : cleanName,
@@ -494,8 +494,8 @@ final class PrinterStore: ObservableObject {
         let cleanSerial = serial.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanCode = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanSerial.isEmpty, !cleanHost.isEmpty else { throw ValidationError("Adres IP i numer seryjny Elegoo są wymagane.") }
-        guard generation == 1 || !cleanCode.isEmpty else { throw ValidationError("Podaj kod dostępu Elegoo CC2 i włącz tryb LAN-only.") }
+        guard !cleanSerial.isEmpty, !cleanHost.isEmpty else { throw ValidationError(AppSettings.shared.t("Elegoo IP address and serial number are required.")) }
+        guard generation == 1 || !cleanCode.isEmpty else { throw ValidationError(AppSettings.shared.t("Enter the Elegoo CC2 access code and enable LAN-only mode.")) }
         let kind: PrinterKind = generation == 1 ? .elegooCC1 : .elegooCC2
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let printer = SavedPrinter(serial: cleanSerial,
@@ -511,7 +511,7 @@ final class PrinterStore: ObservableObject {
     func addKlipper(name: String, host: String, port: Int?, apiKey: String?) throws {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanHost.isEmpty else {
-            throw ValidationError("Podaj adres IP drukarki Klipper.")
+            throw ValidationError(AppSettings.shared.t("Enter the IP address of the {0} printer.", "Klipper"))
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "klipper-\(cleanHost)"
@@ -540,7 +540,7 @@ final class PrinterStore: ObservableObject {
     func addPrusa(name: String, host: String, port: Int?, apiKey: String?) throws {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanHost.isEmpty else {
-            throw ValidationError("Podaj adres IP drukarki Prusa.")
+            throw ValidationError(AppSettings.shared.t("Enter the IP address of the {0} printer.", "Prusa"))
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "prusa-\(cleanHost)"
@@ -568,7 +568,7 @@ final class PrinterStore: ObservableObject {
     func addSnapmaker(name: String, host: String, port: Int?) throws {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanHost.isEmpty else {
-            throw ValidationError("Podaj adres IP drukarki Snapmaker.")
+            throw ValidationError(AppSettings.shared.t("Enter the IP address of the {0} printer.", "Snapmaker"))
         }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "snapmaker-\(cleanHost)"
@@ -594,7 +594,7 @@ final class PrinterStore: ObservableObject {
 
     func addAnycubicKobraS1(name: String, host: String, port: Int?) throws {
         let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanHost.isEmpty else { throw ValidationError("Podaj adres IP drukarki Anycubic Kobra S1.") }
+        guard !cleanHost.isEmpty else { throw ValidationError(AppSettings.shared.t("Enter the IP address of the {0} printer.", "Anycubic Kobra S1")) }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let identifier = "anycubic-kobra-s1-\(cleanHost)"
         let printer = SavedPrinter(serial: identifier, name: cleanName.isEmpty ? "Kobra S1 \(cleanHost)" : cleanName,
@@ -623,7 +623,7 @@ final class PrinterStore: ObservableObject {
 
         discovered.removeAll { found in devices.contains { $0.serial == found.serial } }
         guard imported > 0 else {
-            throw BambuStudioConfigError("Nie znaleziono drukarek z zapisanym kodem i adresem IP.")
+            throw BambuStudioConfigError(AppSettings.shared.t("No printers with a stored code and IP address were found."))
         }
         return imported
     }
@@ -634,11 +634,11 @@ final class PrinterStore: ObservableObject {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let enteredCode = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanSerial.isEmpty, !cleanHost.isEmpty else {
-            throw ValidationError("Adres IP i numer seryjny są wymagane.")
+            throw ValidationError(AppSettings.shared.t("IP address and serial number are required."))
         }
         guard let code = enteredCode.isEmpty ? (sessionCodes[originalSerial] ?? AccessCodeStore.accessCode(for: originalSerial)) : enteredCode,
               !code.isEmpty else {
-            throw ValidationError("Podaj kod PIN / Access Code drukarki.")
+            throw ValidationError(AppSettings.shared.t("Enter the printer's PIN / Access Code."))
         }
 
         clients.removeValue(forKey: originalSerial)?.stop()
@@ -689,7 +689,7 @@ final class PrinterStore: ObservableObject {
         reconnectTasks.removeValue(forKey: printer.serial)?.cancel()
         clients.removeValue(forKey: printer.serial)?.stop()
         telemetry[printer.serial] = PrinterTelemetry()
-        connectionMessages[printer.serial] = "Łączenie…"
+        connectionMessages[printer.serial] = AppSettings.shared.t("Connecting…")
 
         let handler: @Sendable (MQTTClient.Event) -> Void = { [weak self] event in
             Task { @MainActor [weak self] in self?.handle(event, serial: printer.serial) }
@@ -879,7 +879,7 @@ final class PrinterStore: ObservableObject {
             var offline = telemetry[serial] ?? PrinterTelemetry()
             offline.state = .offline
             telemetry[serial] = offline
-            connectionMessages[serial] = (reason ?? "Rozłączono") + " • ponowna próba za 20 s"
+            connectionMessages[serial] = (reason ?? AppSettings.shared.t("Disconnected")) + AppSettings.shared.t(" • retrying in 20 s")
             scheduleReconnect(serial: serial)
         case .localNetworkDenied:
             localNetworkWasDenied = true
@@ -890,7 +890,7 @@ final class PrinterStore: ObservableObject {
                 var offline = telemetry[printer.serial] ?? PrinterTelemetry()
                 offline.state = .offline
                 telemetry[printer.serial] = offline
-                connectionMessages[printer.serial] = "Brak dostępu do sieci lokalnej — włącz Gantry w Ustawienia systemowe › Prywatność i ochrona › Sieć lokalna"
+                connectionMessages[printer.serial] = AppSettings.shared.t("No access to the local network. Allow Gantry in System Settings › Privacy & Security › Local Network")
             }
             schedulePermissionRetry()
         }

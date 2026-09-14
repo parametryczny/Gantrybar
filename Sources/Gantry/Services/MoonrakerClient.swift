@@ -58,7 +58,7 @@ final class MoonrakerClient: PrinterConnection, @unchecked Sendable {
 
     private func run() async {
         guard let queryURL = await buildQueryURL() else {
-            reportDisconnected("Nie znaleziono API Moonraker (port \(printer.port ?? 7125))")
+            reportDisconnected(Localization.t("Moonraker API not found (port {0})", printer.port ?? 7125))
             return
         }
         while !Task.isCancelled {

@@ -56,7 +56,7 @@ final class SnapmakerClient: PrinterConnection, @unchecked Sendable {
                 case 204:
                     break   // waiting for the user to tap Allow on the printer — keep polling
                 case 401, 403:
-                    reportDisconnected("Połączenie odrzucone na drukarce Snapmaker")
+                    reportDisconnected(Localization.t("The Snapmaker printer refused the connection"))
                     return
                 default:
                     self.token = nil   // re-handshake on anything unexpected

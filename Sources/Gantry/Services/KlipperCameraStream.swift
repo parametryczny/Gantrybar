@@ -33,7 +33,7 @@ final class KlipperCameraStream: @unchecked Sendable {
     private func run() async {
         onState(.connecting)
         guard let snapshotURL = await discoverSnapshotURL() else {
-            onState(.failed("Brak skonfigurowanej kamery"))
+            onState(.failed(Localization.t("No camera configured")))
             return
         }
         var everSucceeded = false
@@ -49,7 +49,7 @@ final class KlipperCameraStream: @unchecked Sendable {
                     onFrame(data)
                     onState(.streaming)
                 } else if !everSucceeded {
-                    onState(.failed("Kamera nie odpowiada"))
+                    onState(.failed(Localization.t("The camera is not responding")))
                     return
                 }
             } catch is CancellationError {

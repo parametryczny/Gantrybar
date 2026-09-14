@@ -33,7 +33,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
             backing: .buffered,
             defer: false
         )
-        window.title = "Spoolbase — baza filamentów"
+        window.title = AppSettings.shared.t("Spoolbase · filament catalogue")
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
@@ -64,9 +64,9 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
 
         let symbol = NSImageView(image: FilamentIcon.image(size: 28))
         symbol.contentTintColor = .labelColor
-        let title = NSTextField(labelWithString: "Baza filamentów")
+        let title = NSTextField(labelWithString: AppSettings.shared.t("Filament catalogue"))
         title.font = .systemFont(ofSize: 17, weight: .semibold)
-        let subtitle = NSTextField(labelWithString: "Spoolbase • dodawaj, edytuj i usuwaj produkty")
+        let subtitle = NSTextField(labelWithString: AppSettings.shared.t("Spoolbase • add, edit and remove products"))
         subtitle.font = .systemFont(ofSize: 10)
         subtitle.textColor = .secondaryLabelColor
         let labels = NSStackView(views: [title, subtitle])
@@ -80,7 +80,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         countLabel.textColor = .secondaryLabelColor
         countLabel.font = .systemFont(ofSize: 10)
 
-        searchField.placeholderString = "Szukaj marki, serii, koloru lub kodu…"
+        searchField.placeholderString = AppSettings.shared.t("Search brand, series, colour or code…")
         searchField.controlSize = .small
         searchField.delegate = self
         searchField.sendsSearchStringImmediately = true
@@ -91,8 +91,8 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
             $0.action = #selector(filtersChanged)
             $0.widthAnchor.constraint(equalToConstant: 145).isActive = true
         }
-        let scanButton = NSButton(title: "Skanuj kod…", target: self, action: #selector(scanBarcodePressed))
-        scanButton.image = NSImage(systemSymbolName: "barcode.viewfinder", accessibilityDescription: "Skanuj kod")
+        let scanButton = NSButton(title: AppSettings.shared.t("Scan code…"), target: self, action: #selector(scanBarcodePressed))
+        scanButton.image = NSImage(systemSymbolName: "barcode.viewfinder", accessibilityDescription: AppSettings.shared.t("Scan code"))
         scanButton.imagePosition = .imageLeading
         scanButton.controlSize = .small
         scanButton.bezelStyle = .rounded
@@ -110,7 +110,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         tableView.doubleAction = #selector(editPressed)
         tableView.target = self
         addColumn("color", "", 42)
-        addColumn("brand", "Marka", 100)
+        addColumn("brand", AppSettings.shared.t("Brand"), 100)
         addColumn("name", "Nazwa", 155)
         addColumn("type", "Typ", 65)
         addColumn("colorName", "Kolor", 125)
@@ -139,39 +139,39 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
             scroll.bottomAnchor.constraint(equalTo: tableCard.bottomAnchor, constant: -7)
         ])
 
-        let quantityTitle = NSTextField(labelWithString: "Liczba szpul")
+        let quantityTitle = NSTextField(labelWithString: AppSettings.shared.t("Number of spools"))
         quantityTitle.textColor = .secondaryLabelColor
         quantityField.integerValue = 1
         quantityField.alignment = .center
         quantityField.formatter = integerFormatter()
         quantityField.widthAnchor.constraint(equalToConstant: 55).isActive = true
-        let weightTitle = NSTextField(labelWithString: "Waga rolki (g)")
+        let weightTitle = NSTextField(labelWithString: AppSettings.shared.t("Roll weight (g)"))
         weightTitle.textColor = .secondaryLabelColor
-        weightTitle.toolTip = "Pełna rolka to zwykle 1000 g. Dla napoczętej wpisz pozostałe gramy."
+        weightTitle.toolTip = AppSettings.shared.t("A full roll is usually 1000 g. For a started one, enter the grams left.")
         weightField.integerValue = 1000
         weightField.alignment = .center
         weightField.formatter = integerFormatter()
         weightField.widthAnchor.constraint(equalToConstant: 62).isActive = true
-        let cancel = NSButton(title: "Anuluj", target: self, action: #selector(cancelPressed))
+        let cancel = NSButton(title: AppSettings.shared.t("Cancel"), target: self, action: #selector(cancelPressed))
         cancel.keyEquivalent = "\u{1b}"
-        let custom = NSButton(title: "Dodaj własny…", target: self, action: #selector(addCustomPressed))
-        custom.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: "Dodaj własny filament")
+        let custom = NSButton(title: AppSettings.shared.t("Add your own…"), target: self, action: #selector(addCustomPressed))
+        custom.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: AppSettings.shared.t("Add your own filament"))
         custom.imagePosition = .imageLeading
         custom.bezelStyle = .rounded
-        editButton.title = "Edytuj…"
-        editButton.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: "Edytuj")
+        editButton.title = AppSettings.shared.t("Edit…")
+        editButton.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: AppSettings.shared.t("Edit"))
         editButton.imagePosition = .imageLeading
         editButton.target = self
         editButton.action = #selector(editPressed)
         editButton.bezelStyle = .rounded
-        deleteButton.title = "Usuń"
-        deleteButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Usuń")
+        deleteButton.title = AppSettings.shared.t("Remove")
+        deleteButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: AppSettings.shared.t("Remove"))
         deleteButton.imagePosition = .imageLeading
         deleteButton.target = self
         deleteButton.action = #selector(deletePressed)
         deleteButton.bezelStyle = .rounded
-        addButton.title = "Dodaj do moich"
-        addButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Dodaj")
+        addButton.title = AppSettings.shared.t("Add to mine")
+        addButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: AppSettings.shared.t("Add"))
         addButton.imagePosition = .imageLeading
         addButton.target = self
         addButton.action = #selector(addPressed)
@@ -259,11 +259,11 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
 
     private func applyFilters() {
         let query = searchField.stringValue.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let brand = brandPopup.titleOfSelectedItem ?? "Wszystkie marki"
-        let type = typePopup.titleOfSelectedItem ?? "Wszystkie typy"
+        let brand = brandPopup.titleOfSelectedItem ?? AppSettings.shared.t("All brands")
+        let type = typePopup.titleOfSelectedItem ?? AppSettings.shared.t("All types")
         visible = catalog.filter { item in
-            if brand != "Wszystkie marki", item.brand != brand { return false }
-            if type != "Wszystkie typy", item.type != type { return false }
+            if brand != AppSettings.shared.t("All brands"), item.brand != brand { return false }
+            if type != AppSettings.shared.t("All types"), item.type != type { return false }
             if !query.isEmpty {
                 let text = [item.brand, item.name, item.type, item.colorName, item.manufacturerCode]
                     .joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
@@ -276,7 +276,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
             return $0.colorName.localizedCaseInsensitiveCompare($1.colorName) == .orderedAscending
         }
         tableView.reloadData()
-        countLabel.stringValue = "\(visible.count) pozycji"
+        countLabel.stringValue = AppSettings.shared.counted(visible.count, english: ("item", "items"), polish: ("pozycja", "pozycje", "pozycji"))
         updateAddButton()
     }
 
@@ -290,9 +290,9 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         editButton.isEnabled = selected != nil
         deleteButton.isEnabled = selected != nil
         if let selected, existingCatalogIDs.contains(selected.id) {
-            addButton.title = "Dodaj kolejne szpule"
+            addButton.title = AppSettings.shared.t("Add more spools")
         } else {
-            addButton.title = "Dodaj do moich"
+            addButton.title = AppSettings.shared.t("Add to mine")
         }
     }
 
@@ -322,11 +322,11 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
     @objc private func deletePressed() {
         guard let selected else { return }
         let alert = NSAlert()
-        alert.messageText = "Usunąć filament z bazy?"
-        alert.informativeText = "\(selected.brand) • \(selected.name) • \(selected.colorName)\nFilament dodany wcześniej do Twoich stanów pozostanie bez zmian."
+        alert.messageText = AppSettings.shared.t("Remove the filament from the catalogue?")
+        alert.informativeText = "\(selected.brand) • \(selected.name) • \(selected.colorName)\n" + AppSettings.shared.t("A filament already in your stock stays as it is.")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Usuń")
-        alert.addButton(withTitle: "Anuluj")
+        alert.addButton(withTitle: AppSettings.shared.t("Remove"))
+        alert.addButton(withTitle: AppSettings.shared.t("Cancel"))
         guard let window else { return }
         let selectedID = selected.id
         alert.beginSheetModal(for: window) { [weak self] result in
@@ -391,7 +391,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
             }
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Nie udało się zapisać bazy"
+            alert.messageText = AppSettings.shared.t("Could not save the catalogue")
             alert.informativeText = error.localizedDescription
             if let window { alert.beginSheetModal(for: window) }
         }
@@ -401,8 +401,8 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         let normalized = normalizeBarcode(code)
         if let match = catalog.first(where: { normalizeBarcode($0.manufacturerCode) == normalized }) {
             searchField.stringValue = match.manufacturerCode
-            brandPopup.selectItem(withTitle: "Wszystkie marki")
-            typePopup.selectItem(withTitle: "Wszystkie typy")
+            brandPopup.selectItem(withTitle: AppSettings.shared.t("All brands"))
+            typePopup.selectItem(withTitle: AppSettings.shared.t("All types"))
             applyFilters()
             if let row = visible.firstIndex(where: { $0.id == match.id }) {
                 tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -414,9 +414,9 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         searchField.stringValue = code
         applyFilters()
         let alert = NSAlert()
-        alert.messageText = "Nie znaleziono kodu w bazie"
-        alert.informativeText = "Odczytany kod: \(code)\nMożesz dodać ten filament jako własny i wpisać kod producenta."
-        alert.addButton(withTitle: "Dodaj własny")
+        alert.messageText = AppSettings.shared.t("The code is not in the catalogue")
+        alert.informativeText = AppSettings.shared.t("Scanned code: {0}", code) + "\n" + AppSettings.shared.t("You can add this filament as your own and enter the manufacturer code.")
+        alert.addButton(withTitle: AppSettings.shared.t("Add your own"))
         alert.addButton(withTitle: "OK")
         if let window {
             alert.beginSheetModal(for: window) { [weak self] result in
@@ -433,10 +433,10 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         let selectedBrand = brandPopup.titleOfSelectedItem
         let selectedType = typePopup.titleOfSelectedItem
         brandPopup.removeAllItems()
-        brandPopup.addItem(withTitle: "Wszystkie marki")
+        brandPopup.addItem(withTitle: AppSettings.shared.t("All brands"))
         brandPopup.addItems(withTitles: Set(catalog.map(\.brand)).sorted())
         typePopup.removeAllItems()
-        typePopup.addItem(withTitle: "Wszystkie typy")
+        typePopup.addItem(withTitle: AppSettings.shared.t("All types"))
         let catalogTypes = Set(catalog.map(\.type))
         let knownTypes = FilamentCatalog.types
         let customTypes = catalogTypes.subtracting(knownTypes).sorted()

@@ -26,7 +26,7 @@ from gi.repository import GdkPixbuf, GLib, Gtk  # type: ignore  # noqa: E402
 
 from . import i18n
 from .core import PrinterKind
-from .jpegstream import split_jpegs
+from .jpegstream import bambu_jpeg_frames, split_jpegs
 from .overrides import overrides_for
 
 try:
@@ -159,21 +159,26 @@ class CameraView(Gtk.Box):
                 if self.printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
                     self._run_anycubic(stop)
                     return
-                self._run_bambu(stop)
+                # The X1 answers on RTSPS; the P1 and A1 have no RTSP endpoint and serve JPEG frames on port
+                # 6000 instead. A stream that never produced a frame is the cue to try that protocol before
+                # calling the camera unavailable, as macOS and Windows do.
+                if not self._run_bambu(stop) and not stop.is_set():
+                    self._run_bambu_jpeg(stop)
             else:
                 self._run_mjpeg(stop)
         except Exception as exc:  # noqa: BLE001 - surface, never crash the thread
             if not stop.is_set():
                 self._set_status(i18n.t("Camera error: {0}").format(exc))
 
-    def _run_bambu(self, stop: threading.Event) -> None:
+    def _run_bambu(self, stop: threading.Event) -> bool:
+        """RTSPS on port 322. Returns whether it produced a picture (or was stopped), so the caller knows when to try JPEG."""
         pl = self.app.language == "pl"
         if Gst is None:
             self._set_status(i18n.t("GStreamer is unavailable — install GStreamer and the H.264 decoder."))
-            return
+            return False
         if not self.access_code:
             self._set_status(i18n.t("Printer access code is missing."))
-            return
+            return True
 
         pipeline = Gst.Pipeline.new(f"bambu-camera-{self.serial}")
         source = Gst.ElementFactory.make("rtspsrc", "source")
@@ -186,7 +191,7 @@ class CameraView(Gtk.Box):
         elements = (source, depay, parser, decoder, convert, encoder, sink)
         if pipeline is None or any(element is None for element in elements):
             self._set_status(i18n.t("Required GStreamer H.264/JPEG plugins are missing."))
-            return
+            return False
 
         source.set_property("location", f"rtsps://{self.camera_host}:322/streaming/live/1")
         source.set_property("user-id", "bblp")
@@ -210,7 +215,7 @@ class CameraView(Gtk.Box):
                 or not convert.link(encoder) or not encoder.link(sink):
             self._set_status(i18n.t("Could not link the camera pipeline."))
             pipeline.set_state(Gst.State.NULL)
-            return
+            return False
 
         def pad_added(_source: Any, pad: Any) -> None:
             target = depay.get_static_pad("sink")
@@ -235,7 +240,7 @@ class CameraView(Gtk.Box):
             self._set_status(i18n.t("Could not start the camera stream."))
             pipeline.set_state(Gst.State.NULL)
             self._pipeline = None
-            return
+            return False
 
         bus = pipeline.get_bus()
         while not stop.is_set():
@@ -252,6 +257,18 @@ class CameraView(Gtk.Box):
         pipeline.set_state(Gst.State.NULL)
         if self._pipeline is pipeline:
             self._pipeline = None
+        return self._received_frame or stop.is_set()
+
+    def _run_bambu_jpeg(self, stop: threading.Event) -> None:
+        """P1 and A1: JPEG frames over TLS on port 6000 after an 80-byte login (jpegstream.bambu_jpeg_frames)."""
+        self._set_status(i18n.t("Connecting to the P1/A1 camera…"))
+        self._set_badge("JPEG · 6000")
+        try:
+            if not bambu_jpeg_frames(self.camera_host, self.access_code, stop, self._push_jpeg) and not stop.is_set():
+                self._set_status(i18n.t("The camera sent no picture. Check the access code and LAN Mode Live View."))
+        except OSError as error:
+            if not stop.is_set():
+                self._set_status(i18n.t("Camera error: {0}").format(error))
 
     def _run_anycubic(self, stop: threading.Event) -> None:
         pl = self.app.language == "pl"

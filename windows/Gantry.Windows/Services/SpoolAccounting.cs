@@ -6,7 +6,7 @@ namespace Gantry.Services;
 public enum JobPhase { Other, Running, Finished }
 
 /// <summary>One filament slot as the accounting sees it: where it is and what it reports.</summary>
-public readonly record struct SlotRef(int Group, int Slot, bool External, bool Active, bool Present, string? ColorHex);
+public readonly record struct SlotRef(int Group, int Slot, bool External, bool Active, bool Present, string? ColorHex, string? Material = null);
 
 public readonly record struct SpoolCharge(string SpoolId, double Grams, string FilamentId);
 
@@ -87,13 +87,13 @@ public static class SpoolAccounting
     /// <summary>Maps each sliced filament to a slot by colour (a single filament falls back to the loaded
     /// slot) and to the roll that was assigned there when the print finished.</summary>
     public static List<SpoolCharge> BambuCharges(IReadOnlyList<SlotRef> slots,
-        IReadOnlyList<(string Id, double UsedGrams, string ColorHex)> filaments, Func<SlotRef, string?> assignedSpool)
+        IReadOnlyList<(string Id, double UsedGrams, string ColorHex, string Type)> filaments, Func<SlotRef, string?> assignedSpool)
     {
         var charges = new List<SpoolCharge>();
         foreach (var filament in filaments)
         {
             if (filament.UsedGrams <= 0) continue;
-            var target = ByColor(slots, filament.ColorHex)
+            var target = ByColor(slots, filament.ColorHex, filament.Type)
                 ?? (filaments.Count == 1 ? LoadedSlot(slots, s => assignedSpool(s) is not null) : null);
             if (target is not { } slot || assignedSpool(slot) is not { } spoolId) continue;
             charges.Add(new SpoolCharge(spoolId, filament.UsedGrams, filament.Id));
@@ -107,12 +107,16 @@ public static class SpoolAccounting
         return hex.Length >= 6 ? hex[..6] : hex;
     }
 
-    private static SlotRef? ByColor(IReadOnlyList<SlotRef> slots, string colorHex)
+    /// <summary>The slot a filament was printed from, by colour. Two slots of one colour are told apart by
+    /// material; still more than one means the job cannot say which roll it used, so nothing is charged
+    /// rather than the first match (two black rolls used to be charged as one).</summary>
+    private static SlotRef? ByColor(IReadOnlyList<SlotRef> slots, string colorHex, string type)
     {
         var wanted = Hex6(colorHex);
         if (wanted.Length == 0) return null;
-        foreach (var slot in slots)
-            if (Hex6(slot.ColorHex) == wanted) return slot;
-        return null;
+        var matches = slots.Where(s => Hex6(s.ColorHex) == wanted).ToList();
+        if (matches.Count > 1 && !string.IsNullOrEmpty(type))
+            matches = matches.Where(s => string.Equals(s.Material, type, StringComparison.OrdinalIgnoreCase)).ToList();
+        return matches.Count == 1 ? matches[0] : null;
     }
 }

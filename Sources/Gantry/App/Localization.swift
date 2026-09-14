@@ -24,6 +24,17 @@ enum Localization {
         return table(for: code)[english] ?? english
     }
 
+    /// The same lookup for code off the main actor (network callbacks, `errorDescription`), which cannot
+    /// reach the @MainActor AppSettings. AppSettings stores the resolved language at launch, so the raw
+    /// default is always the language the rest of the app shows.
+    static func t(_ english: String, _ arguments: Any...) -> String {
+        var result = text(english, language: BambuDefaults.shared.string(forKey: "app-language") ?? "en")
+        for (index, argument) in arguments.enumerated() {
+            result = result.replacingOccurrences(of: "{\(index)}", with: describe(argument))
+        }
+        return result
+    }
+
     /// Every language the app can offer: English plus one entry per catalog found on disk.
     static func available() -> [Language] {
         var found: [Language] = [english]

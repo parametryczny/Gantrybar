@@ -17,8 +17,12 @@ from gantry import i18n
 from gantry.spoolbase import Filament, SpoolbaseWindow  # noqa: E402
 
 
-class StubWindow:
+class StubWindow(Gtk.Window):
+    """A real window: Spoolbase opens as a window of its own, transient for the fleet, and holds it open."""
     tray_mode = False
+
+    def hold_fleet_panel(self, widget) -> None:
+        pass
 
 
 class StubConfig:

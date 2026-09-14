@@ -37,9 +37,9 @@ public sealed class AnycubicFlvStream
                 }
                 if (buffer.Count > 4_000_000) buffer.RemoveRange(0, buffer.Count - 1_000_000);
             }
-            if (!_stopped) Failed?.Invoke("Strumień FLV Anycubic został zakończony.");
+            if (!_stopped) Failed?.Invoke(AppSettings.T("The Anycubic FLV stream ended."));
         }
-        catch (Exception error) { if (!_stopped) Failed?.Invoke($"Kamera Anycubic: {error.Message}"); }
+        catch (Exception error) { if (!_stopped) Failed?.Invoke(string.Format(AppSettings.T("Anycubic camera: {0}"), error.Message)); }
     }
     private static int Find(List<byte> data, byte a, byte b, int start) { for (int i = start; i + 1 < data.Count; i++) if (data[i] == a && data[i + 1] == b) return i; return -1; }
 }

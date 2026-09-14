@@ -64,6 +64,14 @@ def quiet_hours_active(config: Config, now: datetime | None = None) -> bool:
     if start == end: return False
     return start <= current < end if start < end else current >= start or current < end
 
+def show_window_on_start(indicator_available: bool, tray_mode: bool, background: bool) -> bool:
+    """Whether startup opens the window. Without a tray icon the window is the only way in, so it opens
+    even when autostart asked for the background; that combination left Gantry running out of reach."""
+    if not indicator_available:
+        return True
+    return not tray_mode and not background
+
+
 class PrinterDialog(Gtk.Dialog):
     def __init__(self, app: "Gantry", printer: Printer | None = None) -> None:
         super().__init__(title=i18n.t("Edit printer") if printer else i18n.t("Add printer"), transient_for=app.window, modal=False)
@@ -340,7 +348,7 @@ class Gantry:
         if edition.HAS_EXTRAS:
             GLib.timeout_add_seconds(8, self._initial_update_check)
             GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
-        if (AppIndicator is None or not self.window.tray_mode) and not background:
+        if show_window_on_start(AppIndicator is not None, self.window.tray_mode, background):
             self.show()
 
     def _finish_startup(self) -> bool:
@@ -617,6 +625,84 @@ class Gantry:
         sender = getattr(connection, "send_gcode", None)
         return bool(sender(script)) if callable(sender) else False
 
+    # --- printer control (opt-in; Bambu and Klipper, as on macOS and Windows) ------------------------
+    def send_printer_gcode(self, serial: str, line: str) -> bool:
+        """One G-code line to a printer that takes them: Klipper over Moonraker, Bambu as an MQTT
+        gcode_line. Other brands have no route for it and are left alone."""
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is None:
+            return False
+        if printer.kind == PrinterKind.KLIPPER:
+            return self.send_gcode(serial, line)
+        if printer.kind == PrinterKind.BAMBU:
+            from .control import gcode_line_payload
+            return self.send_command(serial, gcode_line_payload(line))
+        return False
+
+    def _note_control(self, serial: str, area: str) -> None:
+        self.__dict__.setdefault("last_control_area", {})[serial] = area
+
+    def set_nozzle_temperature(self, serial: str, celsius: int) -> bool:
+        self._note_control(serial, "temperature")
+        return self.send_printer_gcode(serial, f"M104 S{max(0, min(300, int(celsius)))}")
+
+    def set_bed_temperature(self, serial: str, celsius: int) -> bool:
+        self._note_control(serial, "temperature")
+        return self.send_printer_gcode(serial, f"M140 S{max(0, min(120, int(celsius)))}")
+
+    def set_fan(self, serial: str, index: int, percent: int) -> bool:
+        """Bambu fan indices: P1 part, P2 auxiliary, P3 chamber. Klipper exposes the part fan through M106."""
+        self._note_control(serial, "fans")
+        value = round(max(0, min(100, int(percent))) * 2.55)
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is None:
+            return False
+        if printer.kind == PrinterKind.KLIPPER:
+            return index == 1 and self.send_gcode(serial, f"M106 S{value}")
+        if printer.kind == PrinterKind.BAMBU:
+            return self.send_printer_gcode(serial, f"M106 P{index} S{value}")
+        return False
+
+    def set_print_speed(self, serial: str, percent: int) -> bool:
+        """A speed percentage, for Klipper. Bambu takes a speed mode instead, see set_print_speed_level."""
+        self._note_control(serial, "fans")
+        return self.send_printer_gcode(serial, f"M220 S{max(10, min(166, int(percent)))}")
+
+    def set_print_speed_level(self, serial: str, level: int) -> bool:
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is None or printer.kind != PrinterKind.BAMBU:
+            return False
+        self._note_control(serial, "fans")
+        from .control import speed_level_payload
+        return self.send_command(serial, speed_level_payload(level))
+
+    def requires_signed_commands(self, serial: str) -> bool:
+        """Whether a Bambu printer takes control commands only when signed by Bambu Connect. Its feature mask
+        decides when the printer reports one; otherwise a refusal already seen does."""
+        flag = getattr(self.telemetry.get(serial), "command_signing_required", None)
+        return flag if flag is not None else serial in self.__dict__.get("signing_rejected", set())
+
+    def command_rejection(self, serial: str) -> dict | None:
+        from .control import REJECTION_SECONDS
+        rejection = self.__dict__.get("command_rejections", {}).get(serial)
+        return rejection if rejection and time.monotonic() - rejection["at"] < REJECTION_SECONDS else None
+
+    def _record_command_reply(self, serial: str, reply: dict) -> None:
+        rejections = self.__dict__.setdefault("command_rejections", {})
+        signing = self.__dict__.setdefault("signing_rejected", set())
+        if reply.get("accepted"):
+            rejections.pop(serial, None)
+            signing.discard(serial)
+        else:
+            reason = str(reply.get("reason") or reply.get("command") or "")
+            if "verify failed" in reason.lower():
+                signing.add(serial)
+            rejections[serial] = {"reason": reason, "at": time.monotonic(),
+                                  "area": self.__dict__.get("last_control_area", {}).get(serial, "fans")}
+        panel = getattr(self, "detail_window", None)
+        if panel is not None and getattr(panel, "serial", None) == serial:
+            panel.update(self.telemetry.get(serial, Telemetry()))
+
     def set_chamber_light(self, serial: str, on: bool) -> None:
         printer = next((p for p in self.printers if p.serial == serial), None)
         from .overrides import overrides_for
@@ -843,6 +929,50 @@ class Gantry:
                     else len(self.printers) > 8)
         return selected and len(self.printers) >= 4
 
+    def save_printer_edit(self, printer: Printer | None, updated: Printer, code: str) -> str | None:
+        """Stores an added or edited printer. Returns the message to show when it could not be stored.
+
+        The code is written under the new id before anything is removed. Removing first meant a keyring
+        that refused the write left neither the old printer nor its code. When a new address changes the
+        id, the printer's automations, progress pin and roll assignments move over with it."""
+        try:
+            try:
+                existing_code = self.secrets.get(printer.serial) if printer else None
+            except SecretStoreError:
+                if updated.kind not in {PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1}: raise
+                existing_code = None
+            credential = code or existing_code
+            if updated.kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2} and not credential:
+                return i18n.t("Access code / API key")
+            if credential:
+                self.secrets.set(updated.serial, credential)
+        except SecretStoreError:
+            return i18n.t("Could not store the code in the system keyring.")
+        self.upsert_printer(updated)
+        if printer is not None and printer.serial != updated.serial:
+            self._move_printer_references(printer.serial, updated.serial)
+            self.remove_printer(printer)
+        return None
+
+    def _move_printer_references(self, old: str, new: str) -> None:
+        automations = self.config.data.get("automations")
+        if isinstance(automations, dict) and old in automations:
+            automations[new] = automations.pop(old)
+        pins = self.config.data.get("menu_bar_progress_serials")
+        if isinstance(pins, list) and old in pins:
+            self.config.data["menu_bar_progress_serials"] = [new if value == old else value for value in pins]
+        store = getattr(self, "physical_spools", None)
+        if store is not None:
+            moved = False
+            for spool in store.spools:
+                location = spool.get("location") or {}
+                if location.get("printerSerial") == old:
+                    location["printerSerial"] = new
+                    moved = True
+            if moved:
+                store._save()
+        self.config.save()
+
     def upsert_printer(self, printer: Printer) -> None:
         index = next((i for i, value in enumerate(self.printers) if value.serial == printer.serial), None)
         if index is None: self.printers.append(printer)
@@ -875,22 +1005,9 @@ class Gantry:
             value = dialog.value()
             if not value: return
             updated, code = value
-            try:
-                try:
-                    existing_code = self.secrets.get(printer.serial) if printer else None
-                except SecretStoreError:
-                    if updated.kind not in {PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1}: raise
-                    existing_code = None
-                credential = code or existing_code
-                if updated.kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2} and not credential:
-                    dialog.error.set_text(i18n.t("Access code / API key")); return
-                if printer and printer.serial != updated.serial:
-                    self.remove_printer(printer)
-                if credential:
-                    self.secrets.set(updated.serial, credential)
-            except SecretStoreError:
-                dialog.error.set_text(i18n.t("Could not store the code in the system keyring.")); return
-            self.upsert_printer(updated)
+            error = self.save_printer_edit(printer, updated, code)
+            if error:
+                dialog.error.set_text(error); return
             if printer is not None:
                 self.config.set_progress_pinned(updated.serial, dialog.progress_check.get_active())
                 self._refresh_progress_indicators()
@@ -1011,6 +1128,9 @@ class Gantry:
         self.connections[printer.serial] = connection; connection.start()
 
     def on_event(self, serial: str, event: str, value: object | None) -> bool:
+        if event == "command_reply" and isinstance(value, dict):
+            self._record_command_reply(serial, value)
+            return False
         # Kiosk and headless integration harnesses share the transport handler, not the desktop host.
         if not hasattr(self, "startup"):
             from .startup import StartupState

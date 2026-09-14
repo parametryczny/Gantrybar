@@ -1026,6 +1026,59 @@ for data_file in ("windows/Gantry.Windows/Services/Storage.cs", "windows/Gantry.
                   "windows/Gantry.Windows/Services/FilamentInventory.cs"):
     forbid(data_file, r"SpecialFolder\.ApplicationData", "a Windows store bypasses AppDataRoot")
 
+# Data files are written in one step with a last good copy, never straight into place.
+for data_file, in_place in (("windows/Gantry.Windows/Services/Storage.cs", r"File\.Create\(FilePath\)"),
+                            ("windows/Gantry.Windows/Services/PhysicalSpoolStore.cs", r"(?<!Atomic)File\.WriteAllText\("),
+                            ("windows/Gantry.Windows/Services/FilamentInventory.cs", r"(?<!Atomic)File\.WriteAllText\("),
+                            ("linux/gantry/physicalspool.py", r"\.write_text\("),
+                            ("linux/gantry/filamentstore.py", r"\.write_text\(")):
+    forbid(data_file, in_place, "a data file is written in place again, so a crash can leave it empty")
+# A replaced script's exit clears only its own entry.
+require("Sources/Gantry/Services/AutomationStore.swift", r"ObjectIdentifier\(current\) == identity",
+        "macOS: a replaced script's exit can unregister the run that replaced it")
+require("windows/Gantry.Windows/Services/ScriptRunner.cs", r"ReferenceEquals\(current, process\)",
+        "Windows: a replaced script's exit can unregister the run that replaced it")
+# Windows FTPS: a whole transfer has a deadline and always closes.
+require("windows/Gantry.Windows/Services/BambuFileClient.cs",
+        r"TransferTimeout = TimeSpan\.FromSeconds\(60\)[\s\S]*?finally\s*\{\s*Close\(\);\s*gate\.Release\(\);",
+        "Windows FTPS transfers have no deadline or can leave the connection open")
+# macOS 3MF cache: expired files leave on every touch and the total is capped.
+require("Sources/Gantry/Services/BambuFileClient.swift", r"struct FTPFileCache[\s\S]*?purgeExpired[\s\S]*?byteLimit",
+        "macOS 3MF cache keeps expired files or has no size cap")
+
+# GNU/Linux printer control follows the same contract as macOS and Windows.
+linux_control = "linux/gantry/control.py"
+require(linux_control, rf"CAPSULE_HEIGHT = {capsule['height']}\n[\s\S]*?BUTTON_WIDTH = {capsule['buttonWidth']}\n[\s\S]*?SETTLE_SECONDS = {timing['settleSeconds']}\n"
+        rf"[\s\S]*?ECHO_WINDOW_SECONDS = {timing['echoWindowSeconds']}\n[\s\S]*?REPEAT_DELAY_MS = {timing['repeatDelayMs']}\n"
+        rf"[\s\S]*?REPEAT_INTERVAL_MS = {timing['repeatIntervalMs']}\n[\s\S]*?FAN_ECHO_TOLERANCE = {detail_controls['fanEchoTolerance']}\n",
+        "GNU/Linux setpoint capsule geometry or timing differs from the contract")
+for linux_label, low, high, step in (("nozzle", *ranges["nozzle"], steps["temperature"]), ("bed", *ranges["bed"], steps["temperature"]),
+                                     ("fan", *ranges["fan"], steps["fan"]), ("speed", *ranges["speed"], steps["speed"]),
+                                     ("Bambu speed mode", speed_low, speed_high, 1)):
+    require("linux/gantry/details.py", rf"StepperModel\({low}, {high}, {step}\b", f"GNU/Linux {linux_label} capsule range or step differs from the contract")
+require(linux_control, rf'"command": "{bambu_speed["command"]}"', "GNU/Linux does not send the Bambu speed mode command")
+require("linux/gantry/core.py", r'"fun"[\s\S]*?0x20000000', "GNU/Linux does not read Bambu's command-signing bit")
+require("linux/gantry/mqtt.py", r"parse_command_reply\(payload\)", "GNU/Linux does not read the printer's replies to control commands")
+require("linux/gantry/details.py", r"return wanted and not blocked, blocked", "GNU/Linux shows Bambu controls a signing printer would refuse")
+require("linux/gantry/app.py", r"M104 S[\s\S]*?M140 S[\s\S]*?M106 P\{index\}[\s\S]*?M220 S", "GNU/Linux is missing the temperature, fan or speed commands")
+# One list of 3MF paths on all three platforms, held by a shared fixture.
+for paths_file, marker in (("Sources/Gantry/Services/BambuFileClient.swift", r"static func candidatePaths"),
+                           ("windows/Gantry.Windows/Services/BambuFileClient.cs", r"BambuPaths\.CandidatePaths\(fileName\)"),
+                           ("linux/gantry/consumption.py", r"candidates = candidate_paths\(")):
+    require(paths_file, marker, "3MF download does not use the shared candidate paths")
+# A colour shared by several rolls is settled by material or not charged at all.
+for colour_file, marker in (("Sources/Gantry/Spoolbase/FilamentConsumption.swift", r"matches\.count == 1 \? matches\[0\]\.location : nil"),
+                            ("windows/Gantry.Windows/Services/SpoolAccounting.cs", r"matches\.Count == 1 \? matches\[0\] : null"),
+                            ("linux/gantry/consumption.py", r"if len\(matches\) == 1 else None")):
+    require(colour_file, marker, "spool accounting charges the first roll of a shared colour")
+# P1/A1 cameras: JPEG on port 6000 when RTSPS gives no picture.
+require("linux/gantry/camera.py", r"if not self\._run_bambu\(stop\) and not stop\.is_set\(\):\s*self\._run_bambu_jpeg\(stop\)",
+        "GNU/Linux has no JPEG fallback for P1/A1 cameras")
+# Scripts on Linux honour their shebang and can be stopped.
+require("linux/gantry/automation.py", r'startswith\("#!"\)[\s\S]*?def stop_script', "GNU/Linux scripts ignore their interpreter or cannot be stopped")
+# Windows automations save as they change.
+forbid("windows/Gantry.Windows/UI/AutomationsWindow.cs", r'T\("Save"\)', "Windows automations need a Save button again")
+
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)
     for error in ERRORS:

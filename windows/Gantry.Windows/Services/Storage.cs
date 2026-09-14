@@ -39,9 +39,10 @@ public static class Defaults
                 }
                 catch { /* best effort */ }
             }
-            if (File.Exists(FilePath))
+            // The last good copy when a crash mid-write left defaults.json empty or cut short.
+            if (AtomicFile.ReadAllText(FilePath, IsJsonObject) is { } text)
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(FilePath));
+                using var doc = JsonDocument.Parse(text);
                 var dict = new Dictionary<string, JsonElement>();
                 foreach (var prop in doc.RootElement.EnumerateObject())
                     dict[prop.Name] = prop.Value.Clone();
@@ -52,22 +53,42 @@ public static class Defaults
         return new Dictionary<string, JsonElement>();
     }
 
+    private static bool IsJsonObject(string text)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return doc.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private static void Persist()
     {
         try
         {
-            Directory.CreateDirectory(Dir);
-            using var stream = File.Create(FilePath);
-            using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
-            writer.WriteStartObject();
-            foreach (var kv in _store)
+            using var buffer = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
             {
-                writer.WritePropertyName(kv.Key);
-                kv.Value.WriteTo(writer);
+                writer.WriteStartObject();
+                foreach (var kv in _store)
+                {
+                    writer.WritePropertyName(kv.Key);
+                    kv.Value.WriteTo(writer);
+                }
+                writer.WriteEndObject();
             }
-            writer.WriteEndObject();
+            // In one step: writing straight into defaults.json left it empty after a crash mid-write, which
+            // read back as no printers and no settings at all.
+            AtomicFile.WriteAllText(FilePath, Encoding.UTF8.GetString(buffer.ToArray()), IsJsonObject);
         }
-        catch { /* best effort */ }
+        catch (Exception e)
+        {
+            App.LogError("Saving settings", e);
+        }
     }
 
     private static JsonElement Wrap(object value)

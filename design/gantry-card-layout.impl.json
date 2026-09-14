@@ -717,7 +717,7 @@
   "detailControls": {
     "setting": "printer-control-enabled",
     "kinds": ["bambu", "klipper"],
-    "platforms": ["macOS", "Windows"],
+    "platforms": ["macOS", "Windows", "GNU/Linux"],
     "capsule": {
       "height": 28,
       "buttonWidth": 26,

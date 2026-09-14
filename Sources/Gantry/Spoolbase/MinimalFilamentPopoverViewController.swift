@@ -12,7 +12,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     private let chipsStack = NSStackView()
     private let summaryLabel = NSTextField(labelWithString: "")
     private let listStack = NSStackView()
-    private let emptyLabel = NSTextField(labelWithString: "Brak filamentów dla wybranych filtrów")
+    private let emptyLabel = NSTextField(labelWithString: AppSettings.shared.t("No filaments match the selected filters"))
     private var chipsHeight: NSLayoutConstraint?
     private var selectedType: String?
     private var selectedBrand: String?
@@ -57,9 +57,9 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         header.alignment = .centerY
 
         let searchSurface = makeSurface()
-        let searchIcon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Szukaj")!)
+        let searchIcon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: AppSettings.shared.t("Search"))!)
         searchIcon.contentTintColor = .secondaryLabelColor
-        searchField.placeholderString = "Szukaj nazwy, koloru lub kodu…"
+        searchField.placeholderString = AppSettings.shared.t("Search name, colour or code…")
         searchField.delegate = self
         searchField.isBezeled = false
         searchField.drawsBackground = false
@@ -80,7 +80,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             searchField.heightAnchor.constraint(equalToConstant: 22)
         ])
 
-        filterButton.title = "Filtry"
+        filterButton.title = AppSettings.shared.t("Filters")
         filterButton.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10.5, weight: .medium))
         filterButton.imagePosition = .imageLeading
@@ -263,14 +263,11 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     }
 
     private func updateSummary() {
+        let settings = AppSettings.shared
         let spools = store.filaments.reduce(0) { $0 + $1.spoolCount }
         let variants = store.filaments.count
-        let variantWord: String
-        if variants == 1 { variantWord = "wariant" }
-        else if variants % 10 >= 2 && variants % 10 <= 4 && !(variants % 100 >= 12 && variants % 100 <= 14) {
-            variantWord = "warianty"
-        } else { variantWord = "wariantów" }
-        summaryLabel.stringValue = "\(spools) szpul · \(variants) \(variantWord)"
+        summaryLabel.stringValue = settings.counted(spools, english: ("spool", "spools"), polish: ("szpula", "szpule", "szpul"))
+            + " · " + settings.counted(variants, english: ("variant", "variants"), polish: ("wariant", "warianty", "wariantów"))
     }
 
     private func fitPopoverToContent() {
@@ -288,7 +285,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         }
         if let selectedType { chipsStack.addArrangedSubview(chip(selectedType, id: "type")) }
         if let selectedBrand { chipsStack.addArrangedSubview(chip(selectedBrand, id: "brand")) }
-        if lowStockOnly { chipsStack.addArrangedSubview(chip("Niski stan", id: "low")) }
+        if lowStockOnly { chipsStack.addArrangedSubview(chip(AppSettings.shared.t("Low stock"), id: "low")) }
         chipsHeight?.constant = chipsStack.arrangedSubviews.isEmpty ? 0 : 28
     }
 
@@ -351,13 +348,13 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         ])
         let types = availableTypes()
         let brands = Array(Set(store.filaments.map(\.brand))).sorted()
-        addFilterGroup(title: "Typ", values: types, selected: selectedType, prefix: "type", to: stack)
+        addFilterGroup(title: AppSettings.shared.t("Type"), values: types, selected: selectedType, prefix: "type", to: stack)
         addFilterSeparator(to: stack)
-        let low = filterOption(title: "Niski stan", selected: lowStockOnly, id: "low:1")
+        let low = filterOption(title: AppSettings.shared.t("Low stock"), selected: lowStockOnly, id: "low:1")
         stack.addArrangedSubview(low)
         low.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20).isActive = true
         addFilterSeparator(to: stack)
-        addFilterGroup(title: "Marka", values: brands, selected: selectedBrand, prefix: "brand", to: stack)
+        addFilterGroup(title: AppSettings.shared.t("Brand"), values: brands, selected: selectedBrand, prefix: "brand", to: stack)
         view.addSubview(panel)
         stack.layoutSubtreeIfNeeded()
         let height = ceil(stack.fittingSize.height)
@@ -485,10 +482,10 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     private func confirmDelete(_ filament: Filament) {
         guard let parent = view.window else { return }
         let alert = NSAlert()
-        alert.messageText = "Usunąć z moich filamentów?"
-        alert.informativeText = "\(filament.brand) • \(filament.name) • \(filament.colorName)\nProdukt pozostanie dostępny w katalogu."
-        alert.addButton(withTitle: "Usuń")
-        alert.addButton(withTitle: "Anuluj")
+        alert.messageText = AppSettings.shared.t("Remove from my filaments?")
+        alert.informativeText = "\(filament.brand) • \(filament.name) • \(filament.colorName)\n" + AppSettings.shared.t("The product stays available in the catalogue.")
+        alert.addButton(withTitle: AppSettings.shared.t("Remove"))
+        alert.addButton(withTitle: AppSettings.shared.t("Cancel"))
         alert.alertStyle = .warning
         alert.beginSheetModal(for: parent) { [weak self] result in
             if result == .alertFirstButtonReturn { self?.store.delete(id: filament.id) }
@@ -562,7 +559,7 @@ private final class MinimalFilamentSectionView: NSView {
         super.init(frame: .zero)
         let title = NSTextField(labelWithString: type)
         title.font = .systemFont(ofSize: 12.5, weight: .semibold)
-        let count = NSTextField(labelWithString: "\(filaments.count) \(filaments.count == 1 ? "filament" : "filamentów")")
+        let count = NSTextField(labelWithString: AppSettings.shared.counted(filaments.count, english: ("filament", "filaments"), polish: ("filament", "filamenty", "filamentów")))
         count.font = .systemFont(ofSize: 9.5, weight: .medium)
         count.textColor = .secondaryLabelColor
         let header = NSStackView(views: [title, NSView(), count])
@@ -694,7 +691,7 @@ private final class MinimalFilamentTileView: NSControl, NSDraggingSource {
             row.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
-        toolTip = "Kliknij, aby szybko zmienić stan"
+        toolTip = AppSettings.shared.t("Click to change the stock quickly")
     }
 
     func update(_ filament: Filament) {
@@ -769,16 +766,16 @@ private final class MinimalFilamentTileView: NSControl, NSDraggingSource {
 
     override func rightMouseDown(with event: NSEvent) {
         let menu = NSMenu()
-        let stock = NSMenuItem(title: "Zmień liczbę szpul…", action: #selector(changeStock), keyEquivalent: "")
+        let stock = NSMenuItem(title: AppSettings.shared.t("Change the number of spools…"), action: #selector(changeStock), keyEquivalent: "")
         stock.image = NSImage(systemSymbolName: "plusminus.circle", accessibilityDescription: nil)
         stock.target = self
         menu.addItem(stock)
-        let edit = NSMenuItem(title: "Edytuj…", action: #selector(editItem), keyEquivalent: "")
+        let edit = NSMenuItem(title: AppSettings.shared.t("Edit…"), action: #selector(editItem), keyEquivalent: "")
         edit.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)
         edit.target = self
         menu.addItem(edit)
         menu.addItem(.separator())
-        let delete = NSMenuItem(title: "Usuń z moich filamentów", action: #selector(deleteItem), keyEquivalent: "")
+        let delete = NSMenuItem(title: AppSettings.shared.t("Remove from my filaments"), action: #selector(deleteItem), keyEquivalent: "")
         delete.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
         delete.target = self
         menu.addItem(delete)

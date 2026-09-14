@@ -52,7 +52,7 @@ public sealed class ElegooCc2Client : IPrinterConnection
     {
         if ((type >> 4) == 2)
         {
-            if (body.Length < 2 || body[1] != 0) throw new UnauthorizedAccessException("Drukarka Elegoo odrzuciła kod dostępu");
+            if (body.Length < 2 || body[1] != 0) throw new UnauthorizedAccessException(AppSettings.T("The Elegoo printer rejected the access code"));
             await SendAsync(MqttCodec.Subscribe($"elegoo/{_printer.Serial}/{_requestId}/register_response"));
             await PublishAsync($"elegoo/{_printer.Serial}/api_register", new { client_id = _clientId, request_id = _requestId }); return;
         }
@@ -61,7 +61,7 @@ public sealed class ElegooCc2Client : IPrinterConnection
         if (topic.EndsWith("/register_response"))
         {
             var error = message["error"]?.GetValue<string>() ?? "fail";
-            if (error != "ok") throw new IOException(error.Contains("too many") ? "Limit klientów Elegoo został przekroczony" : $"Rejestracja Elegoo: {error}");
+            if (error != "ok") throw new IOException(error.Contains("too many") ? AppSettings.T("Elegoo client limit exceeded") : string.Format(AppSettings.T("Elegoo registration: {0}"), error));
             _registered = true;
             await SendAsync(MqttCodec.Subscribe($"elegoo/{_printer.Serial}/api_status", 2));
             await SendAsync(MqttCodec.Subscribe($"elegoo/{_printer.Serial}/{_clientId}/api_response", 3));

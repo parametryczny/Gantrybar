@@ -188,7 +188,7 @@ class TelegramBot:
             cb_id = callback.get("id", "")
             message = callback.get("message") or {}
             if not self._authorized(message.get("chat")):
-                self._answer(cb_id, "Brak dostępu")
+                self._answer(cb_id, self._t("Access denied"))
                 return
             self._handle_callback(callback.get("data") or "", cb_id, message.get("message_id"))
 
@@ -238,8 +238,7 @@ class TelegramBot:
 
     def _handle_photo(self, serial: str) -> None:
         name = next((p.name for p in self.app.printers if p.serial == serial), serial)
-        self._send(self._t(f"📷 Robię zdjęcie z kamery {name}…",
-                           f"📷 Grabbing a camera snapshot from {name}…"), None)
+        self._send(self._t("📷 Grabbing a camera snapshot from {0}…").format(name), None)
         from .snapshot import capture
         jpeg = capture(self.app, serial)
         if jpeg:
@@ -293,14 +292,13 @@ class TelegramBot:
         if action == "stopask":
             if message_id is not None:
                 self._edit(message_id,
-                           self._t(f"⏹ Zatrzymać wydruk na {name}? Tego nie cofniesz.",
-                                   f"⏹ Cancel the print on {name}? This cannot be undone."),
+                           self._t("⏹ Cancel the print on {0}? This cannot be undone.").format(name),
                            self._keyboard([[self._btn(self._t("Yes, cancel"), f"a:stop:{serial}"),
                                             self._btn(self._t("Back"), f"p:{serial}")]]))
             self._answer(cb_id, "")
             return
-        mapping = {"pause": "⏸ Wstrzymano", "resume": "▶️ Wznowiono", "stop": "⏹ Zatrzymano",
-                   "lighton": "💡 Włączono", "lightoff": "🌑 Wyłączono"}
+        mapping = {"pause": self._t("⏸ Paused"), "resume": self._t("▶️ Resumed"), "stop": self._t("⏹ Stopped"),
+                   "lighton": self._t("💡 Light on"), "lightoff": self._t("🌑 Light off")}
         control = {"pause": "pause", "resume": "resume", "stop": "stop", "lighton": "light_on", "lightoff": "light_off"}
         if action not in control:
             self._answer(cb_id, "")
@@ -333,9 +331,6 @@ class TelegramBot:
 
     def _send_help(self) -> None:
         text = self._t(
-            "🖨 Gantry — komendy:\n/status — wybór drukarki + sterowanie\n/all — cała flota w skrócie\n"
-            "/spools — rolki na wyczerpaniu\n/history — ostatnie wydruki\n/watch 10m — zdjęcia co 10 min (/watch off)\n"
-            "/mute 2h — wycisz alerty (/mute off)\n/help — to menu",
             "🖨 Gantry — commands:\n/status — pick a printer + controls\n/all — whole fleet at a glance\n"
             "/spools — spools running low\n/history — recent prints\n/watch 10m — a photo every 10 min (/watch off)\n"
             "/mute 2h — silence alerts (/mute off)\n/help — this menu")
@@ -375,7 +370,7 @@ class TelegramBot:
                     if present and slot.remaining_weight_g is not None and slot.remaining is not None and slot.remaining <= 20:
                         low.append((slot.remaining, f"{_color_dot(slot.color)} {slot.material} · {printer.name}/{slot.label} · {slot.remaining}%"))
         if not low:
-            self._send(self._t("✅ Żadna rolka nie kończy się (≤20%).", "✅ No spools running low (≤20%)."), self._command_keyboard())
+            self._send(self._t("✅ No spools running low (≤20%)."), self._command_keyboard())
             return
         low.sort(key=lambda item: item[0])
         self._send(self._t("🧵 Spools running low:") + "\n"
@@ -411,8 +406,7 @@ class TelegramBot:
         until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
         cfg["telegram-mute-until"] = until.isoformat()
         self.app.config.save()
-        self._send(self._t(f"🔕 Alerty wyciszone do {until.astimezone().strftime('%H:%M')}.",
-                           f"🔕 Alerts muted until {until.astimezone().strftime('%H:%M')}."), self._command_keyboard())
+        self._send(self._t("🔕 Alerts muted until {0}.").format(until.astimezone().strftime('%H:%M')), self._command_keyboard())
 
     def _handle_watch(self, argument: str | None) -> None:
         if argument and argument.lower() == "off":
@@ -427,8 +421,7 @@ class TelegramBot:
         stop = threading.Event()
         self._watch_stop = stop
         threading.Thread(target=self._watch_loop, args=(seconds, stop), daemon=True).start()
-        self._send(self._t(f"📷 Watch: zdjęcia drukujących drukarek co {argument}. Wyłącz: /watch off",
-                           f"📷 Watch: photos of printing machines every {argument}. Turn off: /watch off"),
+        self._send(self._t("📷 Watch: photos of printing machines every {0}. Turn off: /watch off").format(argument),
                    self._command_keyboard())
 
     def _watch_loop(self, seconds: float, stop: threading.Event) -> None:
@@ -465,18 +458,18 @@ class TelegramBot:
 
         lines = [f"🖨 {name} — {self._state_label(tel.state)}"]
         if tel.state in (PrinterState.PRINTING, PrinterState.PAUSED):
-            line = f"{self._t('Postęp', 'Progress')}: {tel.progress}%"
+            line = f"{self._t('Progress')}: {tel.progress}%"
             if tel.current_layer is not None:
-                line += f" · {self._t('warstwa', 'layer')} {tel.current_layer}/{tel.total_layers or 0}"
+                line += f" · {self._t('layer')} {tel.current_layer}/{tel.total_layers or 0}"
             lines.append(line)
             if tel.remaining_minutes:
                 lines.append(f"ETA: {tel.remaining_minutes // 60}h {tel.remaining_minutes % 60}m")
             if tel.job_name:
                 lines.append(tel.job_name)
         lines.append(
-            f"{self._t('Dysza', 'Nozzle')} {temp(tel.nozzle, tel.nozzle_target)}"
-            f" · {self._t('stół', 'bed')} {temp(tel.bed, tel.bed_target)}"
-            + (f" · {self._t('komora', 'chamber')} {temp(tel.chamber, None)}" if tel.chamber is not None else ""))
+            f"{self._t('Nozzle')} {temp(tel.nozzle, tel.nozzle_target)}"
+            f" · {self._t('bed')} {temp(tel.bed, tel.bed_target)}"
+            + (f" · {self._t('chamber')} {temp(tel.chamber, None)}" if tel.chamber is not None else ""))
         humidity = [f"{g.display_name} 💧{g.humidity}%" for g in tel.filament_groups if g.humidity is not None]
         if humidity:
             lines.append(" · ".join(humidity))

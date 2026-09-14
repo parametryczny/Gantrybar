@@ -1,5 +1,7 @@
 # Port aktualnego Gantry z macOS — 2026-09-06
 
+> **Dokument historyczny.** Opisuje etap z panelami osadzonymi w oknie floty. Od 14 września 2026 panele otwierają się w osobnych oknach (kontrakt `panelWindow` w `design/gantry-card-layout.impl.json`); aktualny stan zgodności opisuje audyt z 14 września 2026.
+
 macOS pozostaje referencją wyglądu i zachowania. Port zachowuje natywne transporty, magazyny danych i integracje systemowe WPF/GTK; nie przenosi kodu AppKit dosłownie.
 
 ## Zakres

@@ -1237,7 +1237,3 @@ private final class SettingsTabViewController: NSTabViewController {
     }
 }
 
-/// Top-down document view, so the printer list fills from the top rather than the bottom.
-final class SettingsFlippedView: NSView {
-    override var isFlipped: Bool { true }
-}

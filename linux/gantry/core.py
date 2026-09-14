@@ -181,6 +181,9 @@ class Telemetry:
     speed_level: int | None = None
     speed_percent: int | None = None
     nozzle_diameter: float | None = None
+    # Bambu only: True when the printer takes control commands signed by Bambu Connect alone (LAN Only with
+    # Developer Mode is off); None when the firmware reports no feature mask.
+    command_signing_required: bool | None = None
 
 
 @dataclass(slots=True)
@@ -453,6 +456,14 @@ def parse_telemetry(payload: bytes | str | dict[str, Any], previous: Telemetry |
         result.speed_level = _integer(report.get("spd_lvl"))
     if "spd_mag" in report:
         result.speed_percent = _integer(report.get("spd_mag"))
+    # "fun" is a hex feature mask. Bit 0x20000000 set means the printer only takes commands signed by
+    # Bambu Connect; LAN Only with Developer Mode clears it (as read by ha-bambulab).
+    fun = report.get("fun")
+    if isinstance(fun, str) and fun:
+        try:
+            result.command_signing_required = int(fun, 16) & 0x20000000 != 0
+        except ValueError:
+            pass
     diameter = _number(report.get("nozzle_diameter"))
     if diameter is not None and diameter > 0:
         result.nozzle_diameter = diameter

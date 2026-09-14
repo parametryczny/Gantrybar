@@ -17,7 +17,7 @@ final class AnycubicCameraStream: @unchecked Sendable {
         let candidates = [Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ffmpeg").path,
                           "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
         guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            onState(.failed("Kamera Kobra S1 wymaga ffmpeg (brew install ffmpeg).")); return
+            onState(.failed(Localization.t("The Kobra S1 camera needs ffmpeg (brew install ffmpeg)."))); return
         }
         let process = Process(), stdout = Pipe(), stderr = Pipe(); self.process = process
         process.executableURL = URL(fileURLWithPath: executable)
@@ -36,7 +36,7 @@ final class AnycubicCameraStream: @unchecked Sendable {
         }
         if !stopped {
             let detail = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            onState(.failed(detail?.isEmpty == false ? detail! : "Strumień FLV został zakończony."))
+            onState(.failed(detail?.isEmpty == false ? detail! : Localization.t("The FLV stream ended.")))
         }
     }
 }

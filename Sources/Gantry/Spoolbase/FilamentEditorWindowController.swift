@@ -45,11 +45,11 @@ final class FilamentEditorWindowController: NSWindowController {
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
-        let title = NSTextField(labelWithString: original == nil ? "Nowy filament" : "Dane filamentu")
+        let title = NSTextField(labelWithString: original == nil ? AppSettings.shared.t("New filament") : AppSettings.shared.t("Filament details"))
         title.font = .systemFont(ofSize: 24, weight: .semibold)
         let subtitle = NSTextField(labelWithString: catalogMode
-            ? "Zmień dane produktu zapisane w bazie filamentów."
-            : "Uzupełnij dane katalogowe i bieżący stan magazynowy.")
+            ? AppSettings.shared.t("Change the product details saved in the filament catalogue.")
+            : AppSettings.shared.t("Fill in the catalogue details and the current stock."))
         subtitle.textColor = .secondaryLabelColor
 
         brandField.addItems(withObjectValues: FilamentCatalog.brands)
@@ -58,9 +58,9 @@ final class FilamentEditorWindowController: NSWindowController {
         [nameField, colorNameField, hexField, codeField, spoolsField, notesField].forEach {
             $0.bezelStyle = .roundedBezel
         }
-        hexField.placeholderString = "np. FF6A13"
-        codeField.placeholderString = "SKU / EAN / kod producenta"
-        notesField.placeholderString = "Opcjonalna notatka"
+        hexField.placeholderString = AppSettings.shared.t("e.g. FF6A13")
+        codeField.placeholderString = AppSettings.shared.t("SKU / EAN / manufacturer code")
+        notesField.placeholderString = AppSettings.shared.t("Optional note")
         spoolsField.formatter = integerFormatter()
         colorWell.target = self
         colorWell.action = #selector(colorChanged)
@@ -71,16 +71,16 @@ final class FilamentEditorWindowController: NSWindowController {
         colorWell.widthAnchor.constraint(equalToConstant: 54).isActive = true
 
         var rows: [[NSView]] = [
-            [label("Marka"), brandField],
-            [label("Nazwa / seria"), nameField],
-            [label("Typ materiału"), typeField],
-            [label("Nazwa koloru"), colorNameField],
-            [label("Kolor"), colorRow],
-            [label("Kod producenta"), codeField]
+            [label(AppSettings.shared.t("Brand")), brandField],
+            [label(AppSettings.shared.t("Name / series")), nameField],
+            [label(AppSettings.shared.t("Material type")), typeField],
+            [label(AppSettings.shared.t("Colour name")), colorNameField],
+            [label(AppSettings.shared.t("Colour")), colorRow],
+            [label(AppSettings.shared.t("Manufacturer code")), codeField]
         ]
         if !catalogMode {
-            rows.append([label("Liczba szpul"), spoolsField])
-            rows.append([label("Notatki"), notesField])
+            rows.append([label(AppSettings.shared.t("Number of spools")), spoolsField])
+            rows.append([label(AppSettings.shared.t("Notes")), notesField])
         }
         let grid = NSGridView(views: rows)
         grid.rowSpacing = 10
@@ -88,9 +88,9 @@ final class FilamentEditorWindowController: NSWindowController {
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).width = 320
 
-        let cancel = NSButton(title: "Anuluj", target: self, action: #selector(cancelPressed))
+        let cancel = NSButton(title: AppSettings.shared.t("Cancel"), target: self, action: #selector(cancelPressed))
         cancel.keyEquivalent = "\u{1b}"
-        let save = NSButton(title: "Zapisz", target: self, action: #selector(savePressed))
+        let save = NSButton(title: AppSettings.shared.t("Save"), target: self, action: #selector(savePressed))
         save.keyEquivalent = "\r"
         save.bezelStyle = .rounded
         let buttons = NSStackView(views: [NSView(), cancel, save])
@@ -139,8 +139,8 @@ final class FilamentEditorWindowController: NSWindowController {
         let colorName = colorNameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !brand.isEmpty, !name.isEmpty, !type.isEmpty, !colorName.isEmpty else {
             let alert = NSAlert()
-            alert.messageText = "Brakuje wymaganych danych"
-            alert.informativeText = "Wpisz markę, nazwę, typ i nazwę koloru."
+            alert.messageText = AppSettings.shared.t("Required details are missing")
+            alert.informativeText = AppSettings.shared.t("Enter the brand, name, type and colour name.")
             if let window { alert.beginSheetModal(for: window) }
             return
         }

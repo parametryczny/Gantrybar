@@ -65,7 +65,7 @@ final class ElegooCC2Client: PrinterConnection, @unchecked Sendable {
         for packet in MQTTCodec.extractPackets(from: &buffer) {
             switch packet.type >> 4 {
             case 2:
-                guard packet.body.count >= 2, packet.body[1] == 0 else { onEvent(.disconnected("Drukarka Elegoo odrzuciła kod dostępu")); connection?.cancel(); return }
+                guard packet.body.count >= 2, packet.body[1] == 0 else { onEvent(.disconnected(Localization.t("The Elegoo printer rejected the access code"))); connection?.cancel(); return }
                 send(MQTTCodec.subscribe(topic: "elegoo/\(printer.serial)/\(requestID)/register_response"))
                 publish(topic: "elegoo/\(printer.serial)/api_register", object: ["client_id": clientID, "request_id": requestID])
             case 3:
@@ -74,7 +74,7 @@ final class ElegooCC2Client: PrinterConnection, @unchecked Sendable {
                       let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { continue }
                 if topic.hasSuffix("/register_response") {
                     let error = object["error"] as? String ?? "fail"
-                    guard error == "ok" else { onEvent(.disconnected(error.contains("too many") ? "Limit klientów Elegoo został przekroczony" : "Rejestracja Elegoo: \(error)")); connection?.cancel(); return }
+                    guard error == "ok" else { onEvent(.disconnected(error.contains("too many") ? Localization.t("Elegoo client limit exceeded") : Localization.t("Elegoo registration: {0}", error))); connection?.cancel(); return }
                     registered = true
                     send(MQTTCodec.subscribe(topic: "elegoo/\(printer.serial)/api_status", packetID: 2))
                     send(MQTTCodec.subscribe(topic: "elegoo/\(printer.serial)/\(clientID)/api_response", packetID: 3))

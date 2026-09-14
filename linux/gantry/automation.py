@@ -9,10 +9,13 @@ code silently. Pure Python (no GTK) so the model, store and trigger logic stay u
 """
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
+import tempfile
 import threading
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from . import i18n
 from .core import PrinterKind, PrinterState, Telemetry
@@ -44,12 +47,38 @@ def trigger_summary(rule: dict[str, Any], pl: bool) -> str:
     if kind == "at_progress":
         return i18n.t("at {0}%").format(value)
     if kind == "on_state":
-        state_key = {
-            "idle": "Ready", "ready": "Ready", "printing": "Printing", "paused": "Paused",
-            "finished": "Finished", "error": "Error", "offline": "Offline",
-        }.get(str(value).lower(), str(value))
-        return i18n.t("on state: {0}").format(i18n.t(state_key))
+        return i18n.t("on state: {0}").format(state_label(value))
     return i18n.t("manually")
+
+
+_STATE_KEYS = {"idle": "Ready", "ready": "Ready", "printing": "Printing", "paused": "Paused",
+               "finished": "Finished", "error": "Error", "offline": "Offline"}
+
+
+def state_label(value: Any) -> str:
+    """A printer state as the user reads it, not its internal value."""
+    return i18n.t(_STATE_KEYS.get(str(value).lower(), str(value)))
+
+
+def start_script(content: str) -> tuple[subprocess.Popen, str | None]:
+    """Starts a user script. One that begins with a shebang is written to a file of its own and run
+    directly, so its interpreter is honoured, as on macOS; anything else runs through /bin/sh. Everything
+    used to go to /bin/sh -c, so a Python script was read as shell. Returns the process and the temporary
+    file to remove once it ends."""
+    text = content.lstrip()
+    if text.startswith("#!"):
+        handle, path = tempfile.mkstemp(prefix="gantry-script-")
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        os.chmod(path, 0o700)
+        try:
+            return subprocess.Popen([path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                    start_new_session=True), path
+        except OSError:
+            os.unlink(path)
+            raise
+    return subprocess.Popen(["/bin/sh", "-c", content], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            start_new_session=True), None
 
 
 def action_summary(rule: dict[str, Any], pl: bool) -> str:
@@ -124,6 +153,10 @@ class AutomationEngine:
         self.app = app
         self.store = AutomationStore(app.config)
         self._fired: dict[str, set[str]] = {}
+        self._scripts: dict[str, subprocess.Popen] = {}
+        self._scripts_lock = threading.Lock()
+        #: Called when a script starts or ends, from any thread; the window redraws its Run and Stop buttons.
+        self.listeners: list[Callable[[], None]] = []
 
     # --- engine ---------------------------------------------------------------
     def evaluate(self, serial: str, previous: Telemetry | None, current: Telemetry) -> None:
@@ -177,16 +210,60 @@ class AutomationEngine:
             else:
                 self._run_script(name, rule, text)
 
-    def _run_script(self, printer_name: str, rule: dict[str, Any], content: str) -> None:
-        def worker() -> None:
+    # --- scripts --------------------------------------------------------------
+    def is_script_running(self, rule_id: str) -> bool:
+        with self._scripts_lock:
+            return rule_id in self._scripts
+
+    def stop_script(self, rule_id: str) -> None:
+        with self._scripts_lock:
+            process = self._scripts.pop(rule_id, None)
+        if process is None:
+            return
+        process.gantry_stopped = True  # type: ignore[attr-defined]
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass
+        self._changed()
+
+    def _changed(self) -> None:
+        for listener in list(self.listeners):
             try:
-                subprocess.run(["/bin/sh", "-c", content], timeout=120,
-                               capture_output=True, text=True, check=False)
+                listener()
             except Exception:
                 pass
-        threading.Thread(target=worker, name="automation-script", daemon=True).start()
-        self.app.notify(printer_name, (f"Uruchomiono skrypt: {rule.get('name')}" if self.app.language == "pl"
-                                       else f"Ran script: {rule.get('name')}"))
+
+    def _run_script(self, printer_name: str, rule: dict[str, Any], content: str) -> None:
+        """Runs a script, keeps it stoppable from the Run button, and says when it fails. It used to run
+        detached with every error and timeout swallowed while the notice claimed it had run."""
+        rule_id, name = str(rule.get("id")), rule.get("name")
+        self.stop_script(rule_id)
+        try:
+            process, temporary = start_script(content)
+        except OSError as error:
+            self.app.notify(printer_name, i18n.t("Could not start the script {0}: {1}").format(name, error))
+            return
+        with self._scripts_lock:
+            self._scripts[rule_id] = process
+        self._changed()
+        self.app.notify(printer_name, i18n.t("Ran script: {0}").format(name))
+
+        def watch() -> None:
+            code = process.wait()
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+            with self._scripts_lock:
+                # Only this run's own entry: a newer run under the same rule stays registered.
+                if self._scripts.get(rule_id) is process:
+                    del self._scripts[rule_id]
+            if code != 0 and not getattr(process, "gantry_stopped", False):
+                self.app.notify(printer_name, i18n.t("The script {0} failed with exit code {1}").format(name, code))
+            self._changed()
+        threading.Thread(target=watch, name="automation-script", daemon=True).start()
 
     # --- safety ---------------------------------------------------------------
     def _allow_code_action(self, rule: dict[str, Any], printer_name: str) -> bool:

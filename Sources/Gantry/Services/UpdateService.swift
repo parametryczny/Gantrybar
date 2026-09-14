@@ -23,20 +23,9 @@ enum UpdateService {
         case signature
 
         var errorDescription: String? {
-            // errorDescription is nonisolated, so read the language directly rather than via
-            // the @MainActor AppSettings.
-            (BambuDefaults.shared.string(forKey: "app-language") ?? "pl") == "pl" ? polish : english
-        }
-        private var polish: String {
-            switch self {
-            case .network: "Nie udało się połączyć z GitHubem."
-            case .parse: "Nie udało się odczytać informacji o wydaniu."
-            case .noAsset: "Wydanie nie zawiera pliku aplikacji dla macOS."
-            case .download: "Pobieranie aktualizacji nie powiodło się."
-            case .checksum: "Suma kontrolna pobranej aktualizacji jest nieprawidłowa. Instalację przerwano."
-            case .unpack: "Nie udało się rozpakować aktualizacji."
-            case .signature: "Podpis pobranej aktualizacji nie zgadza się z bieżącą aplikacją. Instalację przerwano — pobierz wydanie ręcznie ze strony."
-            }
+            // errorDescription is nonisolated, so the lookup reads the stored language rather
+            // than going through the @MainActor AppSettings.
+            Localization.t(english)
         }
         private var english: String {
             switch self {
@@ -46,7 +35,7 @@ enum UpdateService {
             case .download: "Downloading the update failed."
             case .checksum: "The downloaded update checksum is invalid. Installation was aborted."
             case .unpack: "Could not unpack the update."
-            case .signature: "The downloaded update is not signed by the same identity as the current app. Installation was aborted — download the release manually from the page."
+            case .signature: "The downloaded update is not signed by the same identity as the current app. Installation was aborted. Download the release manually from the page."
             }
         }
     }

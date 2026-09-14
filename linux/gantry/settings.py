@@ -460,13 +460,16 @@ class SettingsDialog(Gtk.Dialog):
         pane.note(i18n.t("Open on a phone on the same Wi-Fi. View only, no control."))
 
     def _advanced(self, pane: SettingsPane) -> None:
+        self.printer_control = self._check(i18n.t("Printer control"),
+                                           bool(self.app.config.data.get("printer_control_enabled", False)))
         self.developer = self._check(i18n.t("Developer mode (control + automations)"),
                                      bool(self.app.config.data.get("developer_mode", False)))
         self.allow_scripts = self._check(i18n.t("Allow automations to run scripts and custom commands"),
                                          bool(self.app.config.data.get("allow_script_actions", False)))
         if not edition.HAS_EXTRAS:
             return
-        pane.group(i18n.t("Features"), [self.developer, self.allow_scripts])
+        pane.group(i18n.t("Features"), [self.printer_control, self.developer, self.allow_scripts])
+        pane.note(i18n.t("Enables temperature, fan and speed controls in Details. Off by default."))
         pane.note(i18n.t("Off by default for safety. Every rule still asks for confirmation the first time it runs."))
 
     # ------------------------------------------------------------- helpers
@@ -643,6 +646,7 @@ class SettingsDialog(Gtk.Dialog):
             card_show_spool_grams=self.spool_grams.get_active(),
             card_show_details_chip=self.details_chip.get_active(),
             monochrome=self.monochrome.get_active(),
+            printer_control_enabled=self.printer_control.get_active(),
             developer_mode=self.developer.get_active(),
             allow_script_actions=self.allow_scripts.get_active(),
             auto_update_check=self.auto_update.get_active(),
