@@ -65,7 +65,12 @@ import AppKit
             precondition(field.intrinsicContentSize.height > 20, "Long diagnostic text did not wrap")
         }
         var warningTelemetry = PrinterTelemetry()
-        warningTelemetry.hmsCodes = ["0300_0D00_0001_000B", "0300_0D00_0001_000B"]
+        // The description of a known code comes from Bambu Studio's HMS catalogue, which CI runners do not
+        // have: there it falls back to the short "HMS <code>". A code no catalogue knows reads the same
+        // everywhere, so it is the one held to wrapping; the known code still exercises the catalogue text
+        // wherever it is installed.
+        let unknownCode = String(repeating: "0FFF_0FFF_0FFF_0FFF_", count: 6) + "0FFF"
+        warningTelemetry.hmsCodes = ["0300_0D00_0001_000B", unknownCode]
         MaintenancePanelViewController.show(printer: printer, telemetry: warningTelemetry)
         let panel = NSApp.windows.first { $0.title.contains("Maintenance") }!
         for _ in 0..<5 { panel.contentView?.layoutSubtreeIfNeeded() }
@@ -73,10 +78,10 @@ import AppKit
         precondition(panel.frame.height <= 720, "Long alert made an oversized window")
         let fields = descendants(panel.contentView!).compactMap { $0 as? MaintenanceWrappingLabel }
         precondition(!fields.isEmpty)
-        for field in fields {
-            precondition(field.frame.width <= 434, "Alert overflows panel")
-            if field.stringValue.hasPrefix("!  ") { precondition(field.frame.height > 20, "Description stays on one line") }
-        }
+        for field in fields { precondition(field.frame.width <= 434, "Alert overflows panel") }
+        let unknownAlert = fields.filter { $0.stringValue == "!  HMS \(unknownCode)" }
+        precondition(unknownAlert.count == 1, "The uncatalogued alert is missing")
+        precondition(unknownAlert[0].frame.height > 20, "Description stays on one line")
         if let output = ProcessInfo.processInfo.environment["GANTRY_LAYOUT_CAPTURE"], let content = panel.contentView,
            let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
             content.cacheDisplay(in: content.bounds, to: rep)
