@@ -454,6 +454,31 @@ require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
         rf"title, {panel_window['sizes']['slotAssignment']['width']}, 600, cleanup: CloseSpoolAssign",
         "the Windows slot panel window size differs from the contract")
 
+
+# ---- Windows edge dock: pin/release and live pictures (issue #34, ported from macOS) ----------------
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"private bool Expanded => _hovering \|\| AppSettings\.EdgeDockPinned;",
+        "a pinned Windows edge dock still folds when the pointer leaves")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"AppSettings\.EdgeDockPinned = !AppSettings\.EdgeDockPinned;",
+        "the Windows edge dock cannot be pinned or released from the strip itself")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"new DockCameraFeed\(_store, serial\)",
+        "the Windows edge dock shows no live pictures")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"if \(wanted\.SetEquals\(_cameraFeeds\.Keys\)\) return;",
+        "the Windows edge dock restarts camera streams on refreshes that did not change which printers stream")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"private void HideStrip\(\)\s*\{\s*DetachCameras\(\);",
+        "a hidden Windows edge dock keeps its camera streams running")
+require("windows/Gantry.Windows/UI/DockCameraFeed.cs",
+        r"kind is PrinterKind\.Bambu or PrinterKind\.Klipper or PrinterKind\.ElegooCc1\s+or PrinterKind\.ElegooCc2 or PrinterKind\.AnycubicKobraS1",
+        "Windows dock cameras support a different set of printer brands than macOS")
+for key in ("edge-dock-pinned", "edge-dock-camera", "edge-dock-camera-serials"):
+    require("windows/Gantry.Windows/Services/Storage.cs", rf'"{key}"', f"Windows does not share the {key} setting with macOS")
+for control in ("DockPinnedCheckBox", "DockCameraCheckBox", "DockCamerasList"):
+    require("windows/Gantry.Windows/UI/SettingsWindow.xaml", rf'x:Name="{control}"', f"Windows settings are missing {control}")
+# The fleet header's tools stay on one line: a WrapPanel capped at 300 px folded nine buttons into two.
+forbid("windows/Gantry.Windows/UI/DashboardWindow.xaml", r'<WrapPanel x:Name="HeaderTools"',
+       "the Windows fleet header tools wrap onto a second line again")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml", r'<StackPanel x:Name="HeaderTools" Grid\.Column="1" Orientation="Horizontal"',
+        "the Windows fleet header tools are not a single row")
+
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf"width:\s*{floating['initialSize']['width']},\s*height:\s*{floating['initialSize']['height']}",

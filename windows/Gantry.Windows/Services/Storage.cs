@@ -357,6 +357,29 @@ public static class AppSettings
         set => Defaults.SetString("edge-dock-hidden", string.Join("\n", value.OrderBy(x => x)));
     }
 
+    /// Keep the strip unfolded without the pointer (issue #34). It can also be pinned and released
+    /// from the strip itself. Key shared verbatim with macOS/Linux.
+    public static bool EdgeDockPinned
+    {
+        get => Defaults.GetBool("edge-dock-pinned", false);
+        set => Defaults.SetBool("edge-dock-pinned", value);
+    }
+
+    /// A live picture under a printer's row in the strip (issue #34).
+    public static bool EdgeDockCamera
+    {
+        get => Defaults.GetBool("edge-dock-camera", false);
+        set => Defaults.SetBool("edge-dock-camera", value);
+    }
+
+    /// Printers ticked for a picture. Empty means "follow the print that is running".
+    public static HashSet<string> EdgeDockCameraSerials
+    {
+        get => new((Defaults.GetString("edge-dock-camera-serials") ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        set => Defaults.SetString("edge-dock-camera-serials", string.Join("\n", value.OrderBy(x => x)));
+    }
+
     // Telegram push + bot. Keys shared verbatim with macOS/Linux (see docs/telegram.md).
     public static bool TelegramEnabled
     {

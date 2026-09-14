@@ -80,6 +80,20 @@ public partial class SettingsWindow : Window
             AppSettings.EdgeDockOnlyPrinting = DockOnlyPrintingCheckBox.IsChecked == true;
             OnEdgeDockChanged?.Invoke();
         };
+        DockPinnedCheckBox.Click += (_, _) =>
+        {
+            AppSettings.EdgeDockPinned = DockPinnedCheckBox.IsChecked == true;
+            OnEdgeDockChanged?.Invoke();
+        };
+        DockCameraCheckBox.Click += (_, _) =>
+        {
+            AppSettings.EdgeDockCamera = DockCameraCheckBox.IsChecked == true;
+            ApplyDockEnabledState();
+            OnEdgeDockChanged?.Invoke();
+        };
+        // The strip pins and releases itself too; keep this box honest while the window is open.
+        EdgeDockWindow.PinnedChanged += SyncDockPinned;
+        Closed += (_, _) => EdgeDockWindow.PinnedChanged -= SyncDockPinned;
         ThemeButton.Click += (_, _) =>
         {
             AppSettings.Theme = AppSettings.Theme == "dark" ? "light" : "dark";
@@ -173,6 +187,8 @@ public partial class SettingsWindow : Window
         Title = $"{Build.AppName} — {AppSettings.T(PaneTitleKeys[index])}";
     }
 
+    private void SyncDockPinned() => Dispatcher.Invoke(() => DockPinnedCheckBox.IsChecked = AppSettings.EdgeDockPinned);
+
     private static string EdgeName() => AppSettings.EdgeDockEdge == "left"
         ? AppSettings.T("Left") : AppSettings.T("Right");
 
@@ -185,6 +201,14 @@ public partial class SettingsWindow : Window
         DockSizePlusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent < 150;
         DockSizeValue.Opacity = on ? 1 : 0.45;
         DockOnlyPrintingCheckBox.IsEnabled = on;
+        DockPinnedCheckBox.IsEnabled = on;
+        DockCameraCheckBox.IsEnabled = on;
+        // A picture only makes sense while the strip is on and the camera switch is too.
+        bool cameras = on && AppSettings.EdgeDockCamera;
+        DockCamerasList.IsEnabled = cameras;
+        DockCamerasList.Opacity = cameras ? 1 : 0.45;
+        DockCamerasCaption.Opacity = cameras ? 1 : 0.45;
+        DockCameraNote.Opacity = on ? 1 : 0.45;
         DockPrintersList.IsEnabled = on;
         DockPrintersList.Opacity = on ? 1 : 0.45;
         DockEdgeButton.Opacity = on ? 1 : 0.45;
@@ -213,6 +237,7 @@ public partial class SettingsWindow : Window
     private void RebuildDockPrinters()
     {
         DockPrintersList.Children.Clear();
+        DockCamerasList.Children.Clear();
         var printers = _store?.Printers ?? new List<Gantry.Models.SavedPrinter>();
         if (printers.Count == 0)
         {
@@ -242,6 +267,25 @@ public partial class SettingsWindow : Window
                 OnEdgeDockChanged?.Invoke();
             };
             DockPrintersList.Children.Add(row);
+
+            // A brand with no stream Gantry can decode is simply not offered the choice, rather than
+            // being listed with a box that can never do anything. Same rule as macOS.
+            if (!DockCameraFeed.SupportsCamera(printer.Kind)) continue;
+            var camera = new System.Windows.Controls.CheckBox
+            {
+                Content = printer.Name,
+                Tag = printer.Serial,
+                IsChecked = AppSettings.EdgeDockCameraSerials.Contains(printer.Serial),
+            };
+            camera.Click += (sender, _) =>
+            {
+                if (sender is not System.Windows.Controls.CheckBox box || box.Tag is not string serial) return;
+                var set = AppSettings.EdgeDockCameraSerials;
+                if (box.IsChecked == true) set.Add(serial); else set.Remove(serial);
+                AppSettings.EdgeDockCameraSerials = set;
+                OnEdgeDockChanged?.Invoke();
+            };
+            DockCamerasList.Children.Add(camera);
         }
     }
 
@@ -372,6 +416,12 @@ public partial class SettingsWindow : Window
         DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
         DockOnlyPrintingCheckBox.Content = AppSettings.T("Only printing");
         DockOnlyPrintingCheckBox.IsChecked = AppSettings.EdgeDockOnlyPrinting;
+        DockPinnedCheckBox.Content = AppSettings.T("Keep the strip open");
+        DockPinnedCheckBox.IsChecked = AppSettings.EdgeDockPinned;
+        DockCameraCheckBox.Content = AppSettings.T("Camera under the strip");
+        DockCameraCheckBox.IsChecked = AppSettings.EdgeDockCamera;
+        DockCameraNote.Text = AppSettings.T("With nothing picked it follows the printer that is printing. Pick printers below and each picture sits under its own row.");
+        DockCamerasCaption.Text = AppSettings.T("Camera for");
         DockPrintersCaption.Text = AppSettings.T("Printers");
         DockHint.Text = AppSettings.T("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.");
         RebuildDockPrinters();

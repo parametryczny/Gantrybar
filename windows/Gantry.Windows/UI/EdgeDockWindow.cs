@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Gantry.Models;
@@ -16,23 +17,48 @@ namespace Gantry.UI;
 /// hovering expands it into a list with names, percentages and remaining time, and clicking a row
 /// opens that printer's details. Mirrors the macOS EdgeDockWindowController.
 ///
+/// Issue #34, ported from macOS: the strip can be pinned open, and pinned or released from the strip
+/// itself; and any printer can be given a live picture hung directly under its own row. The two are
+/// independent: a picture works on a strip that still folds, it is simply hidden while folded, and
+/// its stream keeps running so unfolding shows a live image at once instead of a reconnect.
+///
 /// The "grows out of the edge" look comes from the two concave fillets where the strip meets the
 /// screen: the window is taller than the visible body by one fillet radius at each end, and the
 /// silhouette is drawn as a single filled path rather than a rectangle with a background colour.
 public sealed class EdgeDockWindow : Window
 {
+    /// <summary>Raised when the strip pins or releases itself, so an open Settings window can keep
+    /// its check box honest.</summary>
+    public static event Action? PinnedChanged;
+
     private readonly PrinterStore _store;
     private readonly Action<string> _onSelect;
     private readonly Canvas _canvas = new();
     private readonly Path _shape = new();
     private List<Entry> _entries = new();
-    private bool _expanded;
+    private bool _hovering;
     private readonly DispatcherTimer _collapseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    /// One feed and one picture per printer the user ticked, keyed by serial. The images outlive a
+    /// rebuild, so a new frame only swaps a Source and never redraws the strip.
+    private readonly Dictionary<string, DockCameraFeed> _cameraFeeds = new();
+    private readonly Dictionary<string, Image> _cameraImages = new();
+    /// Click targets from the last draw. Rows are not a fixed pitch once a picture sits between two
+    /// of them, so hit-testing uses exactly what was drawn.
+    private readonly List<(Rect Area, string Serial)> _rowHits = new();
+    private Rect? _pinHit;
 
     private const double Ring = 18, RingStroke = 2.2, CollapsedWidth = 30, CollapsedGap = 10;
     private const double RowHeight = 26, RowGap = 3, PadY = 10, Notch = 13;
     private const double ExpandedPadX = 13, ExpandedTextGap = 9;
+    /// Band above the rows holding the pin control, shown whenever the strip is open.
+    private const double PinRow = 18, PinGap = 4;
+    private const double CameraGap = 8, CameraRadius = 8;
+    /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
+    private const double CameraMinStripWidth = 236, CameraMaxStripWidth = 300;
     private static double UiScale => AppSettings.EdgeDockScalePercent / 100.0;
+
+    /// Pinned means permanently unfolded: hover stops being what decides the width.
+    private bool Expanded => _hovering || AppSettings.EdgeDockPinned;
 
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_NOACTIVATE = 0x08000000;
@@ -76,18 +102,22 @@ public sealed class EdgeDockWindow : Window
         _collapseTimer.Tick += (_, _) =>
         {
             _collapseTimer.Stop();
-            if (_expanded && !IsMouseOver) { _expanded = false; Rebuild(); }
+            if (!_hovering || IsMouseOver) return;
+            _hovering = false;
+            if (!AppSettings.EdgeDockPinned) Rebuild();
         };
         MouseEnter += (_, _) =>
         {
             _collapseTimer.Stop();
-            if (!_expanded) { _expanded = true; Rebuild(); }
+            if (_hovering) return;
+            _hovering = true;
+            if (!AppSettings.EdgeDockPinned) Rebuild();   // a pinned strip is already open
         };
         // Repositioning the transparent window can emit a transient leave event. Verify it only
         // after the new hit region has settled instead of immediately collapsing and reopening.
         MouseLeave += (_, _) => { _collapseTimer.Stop(); _collapseTimer.Start(); };
         MouseLeftButtonDown += OnClick;
-        Closed += (_, _) => _collapseTimer.Stop();
+        Closed += (_, _) => { _collapseTimer.Stop(); DetachCameras(); };
 
         _store.Updated += (_, _) => Dispatcher.Invoke(Refresh);
         Refresh();
@@ -97,7 +127,7 @@ public sealed class EdgeDockWindow : Window
     /// the feature is off or nothing is left to show.
     public void Refresh()
     {
-        if (!AppSettings.EdgeDockEnabled) { Hide(); return; }
+        if (!AppSettings.EdgeDockEnabled) { HideStrip(); return; }
         var hidden = AppSettings.EdgeDockHiddenPrinters;
         var onlyPrinting = AppSettings.EdgeDockOnlyPrinting;
         var entries = new List<Entry>();
@@ -109,9 +139,79 @@ public sealed class EdgeDockWindow : Window
             entries.Add(new Entry(printer.Serial, printer.Name, t.State, t.Progress, t.RemainingMinutes));
         }
         _entries = entries;
-        if (_entries.Count == 0) { Hide(); return; }
+        if (_entries.Count == 0) { HideStrip(); return; }
+        SyncCameras();
         Rebuild();
         if (!IsVisible) Show();
+    }
+
+    /// Taking the strip off screen must also take the streams down; an invisible camera would keep
+    /// decoding frames and holding the printer's single stream slot.
+    private void HideStrip()
+    {
+        DetachCameras();
+        Hide();
+    }
+
+    private void DetachCameras()
+    {
+        foreach (var feed in _cameraFeeds.Values) feed.Stop();
+        _cameraFeeds.Clear();
+        _cameraImages.Clear();
+    }
+
+    /// Starts and drops feeds so the running set matches what the user ticked. Membership is the only
+    /// thing compared, so a telemetry refresh never restarts a live stream, and folding the strip does
+    /// not either. The cost, as on macOS: a ticked printer streams for as long as the strip is on
+    /// screen, which on a Bambu machine occupies its only camera slot.
+    private void SyncCameras()
+    {
+        var wanted = new HashSet<string>();
+        if (AppSettings.EdgeDockCamera)
+        {
+            var candidates = _entries
+                .Where(entry => DockCameraFeed.SupportsCamera(_store.Printers.FirstOrDefault(p => p.Serial == entry.Serial)?.Kind))
+                .ToList();
+            var chosen = AppSettings.EdgeDockCameraSerials;
+            var picked = candidates.Where(entry => chosen.Contains(entry.Serial)).Select(entry => entry.Serial).ToList();
+            // Nothing ticked yet: follow the print that is actually running, so switching the camera on
+            // does something instead of nothing. Ticking printers replaces this entirely.
+            if (picked.Count > 0) wanted.UnionWith(picked);
+            else if (ActivePrint(candidates) is { } serial) wanted.Add(serial);
+        }
+        if (wanted.SetEquals(_cameraFeeds.Keys)) return;
+
+        foreach (var serial in _cameraFeeds.Keys.Where(serial => !wanted.Contains(serial)).ToList())
+        {
+            _cameraFeeds[serial].Stop();
+            _cameraFeeds.Remove(serial);
+            _cameraImages.Remove(serial);
+        }
+        foreach (var serial in wanted.Where(serial => !_cameraFeeds.ContainsKey(serial)).ToList())
+        {
+            var image = new Image { Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
+            _cameraImages[serial] = image;
+            var feed = new DockCameraFeed(_store, serial);
+            var target = serial;
+            feed.FrameReady += frame => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_cameraImages.TryGetValue(target, out var shown)) shown.Source = frame;
+            }));
+            _cameraFeeds[serial] = feed;
+            feed.Start();
+        }
+    }
+
+    /// The printer worth watching when the user has not named one: printing beats paused, and with a
+    /// single candidate it is simply that one. Several idle machines give nothing, because picking one
+    /// of them silently would be a guess rather than an answer.
+    private static string? ActivePrint(List<Entry> live)
+    {
+        var printing = live.FirstOrDefault(entry => entry.State == PrinterState.Printing);
+        if (printing is not null) return printing.Serial;
+        var paused = live.FirstOrDefault(entry => entry.State == PrinterState.Paused);
+        if (paused is not null) return paused.Serial;
+        return live.Count == 1 ? live[0].Serial : null;
     }
 
     private string ValueText(Entry entry) => entry.State switch
@@ -125,6 +225,8 @@ public sealed class EdgeDockWindow : Window
         _ => AppSettings.T("offline"),
     };
 
+    private bool HasPicture(Entry entry) => _cameraImages.ContainsKey(entry.Serial);
+
     private double ExpandedWidth()
     {
         double scale = UiScale;
@@ -134,8 +236,11 @@ public sealed class EdgeDockWindow : Window
             widest = Math.Max(widest, MeasureText(entry.Name, 12 * scale, FontWeights.SemiBold)
                                       + MeasureText(ValueText(entry), 12 * scale, FontWeights.Normal));
         }
-        return Math.Min(Math.Max((ExpandedPadX * 2 + Ring + ExpandedTextGap + 16) * scale + widest,
-                                 180 * scale), 300 * scale);
+        // With a picture the strip stops being sized by its longest printer name: the image needs a
+        // usable width of its own, so it raises the floor.
+        double minimum = (_entries.Any(HasPicture) ? CameraMinStripWidth : 180) * scale;
+        double maximum = CameraMaxStripWidth * scale;
+        return Math.Min(Math.Max((ExpandedPadX * 2 + Ring + ExpandedTextGap + 16) * scale + widest, minimum), maximum);
     }
 
     private static double MeasureText(string text, double size, FontWeight weight)
@@ -145,15 +250,34 @@ public sealed class EdgeDockWindow : Window
         return block.DesiredSize.Width;
     }
 
+    private static double CameraWidth(double stripWidth) => Math.Max(0, stripWidth - ExpandedPadX * 2 * UiScale);
+
+    /// Height of the open strip's rows, pictures included. The same arithmetic DrawExpanded walks.
+    private double ExpandedRowsHeight(double stripWidth)
+    {
+        double scale = UiScale;
+        if (_entries.Count == 0) return RowHeight * scale;
+        double pictureHeight = Math.Round(CameraWidth(stripWidth) * 9 / 16);
+        double height = 0;
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            height += RowHeight * scale;
+            if (HasPicture(_entries[i]) && pictureHeight > 0) height += CameraGap * scale + pictureHeight;
+            if (i < _entries.Count - 1) height += RowGap * scale;
+        }
+        return height;
+    }
+
     private void Rebuild()
     {
         double scale = UiScale;
         int count = Math.Max(_entries.Count, 1);
+        bool expanded = Expanded;
         double width, bodyHeight;
-        if (_expanded)
+        if (expanded)
         {
             width = ExpandedWidth();
-            bodyHeight = (PadY * 2 + count * RowHeight + (count - 1) * RowGap) * scale;
+            bodyHeight = PadY * 2 * scale + (PinRow + PinGap) * scale + ExpandedRowsHeight(width);
         }
         else
         {
@@ -171,18 +295,21 @@ public sealed class EdgeDockWindow : Window
         double screenLeft = SystemParameters.VirtualScreenLeft;
         double screenWidth = SystemParameters.VirtualScreenWidth;
         Left = left ? screenLeft : screenLeft + screenWidth - width;
-        Top = screen.Top + (screen.Height - height) / 2;
+        Top = Math.Max(screen.Top, screen.Top + (screen.Height - height) / 2);
 
         _canvas.Width = width;
         _canvas.Height = height;
         _shape.Data = BuildSilhouette(width, height, left, Notch * scale);
 
-        // Everything except the silhouette is redrawn on each pass; the shape itself is reused.
+        // Everything except the silhouette is redrawn on each pass; the shape itself is reused, and so
+        // are the camera images, which are only re-parented.
         for (int i = _canvas.Children.Count - 1; i >= 0; i--)
         {
             if (!ReferenceEquals(_canvas.Children[i], _shape)) _canvas.Children.RemoveAt(i);
         }
-        if (_expanded) DrawExpanded(width, left); else DrawCollapsed(width);
+        _rowHits.Clear();
+        _pinHit = null;
+        if (expanded) DrawExpanded(width, left); else DrawCollapsed(width);
     }
 
     /// The silhouette: a rounded body flush against the screen edge, plus a concave fillet at each end
@@ -216,11 +343,13 @@ public sealed class EdgeDockWindow : Window
     private void DrawCollapsed(double width)
     {
         double scale = UiScale;
+        double step = (Ring + CollapsedGap) * scale;
         double y = (Notch + PadY + Ring / 2) * scale;
         foreach (var entry in _entries)
         {
             DrawRing(new Point(width / 2, y), entry);
-            y += (Ring + CollapsedGap) * scale;
+            _rowHits.Add((new Rect(0, y - step / 2, width, step), entry.Serial));
+            y += step;
         }
     }
 
@@ -231,8 +360,16 @@ public sealed class EdgeDockWindow : Window
         // The progress ring stays at the physical screen edge in both orientations. Previously it
         // jumped across the expanded window and left the cursor, causing an enter/leave loop.
         double ringX = left ? (ExpandedPadX + Ring / 2) * scale : width - (ExpandedPadX + Ring / 2) * scale;
+
+        // The pin sits in the ring column, above the first row, so it can never collide with a name.
+        DrawPinButton(new Point(ringX, top + PinRow * scale / 2));
+        top += (PinRow + PinGap) * scale;
+
+        double pictureWidth = CameraWidth(width);
+        double pictureHeight = Math.Round(pictureWidth * 9 / 16);
         foreach (var entry in _entries)
         {
+            double rowTop = top;
             double centerY = top + RowHeight * scale / 2;
             DrawRing(new Point(ringX, centerY), entry);
 
@@ -262,9 +399,66 @@ public sealed class EdgeDockWindow : Window
             Canvas.SetTop(value, centerY - value.DesiredSize.Height / 2);
             _canvas.Children.Add(name);
             _canvas.Children.Add(value);
+            top += RowHeight * scale;
 
-            top += (RowHeight + RowGap) * scale;
+            // The picture hangs directly under its own row, so which machine it shows needs no caption.
+            if (_cameraImages.TryGetValue(entry.Serial, out var image) && pictureWidth > 0)
+            {
+                top += CameraGap * scale;
+                double pictureLeft = (width - pictureWidth) / 2;
+                // A dark plate until the first frame arrives, so the space reads as a picture loading
+                // rather than as a hole in the strip.
+                var plate = new Rectangle
+                {
+                    Width = pictureWidth, Height = pictureHeight,
+                    RadiusX = CameraRadius * scale, RadiusY = CameraRadius * scale,
+                    Fill = new SolidColorBrush(Color.FromArgb(0xFF, 0x15, 0x17, 0x1A)), IsHitTestVisible = false,
+                };
+                Canvas.SetLeft(plate, pictureLeft);
+                Canvas.SetTop(plate, top);
+                _canvas.Children.Add(plate);
+                image.Width = pictureWidth;
+                image.Height = pictureHeight;
+                image.Clip = new RectangleGeometry(new Rect(0, 0, pictureWidth, pictureHeight),
+                                                   CameraRadius * scale, CameraRadius * scale);
+                Canvas.SetLeft(image, pictureLeft);
+                Canvas.SetTop(image, top);
+                _canvas.Children.Add(image);
+                top += pictureHeight;
+            }
+
+            // A click on the row, or in the gap below it, opens that printer. A click on its picture does
+            // not: the picture is not part of the hit area.
+            _rowHits.Add((new Rect(0, rowTop, width, RowHeight * scale + RowGap * scale), entry.Serial));
+            top += RowGap * scale;
         }
+    }
+
+    /// Pin and release, on the strip itself. A faint disc when released, a brighter one when pinned.
+    private void DrawPinButton(Point center)
+    {
+        double scale = UiScale;
+        bool pinned = AppSettings.EdgeDockPinned;
+        double side = PinRow * scale;
+        var disc = new Ellipse
+        {
+            Width = side, Height = side,
+            Fill = new SolidColorBrush(Color.FromArgb(pinned ? (byte)0x38 : (byte)0x14, 0xFF, 0xFF, 0xFF)),
+            ToolTip = AppSettings.T("Keep the strip open"),
+        };
+        Canvas.SetLeft(disc, center.X - side / 2);
+        Canvas.SetTop(disc, center.Y - side / 2);
+        _canvas.Children.Add(disc);
+        var glyph = new TextBlock
+        {
+            Text = "📌", FontSize = 9.5 * scale, Opacity = pinned ? 1 : 0.45, IsHitTestVisible = false,
+        };
+        glyph.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(glyph, center.X - glyph.DesiredSize.Width / 2);
+        Canvas.SetTop(glyph, center.Y - glyph.DesiredSize.Height / 2);
+        _canvas.Children.Add(glyph);
+        double slack = 3 * scale;
+        _pinHit = new Rect(center.X - side / 2 - slack, center.Y - side / 2 - slack, side + 2 * slack, side + 2 * slack);
     }
 
     /// One progress ring: a dim track plus an arc that starts at twelve o'clock and runs clockwise.
@@ -322,12 +516,21 @@ public sealed class EdgeDockWindow : Window
 
     private void OnClick(object sender, MouseButtonEventArgs e)
     {
-        double scale = UiScale;
         var point = e.GetPosition(_canvas);
-        double step = (_expanded ? RowHeight + RowGap : Ring + CollapsedGap) * scale;
-        double offset = point.Y - (Notch + PadY) * scale;
-        if (offset < 0) return;
-        int index = (int)(offset / step);
-        if (index >= 0 && index < _entries.Count) _onSelect(_entries[index].Serial);
+        // The pin wins over the row beneath it.
+        if (_pinHit is { } pin && pin.Contains(point))
+        {
+            AppSettings.EdgeDockPinned = !AppSettings.EdgeDockPinned;
+            PinnedChanged?.Invoke();
+            Rebuild();
+            e.Handled = true;
+            return;
+        }
+        foreach (var (area, serial) in _rowHits)
+        {
+            if (!area.Contains(point)) continue;
+            _onSelect(serial);
+            return;
+        }
     }
 }

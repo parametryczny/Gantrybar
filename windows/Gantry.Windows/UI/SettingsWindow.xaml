@@ -315,7 +315,7 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <CheckBox Grid.Column="1" x:Name="DockEnableCheckBox" Margin="10,0,0,0"/>
                         <TextBlock Grid.Row="1" x:Name="DockEdgeLabel" Style="{StaticResource PaneCaption}" Margin="0,7,0,0"/>
@@ -328,10 +328,15 @@
                         </StackPanel>
                         <TextBlock Grid.Row="3" x:Name="DockBehaviourCaption" Style="{StaticResource PaneCaption}" Margin="0,13,0,0"/>
                         <StackPanel Grid.Row="3" Grid.Column="1" Margin="10,11,0,0">
-                            <CheckBox x:Name="DockOnlyPrintingCheckBox"/>
+                            <CheckBox x:Name="DockPinnedCheckBox"/>
+                            <CheckBox x:Name="DockCameraCheckBox" Margin="0,4,0,0"/>
+                            <TextBlock x:Name="DockCameraNote" Style="{StaticResource PaneNote}" Margin="22,2,0,4" TextWrapping="Wrap"/>
+                            <CheckBox x:Name="DockOnlyPrintingCheckBox" Margin="0,4,0,0"/>
                         </StackPanel>
                         <TextBlock Grid.Row="4" x:Name="DockPrintersCaption" Style="{StaticResource PaneCaption}"/>
                         <StackPanel Grid.Row="4" Grid.Column="1" x:Name="DockPrintersList" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="5" x:Name="DockCamerasCaption" Style="{StaticResource PaneCaption}" Margin="0,10,0,0"/>
+                        <StackPanel Grid.Row="5" Grid.Column="1" x:Name="DockCamerasList" Margin="10,10,0,0"/>
                     </Grid>
                     <TextBlock x:Name="DockHint" Style="{StaticResource PaneNote}" Margin="174,6,0,0"/>
                 </StackPanel>
