@@ -27,6 +27,15 @@ internal sealed class ControlStepper : Border
     private static readonly TimeSpan EchoWindow = TimeSpan.FromSeconds(6);
 
     public event Action<int>? Commit;
+    private Func<int, string>? _format;
+
+    /// <summary>Reads the value as something other than a number and suffix, e.g. a Bambu speed
+    /// mode's name.</summary>
+    public Func<int, string>? Format { get => _format; set { _format = value; ApplyValue(_current); } }
+
+    /// <summary>How far a reported value may sit from the one sent and still count as the printer's
+    /// echo. Bambu reports fans in fifteenths of full speed, so 70% comes back as 67%.</summary>
+    public int EchoTolerance { get; set; }
     private readonly int _min, _max, _step;
     private readonly bool _targetCaption;
     private readonly string _suffix;
@@ -83,8 +92,8 @@ internal sealed class ControlStepper : Border
         if (_settle.IsEnabled) return;
         if (DateTime.UtcNow < _ignoreReportsUntil)
         {
-            if (Clamp(reported) == _current) _ignoreReportsUntil = DateTime.MinValue;
-            return;
+            if (Math.Abs(Clamp(reported) - _current) > EchoTolerance) return;
+            _ignoreReportsUntil = DateTime.MinValue;
         }
         ApplyValue(reported);
     }
@@ -143,7 +152,7 @@ internal sealed class ControlStepper : Border
         if (caption.Length > 0)
             _value.Inlines.Add(new Run(caption) { FontSize = 9, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.Secondary) });
         bool off = _targetCaption && _current == 0;
-        var reading = off ? AppSettings.T("Off").ToLower(CultureInfo.CurrentCulture) : $"{_current}{_suffix}";
+        var reading = off ? AppSettings.T("Off").ToLower(CultureInfo.CurrentCulture) : _format?.Invoke(_current) ?? $"{_current}{_suffix}";
         _value.Inlines.Add(new Run(reading) { FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(off ? GTheme.Secondary : GTheme.Text) });
         AutomationProperties.SetName(this, caption + reading);
     }

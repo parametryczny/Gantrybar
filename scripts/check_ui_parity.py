@@ -969,6 +969,24 @@ for label, key, step, caption in (("nozzle", "nozzle", steps["temperature"], Tru
             f"macOS {label} capsule range or step differs from the contract")
     require(win_detail, rf"new ControlStepper\({low}, {high}, {step}, {str(caption).lower()},",
             f"Windows {label} capsule range or step differs from the contract")
+bambu_speed = detail_controls["bambuSpeed"]
+speed_low, speed_high = bambu_speed["levels"]
+require(mac_detail, rf"ControlStepperView\(range: {speed_low}\.\.\.{speed_high}, step: 1,",
+        "macOS Bambu speed is not a speed-mode capsule")
+require(win_detail, rf"new ControlStepper\({speed_low}, {speed_high}, 1, false,",
+        "Windows Bambu speed is not a speed-mode capsule")
+require("Sources/Gantry/App/PrinterStore.swift", rf'"command":"{bambu_speed["command"]}"',
+        "macOS does not send the Bambu speed mode command")
+require("windows/Gantry.Windows/Services/PrinterStore.cs", rf'command = "{bambu_speed["command"]}"',
+        "Windows does not send the Bambu speed mode command")
+require(mac_detail, rf"fan\.echoTolerance = {detail_controls['fanEchoTolerance']}\b",
+        "macOS fan capsules do not accept Bambu's rounded echo")
+require(win_detail, rf"EchoTolerance = {detail_controls['fanEchoTolerance']}\b",
+        "Windows fan capsules do not accept Bambu's rounded echo")
+require("Sources/Gantry/Services/MQTTClient.swift", r"BambuCommandReply\.parse\(payload\)",
+        "macOS does not read the printer's replies to control commands")
+require("windows/Gantry.Windows/Services/MqttClient.cs", r"BambuCommandReply\.Parse\(payload\)",
+        "Windows does not read the printer's replies to control commands")
 forbid(mac_detail, r"CompactControlSlider", "macOS brought back the loose plus/minus row under the tiles")
 forbid(win_detail, r"TempChip\(", "Windows rebuilds temperature chips, which would drop a capsule mid-change")
 require("windows/Gantry.Windows/Services/Storage.cs", rf'"{detail_controls["setting"]}"', "Windows is missing the printer-control setting")

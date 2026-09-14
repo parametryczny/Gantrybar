@@ -57,10 +57,14 @@ final class PrinterDetailViewController: NSViewController {
     private let auxFanControl = ControlStepperView(range: 0...100, step: 10, showsTargetCaption: false, suffix: "%")
     private let chamberFanControl = ControlStepperView(range: 0...100, step: 10, showsTargetCaption: false, suffix: "%")
     private let speedControl = ControlStepperView(range: 10...166, step: 10, showsTargetCaption: false, suffix: "%")
+    private let speedLevelControl = ControlStepperView(range: 1...4, step: 1, showsTargetCaption: false, suffix: "")
+    private let temperatureNotice = NSTextField(wrappingLabelWithString: "")
+    private let fanNotice = NSTextField(wrappingLabelWithString: "")
     private lazy var partFanTile = ControlTileView(title: AppSettings.shared.t("Part"), symbol: "wind", stepper: partFanControl)
     private lazy var auxFanTile = ControlTileView(title: AppSettings.shared.t("Aux"), symbol: "wind", stepper: auxFanControl)
     private lazy var chamberFanTile = ControlTileView(title: AppSettings.shared.t("Chamber"), symbol: "wind", stepper: chamberFanControl)
     private lazy var speedTile = ControlTileView(title: AppSettings.shared.t("Speed"), symbol: "speedometer", stepper: speedControl)
+    private lazy var speedLevelTile = ControlTileView(title: AppSettings.shared.t("Speed"), symbol: "speedometer", stepper: speedLevelControl)
     private let fanControls = NSStackView()
     private var fanTilesSignature = ""
 
@@ -530,13 +534,15 @@ final class PrinterDetailViewController: NSViewController {
         ])
         nozzleControl.onCommit = { [weak self] value in self?.store.setNozzleTemperature(serial: self?.serial ?? "", celsius: value) }
         bedControl.onCommit = { [weak self] value in self?.store.setBedTemperature(serial: self?.serial ?? "", celsius: value) }
-        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("TEMPERATURES")), graph, chips])
+        styleNotice(temperatureNotice)
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("TEMPERATURES")), graph, chips, temperatureNotice])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
         graph.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         chips.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        temperatureNotice.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
@@ -558,8 +564,13 @@ final class PrinterDetailViewController: NSViewController {
         auxFanControl.onCommit = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 2, percent: value) }
         chamberFanControl.onCommit = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 3, percent: value) }
         speedControl.onCommit = { [weak self] value in self?.store.setPrintSpeed(serial: self?.serial ?? "", percent: value) }
+        speedLevelControl.onCommit = { [weak self] level in self?.store.setPrintSpeedLevel(serial: self?.serial ?? "", level: level) }
+        speedLevelControl.format = { [weak self] level in self?.speedName(level) ?? "\(level)" }
+        // Bambu reports fans in fifteenths of full speed, so 70% comes back as 67%.
+        for fan in [partFanControl, auxFanControl, chamberFanControl] { fan.echoTolerance = 7 }
+        styleNotice(fanNotice)
         // Controls on: the tiles carry the live value, so the read-only gauges would only repeat it.
-        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("FANS AND SPEED")), fanGauges, fanControls, infoRow])
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("FANS AND SPEED")), fanGauges, fanControls, infoRow, fanNotice])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -567,7 +578,14 @@ final class PrinterDetailViewController: NSViewController {
         fanGauges.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         infoRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         fanControls.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        fanNotice.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
+    }
+
+    private func styleNotice(_ label: NSTextField) {
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .systemOrange
+        label.isHidden = true
     }
 
     /// Two tiles to a row. Klipper only drives the part fan, so there the grid is part fan and speed
@@ -576,7 +594,8 @@ final class PrinterDetailViewController: NSViewController {
         let signature = bambu ? "bambu" : "other"
         guard signature != fanTilesSignature else { return }
         fanTilesSignature = signature
-        let tiles = bambu ? [partFanTile, auxFanTile, chamberFanTile, speedTile] : [partFanTile, speedTile]
+        // Bambu takes a speed mode, Klipper a percentage.
+        let tiles = bambu ? [partFanTile, auxFanTile, chamberFanTile, speedLevelTile] : [partFanTile, speedTile]
         let rows = stride(from: 0, to: tiles.count, by: 2).map { start -> NSStackView in
             let row = NSStackView(views: Array(tiles[start..<min(start + 2, tiles.count)]))
             row.orientation = .horizontal
@@ -797,17 +816,28 @@ final class PrinterDetailViewController: NSViewController {
         auxFanControl.show(reported: t.auxFanPercent ?? 0)
         chamberFanControl.show(reported: t.chamberFanPercent ?? 0)
         speedControl.show(reported: t.speedPercent ?? 100)
-        // With controls on, the speed tile already shows the percentage; only the mode name is new.
-        if let level = t.speedLevel {
+        speedLevelControl.show(reported: t.speedLevel ?? 2)
+        // With controls on, the speed tile already shows the mode or the percentage.
+        if controlEnabled {
+            speedLabel.isHidden = true
+        } else if let level = t.speedLevel {
             var text = settings.t("Speed: ") + speedName(level)
-            if let mag = t.speedPercent, !controlEnabled { text += " · \(mag)%" }
+            if let mag = t.speedPercent { text += " · \(mag)%" }
             speedLabel.stringValue = text
             speedLabel.isHidden = false
-        } else if let mag = t.speedPercent, !controlEnabled {
+        } else if let mag = t.speedPercent {
             speedLabel.stringValue = settings.t("Speed: {0}%%", mag)
             speedLabel.isHidden = false
         } else {
             speedLabel.isHidden = true
+        }
+        // A refused command shows as the printer's reason on the card that sent it, not only as the
+        // value sliding back.
+        let rejection = store.commandRejections[serial].flatMap { Date().timeIntervalSince($0.date) < 120 ? $0 : nil }
+        for (notice, area) in [(temperatureNotice, PrinterStore.CommandRejection.Area.temperature), (fanNotice, .fans)] {
+            let shown = controlEnabled && rejection?.area == area
+            notice.stringValue = shown ? settings.t("The printer rejected the command: {0}", rejection?.reason ?? "") : ""
+            notice.isHidden = !shown
         }
         if let d = t.nozzleDiameter {
             diameterLabel.stringValue = String(format: "⌀ %.1f mm", d)
@@ -979,6 +1009,10 @@ final class ControlStepperView: NSView {
     private static let echoWindow: TimeInterval = 6
 
     var onCommit: ((Int) -> Void)?
+    /// Reads the value as something other than a number and suffix, e.g. a Bambu speed mode's name.
+    var format: ((Int) -> String)? { didSet { setValue(value) } }
+    /// How far a reported value may sit from the one sent and still count as the printer's echo.
+    var echoTolerance = 0
     private let range: ClosedRange<Int>
     private let step: Int
     private let suffix: String
@@ -1055,8 +1089,8 @@ final class ControlStepperView: NSView {
     func show(reported: Int) {
         guard commitTimer == nil else { return }
         if Date() < ignoreReportsUntil {
-            if clamp(reported) == value { ignoreReportsUntil = .distantPast }
-            return
+            guard abs(clamp(reported) - value) <= echoTolerance else { return }
+            ignoreReportsUntil = .distantPast
         }
         setValue(reported)
     }
@@ -1099,7 +1133,7 @@ final class ControlStepperView: NSView {
             ]))
         }
         let off = showsTargetCaption && value == 0
-        text.append(NSAttributedString(string: off ? settings.t("Off").lowercased() : "\(value)\(suffix)", attributes: [
+        text.append(NSAttributedString(string: off ? settings.t("Off").lowercased() : format?(value) ?? "\(value)\(suffix)", attributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
             .foregroundColor: off ? GantryTheme.secondary : GantryTheme.text
         ]))

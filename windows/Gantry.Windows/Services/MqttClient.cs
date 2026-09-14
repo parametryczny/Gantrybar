@@ -6,12 +6,13 @@ using Gantry.Models;
 
 namespace Gantry.Services;
 
-public enum MqttEventType { Connected, Telemetry, Disconnected }
+public enum MqttEventType { Connected, Telemetry, CommandReply, Disconnected }
 
 public sealed class MqttEvent
 {
     public MqttEventType Type { get; init; }
     public PrinterTelemetry? Telemetry { get; init; }
+    public BambuCommandReply? Reply { get; init; }
     public string? Reason { get; init; }
 }
 
@@ -152,6 +153,8 @@ public sealed class MqttClient : IPrinterConnection
                     case 3: // PUBLISH
                         var payload = MqttCodec.PublishPayload(packet.Type, packet.Body);
                         if (payload is null) continue;
+                        if (BambuCommandReply.Parse(payload) is { } reply)
+                            _onEvent(new MqttEvent { Type = MqttEventType.CommandReply, Reply = reply });
                         var updated = StatusParser.Telemetry(payload, _telemetry);
                         if (updated is null) continue;
                         _telemetry = updated;

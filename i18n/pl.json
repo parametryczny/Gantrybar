@@ -736,6 +736,7 @@
   "The printer needs attention.": "Drukarka oczekuje na działanie.",
   "The printer rejected the access code": "Drukarka odrzuciła kod dostępu",
   "The printer rejected the access code.": "Drukarka odrzuciła kod dostępu.",
+  "The printer rejected the command: {0}": "Drukarka odrzuciła polecenie: {0}",
   "The printer reported an error.": "Drukarka zgłosiła błąd.",
   "The product stays in the catalog.": "Produkt pozostanie w katalogu.",
   "The script will run with your privileges.": "Skrypt uruchomi się z Twoimi uprawnieniami.",

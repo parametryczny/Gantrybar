@@ -32,7 +32,9 @@ public sealed class DetailView : UserControl
     private readonly TempTile _nozzleTile, _bedTile, _chamberTile;
     // Printer control, opt-in in Advanced settings (Bambu and Klipper, like macOS).
     private readonly bool _controlEnabled;
-    private readonly ControlStepper? _nozzleStepper, _bedStepper, _partFanStepper, _auxFanStepper, _chamberFanStepper, _speedStepper;
+    private readonly ControlStepper? _nozzleStepper, _bedStepper, _partFanStepper, _auxFanStepper, _chamberFanStepper, _speedStepper, _speedLevelStepper;
+    // A refused command shows as the printer's reason on the card that sent it.
+    private readonly TextBlock _temperatureNotice = Notice(), _fanNotice = Notice();
     private readonly StackPanel _recentPrints, _maintenance, _statistics;
 
     // Camera
@@ -163,7 +165,7 @@ public sealed class DetailView : UserControl
         temps.Children.Add(_nozzleTile.Root);
         temps.Children.Add(_bedTile.Root);
         temps.Children.Add(_chamberTile.Root);
-        stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("TEMPERATURES")), _graph, temps } })));
+        stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("TEMPERATURES")), _graph, temps, _temperatureNotice } })));
 
         // --- Fans + speed card ---
         _fans = new StackPanel { Orientation = Orientation.Horizontal };
@@ -179,13 +181,11 @@ public sealed class DetailView : UserControl
         {
             ControlStepper FanStepper(int index)
             {
-                var fan = new ControlStepper(0, 100, 10, false, "%");
+                var fan = new ControlStepper(0, 100, 10, false, "%") { EchoTolerance = 7 };
                 fan.Commit += value => _store.SetFan(_serial, index, value);
                 return fan;
             }
             _partFanStepper = FanStepper(1);
-            _speedStepper = new ControlStepper(10, 166, 10, false, "%");
-            _speedStepper.Commit += value => _store.SetPrintSpeed(_serial, value);
             var tiles = new System.Collections.Generic.List<Border> { ControlStepper.Tile(AppSettings.T("Part"), "❋", _partFanStepper) };
             // Klipper only drives the part fan, so there the grid is part fan and speed instead of two
             // live tiles beside two that do nothing.
@@ -196,7 +196,19 @@ public sealed class DetailView : UserControl
                 tiles.Add(ControlStepper.Tile(AppSettings.T("Aux"), "❋", _auxFanStepper));
                 tiles.Add(ControlStepper.Tile(AppSettings.T("Chamber"), "❋", _chamberFanStepper));
             }
-            tiles.Add(ControlStepper.Tile(AppSettings.T("Speed"), "⏱", _speedStepper));
+            // Bambu takes a speed mode (it ignores M220), Klipper a percentage.
+            if (_kind == PrinterKind.Bambu)
+            {
+                _speedLevelStepper = new ControlStepper(1, 4, 1, false, "") { Format = SpeedName };
+                _speedLevelStepper.Commit += level => _store.SetPrintSpeedLevel(_serial, level);
+                tiles.Add(ControlStepper.Tile(AppSettings.T("Speed"), "⏱", _speedLevelStepper));
+            }
+            else
+            {
+                _speedStepper = new ControlStepper(10, 166, 10, false, "%");
+                _speedStepper.Commit += value => _store.SetPrintSpeed(_serial, value);
+                tiles.Add(ControlStepper.Tile(AppSettings.T("Speed"), "⏱", _speedStepper));
+            }
             var tileGrid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
             for (int i = 0; i < tiles.Count; i++)
             {
@@ -208,6 +220,7 @@ public sealed class DetailView : UserControl
             fansBody.Children.Add(tileGrid);
         }
         fansBody.Children.Add(infoRow);
+        fansBody.Children.Add(_fanNotice);
         stack.Children.Add(Draggable("fans", Card(fansBody)));
 
         // --- AMS / filaments card ---
@@ -475,6 +488,7 @@ public sealed class DetailView : UserControl
         _auxFanStepper?.Show(t.AuxFanPercent ?? 0);
         _chamberFanStepper?.Show(t.ChamberFanPercent ?? 0);
         _speedStepper?.Show(t.SpeedPercent ?? 100);
+        _speedLevelStepper?.Show(t.SpeedLevel ?? 2);
 
         // Fans + speed
         var fanSig = $"{t.PartFanPercent}|{t.AuxFanPercent}|{t.ChamberFanPercent}";
@@ -486,10 +500,14 @@ public sealed class DetailView : UserControl
             _fans.Children.Add(FanChip("Aux", t.AuxFanPercent));
             _fans.Children.Add(FanChip("Chamber", t.ChamberFanPercent));
         }
-        // With controls on, the speed tile already shows the percentage; only the mode name is new.
-        string? speedText = t.SpeedLevel is { } lvl
-            ? (AppSettings.T("Speed: ")) + SpeedName(lvl) + (t.SpeedPercent is { } mag && !_controlEnabled ? $" · {mag}%" : "")
-            : t.SpeedPercent is { } sp && !_controlEnabled ? (_pl ? $"Prędkość: {sp}%" : $"Speed: {sp}%") : null;
+        // With controls on, the speed tile already shows the mode or the percentage.
+        string? speedText = _controlEnabled ? null
+            : t.SpeedLevel is { } lvl
+                ? (AppSettings.T("Speed: ")) + SpeedName(lvl) + (t.SpeedPercent is { } mag ? $" · {mag}%" : "")
+                : t.SpeedPercent is { } sp ? (_pl ? $"Prędkość: {sp}%" : $"Speed: {sp}%") : null;
+        var refusal = _store.CommandRejections.TryGetValue(_serial, out var found) && (DateTime.UtcNow - found.At).TotalSeconds < 120 ? found : null;
+        SetNotice(_temperatureNotice, refusal, PrinterStore.ControlArea.Temperature);
+        SetNotice(_fanNotice, refusal, PrinterStore.ControlArea.Fans);
         _speed.Text = speedText ?? "";
         _speed.Visibility = speedText is null ? Visibility.Collapsed : Visibility.Visible;
         _diameter.Text = t.NozzleDiameter is { } d ? $"⌀ {d.ToString("0.0", CultureInfo.InvariantCulture)} mm" : "";
@@ -865,7 +883,7 @@ public sealed class DetailView : UserControl
             // Larger on every tile of the row while controls show, the chamber included, so the three
             // readings stay one size.
             _value = new TextBlock { FontSize = largeReading ? 18 : 13, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 0) };
-            Typography.SetNumeralAlignment(_value, FontNumeralAlignment.Tabular);
+            System.Windows.Documents.Typography.SetNumeralAlignment(_value, FontNumeralAlignment.Tabular);
             var body = new StackPanel { Children = { titleRow, _value } };
             if (stepper is not null)
             {
@@ -913,6 +931,19 @@ public sealed class DetailView : UserControl
         header.Children.Add(SectionTitle(AppSettings.T("CAMERA")));
         header.Children.Add(action);
         return header;
+    }
+
+    private static TextBlock Notice() => new()
+    {
+        FontSize = 11, FontWeight = FontWeights.Medium, Foreground = GTheme.Brush(GTheme.StatusPaused),
+        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0), Visibility = Visibility.Collapsed
+    };
+
+    private void SetNotice(TextBlock notice, PrinterStore.CommandRejection? refusal, PrinterStore.ControlArea area)
+    {
+        bool shown = _controlEnabled && refusal is not null && refusal.Area == area;
+        notice.Text = shown ? string.Format(AppSettings.T("The printer rejected the command: {0}"), refusal!.Reason) : "";
+        notice.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OpenAdvanced()

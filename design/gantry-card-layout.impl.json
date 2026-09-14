@@ -729,6 +729,13 @@
     "steps": {"temperature": 5, "fan": 10, "speed": 10},
     "ranges": {"nozzle": [0, 300], "bed": [0, 120], "fan": [0, 100], "speed": [10, 166]},
     "timing": {"settleSeconds": 0.6, "echoWindowSeconds": 6, "repeatDelayMs": 400, "repeatIntervalMs": 70},
+    "bambuSpeed": {
+      "levels": [1, 4],
+      "command": "print_speed",
+      "why": "Bambu ignores M220 in a gcode_line; it takes one of four speed modes (1 Silent, 2 Standard, 3 Sport, 4 Ludicrous)"
+    },
+    "fanEchoTolerance": 7,
+    "commandReplies": "replies to gcode_line and print_speed are read; a refusal shows the printer's reason on the card whose control sent it, for 120 s",
     "values": "snapped to the step grid; a heater target of 0 reads as off; the command goes out once the value settles and a pending one is sent when the view closes",
     "temperatureTiles": "the capsule sits inside the nozzle and bed tiles and carries the target; the tile reads the live temperature; all three readings share one size and line",
     "fanTiles": "two to a row; Klipper shows part fan and speed only; the read-only gauges are hidden while the tiles show",
