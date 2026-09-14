@@ -1019,6 +1019,7 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         panel = MaintenancePanel(self.app, printer, telemetry, self.close_maintenance)
         window = PanelWindow(self.app, panel, i18n.t("Maintenance · {0}").format(printer.name),
                              470, 560, accessories=panel.header_accessories())
+        window.get_child().set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self._maintenance_window = window
         window.present_centered()
 

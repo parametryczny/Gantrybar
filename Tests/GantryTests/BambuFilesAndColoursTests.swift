@@ -55,3 +55,13 @@ import Foundation
         #expect(charges.isEmpty)
     }
 }
+
+@Suite struct BambuCacheScopeTests {
+    @Test func overwrittenPathInAnotherPrintCannotReuseEarlierBytes() {
+        let first = BambuFileClient.cacheKey(host: "X1", fileName: "/cache/cube.3mf", scope: "print-1")
+        let second = BambuFileClient.cacheKey(host: "X1", fileName: "/cache/cube.3mf", scope: "print-2")
+        #expect(first != second)
+        #expect(BambuFileClient.cacheKey(host: "X1", fileName: "/cache/cube.3mf", scope: nil) == nil)
+        #expect(first == BambuFileClient.cacheKey(host: "X1", fileName: "/cache/cube.3mf", scope: "print-1"))
+    }
+}

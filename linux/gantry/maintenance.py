@@ -105,10 +105,16 @@ class MaintenancePanel(Gtk.Frame):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         heading = Gtk.Label(label=f"!  {message}", xalign=0, wrap=True)
         heading.set_max_width_chars(52)
-        heading.set_lines(2)
+        heading.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        heading.set_width_chars(1)
         heading.get_style_context().add_class("maintenance-alert-title")
         box.pack_start(heading, False, False, 0)
-        if code: box.pack_start(self._label(code), False, False, 0)
+        if code:
+            code_label = self._label(code)
+            code_label.set_line_wrap_mode(Pango.WrapMode.CHAR)
+            code_label.set_width_chars(1)
+            code_label.set_max_width_chars(52)
+            box.pack_start(code_label, False, False, 0)
         return box
 
     def _alert_list(self, alerts: list[tuple[str, str | None]]) -> Gtk.Widget:

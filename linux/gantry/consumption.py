@@ -174,7 +174,7 @@ _SESSIONS_KEY = "spoolbase-print-sessions"
 
 
 def observe_session(sessions: dict[str, dict[str, Any]], serial: str, previous_state: Any, state: Any,
-                    job_name: str | None, now: float) -> tuple[str | None, bool]:
+                    job_name: str | None, now: float, accounting_enabled: bool = True) -> tuple[str | None, bool]:
     """Which print a finished job belongs to. Returns (the job id when this update is the finish to
     account for, whether the sessions changed). Mirrors macOS PrintJobSessions: the hour a FINISHED
     packet arrived used to be the identity, so two short prints of one file within an hour merged and a
@@ -194,11 +194,13 @@ def observe_session(sessions: dict[str, dict[str, Any]], serial: str, previous_s
             return None, False
         if current and current.get("job") == job:
             changed = not current.get("finished")
+            if changed and not accounting_enabled:
+                current["skipped"] = True
             current["finished"] = True
-            return current["id"], changed
+            return (None if current.get("skipped") else current["id"]), changed
         # Finished before Gantry saw it print. One session for it, kept, so a restart reuses it.
-        sessions[serial] = {"job": job, "id": session_id, "finished": True}
-        return session_id, True
+        sessions[serial] = {"job": job, "id": session_id, "finished": True, "skipped": not accounting_enabled}
+        return (session_id if accounting_enabled else None), True
     return None, False
 
 
@@ -289,12 +291,16 @@ def _consume_bambu(store: Any, serial: str, host: str, access_code: str, telemet
         return
     data = fetch_bambu_3mf(host, access_code, telemetry.gcode_file)
     if not data:
+        store.warn_accounting(job_id, telemetry.job_name or serial)
         return
     # Spoolbase switched off during the download: the print is not accounted.
     if not still_enabled():
         return
-    for spool_id, used_g, filament_id in bambu_charges(serial, telemetry.filament_groups,
-                                                       parse_3mf_filaments(data), assigned):
+    filaments = parse_3mf_filaments(data)
+    charges = bambu_charges(serial, telemetry.filament_groups, filaments, assigned)
+    if not filaments or len(charges) < sum(f["used_g"] > 0 for f in filaments):
+        store.warn_accounting(job_id, telemetry.job_name or serial)
+    for spool_id, used_g, filament_id in charges:
         store.consume(spool_id, used_g, serial, f"{job_id}#{filament_id}")
 
 
@@ -312,7 +318,9 @@ def on_finish(app: Any, serial: str, previous: Any, current: Any) -> None:
     config = getattr(app, "config", None)
     data = getattr(config, "data", None)
     sessions = data.setdefault(_SESSIONS_KEY, {}) if isinstance(data, dict) else {}
-    job_id, changed = observe_session(sessions, serial, previous.state, current.state, current.job_name, time.time())
+    active = getattr(app, "_spoolbase_active", None)
+    job_id, changed = observe_session(sessions, serial, previous.state, current.state, current.job_name, time.time(),
+                                      accounting_enabled=not callable(active) or active())
     if changed and callable(getattr(config, "save", None)):
         config.save()
     active = getattr(app, "_spoolbase_active", None)

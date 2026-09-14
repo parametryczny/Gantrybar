@@ -87,6 +87,7 @@ class TempGraph(Gtk.DrawingArea):
 
 
 class DetailWindow(Gtk.Window):
+    """Legacy compatibility window; production and render_details use DetailPanel below."""
     def __init__(self, app: Any, serial: str) -> None:
         super().__init__()
         self.app = app

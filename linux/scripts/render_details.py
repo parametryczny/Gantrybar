@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Render the real Details window (details.DetailWindow) to a PNG offscreen, so the new view can be
+"""Render the real Details window (details.DetailPanel) to a PNG offscreen, so the new view can be
 reviewed without a Linux desktop. Uses the actual widgets and css_for(), same as render_preview.py.
 Run under xvfb: xvfb-run python3 scripts/render_details.py out.png
 """
 import math
 import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import gi
 
@@ -17,7 +19,7 @@ from gi.repository import Gdk, Gtk  # noqa: E402
 
 from gantry import app as gapp  # noqa: E402
 from gantry import i18n
-from gantry.details import DetailWindow  # noqa: E402
+from gantry.details import DetailPanel  # noqa: E402
 from gantry.core import (  # noqa: E402
     FilamentGroup, FilamentSlot, NozzleTelemetry, Printer, PrinterKind, PrinterState, Telemetry,
 )
@@ -37,6 +39,12 @@ class StubApp:
         self.printers = printers
         self.temp_history = {}
         self.config = StubApp._Cfg()
+        self.config.save = lambda: None
+        self.secrets = SimpleNamespace(get=lambda _: None)
+        self.telemetry = {}
+        self.connection_reasons = {}
+        from gantry.insights import PrinterInsights
+        self.insights = PrinterInsights(self)
 
     def open_automations(self, *a): ...
     def open_camera(self, *a): ...
@@ -85,18 +93,21 @@ def main(out_path: str) -> None:
                       external=True, slots=[slot("EXT", "TPU", "487705FF", 100, True)]),
     ]
 
-    detail = DetailWindow(app, "X1")
+    app.telemetry["X1"] = tel
+    detail = DetailPanel(app, "X1", lambda: None)
     detail.update(tel)
     # Render the content box directly: the ScrolledWindow collapses to zero height offscreen, so
     # reparent the body (graph + tiles + filaments) which has a real natural height.
-    body = detail.body
+    body = detail.card_stack
     body.get_parent().remove(body)
     body.set_size_request(430, -1)
 
     win = Gtk.OffscreenWindow()
     win.get_style_context().add_class("popover-window")
     win.add(body)
-    win.show_all()
+    from gantry.camera import CameraView
+    with patch.object(CameraView, "start", lambda self: None):
+        win.show_all()
     for _ in range(4):
         while Gtk.events_pending():
             Gtk.main_iteration()
@@ -108,6 +119,7 @@ def main(out_path: str) -> None:
             Gtk.main_iteration()
     pixbuf = win.get_pixbuf()
     pixbuf.savev(out_path, "png", [], [])
+    win.destroy()
     print("rendered", out_path, pixbuf.get_width(), "x", pixbuf.get_height())
 
 

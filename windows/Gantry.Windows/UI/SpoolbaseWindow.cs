@@ -34,6 +34,7 @@ public sealed class SpoolbaseWindow : Window
     private static Brush Muted() => GTheme.Brush(GTheme.Muted);
     private static Brush Surface() => GTheme.Brush(GTheme.Surface);
     private Button? _addButton;
+    private readonly Button _accountingNotice = new() { Margin = new Thickness(16, 2, 16, 6) };
 
     public SpoolbaseWindow()
     {
@@ -55,6 +56,8 @@ public sealed class SpoolbaseWindow : Window
         var chrome = BuildChrome();
         PanelWindow.Wrap(this, "Spoolbase", chrome, _addButton is null ? null : new UIElement[] { _addButton });
         _store.Changed += OnInventoryChanged;
+        SpoolbaseShared.Spools.Changed += OnAccountingChanged;
+        Closed += (_, _) => SpoolbaseShared.Spools.Changed -= OnAccountingChanged;
         Closed += (_, _) => _store.Changed -= OnInventoryChanged;
         SourceInitialized += (_, _) => ApplyModernChrome();
         Render();
@@ -95,6 +98,20 @@ public sealed class SpoolbaseWindow : Window
         // The name and the add button live in the shared window header now.
         DockPanel.SetDock(header, Dock.Top);
         dock.Children.Add(header);
+        _accountingNotice.Content = AppSettings.T("Review filament usage");
+        _accountingNotice.Click += (_, _) =>
+        {
+            var spools = SpoolbaseShared.Spools;
+            var message = AppSettings.T("Some prints could not be accounted for. Check the remaining filament weights.")
+                + (spools.LastError is null ? "" : "\n" + AppSettings.T("Could not save filament data. The change was not saved."))
+                + "\n" + string.Join("\n", spools.AccountingWarnings.Values);
+            if (spools.AccountingWarnings.Count == 0) MessageBox.Show(this, message, AppSettings.T("Review filament usage"));
+            else if (MessageBox.Show(this, message + "\n\n" + AppSettings.T("Mark as reviewed") + "?",
+                                     AppSettings.T("Review filament usage"), MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+                spools.ClearAccountingWarnings();
+        };
+        DockPanel.SetDock(_accountingNotice, Dock.Top);
+        dock.Children.Add(_accountingNotice);
 
         // Search
         var searchBox = new Border
@@ -155,8 +172,12 @@ public sealed class SpoolbaseWindow : Window
         return root;
     }
 
+    private void OnAccountingChanged() => Dispatcher.Invoke(Render);
+
     private void Render()
     {
+        _accountingNotice.Visibility = SpoolbaseShared.Spools.AccountingWarnings.Count > 0 || SpoolbaseShared.Spools.LastError is not null
+            ? Visibility.Visible : Visibility.Collapsed;
         _list.Children.Clear();
         RenderChips();
         var items = Filtered();

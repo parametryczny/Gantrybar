@@ -53,6 +53,7 @@ def supports_camera(kind: Any) -> bool:
 class CameraView(Gtk.Box):
     # A feed that worked and then went quiet is restarted, with a growing delay so a camera that is
     # genuinely gone is not hammered. Matches the macOS CameraFeedController watchdog.
+    FIRST_FRAME_TIMEOUT = 10.0
     MINIMUM_RESTART_DELAY = 8.0
     MAXIMUM_RESTART_DELAY = 30.0
     WATCHDOG_INTERVAL_MS = 2000
@@ -243,7 +244,10 @@ class CameraView(Gtk.Box):
             return False
 
         bus = pipeline.get_bus()
+        first_frame_deadline = time.monotonic() + self.FIRST_FRAME_TIMEOUT
         while not stop.is_set():
+            if not self._received_frame and time.monotonic() >= first_frame_deadline:
+                break
             message = bus.timed_pop_filtered(
                 250 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if message is None:
@@ -313,7 +317,10 @@ class CameraView(Gtk.Box):
             self._set_status(i18n.t("Could not start the FLV camera."))
             pipeline.set_state(Gst.State.NULL); self._pipeline = None; return
         bus = pipeline.get_bus()
+        first_frame_deadline = time.monotonic() + self.FIRST_FRAME_TIMEOUT
         while not stop.is_set():
+            if not self._received_frame and time.monotonic() >= first_frame_deadline:
+                break
             message = bus.timed_pop_filtered(250 * Gst.MSECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if message is None: continue
             if message.type == Gst.MessageType.ERROR:

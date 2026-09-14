@@ -24,6 +24,20 @@ public sealed class PhysicalSpoolStore
     private readonly List<SpoolUsageEvent> _usage;
     private readonly string _spoolsPath;
     private readonly string _usagePath;
+    private readonly string _statePath;
+    private string _committed = "";
+    private bool _unreadable;
+    private List<string> _reviewed = new();
+    public Dictionary<string, string> AccountingWarnings { get; private set; } = new();
+    public string? LastError { get; private set; }
+    private sealed class State
+    {
+        [JsonPropertyName("version")] public int Version { get; set; } = 2;
+        [JsonPropertyName("spools")] public List<PhysicalSpool> Spools { get; set; } = new();
+        [JsonPropertyName("usage")] public List<SpoolUsageEvent> Usage { get; set; } = new();
+        [JsonPropertyName("warnings")] public Dictionary<string, string> Warnings { get; set; } = new();
+        [JsonPropertyName("reviewed")] public List<string> Reviewed { get; set; } = new();
+    }
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -36,13 +50,21 @@ public sealed class PhysicalSpoolStore
 
     public IReadOnlyList<PhysicalSpool> Spools => _spools;
 
-    public PhysicalSpoolStore()
+    public PhysicalSpoolStore(string? directory = null)
     {
-        var dir = Path.Combine(AppDataRoot.Folder, "Spoolbase");
+        var dir = directory ?? Path.Combine(AppDataRoot.Folder, "Spoolbase");
         _spoolsPath = Path.Combine(dir, "spools-v1.json");
         _usagePath = Path.Combine(dir, "usage-v1.json");
         _spools = Load<List<PhysicalSpool>>(_spoolsPath) ?? new();
         _usage = Load<List<SpoolUsageEvent>>(_usagePath) ?? new();
+        _statePath = Path.ChangeExtension(_spoolsPath, "state-v2.json");
+        var state = Load<State>(_statePath);
+        if (state is not null && state.Version == 2) Restore(state);
+        else if (File.Exists(_statePath) || File.Exists(_statePath + ".bak"))
+        {
+            _unreadable = true; _spools.Clear(); _usage.Clear(); LastError = "Spoolbase state is unreadable";
+        }
+        _committed = JsonSerializer.Serialize(Snapshot(), Options);
     }
 
     // Lookup
@@ -190,8 +212,8 @@ public sealed class PhysicalSpoolStore
     /// <summary>Idempotent per print job: a job id already recorded is ignored (no double-count).</summary>
     public bool Consume(string spoolId, double grams, string printerSerial, string printJobId)
     {
-        if (grams <= 0) return false;
-        if (_usage.Any(u => u.PrintJobId == printJobId && u.SpoolId == spoolId)) return false;
+        if (grams <= 0 || _reviewed.Any(job => printJobId == job || printJobId.StartsWith(job + "#", StringComparison.Ordinal))) return false;
+        if (_usage.Any(u => u.PrintJobId == printJobId && u.PrinterSerial == printerSerial)) return false;
         var s = Spool(spoolId);
         if (s is null) return false;
         s.RemainingWeightGrams = Math.Max(0, s.RemainingWeightGrams - grams);
@@ -200,9 +222,9 @@ public sealed class PhysicalSpoolStore
         s.UpdatedAt = DateTime.UtcNow;
         if (s.RemainingWeightGrams <= 0) { s.Status = SpoolStatus.Empty; s.EmptiedAt = DateTime.UtcNow; }
         _usage.Add(new SpoolUsageEvent { SpoolId = spoolId, PrinterSerial = printerSerial, PrintJobId = printJobId, ConsumedGrams = grams });
-        Save(_usagePath, _usage);
-        ChangedInternal(SaveSpools);
-        return true;
+        var saved = SaveState();
+        Changed?.Invoke();
+        return saved;
     }
 
     // Persistence
@@ -210,7 +232,34 @@ public sealed class PhysicalSpoolStore
     public IReadOnlyList<SpoolUsageEvent> UsageEvents => _usage;
 
     private void ChangedInternal(Action save) { save(); Changed?.Invoke(); }
-    private void SaveSpools() => Save(_spoolsPath, _spools);
+    private void SaveSpools() => SaveState();
+    private State Snapshot() => new() { Spools = _spools, Usage = _usage, Warnings = AccountingWarnings, Reviewed = _reviewed };
+    private void Restore(State state)
+    {
+        _spools.Clear(); _spools.AddRange(state.Spools);
+        _usage.Clear(); _usage.AddRange(state.Usage);
+        AccountingWarnings = state.Warnings; _reviewed = state.Reviewed;
+    }
+    public void WarnAccounting(string job, string name) { if (_reviewed.Contains(job)) return; AccountingWarnings[job] = name; SaveState(); Changed?.Invoke(); }
+    public void ClearAccountingWarnings() { _reviewed.AddRange(AccountingWarnings.Keys.Where(job => !_reviewed.Contains(job))); AccountingWarnings.Clear(); SaveState(); Changed?.Invoke(); }
+    private bool SaveState()
+    {
+        if (_unreadable) return false;
+        try
+        {
+            var json = JsonSerializer.Serialize(Snapshot(), Options);
+            AtomicFile.WriteAllText(_statePath, json, text => Deserialize<State>(text)?.Version == 2);
+            _committed = json; LastError = null;
+            return true;
+        }
+        catch (Exception e)
+        {
+            Restore(JsonSerializer.Deserialize<State>(_committed, Options)!);
+            LastError = e.Message;
+            App.LogError("Saving Spoolbase", e);
+            return false;
+        }
+    }
 
     private static T? Load<T>(string path)
     {
@@ -226,15 +275,4 @@ public sealed class PhysicalSpoolStore
         catch (JsonException) { return default; }
     }
 
-    private static void Save<T>(string path, T value)
-    {
-        try
-        {
-            AtomicFile.WriteAllText(path, JsonSerializer.Serialize(value, Options), text => Deserialize<T>(text) is not null);
-        }
-        catch (Exception e)
-        {
-            App.LogError($"Saving {Path.GetFileName(path)}", e);
-        }
-    }
 }

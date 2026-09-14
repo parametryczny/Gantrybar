@@ -19,13 +19,11 @@ final class MaintenancePanelViewController: NSViewController {
         activeOnDismiss = onDismiss
         let panel = controller.view
         panel.layoutSubtreeIfNeeded()
-        // Its own height, measured: the maintenance list is a stack with no scroll view of its own,
-        // so it is also the smallest the window may get. Anything less clips the last task instead
-        // of scrolling to it.
-        let size = NSSize(width: 470, height: max(200, controller.body.fittingSize.height + 36))
+        // Width belongs to the panel, not to the longest message. Tall alert lists scroll inside it.
+        let size = NSSize(width: 470, height: min(640, max(480, controller.body.fittingSize.height + 36)))
         activePanel = PanelWindowController.present(panel,
             name: AppSettings.shared.t("Maintenance · {0}", printer.name),
-            size: size, minSize: size, accessories: controller.headerAccessories(),
+            size: size, minSize: NSSize(width: 470, height: min(320, size.height)), accessories: controller.headerAccessories(),
             onDismiss: { Self.dismiss() })
     }
 
@@ -109,12 +107,27 @@ final class MaintenancePanelViewController: NSViewController {
         body.addArrangedSubview(footerGrid)
         footerGrid.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
 
-        view.addSubview(body)
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.hasHorizontalScroller = false
+        scroll.drawsBackground = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        let document = MaintenanceDocumentView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(body)
+        scroll.documentView = document
+        view.addSubview(scroll)
         NSLayoutConstraint.activate([
-            body.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
-            body.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-            body.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
-            body.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -18)
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            body.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 18),
+            body.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -18),
+            body.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
+            body.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18)
         ])
     }
 
@@ -152,15 +165,19 @@ final class MaintenancePanelViewController: NSViewController {
 
     private func printerAlertCard(title: String, code: String?) -> NSView {
         let box = NSView()
-        let titleLabel = label("!  \(title)", 11, .semibold, GantryTheme.text)
-        titleLabel.maximumNumberOfLines = 2
-        titleLabel.lineBreakMode = .byWordWrapping
+        let titleLabel = MaintenanceWrappingLabel("!  \(title)", size: 11, weight: .semibold)
         var rows: [NSView] = [titleLabel]
-        if let code { rows.append(label(code, 10, .regular, GantryTheme.secondary)) }
+        if let code {
+            let codeLabel = MaintenanceWrappingLabel(code, size: 10, weight: .regular)
+            codeLabel.textColor = GantryTheme.secondary
+            codeLabel.lineBreakMode = .byCharWrapping
+            rows.append(codeLabel)
+        }
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 3
+        for row in rows { row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         stack.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -450,5 +467,40 @@ private final class MaintenanceCenteredTextFieldCell: NSTextFieldCell {
                          delegate: Any?, start selStart: Int, length selLength: Int) {
         super.select(withFrame: centeredRect(rect), in: controlView, editor: textObj,
                      delegate: delegate, start: selStart, length: selLength)
+    }
+}
+
+private final class MaintenanceDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
+/// A message has a height at its allocated width, never an intrinsic single-line width.
+final class MaintenanceWrappingLabel: NSTextField {
+    init(_ text: String, size: CGFloat, weight: NSFont.Weight) {
+        super.init(frame: .zero)
+        stringValue = text
+        isEditable = false; isSelectable = true; isBezeled = false; drawsBackground = false
+        font = .systemFont(ofSize: size, weight: weight)
+        textColor = GantryTheme.text
+        cell?.usesSingleLineMode = false
+        cell?.wraps = true
+        maximumNumberOfLines = 0
+        lineBreakMode = .byWordWrapping
+        preferredMaxLayoutWidth = 416
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+    required init?(coder: NSCoder) { nil }
+    override var intrinsicContentSize: NSSize {
+        let width = bounds.width > 0 ? bounds.width : preferredMaxLayoutWidth
+        let measured = cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: max(1, width), height: 100000)) ?? .zero
+        return NSSize(width: NSView.noIntrinsicMetric, height: ceil(measured.height))
+    }
+    override func layout() {
+        super.layout()
+        if bounds.width > 0 && abs(preferredMaxLayoutWidth - bounds.width) > 0.5 {
+            preferredMaxLayoutWidth = bounds.width
+            invalidateIntrinsicContentSize()
+        }
     }
 }

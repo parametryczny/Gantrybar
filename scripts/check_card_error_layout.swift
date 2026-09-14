@@ -5,7 +5,7 @@ import AppKit
 @main @MainActor struct CardLayoutCheck {
     static func descendants(_ v: NSView) -> [NSView] { [v] + v.subviews.flatMap(descendants) }
     static func main() {
-        UserDefaults.standard.setVolatileDomain(["app-language":"en", "app-theme":"dark", "card-show-temps":true, "card-show-filaments":true], forName: UserDefaults.argumentDomain)
+        UserDefaults.standard.setVolatileDomain(["gantry.migrated-from-bambubar":true,"app-language":"en", "app-theme":"dark", "card-show-temps":true, "card-show-filaments":true], forName: UserDefaults.argumentDomain)
         _ = NSApplication.shared
         let printer = SavedPrinter(serial: "layout-check", name: "P1S", model: "P1S", host: "")
         let card = PrinterCardView(printer: printer, onEdit: {}, onReconnect: {}, onOpenCamera: {},
@@ -52,9 +52,43 @@ import AppKit
             renderTelemetry: Dictionary(uniqueKeysWithValues: printers.map { ($0.serial, PrinterTelemetry()) }))
         let dashboard = PrinterDashboardViewController(store:store,onAdd:{},onEdit:{_ in},onReconnect:{_ in},
             onShowDetails:{_ in},presentation:.floatingWindow,onPreferredContentSize:{_ in})
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:200,height:100)) == NSSize(width:305,height:290))
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:500,height:400)) == NSSize(width:598,height:472))
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:900,height:800)) == NSSize(width:891,height:836))
-        print("PASS: temperatures fit; error height stable; window snaps to whole 285×174 card grids")
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:200,height:100)) == NSSize(width:305,height:100))
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:500,height:400)) == NSSize(width:598,height:400))
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:900,height:800)) == NSSize(width:891,height:800))
+        // Long HMS descriptions and unbroken diagnostic codes wrap without widening the window.
+        let longText = "Wygląda na to, że silnik osi Z utknął podczas ruchu. Sprawdź, czy na prowadnicach osi Z lub kołach paska napędowego osi Z nie znajdują się żadne ciała obce."
+        for text in [longText, String(repeating: "03000D000001000B", count: 30)] {
+            let field = MaintenanceWrappingLabel(text, size: 11, weight: .semibold)
+            field.lineBreakMode = .byCharWrapping
+            field.frame = NSRect(x: 0, y: 0, width: 416, height: 200)
+            precondition(field.intrinsicContentSize.width == NSView.noIntrinsicMetric)
+            precondition(field.intrinsicContentSize.height > 20, "Long diagnostic text did not wrap")
+        }
+        var warningTelemetry = PrinterTelemetry()
+        // The description of a known code comes from Bambu Studio's HMS catalogue, which CI runners do not
+        // have: there it falls back to the short "HMS <code>". A code no catalogue knows reads the same
+        // everywhere, so it is the one held to wrapping; the known code still exercises the catalogue text
+        // wherever it is installed.
+        let unknownCode = String(repeating: "0FFF_0FFF_0FFF_0FFF_", count: 6) + "0FFF"
+        warningTelemetry.hmsCodes = ["0300_0D00_0001_000B", unknownCode]
+        MaintenancePanelViewController.show(printer: printer, telemetry: warningTelemetry)
+        let panel = NSApp.windows.first { $0.title.contains("Maintenance") }!
+        for _ in 0..<5 { panel.contentView?.layoutSubtreeIfNeeded() }
+        precondition(panel.frame.width <= 500, "Long alert widened window: \(panel.frame)")
+        precondition(panel.frame.height <= 720, "Long alert made an oversized window")
+        let fields = descendants(panel.contentView!).compactMap { $0 as? MaintenanceWrappingLabel }
+        precondition(!fields.isEmpty)
+        for field in fields { precondition(field.frame.width <= 434, "Alert overflows panel") }
+        let unknownAlert = fields.filter { $0.stringValue == "!  HMS \(unknownCode)" }
+        precondition(unknownAlert.count == 1, "The uncatalogued alert is missing")
+        precondition(unknownAlert[0].frame.height > 20, "Description stays on one line")
+        if let output = ProcessInfo.processInfo.environment["GANTRY_LAYOUT_CAPTURE"], let content = panel.contentView,
+           let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+            content.cacheDisplay(in: content.bounds, to: rep)
+            try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: output))
+        }
+        print("PASS: maintenance wraps long descriptions and codes in \(Int(panel.frame.width))px window")
+        MaintenancePanelViewController.dismiss()
+        print("PASS: temperatures fit; error height stable; window snaps to whole card columns, preserving proposed height")
     }
 }

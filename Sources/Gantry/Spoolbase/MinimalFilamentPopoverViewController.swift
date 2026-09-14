@@ -10,6 +10,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     private let searchField = NSTextField()
     private let filterButton = NSButton()
     private let chipsStack = NSStackView()
+    private let accountingNotice = NSButton()
     private let summaryLabel = NSTextField(labelWithString: "")
     private let listStack = NSStackView()
     private let emptyLabel = NSTextField(labelWithString: AppSettings.shared.t("No filaments match the selected filters"))
@@ -31,6 +32,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         self.onAuxiliaryState = onAuxiliaryState
         super.init(nibName: nil, bundle: nil)
         store.onChange = { [weak self] in self?.reload() }
+        NotificationCenter.default.addObserver(self, selector: #selector(accountingChanged), name: .gantryPhysicalSpoolsDidChange, object: nil)
         preferredContentSize = NSSize(width: 500, height: 560)
     }
 
@@ -52,7 +54,10 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         identity.orientation = .horizontal
         identity.alignment = .centerY
         identity.spacing = 9
-        let header = NSStackView(views: [identity, NSView()])
+        accountingNotice.title = AppSettings.shared.t("Review filament usage")
+        accountingNotice.target = self; accountingNotice.action = #selector(reviewAccounting)
+        accountingNotice.bezelStyle = .rounded
+        let header = NSStackView(views: [identity, NSView(), accountingNotice])
         header.orientation = .horizontal
         header.alignment = .centerY
 
@@ -262,7 +267,25 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         DispatchQueue.main.async { [weak self] in self?.fitPopoverToContent() }
     }
 
+    @objc private func accountingChanged() {
+        guard isViewLoaded else { return }
+        updateSummary()
+    }
+
+    @objc private func reviewAccounting() {
+        let spools = SpoolbaseShared.spools
+        let alert = NSAlert()
+        alert.messageText = AppSettings.shared.t("Review filament usage")
+        alert.informativeText = AppSettings.shared.t("Some prints could not be accounted for. Check the remaining filament weights.")
+            + (spools.lastError == nil ? "" : "\n" + AppSettings.shared.t("Could not save filament data. The change was not saved."))
+            + "\n" + spools.accountingWarnings.values.sorted().joined(separator: "\n")
+        alert.addButton(withTitle: AppSettings.shared.t("Close"))
+        if !spools.accountingWarnings.isEmpty { alert.addButton(withTitle: AppSettings.shared.t("Mark as reviewed")) }
+        if alert.runModal() == .alertSecondButtonReturn { spools.clearAccountingWarnings() }
+    }
+
     private func updateSummary() {
+        accountingNotice.isHidden = SpoolbaseShared.spools.accountingWarnings.isEmpty && SpoolbaseShared.spools.lastError == nil
         let settings = AppSettings.shared
         let spools = store.filaments.reduce(0) { $0 + $1.spoolCount }
         let variants = store.filaments.count

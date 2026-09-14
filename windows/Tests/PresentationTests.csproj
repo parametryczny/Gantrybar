@@ -17,5 +17,9 @@
     <Compile Include="../Gantry.Windows/Services/AtomicFile.cs" Link="AtomicFile.cs" />
     <Compile Include="../Gantry.Windows/Services/ScriptRunner.cs" Link="ScriptRunner.cs" />
     <Compile Include="../Gantry.Windows/Services/BambuPaths.cs" Link="BambuPaths.cs" />
+    <Compile Include="../Gantry.Windows/Services/PhysicalSpoolStore.cs" Link="PhysicalSpoolStore.cs" />
+    <Compile Include="../Gantry.Windows/Services/AppDataRoot.cs" Link="AppDataRoot.cs" />
+    <Compile Include="../Gantry.Windows/Models/PhysicalSpool.cs" Link="PhysicalSpool.cs" />
+    <Compile Include="../Gantry.Windows/Models/PrinterModels.cs" Link="PrinterModels.cs" />
   </ItemGroup>
 </Project>

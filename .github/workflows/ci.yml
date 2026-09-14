@@ -24,6 +24,10 @@ jobs:
         run: python3 scripts/check_xaml_names.py --base "${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
       - name: Build
         run: swift build --disable-sandbox
+      - name: Run regression tests
+        run: scripts/run-tests.sh --disable-sandbox
+      - name: Run AppKit layout regression
+        run: python3 scripts/run_card_layout_test.py
       - name: Run protocol self-test
         run: .build/debug/Gantry --self-test
       - name: Run local storage self-test

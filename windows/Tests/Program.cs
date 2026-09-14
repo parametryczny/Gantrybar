@@ -69,7 +69,8 @@ Console.WriteLine("Windows spool accounting OK: print sessions, active slot, rol
 }
 Console.WriteLine("Windows data files OK: one-step writes, last good copy, recovery");
 
-// Scripts: a replaced run's exit must not unregister the run that replaced it.
+// Scripts need the native Windows shell; domain/storage tests also run on other hosts.
+if (OperatingSystem.IsWindows())
 {
     const string scriptId = "script-runner-test";
     if (!ScriptRunner.Run(scriptId, "@exit /b 0")) throw new Exception("The script runner could not start cmd.exe");
@@ -78,8 +79,9 @@ Console.WriteLine("Windows data files OK: one-step writes, last good copy, recov
     if (!ScriptRunner.IsRunning(scriptId)) throw new Exception("A replaced run's exit unregistered the run that replaced it");
     ScriptRunner.Stop(scriptId);
     if (ScriptRunner.IsRunning(scriptId)) throw new Exception("Stop left the script registered");
+    Console.WriteLine("Windows script runner OK: a replaced run clears only its own entry");
 }
-Console.WriteLine("Windows script runner OK: a replaced run clears only its own entry");
+else Console.WriteLine("SKIP Windows script process test: cmd.exe is only available on Windows");
 
 // Colour matching: two rolls of one colour are told apart by material, and identical ones are not guessed.
 {
@@ -110,3 +112,41 @@ Console.WriteLine("Windows colour matching OK: material breaks a tie, a real tie
 }
 Console.WriteLine("Windows 3MF paths OK: the shared fixture");
 
+// Real store regression: atomic state, restart, replacement roll, failed write and migration.
+{
+    var directory = Path.Combine(Path.GetTempPath(), "gantry-store-test-" + Guid.NewGuid());
+    try
+    {
+        var store = new PhysicalSpoolStore(directory);
+        store.CreateRolls(Guid.NewGuid(), 2, 1000);
+        var a = store.Spools[0].Id; var b = store.Spools[1].Id;
+        if (!store.Consume(a, 10, "K", "job")) throw new Exception("First consumption failed");
+        var reopened = new PhysicalSpoolStore(directory);
+        if (reopened.Consume(b, 10, "K", "job") || reopened.Spool(b)!.RemainingWeightGrams != 1000)
+            throw new Exception("Replay charged replacement roll");
+        var path = Path.Combine(directory, "spools-v1.state-v2.json");
+        var saved = File.ReadAllBytes(path);
+        File.Delete(path); Directory.CreateDirectory(path); File.WriteAllText(Path.Combine(path, "keep"), "x");
+        if (reopened.Consume(a, 10, "K", "next") || reopened.LastError is null || reopened.Spool(a)!.RemainingWeightGrams != 990)
+            throw new Exception("Failed write reported success or kept deduction");
+        Directory.Delete(path, true); File.WriteAllBytes(path, saved);
+        if (!reopened.Consume(a, 10, "K", "next")) throw new Exception("Retry failed");
+        var retried = new PhysicalSpoolStore(directory);
+        if (retried.Spool(a)!.RemainingWeightGrams != 980 || retried.UsageEvents.Count != 2)
+            throw new Exception("History and weights diverged");
+        retried.WarnAccounting("missing", "cube");
+        var warned = new PhysicalSpoolStore(directory);
+        if (warned.AccountingWarnings["missing"] != "cube") throw new Exception("Warning not persisted");
+        warned.ClearAccountingWarnings();
+        if (new PhysicalSpoolStore(directory).Consume(a, 10, "K", "missing#1")) throw new Exception("Reviewed job replay charged a roll");
+        if (new PhysicalSpoolStore(directory).AccountingWarnings.Count != 0) throw new Exception("Review not persisted");
+        var sessions = new PrintJobSessions();
+        sessions.Observe("K", false, JobPhase.Running, "cube", 100);
+        if (sessions.Observe("K", false, JobPhase.Finished, "cube", 200, false).JobId is not null)
+            throw new Exception("Disabled print was accounted");
+        if (PrintJobSessions.FromJson(sessions.ToJson()).Observe("K", false, JobPhase.Finished, "cube", 900).JobId is not null)
+            throw new Exception("Skipped print replay was accounted");
+    }
+    finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+}
+Console.WriteLine("Windows physical store OK — atomic rollback, replay, warning persistence, skipped sessions");

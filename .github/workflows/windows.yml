@@ -100,6 +100,11 @@ jobs:
           $out = Join-Path $PWD "render-out"
           $p = Start-Process -FilePath $exe.FullName -ArgumentList "--render","$out" -Wait -PassThru
           Write-Host "render exit: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Render failed: $($p.ExitCode)" }
+          foreach ($name in @("win-editor.png", "win-spoolbase.png", "win-dashboard.png", "win-detail.png", "win-assign.png")) {
+            $file = Join-Path $out $name
+            if (-not (Test-Path $file) -or (Get-Item $file).Length -eq 0) { throw "Missing render: $name" }
+          }
           $after = (Get-DataSnapshot | Sort-Object) -join "`n"
           if ($before -ne $after) {
             Write-Host "before:`n$before"
@@ -107,7 +112,7 @@ jobs:
             throw "--render changed the user's data folders"
           }
           if (Test-Path $out) { Get-ChildItem $out | ForEach-Object { Write-Host $_.Name $_.Length } }
-          else { Write-Warning "no render output" }
+          else { throw "no render output" }
       - name: Upload Windows preview
         uses: actions/upload-artifact@v7
         with:
