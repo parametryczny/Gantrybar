@@ -1614,7 +1614,7 @@ final class CardDragHandle: NSView {
     init(onDrag: @escaping (NSEvent) -> Void) {
         self.onDrag = onDrag
         super.init(frame: .zero)
-        let icon = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Przenieś") ?? NSImage())
+        let icon = NSImageView(image: NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: AppSettings.shared.t("Move")) ?? NSImage())
         icon.contentTintColor = .tertiaryLabelColor
         icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
         icon.translatesAutoresizingMaskIntoConstraints = false

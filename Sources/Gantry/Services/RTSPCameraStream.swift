@@ -168,7 +168,7 @@ final class RTSPCameraStream: @unchecked Sendable {
             guard let self, !self.stopped else { return }
             if let data, !data.isEmpty { self.ingest(data) }
             if let error { self.onState(.failed(error.localizedDescription)); return }
-            if isComplete { self.onState(.failed("Połączenie zamknięte")); return }
+            if isComplete { self.onState(.failed(Localization.t("Connection closed"))); return }
             self.receiveLoop()
         }
     }

@@ -102,7 +102,7 @@ final class BambuJPEGCameraStream: @unchecked Sendable {
             }
             if isComplete || error != nil {
                 self.onState(.failed(error?.localizedDescription
-                                     ?? NSLocalizedString("Połączenie zamknięte", comment: "")))
+                                     ?? Localization.t("Connection closed")))
                 return
             }
             self.receive()

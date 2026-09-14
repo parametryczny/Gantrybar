@@ -10,11 +10,11 @@ enum PrinterState: String, Codable, Sendable {
 
     var label: String {
         switch self {
-        case .idle: "Gotowa"
-        case .printing: "Drukowanie"
-        case .paused: "Wstrzymana"
-        case .finished: "Zakończono"
-        case .error: "Błąd"
+        case .idle: Localization.t("Ready")
+        case .printing: Localization.t("Printing")
+        case .paused: Localization.t("Paused")
+        case .finished: Localization.t("Finished")
+        case .error: Localization.t("Error")
         case .offline: "Offline"
         }
     }

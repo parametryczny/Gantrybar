@@ -137,7 +137,7 @@ private enum AnycubicBootstrap {
     }
 
     enum Error: LocalizedError { case lanMode, badResponse
-        var errorDescription: String? { self == .lanMode ? "Włącz tryb LAN w ustawieniach drukarki Anycubic." : "Nie udało się pobrać konfiguracji LAN Anycubic." }
+        var errorDescription: String? { self == .lanMode ? Localization.t("Turn on LAN mode in the Anycubic printer settings.") : Localization.t("Could not fetch the Anycubic LAN configuration.") }
     }
 }
 
@@ -159,7 +159,7 @@ final class AnycubicS1Client: PrinterConnection, @unchecked Sendable {
 
     private func connect(_ credentials: AnycubicCredentials) {
         guard let url = URL(string: credentials.broker), let host = url.host,
-              let port = NWEndpoint.Port(rawValue: UInt16(url.port ?? 9883)) else { onEvent(.disconnected("Nieprawidłowy broker MQTT Anycubic")); return }
+              let port = NWEndpoint.Port(rawValue: UInt16(url.port ?? 9883)) else { onEvent(.disconnected(Localization.t("Invalid Anycubic MQTT broker"))); return }
         let tls = NWProtocolTLS.Options(); sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, _, complete in complete(true) }, queue)
         let connection = NWConnection(host: NWEndpoint.Host(host), port: port, using: NWParameters(tls: tls, tcp: NWProtocolTCP.Options())); self.connection = connection
         connection.stateUpdateHandler = { [weak self] state in
@@ -177,7 +177,7 @@ final class AnycubicS1Client: PrinterConnection, @unchecked Sendable {
     private func handlePackets() { for packet in MQTTCodec.extractPackets(from: &buffer) {
         switch packet.type >> 4 {
         case 2:
-            guard packet.body.count >= 2, packet.body[1] == 0 else { onEvent(.disconnected("Anycubic odrzucił połączenie MQTT")); return }
+            guard packet.body.count >= 2, packet.body[1] == 0 else { onEvent(.disconnected(Localization.t("Anycubic rejected the MQTT connection"))); return }
             let suffix = baseTopic.split(separator: "/"); guard suffix.count >= 2 else { return }
             let mode = suffix[suffix.count - 2], device = suffix.last!
             send(MQTTCodec.subscribe(topic: "anycubic/anycubicCloud/v1/printer/+/\(mode)/\(device)/#"))

@@ -15,7 +15,7 @@ enum BambuStudioConfig {
             .merging(stringDictionary(root["user_access_code"])) { _, preferred in preferred }
             .filter { !$0.key.isEmpty && !$0.value.isEmpty }
         guard !codes.isEmpty else {
-            throw BambuStudioConfigError("Bambu Studio nie ma zapisanych kodów drukarek.")
+            throw BambuStudioConfigError(Localization.t("Bambu Studio has no stored printer codes. Connect the printer locally in Bambu Studio and try again."))
         }
         let addresses = stringDictionary(root["ip_address"])
         return codes.map { serial, code in
@@ -32,10 +32,10 @@ enum BambuStudioConfig {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/BambuStudio/BambuStudio.conf")
         guard let data = try? Data(contentsOf: url) else {
-            throw BambuStudioConfigError("Nie znaleziono konfiguracji Bambu Studio.")
+            throw BambuStudioConfigError(Localization.t("Bambu Studio configuration not found."))
         }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw BambuStudioConfigError("Nie udało się odczytać konfiguracji Bambu Studio.")
+            throw BambuStudioConfigError(Localization.t("Could not read the Bambu Studio configuration. Close Bambu Studio and try again."))
         }
         return root
     }

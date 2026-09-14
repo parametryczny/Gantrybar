@@ -16,6 +16,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from . import i18n
 from .core import FilamentGroup, FilamentSlot, Printer, PrinterState, Telemetry
 from .mqtt import (connect_packet, publish_packet, publish_payload, publish_topic,
                    read_packet, subscribe_packet)
@@ -294,7 +295,7 @@ class ElegooCC2Connection:
             self._socket = stream; stream.settimeout(2)
             stream.sendall(connect_packet("elegoo", self.access_code, self.client_id))
             header, body = read_packet(stream)
-            if header >> 4 != 2 or len(body) < 2 or body[1] != 0: raise PermissionError("Kod dostępu Elegoo został odrzucony")
+            if header >> 4 != 2 or len(body) < 2 or body[1] != 0: raise PermissionError(i18n.t("The Elegoo printer rejected the access code"))
             register_topic = f"elegoo/{self.printer.serial}/{self.request_id}/register_response"
             stream.sendall(subscribe_packet(register_topic))
             self._publish(f"elegoo/{self.printer.serial}/api_register", {"client_id": self.client_id, "request_id": self.request_id})
@@ -313,7 +314,8 @@ class ElegooCC2Connection:
                 except (json.JSONDecodeError, UnicodeDecodeError): continue
                 if topic == register_topic:
                     error = str(message.get("error") or "fail")
-                    if error != "ok": raise ConnectionError("Limit klientów Elegoo został przekroczony" if "too many" in error else f"Rejestracja Elegoo: {error}")
+                    if error != "ok": raise ConnectionError(i18n.t("Elegoo client limit exceeded") if "too many" in error
+                                                   else i18n.t("Elegoo registration: {0}").format(error))
                     registered = True
                     stream.sendall(subscribe_packet(f"elegoo/{self.printer.serial}/api_status", 2))
                     stream.sendall(subscribe_packet(f"elegoo/{self.printer.serial}/{self.client_id}/api_response", 3))

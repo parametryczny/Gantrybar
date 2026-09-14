@@ -9,6 +9,7 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
+from . import i18n
 from .core import (
     AmsSlot,
     FilamentGroup,
@@ -481,7 +482,7 @@ class HttpConnection:
                 elif code == 204:
                     pass                        # waiting for Allow on the printer — keep polling
                 elif code in (401, 403):
-                    self.on_event("disconnected", "Połączenie odrzucone na drukarce Snapmaker")
+                    self.on_event("disconnected", i18n.t("The Snapmaker printer refused the connection"))
                     token = None
                     self._stop.wait(delay)
                     continue

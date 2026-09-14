@@ -76,7 +76,7 @@ public sealed class SnapmakerClient : IPrinterConnection
                         break;   // waiting for the user to tap Allow on the printer — keep polling
                     case HttpStatusCode.Unauthorized:
                     case HttpStatusCode.Forbidden:
-                        ReportDisconnected("Połączenie odrzucone na drukarce Snapmaker");
+                        ReportDisconnected(AppSettings.T("The Snapmaker printer refused the connection"));
                         return;
                     default:
                         _token = null;   // re-handshake on anything unexpected

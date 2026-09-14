@@ -132,7 +132,7 @@ public sealed class AnycubicS1Client : IPrinterConnection
                 {
                     if ((packet.Type >> 4) == 2 && !ready)
                     {
-                        if (packet.Body.Length < 2 || packet.Body[1] != 0) throw new UnauthorizedAccessException("Anycubic odrzucił połączenie MQTT");
+                        if (packet.Body.Length < 2 || packet.Body[1] != 0) throw new UnauthorizedAccessException(AppSettings.T("Anycubic rejected the MQTT connection"));
                         ready = true; _base = $"anycubic/anycubicCloud/v1/web/printer/{credentials.ModeId}/{credentials.DeviceId}";
                         await SendAsync(MqttCodec.Subscribe($"anycubic/anycubicCloud/v1/printer/+/{credentials.ModeId}/{credentials.DeviceId}/#"));
                         await SendAsync(MqttCodec.Subscribe($"anycubic/anycubicCloud/v1/+/public/{credentials.ModeId}/{credentials.DeviceId}/+/report", 2));
@@ -153,26 +153,26 @@ public sealed class AnycubicS1Client : IPrinterConnection
     private async Task<Credentials> BootstrapAsync()
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-        var info = JsonNode.Parse(await http.GetStringAsync($"http://{_printer.Host}:{_printer.Port ?? 18910}/info", _cts.Token)) as JsonObject ?? throw new IOException("Brak odpowiedzi Anycubic LAN");
-        if (info["ctrlType"]?.ToString() == "cloud") throw new IOException("Włącz tryb LAN w ustawieniach drukarki Anycubic");
+        var info = JsonNode.Parse(await http.GetStringAsync($"http://{_printer.Host}:{_printer.Port ?? 18910}/info", _cts.Token)) as JsonObject ?? throw new IOException(AppSettings.T("No reply from Anycubic LAN"));
+        if (info["ctrlType"]?.ToString() == "cloud") throw new IOException(AppSettings.T("Turn on LAN mode in the Anycubic printer settings."));
         var token = info["token"]?.ToString() ?? ""; var control = info["ctrlInfoUrl"]?.ToString() ?? "";
-        if (token.Length < 32 || control.Length == 0) throw new IOException("Drukarka nie zwróciła danych sterowania LAN");
+        if (token.Length < 32 || control.Length == 0) throw new IOException(AppSettings.T("The printer did not return LAN control data"));
         long ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); string nonce = Guid.NewGuid().ToString("N")[..6];
         static string Md5(string value) => Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
         string sign = Md5(Md5(token[..16]) + ts + nonce), separator = control.Contains('?') ? "&" : "?";
         var url = control + separator + $"ts={ts}&nonce={nonce}&sign={sign}&did={Guid.NewGuid():N}";
         using var response = await http.PostAsync(url, new ByteArrayContent(Array.Empty<byte>()), _cts.Token);
-        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync(_cts.Token)) as JsonObject ?? throw new IOException("Błędna odpowiedź Anycubic");
-        var body = result["data"] as JsonObject ?? throw new IOException("Brak konfiguracji MQTT Anycubic");
+        var result = JsonNode.Parse(await response.Content.ReadAsStringAsync(_cts.Token)) as JsonObject ?? throw new IOException(AppSettings.T("Invalid Anycubic reply"));
+        var body = result["data"] as JsonObject ?? throw new IOException(AppSettings.T("No Anycubic MQTT configuration"));
         var encrypted = Convert.FromBase64String(body["info"]?.ToString() ?? ""); var localToken = body["token"]?.ToString() ?? "";
         using var aes = Aes.Create(); aes.Mode = CipherMode.CBC; aes.Padding = PaddingMode.PKCS7;
         aes.Key = Encoding.UTF8.GetBytes(token.Substring(16, 16)); aes.IV = Encoding.UTF8.GetBytes(localToken.PadRight(16, '\0')[..16]);
         var clear = aes.CreateDecryptor().TransformFinalBlock(encrypted, 0, encrypted.Length);
-        var config = JsonNode.Parse(clear) as JsonObject ?? throw new IOException("Nie można odszyfrować konfiguracji Anycubic");
-        return new Credentials(config["broker"]?.ToString() ?? throw new IOException("Brak brokera Anycubic"),
+        var config = JsonNode.Parse(clear) as JsonObject ?? throw new IOException(AppSettings.T("Could not decrypt the Anycubic configuration"));
+        return new Credentials(config["broker"]?.ToString() ?? throw new IOException(AppSettings.T("No Anycubic broker")),
             config["username"]?.ToString() ?? "", config["password"]?.ToString() ?? "",
-            config["modeId"]?.ToString() ?? config["modelId"]?.ToString() ?? throw new IOException("Brak modelu Anycubic"),
-            config["deviceId"]?.ToString() ?? throw new IOException("Brak identyfikatora Anycubic"));
+            config["modeId"]?.ToString() ?? config["modelId"]?.ToString() ?? throw new IOException(AppSettings.T("No Anycubic model")),
+            config["deviceId"]?.ToString() ?? throw new IOException(AppSettings.T("No Anycubic identifier")));
     }
     private Task PublishAsync(string type, string action, object? data) => string.IsNullOrEmpty(_base) ? Task.CompletedTask :
         SendAsync(MqttCodec.Publish($"{_base}/{type}", JsonSerializer.SerializeToUtf8Bytes(new { type, action, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), msgid = Guid.NewGuid(), data })));

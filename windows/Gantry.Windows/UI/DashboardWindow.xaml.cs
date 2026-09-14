@@ -884,7 +884,7 @@ public partial class DashboardWindow : Window
                 Background = GTheme.Brush(GTheme.W(0.025)), CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(0, 0, 5, 0),
                 VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll,
-                ToolTip = "Przeciągnij, aby zmienić kolejność • Drag to reorder", Child = grip
+                ToolTip = AppSettings.T("Drag to reorder"), Child = grip
             };
             gripChip.PreviewMouseLeftButtonDown += (_, e) => _dragStart = e.GetPosition(null);
             gripChip.MouseMove += (_, e) =>

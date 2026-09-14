@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from . import i18n
 from .core import AmsSlot, FilamentGroup, FilamentSlot, Printer, PrinterState, Telemetry
 from .mqtt import connect_packet, publish_packet, publish_payload, read_packet, subscribe_packet
 
@@ -154,9 +155,9 @@ def discover_anycubic(host: str, port: int = 18910) -> dict[str, Any]:
     with urllib.request.urlopen(f"http://{host}:{port}/info", timeout=8) as response:
         info = json.loads(response.read())
     if info.get("ctrlType") == "cloud":
-        raise ConnectionError("Włącz tryb LAN w ustawieniach drukarki Anycubic")
+        raise ConnectionError(i18n.t("Turn on LAN mode in the Anycubic printer settings."))
     token, control = str(info.get("token") or ""), str(info.get("ctrlInfoUrl") or "")
-    if not token or not control: raise ConnectionError("Drukarka nie zwróciła danych sterowania LAN")
+    if not token or not control: raise ConnectionError(i18n.t("The printer did not return LAN control data"))
     ts = int(time.time() * 1000); nonce = uuid.uuid4().hex[:6]
     first = hashlib.md5(token[:16].encode()).hexdigest()
     sign = hashlib.md5(f"{first}{ts}{nonce}".encode()).hexdigest()
@@ -164,7 +165,7 @@ def discover_anycubic(host: str, port: int = 18910) -> dict[str, Any]:
     result = _post_json(f"{control}{'&' if '?' in control else '?'}{query}")
     body = result.get("data") if isinstance(result.get("data"), dict) else {}
     if result.get("code") != 200 or not body.get("info") or not body.get("token"):
-        raise ConnectionError("Anycubic odrzucił inicjalizację połączenia LAN")
+        raise ConnectionError(i18n.t("Anycubic rejected the LAN connection setup"))
     credentials = _decrypt(str(body["info"]), token, str(body["token"]))
     credentials["modelName"] = credentials.get("modelName") or info.get("modelName") or "Anycubic Kobra S1"
     credentials["cn"] = info.get("cn")
@@ -214,14 +215,14 @@ class AnycubicS1Connection:
         host, port = parsed.hostname or self.printer.host, parsed.port or 9883
         mode = str(self._credentials.get("modeId") or self._credentials.get("modelId") or "")
         device = str(self._credentials.get("deviceId") or "")
-        if not mode or not device: raise ConnectionError("Brak identyfikatora MQTT Anycubic")
+        if not mode or not device: raise ConnectionError(i18n.t("No Anycubic MQTT identifier"))
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT); context.check_hostname = False; context.verify_mode = ssl.CERT_NONE
         with socket.create_connection((host, port), timeout=10) as raw:
             with context.wrap_socket(raw, server_hostname=host) as stream:
                 self._socket = stream; stream.settimeout(35)
                 stream.sendall(connect_packet(str(self._credentials.get("username") or ""), str(self._credentials.get("password") or "")))
                 header, body = read_packet(stream)
-                if header >> 4 != 2 or len(body) < 2 or body[1] != 0: raise PermissionError("Anycubic odrzucił połączenie MQTT")
+                if header >> 4 != 2 or len(body) < 2 or body[1] != 0: raise PermissionError(i18n.t("Anycubic rejected the MQTT connection"))
                 self.on_event("connected", None)
                 stream.sendall(subscribe_packet(f"anycubic/anycubicCloud/v1/printer/+/{mode}/{device}/#"))
                 stream.sendall(subscribe_packet(f"anycubic/anycubicCloud/v1/+/public/{mode}/{device}/+/report"))
