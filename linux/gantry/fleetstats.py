@@ -15,6 +15,7 @@ from typing import Any
 from gi.repository import Gtk  # type: ignore
 
 from . import i18n
+from .panelwindow import panel_header
 
 PERIODS = (7, 30, 365, 0)   # 0 = all time
 
@@ -23,6 +24,8 @@ class FleetStatsDialog(Gtk.Dialog):
     def __init__(self, app: Any) -> None:
         super().__init__(title=i18n.t("Fleet statistics"),
                          transient_for=app.window, modal=True)
+        panel_header(self, i18n.t("Fleet statistics"))
+        self.set_position(Gtk.WindowPosition.CENTER)
         self.app = app
         self.pl = app.language == "pl"
         self.period_days = 30

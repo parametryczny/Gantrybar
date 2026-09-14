@@ -50,6 +50,8 @@ radius = TOKENS["radius"]["card"]
 settings_window = CONTRACT["settingsWindow"]
 settings_metrics = settings_window["metrics"]
 floating = CONTRACT["floatingWindow"]
+panel_window = CONTRACT["panelWindow"]
+slot_assignment = panel_window["slotAssignment"]
 
 # macOS is the visual reference, but it is checked too so a macOS change must update the contract.
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
@@ -379,6 +381,78 @@ require("windows/Gantry.Windows/UI/SpoolbaseWindow.cs",
 for centred in ("SettingsWindow.xaml", "AddPrinterWindow.xaml"):
     forbid(f"windows/Gantry.Windows/UI/{centred}", r'WindowStartupLocation="CenterOwner"',
            f"Windows {centred} centres on the fleet panel, which sits in a screen corner")
+
+
+# ---- One frame for every panel window (contract panelWindow.header / slotAssignment) -----------------
+# Every panel wears the fleet panel's own header, GANTRY · name, and none draws its own title or close.
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r'static func windowTitle\(for name: String\) -> String \{ "Gantry · \\\(name\)" \}',
+        "the macOS panel window title is not \"Gantry · name\"")
+require("Sources/Gantry/Views/PanelWindowController.swift", r"window\.toolbarStyle = \.unifiedCompact",
+        "the macOS panel header is not in a unified title bar beside the traffic lights")
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"GantryLogo\.wordmarkImage\(height: Self\.wordmarkHeight\)[\s\S]{0,700}?NSTextField\(labelWithString: \"·\"\)",
+        "the macOS panel header does not carry the fleet header's wordmark and dot")
+require("Sources/Gantry/Views/PanelWindowController.swift", r"content\.topAnchor\.constraint\(equalTo: header\.bottomAnchor\)",
+        "macOS panel content is not laid out below the shared header")
+for own in ("Sources/Gantry/Views/FleetStatsViewController.swift",
+            "Sources/Gantry/Views/DiagnosticCenterWindowController.swift",
+            "Sources/Gantry/Views/MaintenancePanelWindowController.swift"):
+    forbid(own, r"#selector\(closePressed\)", "a macOS panel draws its own close button again beside the shared header")
+forbid("Sources/Gantry/Spoolbase/MinimalFilamentPopoverViewController.swift", r'NSTextField\(labelWithString: "Spoolbase"\)',
+       "macOS Spoolbase draws its own title again under the shared header")
+forbid("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift", r"func addCloseButton",
+       "the macOS slot panel draws its own close button again")
+forbid("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift", r"preferredContentWidth",
+       "the macOS slot panel sizes itself from its longest name again instead of filling its window")
+require("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift",
+        r"present\(columns: \[[\s\S]{0,200}?scrollFrom: 3\),[\s\S]{0,120}?scrollFrom: 1\)",
+        "the macOS slot panel's main screen is not two columns")
+require("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift", r"row\.distribution = \.fillEqually",
+        "the macOS slot panel's columns are not equal")
+require("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift",
+        rf"singleColumnWidth: CGFloat = {slot_assignment['singleColumnWidth']}\b[\s\S]{{0,160}}?columnGap: CGFloat = {slot_assignment['columnGap']}\b",
+        "macOS slot panel column metrics differ from the contract")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        rf"name: title,\s*size: NSSize\(width: {panel_window['sizes']['slotAssignment']['width']}, height: {panel_window['sizes']['slotAssignment']['height']}\)",
+        "the macOS slot panel window size differs from the contract")
+
+require("linux/gantry/panelwindow.py", r'return f"Gantry · \{name\}"', "the GNU/Linux panel window title is not \"Gantry · name\"")
+require("linux/gantry/panelwindow.py", r'header\.set_custom_title\(Gtk\.Box\(\)\)[\s\S]{0,300}?Gtk\.Label\(label="GANTRY"\)',
+        "the GNU/Linux panel header does not carry the wordmark at its leading edge")
+require("linux/gantry/panelwindow.py", r"panel_header\(self, name, accessories\)", "GNU/Linux PanelWindow does not wear the shared header")
+for own, target in (("linux/gantry/fleetstats.py", "self"), ("linux/gantry/diagnostics.py", "self"),
+                    ("linux/gantry/spoolbase.py", "self"), ("linux/gantry/spoolassign.py", "dialog")):
+    require(own, rf"panel_header\({target}, ", f"{own} does not wear the shared panel header")
+forbid("linux/gantry/maintenance.py", r'Gtk\.Button\(label="×"\)', "GNU/Linux maintenance draws its own close button again")
+require("linux/gantry/spoolassign.py", r"columns = Gtk\.Box\(spacing=20\)[\s\S]{0,400}?columns\.pack_start\(right",
+        "the GNU/Linux slot dialog is not two columns")
+require("linux/gantry/dashboard.py", r"\.panel-wordmark \{", "the GNU/Linux panel header has no wordmark style")
+
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r'public static string WindowTitle\(string name\) => \$"Gantry · \{name\}";',
+        "the Windows panel window title is not \"Gantry · name\"")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r'Text = "GANTRY"[\s\S]{0,400}?Text = "·"',
+        "the Windows panel header does not carry the wordmark and dot")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"Wrap\(this, name, body, accessories\);",
+        "Windows PanelWindow does not wear the shared header")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"content\.MaxHeight = double\.PositiveInfinity;",
+        "a Windows panel keeps the overlay's pinned size inside its window")
+for own, name in (("windows/Gantry.Windows/UI/DiagnosticsWindow.cs", r'AppSettings\.T\("Diagnostic Center"\)'),
+                  ("windows/Gantry.Windows/UI/FleetStatsWindow.cs", r'AppSettings\.T\("Fleet statistics"\)'),
+                  ("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r'"Spoolbase"')):
+    require(own, rf"PanelWindow\.Wrap\(this, {name}", f"{own} does not wear the shared panel header")
+forbid("windows/Gantry.Windows/UI/MaintenanceWindow.cs", r'Button\("×"\)', "Windows maintenance draws its own close button again")
+forbid("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r'Text = "Spoolbase", FontSize = 18',
+       "Windows Spoolbase draws its own title again under the shared header")
+require("windows/Gantry.Windows/UI/SpoolAssignPanel.cs", r"SetColumns\(left, right\);", "the Windows slot panel's main screen is not two columns")
+require("windows/Gantry.Windows/UI/SpoolAssignPanel.cs",
+        rf"SingleColumnWidth = {slot_assignment['singleColumnWidth']};[\s\S]{{0,200}}?ColumnGap = {slot_assignment['columnGap']};",
+        "Windows slot panel column metrics differ from the contract")
+forbid("windows/Gantry.Windows/UI/SpoolAssignPanel.cs", r"PreferredWidth\(\)|MaxHeight = 440",
+       "the Windows slot panel pins its overlay size again instead of filling its window")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        rf"title, {panel_window['sizes']['slotAssignment']['width']}, 600, cleanup: CloseSpoolAssign",
+        "the Windows slot panel window size differs from the contract")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",

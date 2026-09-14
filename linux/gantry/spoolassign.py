@@ -11,6 +11,7 @@ from typing import Any
 from gi.repository import Gtk, GLib  # type: ignore  # noqa: E402
 
 from . import i18n
+from .panelwindow import panel_header
 from .physicalspool import location_for
 
 
@@ -133,14 +134,23 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
 
     dialog = Gtk.Dialog(title=(i18n.t("Assign roll")),
                         transient_for=getattr(app, "window", None), modal=True)
-    dialog.set_default_size(360, -1)
+    panel_header(dialog, f"{printer_name} · {slot_label}")
+    dialog.set_default_size(720, -1)
     content = dialog.get_content_area()
     content.set_spacing(8)
     content.set_border_width(14)
 
-    head = Gtk.Label(xalign=0)
-    head.set_markup(f"<b>{GLib.markup_escape_text(printer_name)}</b>  ·  {GLib.markup_escape_text(slot_label)}")
-    content.pack_start(head, False, False, 0)
+    # Two columns: what is in this slot on the left, putting a roll into it on the right. Stacked in
+    # one column the two made a dialog far taller than it was wide.
+    columns = Gtk.Box(spacing=20)
+    left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    columns.pack_start(left, True, True, 0)
+    columns.pack_start(right, True, True, 0)
+    content.pack_start(columns, True, True, 0)
+    left_heading = Gtk.Label(label=i18n.t("ASSIGNED SPOOL"), xalign=0)
+    left_heading.get_style_context().add_class("settings-heading")
+    left.pack_start(left_heading, False, False, 0)
 
     assigned = store.spool_at(location)
     if assigned is not None:
@@ -149,7 +159,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         info.set_markup(
             i18n.t("Assigned: <b>{0}</b> ({1})").format(
                 assigned.get("id"), _filament_label(app, assigned.get("filamentDefinitionID"))))
-        content.pack_start(info, False, False, 0)
+        left.pack_start(info, False, False, 0)
 
         grams_row = Gtk.Box(spacing=8)
         grams_row.pack_start(Gtk.Label(label=(i18n.t("Remaining (g):")), xalign=0), False, False, 0)
@@ -159,12 +169,12 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         grams_row.pack_start(spin, True, True, 0)
         save = Gtk.Button(label=(i18n.t("Save")))
         grams_row.pack_start(save, False, False, 0)
-        content.pack_start(grams_row, False, False, 0)
+        left.pack_start(grams_row, False, False, 0)
 
         pct = Gtk.Label(xalign=0)
         pct.get_style_context().add_class("subtitle")
         pct.set_text(i18n.t("{0}% · {1} g nominal").format(percent, int(nominal)))
-        content.pack_start(pct, False, False, 0)
+        left.pack_start(pct, False, False, 0)
 
         actions = Gtk.Box(spacing=6)
         weigh = Gtk.Button(label=(i18n.t("Weigh")))
@@ -172,7 +182,7 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         detach = Gtk.Button(label=(i18n.t("Unassign")))
         for button in (weigh, reset, detach):
             actions.pack_start(button, True, True, 0)
-        content.pack_start(actions, False, False, 0)
+        left.pack_start(actions, False, False, 0)
 
         def do_save(_b: Gtk.Button) -> None:
             store.set_remaining(assigned["id"], spin.get_value())
@@ -206,12 +216,14 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         weigh.connect("clicked", do_weigh)
         reset.connect("clicked", do_reset)
         detach.connect("clicked", do_detach)
-        content.pack_start(Gtk.Separator(), False, False, 4)
+
+    if assigned is None:
+        left.pack_start(Gtk.Label(label=i18n.t("None"), xalign=0), False, False, 0)
 
     # --- assign a new / existing roll ----------------------------------------
     picker_label = Gtk.Label(xalign=0)
     picker_label.set_text((i18n.t("Assign a roll:")))
-    content.pack_start(picker_label, False, False, 0)
+    right.pack_start(picker_label, False, False, 0)
 
     combo = Gtk.ComboBoxText()
     combo.append("__new__", (i18n.t("New roll")))
@@ -236,26 +248,26 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
         for f in inventory.filaments:
             combo.append(f"def:{f.id}", f"{f.brand} {f.name} · {f.colorName} ({f.type})")
     combo.set_active_id("__new__")
-    content.pack_start(combo, False, False, 0)
+    right.pack_start(combo, False, False, 0)
 
     delete_row = Gtk.Box()
     delete_selected = Gtk.Button(label=(i18n.t("Delete selected roll")))
     delete_row.pack_end(delete_selected, False, False, 0)
-    content.pack_start(delete_row, False, False, 0)
+    right.pack_start(delete_row, False, False, 0)
 
     nom_row = Gtk.Box(spacing=8)
     nom_row.pack_start(Gtk.Label(label=(i18n.t("Nominal (g):")), xalign=0), False, False, 0)
     nominal_spin = Gtk.SpinButton.new_with_range(100, 5000, 50)
     nominal_spin.set_value(1000)
     nom_row.pack_start(nominal_spin, True, True, 0)
-    content.pack_start(nom_row, False, False, 0)
+    right.pack_start(nom_row, False, False, 0)
 
     presets = Gtk.Box(spacing=6)
     for grams in (1000, 750, 500):
         button = Gtk.Button(label=f"{grams} g")
         button.connect("clicked", lambda _button, value=grams: nominal_spin.set_value(value))
         presets.pack_start(button, True, True, 0)
-    content.pack_start(presets, False, False, 0)
+    right.pack_start(presets, False, False, 0)
 
     dialog.add_button((i18n.t("Cancel")), Gtk.ResponseType.CANCEL)
     dialog.add_button((i18n.t("Assign")), Gtk.ResponseType.OK)

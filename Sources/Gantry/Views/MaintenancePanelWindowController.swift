@@ -24,8 +24,9 @@ final class MaintenancePanelViewController: NSViewController {
         // of scrolling to it.
         let size = NSSize(width: 470, height: max(200, controller.body.fittingSize.height + 36))
         activePanel = PanelWindowController.present(panel,
-            title: AppSettings.shared.t("Maintenance · {0}", printer.name),
-            size: size, minSize: size, onDismiss: { Self.dismiss() })
+            name: AppSettings.shared.t("Maintenance · {0}", printer.name),
+            size: size, minSize: size, accessories: controller.headerAccessories(),
+            onDismiss: { Self.dismiss() })
     }
 
     /// The statics are cleared before the window is closed, not after: closing it runs the dismissal
@@ -73,19 +74,6 @@ final class MaintenancePanelViewController: NSViewController {
         body.translatesAutoresizingMaskIntoConstraints = false
 
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.isPolish)
-        let title = label(s.t("Maintenance · {0}", printer.name), 18, .bold)
-        let instructions = button(s.t("Instructions")) { [weak self] in self?.showInstructions() }
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
-                             target: self, action: #selector(closePressed))
-        close.isBordered = false
-        close.contentTintColor = GantryTheme.secondary
-        close.toolTip = s.t("Close")
-        let header = NSStackView(views: [title, instructions, NSView(), close])
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = 8
-        body.addArrangedSubview(header)
-        header.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         let summary = label(s.t("{0} print h · nozzle {1}", String(format: "%.1f", snapshot.totalPrintHours),
                                    telemetry.nozzleDiameter.map { String(format: "%.1f mm", $0) } ?? "—"),
                             12, .regular, GantryTheme.secondary)
@@ -130,7 +118,11 @@ final class MaintenancePanelViewController: NSViewController {
         ])
     }
 
-    @objc private func closePressed() { Self.dismiss() }
+    /// For the trailing end of the shared window header. It lives there rather than in the body
+    /// because the body is torn down and rebuilt on every change, and the header is built once.
+    func headerAccessories() -> [NSView] {
+        [button(AppSettings.shared.t("Instructions")) { [weak self] in self?.showInstructions() }]
+    }
 
     private func alertMessages(settings s: AppSettings) -> [(title: String, code: String?)] {
         let actionableHMS = HMSResolver.shared.actionableCodes(

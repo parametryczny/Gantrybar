@@ -33,6 +33,7 @@ public sealed class SpoolbaseWindow : Window
     private static Brush Ink => GTheme.Brush(GTheme.Text);
     private static Brush Muted() => GTheme.Brush(GTheme.Muted);
     private static Brush Surface() => GTheme.Brush(GTheme.Surface);
+    private Button? _addButton;
 
     public SpoolbaseWindow()
     {
@@ -51,7 +52,8 @@ public sealed class SpoolbaseWindow : Window
         Foreground = Ink;
         FontFamily = new FontFamily("Segoe UI Variable, Segoe UI");
 
-        Content = BuildChrome();
+        var chrome = BuildChrome();
+        PanelWindow.Wrap(this, "Spoolbase", chrome, _addButton is null ? null : new UIElement[] { _addButton });
         _store.Changed += OnInventoryChanged;
         Closed += (_, _) => _store.Changed -= OnInventoryChanged;
         SourceInitialized += (_, _) => ApplyModernChrome();
@@ -75,25 +77,22 @@ public sealed class SpoolbaseWindow : Window
         var dock = new DockPanel { Margin = new Thickness(2) };
 
         // Header
-        var title = new TextBlock { Text = "Spoolbase", FontSize = 18, FontWeight = FontWeights.Bold };
         _summary.FontSize = 11;
         _summary.Foreground = Muted();
         _summary.Margin = new Thickness(0, 1, 0, 0);
         var titles = new StackPanel();
-        titles.Children.Add(title);
         titles.Children.Add(_summary);
 
         var add = new Button { Content = "+", Width = 32, Height = 30, FontSize = 17, ToolTip = AppSettings.T("Add filament") };
         add.Click += (_, _) => OpenCatalog();
         StyleSoftButton(add);
+        _addButton = add;
 
         var header = new Grid { Margin = new Thickness(16, 14, 12, 8) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(titles);
-        Grid.SetColumn(add, 1);
-        add.VerticalAlignment = VerticalAlignment.Center;
-        header.Children.Add(add);
+        // The name and the add button live in the shared window header now.
         DockPanel.SetDock(header, Dock.Top);
         dock.Children.Add(header);
 

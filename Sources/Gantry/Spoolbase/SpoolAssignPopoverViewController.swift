@@ -41,38 +41,9 @@ final class SpoolAssignPopoverViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // Width is driven by the content (the longest filament name / roll line), not the window: a
-        // high-priority equal-width that yields to the popover cap in the dashboard. So the panel is only
-        // as wide as it needs to be, never stretched to fill the popover.
-        let wc = view.widthAnchor.constraint(equalToConstant: preferredContentWidth)
-        wc.priority = .defaultHigh
-        wc.isActive = true
+        // It fills its window. The width used to come from the longest filament name, which was right
+        // for an overlay in a popover and wrong for a window the user can resize.
         showMain()
-    }
-
-    /// The panel's natural width: the widest row content (filament name or roll line) plus the row chrome
-    /// (swatch, delete button, paddings) and the panel margins, clamped so it stays reasonable and a very
-    /// long name just truncates instead of ballooning.
-    private var preferredContentWidth: CGFloat {
-        let titleFont = NSFont.systemFont(ofSize: 12, weight: .medium)
-        let subFont = NSFont.systemFont(ofSize: 10)
-        func w(_ s: String, _ f: NSFont) -> CGFloat { (s as NSString).size(withAttributes: [.font: f]).width }
-        var content: CGFloat = 150   // floor so the header + the 3 action pills always fit
-        for def in filaments.filaments {
-            let title = "\(def.brand) \(def.name)".trimmingCharacters(in: .whitespaces)
-            content = max(content, w(title.isEmpty ? def.type : title, titleFont))
-            content = max(content, w("\(def.type) · \(def.colorName.isEmpty ? "#\(def.colorHex)" : def.colorName)", subFont))
-        }
-        for sp in spools.spools {
-            let def = filaments.filaments.first { $0.id == sp.filamentDefinitionID }
-            let title = def.map { "\($0.brand) \($0.name)".trimmingCharacters(in: .whitespaces) } ?? sp.id
-            content = max(content, w(title.isEmpty ? sp.id : title, titleFont))
-            content = max(content, w("\(sp.id) · \(Int(sp.remainingWeightGrams)) g · \(placeLabel(sp.location))", subFont))
-        }
-        // swatch(12)+gap(8) + row padding(20) + panel margins(32) + scrollbar lane(14). The delete button
-        // on roll rows lives in the natural trailing slack, so it isn't counted here (keeps the panel snug).
-        let chrome: CGFloat = 12 + 8 + 20 + 32 + 14
-        return min(460, max(280, ceil(content) + chrome))
     }
 
     private func t(_ english: String) -> String { AppSettings.shared.t(english) }
@@ -102,9 +73,8 @@ final class SpoolAssignPopoverViewController: NSViewController {
     /// rolls you can move here, then a "create new roll" button and the catalog grouped by type. The whole
     /// lower region scrolls as one, so a long inventory never squashes the list.
     private func showMain() {
-        let header = pageHeader(title: slotTitle,
-                                subtitle: t("AMS: {0}", amsMaterial ?? t("unknown")),
-                                back: nil)
+        // The slot's name is in the window header; the body only adds what the printer reports for it.
+        let header = note(t("AMS: {0}", amsMaterial ?? t("unknown")))
 
         // 1. The roll currently in this slot + its per-roll actions. Weight and history live on the roll,
         // never on the slot, so unassigning only moves it to storage (its grams are kept).
@@ -208,14 +178,15 @@ final class SpoolAssignPopoverViewController: NSViewController {
             }
         }
 
-        // The rolls list, the create button and the catalog scroll together as one region.
-        let body = NSStackView(views: [rollsSection, newRoll, catalogSection])
-        body.orientation = .vertical
-        body.alignment = .leading
-        body.spacing = 12
-        // Make every row/section fill the width (flexible, not fixed) so nothing overflows a narrow popover.
-        [assignedSection, rollsSection, catalogSection, body].forEach(stretchChildren)
-        present([header, assignedSection, divider(), body], scrollFrom: 3)
+        // Two columns, not one long strip. Stacked in one column the slot, its roll, every spare roll,
+        // the create button and the whole catalog made a window more than twice as tall as it was
+        // wide. The left column is about what is in this slot, the right one about making a new roll,
+        // and each scrolls its own list.
+        [assignedSection, rollsSection, catalogSection].forEach(stretchChildren)
+        present(columns: [
+            (blocks: [header, assignedSection, divider(), rollsSection], scrollFrom: 3),
+            (blocks: [newRoll, catalogSection], scrollFrom: 1)
+        ])
     }
 
     /// Weigh screen (spec §5): set a fresh net reading, or enter gross + the empty-spool tare and let the
@@ -376,10 +347,54 @@ final class SpoolAssignPopoverViewController: NSViewController {
         }
     }
 
-    /// Lays out a screen: fixed rows on top, then (optionally) the row at `scrollFrom` becomes a
-    /// scrolling list that fills the remaining height.
+    /// Width of a single-column screen (weigh, pick a filament, starting amount). Kept narrow in a
+    /// wide window, so a weigh form does not stretch its fields and pills across it.
+    static let singleColumnWidth: CGFloat = 440
+    /// Gap between the main screen's two columns.
+    static let columnGap: CGFloat = 20
+
+    /// Lays out a one-column screen, centred.
     private func present(_ blocks: [NSView], scrollFrom: Int?) {
         view.subviews.forEach { $0.removeFromSuperview() }
+        let column = makeColumn(blocks, scrollFrom: scrollFrom)
+        view.addSubview(column)
+        let fill = column.widthAnchor.constraint(equalTo: view.widthAnchor, constant: -32)
+        fill.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            column.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            column.widthAnchor.constraint(lessThanOrEqualToConstant: Self.singleColumnWidth),
+            fill,
+            column.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            column.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16)
+        ])
+    }
+
+    /// Lays out the main screen: equal columns side by side, each scrolling its own list.
+    private func present(columns: [(blocks: [NSView], scrollFrom: Int?)]) {
+        view.subviews.forEach { $0.removeFromSuperview() }
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .top
+        row.distribution = .fillEqually
+        row.spacing = Self.columnGap
+        row.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            row.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            row.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            row.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16)
+        ])
+        for spec in columns {
+            let column = makeColumn(spec.blocks, scrollFrom: spec.scrollFrom)
+            row.addArrangedSubview(column)
+            column.heightAnchor.constraint(equalTo: row.heightAnchor).isActive = true
+        }
+    }
+
+    /// One column: fixed rows on top, then (optionally) the row at `scrollFrom` becomes a scrolling
+    /// list that fills the remaining height.
+    private func makeColumn(_ blocks: [NSView], scrollFrom: Int?) -> NSStackView {
         let column = NSStackView()
         column.orientation = .vertical
         column.alignment = .leading
@@ -419,65 +434,24 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 // never drawn under it.
                 doc.widthAnchor.constraint(equalTo: s.widthAnchor, constant: -14).isActive = true
                 s.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
-                // Prefer to be exactly as tall as the content (so short lists show fully with no dead
-                // space and no scrolling). This is a low-priority wish: when the window is short — e.g. a
-                // single-printer popover — the panel's height cap wins, this compresses, and the list
-                // scrolls instead of overflowing the window. See the height cap in the dashboard.
+                // Prefer to be exactly as tall as the content, so a short list shows whole with no dead
+                // space. A low-priority wish: on a short window this compresses and the list scrolls.
                 let fit = s.heightAnchor.constraint(equalTo: doc.heightAnchor)
                 fit.priority = .defaultLow
                 fit.isActive = true
                 scroll = s
             } else {
                 column.addArrangedSubview(block)
-                // Every block fills the column width, so rows/dividers/buttons never stay a fixed width
-                // that could exceed a narrow popover. Wrapping text fields are the one exception (they
-                // must be free to grow tall), and they already fill via their own constraints.
                 block.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
             }
         }
-        view.addSubview(column)
-        NSLayoutConstraint.activate([
-            column.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            column.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            column.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
-            column.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16)
-        ])
         if let scroll {
-            // Keep the list usable even on a short window, but let this break before the window cap does
-            // (so it can shrink further rather than clip). Required min would fight the cap and clip.
+            // Keep the list usable even on a short window, but let this break before it would clip.
             let minH = scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
             minH.priority = .defaultHigh
             minH.isActive = true
         }
-        addCloseButton()
-    }
-
-    /// A persistent close control in the top-right corner (the panel otherwise only closes after a
-    /// choice is made). Re-added on every `present` since that clears the view's subviews.
-    private func addCloseButton() {
-        let host = ActionView()
-        host.onClick = { [weak self] in self?.onClose?() }
-        host.wantsLayer = true
-        host.layer?.cornerRadius = 11
-        host.layer?.backgroundColor = GantryTheme.surface.cgColor
-        host.layer?.borderWidth = 1
-        host.layer?.borderColor = GantryTheme.line.cgColor
-        host.translatesAutoresizingMaskIntoConstraints = false
-        let label = NSTextField(labelWithString: "✕")
-        label.font = .systemFont(ofSize: 12, weight: .semibold)
-        label.textColor = GantryTheme.secondary
-        label.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(label)
-        host.toolTip = t("Close")
-        view.addSubview(host)
-        NSLayoutConstraint.activate([
-            host.widthAnchor.constraint(equalToConstant: 22),
-            host.heightAnchor.constraint(equalToConstant: 22),
-            host.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
-            host.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            label.centerXAnchor.constraint(equalTo: host.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: host.centerYAnchor)
-        ])
+        return column
     }
 
     private func pageHeader(title: String, subtitle: String, back: (() -> Void)?) -> NSView {

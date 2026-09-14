@@ -148,6 +148,11 @@ button.guide-action:disabled { color: %(muted)s; }
    leaves every colour to GTK. The rules above still dress the card-based windows (diagnostics,
    fleet statistics, maintenance), which are not preferences windows. */
 .settings-heading { font-size: 13px; font-weight: 600; padding-top: 2px; }
+/* The shared panel-window header (panelwindow.panel_header): the fleet header's wordmark and dot,
+   then the panel's name. Smaller than the fleet's 17px wordmark: it shares a title bar. */
+.panel-wordmark { color: %(text)s; font-size: 13px; font-weight: 800; }
+.panel-dot { color: alpha(%(text)s, 0.45); font-weight: 600; }
+.panel-name { color: %(text)s; font-size: 13px; font-weight: 600; }
 .settings-label { color: %(secondary)s; font-size: 12px; }
 .settings-hint { color: %(muted)s; font-size: 10px; }
 .settings-version { color: %(muted)s; font-size: 10px; }
@@ -1005,7 +1010,7 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         from .panelwindow import PanelWindow
         panel = MaintenancePanel(self.app, printer, telemetry, self.close_maintenance)
         window = PanelWindow(self.app, panel, i18n.t("Maintenance · {0}").format(printer.name),
-                             470, 560)
+                             470, 560, accessories=panel.header_accessories())
         self._maintenance_window = window
         window.present_centered()
 

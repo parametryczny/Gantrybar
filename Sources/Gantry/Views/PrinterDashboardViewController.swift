@@ -2233,10 +2233,11 @@ final class PrinterCardView: NSView, NSDraggingSource {
             // A window, not an overlay on the fleet panel. The roll list wants 700-odd points and the
             // popover had nowhere to put them: growing it threw the whole window across the screen,
             // and not growing it left the list scrolling inside 126. Its own window has the room, and
-            // the cards stay lit and live behind it.
+            // the cards stay lit and live behind it. Wide rather than tall: the panel lays out in two
+            // columns, so it does not stand on the screen as a narrow strip.
             PrinterCardView.activeSpoolVC = vc
-            PrinterCardView.activeSpoolPanel = PanelWindowController.present(vc.view, title: title,
-                size: NSSize(width: 460, height: 640),
+            PrinterCardView.activeSpoolPanel = PanelWindowController.present(vc.view, name: title,
+                size: NSSize(width: 760, height: 520),
                 onDismiss: { PrinterCardView.dismissSpoolOverlay() })
             _ = anchor
         })

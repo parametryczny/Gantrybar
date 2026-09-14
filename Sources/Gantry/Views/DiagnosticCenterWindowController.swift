@@ -31,7 +31,7 @@ final class DiagnosticCenterViewController: NSViewController {
         let controller = DiagnosticCenterViewController(store: store)
         activeController = controller
         activePanel = PanelWindowController.present(controller.view,
-            title: AppSettings.shared.t("Diagnostic Center"),
+            name: AppSettings.shared.t("Diagnostic Center"),
             size: NSSize(width: 470, height: 560),
             onDismiss: { Self.dismiss() })
     }
@@ -70,15 +70,6 @@ final class DiagnosticCenterViewController: NSViewController {
         let s = AppSettings.shared
         view.appearance = s.appearance
 
-        let title = label(s.t("Diagnostic Center"), 18, .bold, GantryTheme.text)
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
-                             target: self, action: #selector(closePressed))
-        close.isBordered = false
-        close.contentTintColor = GantryTheme.secondary
-        close.toolTip = s.t("Close")
-        let header = NSStackView(views: [title, NSView(), close])
-        header.orientation = .horizontal; header.alignment = .centerY; header.spacing = 8
-
         status.stringValue = s.t("Check connectivity for every printer.")
         status.font = .systemFont(ofSize: 12)
         status.textColor = GantryTheme.secondary
@@ -91,7 +82,7 @@ final class DiagnosticCenterViewController: NSViewController {
 
         results.orientation = .vertical; results.alignment = .leading; results.spacing = 9
 
-        let body = NSStackView(views: [header, status, progress, runButton, results])
+        let body = NSStackView(views: [status, progress, runButton, results])
         body.orientation = .vertical; body.alignment = .leading; body.spacing = 10
         body.translatesAutoresizingMaskIntoConstraints = false
 
@@ -116,13 +107,10 @@ final class DiagnosticCenterViewController: NSViewController {
             body.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -18),
             body.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
             body.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18),
-            header.widthAnchor.constraint(equalTo: body.widthAnchor),
             progress.widthAnchor.constraint(equalTo: body.widthAnchor),
             results.widthAnchor.constraint(equalTo: body.widthAnchor)
         ])
     }
-
-    @objc private func closePressed() { Self.dismiss() }
 
     @objc private func runPressed() { runTests() }
 

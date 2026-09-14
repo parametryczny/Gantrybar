@@ -68,7 +68,7 @@ public sealed class FleetStatsWindow : Window
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = _body,
         });
-        Content = root;
+        PanelWindow.Wrap(this, AppSettings.T("Fleet statistics"), root);
         Render();
     }
 

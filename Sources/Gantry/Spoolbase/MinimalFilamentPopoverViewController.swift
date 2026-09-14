@@ -43,28 +43,16 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         background.state = .active
         view = background
 
+        // The name lives in the shared window header now ("GANTRY · Spoolbase"), and so does the add
+        // button. What stays here is what only this list knows: its icon and the stock summary.
         let icon = NSImageView(image: FilamentIcon.image(size: 28))
-        let title = NSTextField(labelWithString: "Spoolbase")
-        title.font = .systemFont(ofSize: 18, weight: .semibold)
         summaryLabel.textColor = .secondaryLabelColor
-        summaryLabel.font = .systemFont(ofSize: 10.5)
-        let titles = NSStackView(views: [title, summaryLabel])
-        titles.orientation = .vertical
-        titles.alignment = .leading
-        titles.spacing = 0
-        let identity = NSStackView(views: [icon, titles])
+        summaryLabel.font = .systemFont(ofSize: 12)
+        let identity = NSStackView(views: [icon, summaryLabel])
         identity.orientation = .horizontal
         identity.alignment = .centerY
         identity.spacing = 9
-        let add = NSButton(
-            image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Dodaj filament")!,
-            target: self,
-            action: #selector(addPressed)
-        )
-        add.bezelStyle = .circular
-        add.controlSize = .regular
-        add.toolTip = "Dodaj filament"
-        let header = NSStackView(views: [identity, NSView(), add])
+        let header = NSStackView(views: [identity, NSView()])
         header.orientation = .horizontal
         header.alignment = .centerY
 
@@ -169,6 +157,16 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             emptyLabel.centerYAnchor.constraint(equalTo: scroll.centerYAnchor)
         ])
         reload()
+    }
+
+    /// For the trailing end of the shared window header.
+    func headerAccessories() -> [NSView] {
+        let add = NSButton(image: NSImage(systemSymbolName: "plus",
+                                          accessibilityDescription: AppSettings.shared.t("Add filament"))!,
+                           target: self, action: #selector(addPressed))
+        add.bezelStyle = .circular
+        add.toolTip = AppSettings.shared.t("Add filament")
+        return [add]
     }
 
     func controlTextDidChange(_ obj: Notification) {

@@ -105,9 +105,11 @@ public partial class DashboardWindow : Window
     internal void ShowSpoolAssign(SpoolLocation location, string title, string? material, string? colorHex)
     {
         CloseSpoolAssign();
+        // Wide rather than tall: the panel lays out in two columns, so it does not stand on the screen
+        // as a narrow strip.
         _spoolAssignWindow = PanelWindow.Present(this,
             SpoolAssignPanel.Build(location, title, material, colorHex, CloseSpoolAssign),
-            title, 470, 650, cleanup: CloseSpoolAssign);
+            title, 760, 600, cleanup: CloseSpoolAssign);
     }
 
     /// <summary>The field is cleared before the window is closed, not after: closing it runs the
@@ -122,11 +124,11 @@ public partial class DashboardWindow : Window
     internal void ShowMaintenance(SavedPrinter printer, PrinterTelemetry telemetry)
     {
         CloseMaintenance();
-        _maintenanceWindow = PanelWindow.Present(this,
-            MaintenancePanel.Build(printer, telemetry, CloseMaintenance,
-                () => Dispatcher.BeginInvoke(new Action(Rebuild))),
-            string.Format(AppSettings.T("Maintenance · {0}"), printer.Name), 470, 570,
-            scrolls: true, cleanup: CloseMaintenance);
+        var panel = MaintenancePanel.Create(printer, telemetry, CloseMaintenance,
+            () => Dispatcher.BeginInvoke(new Action(Rebuild)));
+        _maintenanceWindow = PanelWindow.Present(this, panel.Root,
+            string.Format(AppSettings.T("Maintenance · {0}"), printer.Name), 470, 620,
+            scrolls: true, cleanup: CloseMaintenance, accessories: panel.HeaderAccessories());
     }
 
     private void CloseMaintenance()

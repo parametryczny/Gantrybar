@@ -1,8 +1,8 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.6.0",
-    "date": "2026-09-13",
+    "version": "1.7.0",
+    "date": "2026-09-14",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
   "tokens": {
@@ -537,7 +537,7 @@
     }
   },
   "panelWindow": {
-    "note": "Every auxiliary panel is a window of its own, centred on the screen, not an overlay inside the fleet panel. As overlays they could never be larger than their host, they dimmed the cards the user had come to read, and on macOS growing the popover to fit the roll list threw the whole menu-bar window down the screen.",
+    "note": "One frame for every panel window on all three platforms. Each is a window of its own, centred on the screen, wearing the fleet panel's own header so the family reads as one app. The panels no longer draw a title or a close button of their own.",
     "panels": [
       "Diagnostics",
       "Fleet statistics",
@@ -577,14 +577,44 @@
         "height": "measured, and also the window's minimum so it cannot clip"
       },
       "slotAssignment": {
-        "width": 460,
-        "height": 640
+        "width": 760,
+        "height": 520,
+        "note": "content below the header; Windows passes the outer 760x600"
       },
       "spoolbase": {
         "width": 500,
         "height": 640
       }
     },
-    "clamp": "never wider or taller than the screen's visible frame less 40 points"
+    "clamp": "never wider or taller than the screen's visible frame less 40 points",
+    "header": {
+      "content": "GANTRY wordmark, a muted middle dot, the panel's name; the panel's own controls at the trailing end",
+      "windowTitle": "Gantry · {name}",
+      "separator": "· (a middle dot, as in the fleet header; never a dash)",
+      "placement": {
+        "macOS": "in a unified compact title bar beside the traffic lights: an empty NSToolbar with toolbarStyle .unifiedCompact, fullSizeContentView, header height measured from the title bar (38 pt), wordmark leading 78 pt on the traffic lights' centre line, 1 pt line under it",
+        "windows": "a strip directly under the system title bar: Padding 16,9,12,9, MinHeight 44, 1 px Line border at the bottom; the system title bar shows the window title",
+        "linux": "the window's Gtk.HeaderBar itself: identity packed at the start, accessories at the end, an empty custom title so GTK draws no centred title, system close button"
+      },
+      "wordmark": {
+        "macOS": "GantryLogo image, 13 pt tall",
+        "windows": "GANTRY, Segoe UI Black 15",
+        "linux": "GANTRY, .panel-wordmark 13px weight 800"
+      },
+      "name": "13 pt semibold (Windows 14), text colour, truncates before the accessories",
+      "accessories": {
+        "Spoolbase": "add filament",
+        "Maintenance": "Instructions"
+      }
+    },
+    "body": "below the header, card colour, the panel's own content inset 16 to 18; close is the system button or Escape",
+    "slotAssignment": {
+      "layout": "two equal columns on the main screen: left = the slot (material, assigned roll and its actions, spare rolls); right = create a new roll and the filament catalogue; each column scrolls its own list",
+      "why": "one column stacked everything into a window 460x640, more than twice as tall as wide",
+      "columnGap": 20,
+      "singleColumnWidth": 440,
+      "singleColumnScreens": "weigh, pick a filament, starting amount: one column, centred, at most singleColumnWidth wide",
+      "linux": "the Gtk.Dialog content area holds the same two columns: the assigned roll on the left, the roll picker on the right"
+    }
   }
 }

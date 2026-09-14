@@ -24,6 +24,7 @@ except (ImportError, ValueError):
     Gst = None  # type: ignore[assignment]
 
 from . import i18n
+from .panelwindow import panel_header
 from .filamentstore import Filament, FilamentStore, TYPES, load_catalog, normalized_hex, save_catalog
 
 
@@ -120,11 +121,8 @@ class SpoolbaseWindow(Gtk.Window):
         header.get_style_context().add_class("sb-header")
         identity = Gtk.Box(spacing=9)
         titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        title = Gtk.Label(label="Spoolbase", xalign=0)
-        title.get_style_context().add_class("sb-title")
         self.summary = Gtk.Label(xalign=0)
         self.summary.get_style_context().add_class("sb-summary")
-        titles.pack_start(title, False, False, 0)
         titles.pack_start(self.summary, False, False, 0)
         identity.pack_start(FilamentIcon(), False, False, 0)
         identity.pack_start(titles, False, False, 0)
@@ -132,7 +130,8 @@ class SpoolbaseWindow(Gtk.Window):
         add.set_tooltip_text("Dodaj filament" if self._pl else "Add filament")
         add.connect("clicked", lambda _b: self._open_catalog())
         header.pack_start(identity, True, True, 0)
-        header.pack_start(add, False, False, 0)
+        # The name and the add button live in the shared window header now.
+        panel_header(self, "Spoolbase", (add,))
         root.pack_start(header, False, False, 0)
 
         self.search = Gtk.SearchEntry()

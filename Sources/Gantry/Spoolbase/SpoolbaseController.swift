@@ -22,8 +22,9 @@ final class SpoolbaseController {
         build()
         guard let content else { return }
         panel = PanelWindowController.present(content.view,
-            title: AppSettings.shared.t("Spoolbase — filament stock"),
+            name: "Spoolbase",
             size: NSSize(width: 500, height: 640),
+            accessories: content.headerAccessories(),
             onDismiss: { [weak self] in self?.dismiss() })
     }
 

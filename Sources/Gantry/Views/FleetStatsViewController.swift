@@ -20,7 +20,7 @@ final class FleetStatsViewController: NSViewController {
         let controller = FleetStatsViewController(store: store)
         activeController = controller
         activePanel = PanelWindowController.present(controller.view,
-            title: AppSettings.shared.t("Fleet statistics"),
+            name: AppSettings.shared.t("Fleet statistics"),
             size: NSSize(width: 470, height: 560),
             onDismiss: { Self.dismiss() })
     }
@@ -57,14 +57,6 @@ final class FleetStatsViewController: NSViewController {
         let s = AppSettings.shared
         view.appearance = s.appearance
 
-        let title = label(s.t("Fleet statistics"), 18, .bold, GantryTheme.text)
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
-                             target: self, action: #selector(closePressed))
-        close.isBordered = false
-        close.contentTintColor = GantryTheme.secondary
-        let header = NSStackView(views: [title, NSView(), close])
-        header.orientation = .horizontal; header.alignment = .centerY; header.spacing = 8
-
         let period = NSSegmentedControl(labels: [s.t("7 days"), s.t("30 days"),
                                                  s.t("Year"), s.t("All")],
                                         trackingMode: .selectOne, target: self, action: #selector(periodChanged(_:)))
@@ -75,7 +67,7 @@ final class FleetStatsViewController: NSViewController {
 
         body.orientation = .vertical; body.alignment = .leading; body.spacing = 9
 
-        let outer = NSStackView(views: [header, controls, body])
+        let outer = NSStackView(views: [controls, body])
         outer.orientation = .vertical; outer.alignment = .leading; outer.spacing = 12
         outer.translatesAutoresizingMaskIntoConstraints = false
 
@@ -100,14 +92,11 @@ final class FleetStatsViewController: NSViewController {
             outer.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -18),
             outer.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
             outer.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18),
-            header.widthAnchor.constraint(equalTo: outer.widthAnchor),
             controls.widthAnchor.constraint(equalTo: outer.widthAnchor),
             body.widthAnchor.constraint(equalTo: outer.widthAnchor)
         ])
         render()
     }
-
-    @objc private func closePressed() { Self.dismiss() }
 
     @objc private func periodChanged(_ sender: NSSegmentedControl) {
         periodDays = [7, 30, 365, Int.max][max(0, min(3, sender.selectedSegment))]
