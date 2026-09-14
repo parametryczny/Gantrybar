@@ -89,9 +89,23 @@ jobs:
         run: |
           $exe = Get-ChildItem -Path Gantry.Windows\bin\Release -Recurse -Filter Gantry.exe | Select-Object -First 1
           if (-not $exe) { throw "Gantry.exe not found for render." }
+          # --render works on a throwaway data folder. Earlier steps ran Gantry.exe, so the real folders may
+          # already hold files; they must come out of the render byte for byte the same.
+          function Get-DataSnapshot {
+            foreach ($root in @((Join-Path $env:APPDATA "Gantry"), (Join-Path $env:APPDATA "Spoolbase"))) {
+              if (Test-Path $root) { Get-ChildItem $root -Recurse -File | Get-FileHash | ForEach-Object { "$($_.Path) $($_.Hash)" } }
+            }
+          }
+          $before = (Get-DataSnapshot | Sort-Object) -join "`n"
           $out = Join-Path $PWD "render-out"
           $p = Start-Process -FilePath $exe.FullName -ArgumentList "--render","$out" -Wait -PassThru
           Write-Host "render exit: $($p.ExitCode)"
+          $after = (Get-DataSnapshot | Sort-Object) -join "`n"
+          if ($before -ne $after) {
+            Write-Host "before:`n$before"
+            Write-Host "after:`n$after"
+            throw "--render changed the user's data folders"
+          }
           if (Test-Path $out) { Get-ChildItem $out | ForEach-Object { Write-Host $_.Name $_.Length } }
           else { Write-Warning "no render output" }
       - name: Upload Windows preview

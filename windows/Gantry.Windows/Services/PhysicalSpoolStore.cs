@@ -38,7 +38,7 @@ public sealed class PhysicalSpoolStore
 
     public PhysicalSpoolStore()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Spoolbase");
+        var dir = Path.Combine(AppDataRoot.Folder, "Spoolbase");
         _spoolsPath = Path.Combine(dir, "spools-v1.json");
         _usagePath = Path.Combine(dir, "usage-v1.json");
         _spools = Load<List<PhysicalSpool>>(_spoolsPath) ?? new();

@@ -1008,6 +1008,24 @@ require("windows/Gantry.Windows/Services/PrinterStore.cs", r"M104 S[\s\S]*?M140 
 require(mac_detail, r'sectionTitle\(AppSettings\.shared\.t\("CAMERA"\)\), NSView\(\), advancedButton', "macOS camera card lost Advanced…")
 require(win_detail, r'new AdvancedWindow\(_store, _serial\)', "Windows has no way to open Advanced…")
 
+# Spool accounting: a print is identified by its session, not the hour a FINISHED packet arrived.
+for accounting_file, hour_bucket in (("Sources/Gantry/Spoolbase/FilamentConsumption.swift", r"/\s*3600"),
+                                     ("windows/Gantry.Windows/Services/FilamentConsumption.cs", r"/\s*3600"),
+                                     ("linux/gantry/consumption.py", r"//\s*3600")):
+    require(accounting_file, r'"spoolbase-print-sessions"', "spool accounting does not keep print sessions")
+    forbid(accounting_file, hour_bucket, "spool accounting identifies a print by the hour again")
+# The slot a print came from: the active one, or a lone loaded roll, never the first present slot.
+for slot_file, rule in (("Sources/Gantry/Spoolbase/FilamentConsumption.swift", r"active\.count == 1 \? active\[0\] : nil[\s\S]{0,80}?loaded\.count == 1"),
+                        ("windows/Gantry.Windows/Services/SpoolAccounting.cs", r"active\.Count == 1 \? active\[0\] : null[\s\S]{0,160}?loaded\.Count == 1"),
+                        ("linux/gantry/consumption.py", r"if len\(active\) == 1 else None[\s\S]{0,80}?len\(loaded\) == 1")):
+    require(slot_file, rule, "spool accounting guesses the slot instead of taking the active one")
+# The --render harness must work on a throwaway data folder, never the user's stores.
+require("windows/Gantry.Windows/App.xaml.cs", r'"--render"[\s\S]{0,120}?AppDataRoot\.UseTemporaryFolder[\s\S]*?base\.OnStartup',
+        "Windows --render does not switch to a throwaway data folder before startup")
+for data_file in ("windows/Gantry.Windows/Services/Storage.cs", "windows/Gantry.Windows/Services/PhysicalSpoolStore.cs",
+                  "windows/Gantry.Windows/Services/FilamentInventory.cs"):
+    forbid(data_file, r"SpecialFolder\.ApplicationData", "a Windows store bypasses AppDataRoot")
+
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)
     for error in ERRORS:

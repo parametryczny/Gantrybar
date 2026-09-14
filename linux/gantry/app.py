@@ -1070,9 +1070,8 @@ class Gantry:
             if current.state == PrinterState.FINISHED:
                 from . import telegram
                 telegram.record_history(self, serial, printer_name, current.job_name or "")
-            # Nothing is subtracted while Spoolbase is off, and nothing is remembered as subtracted
-            # either: switching it back on resumes from the grams the rolls had when it went off.
-            if event == "telemetry" and self._spoolbase_active():
+            # Print sessions are followed with Spoolbase off too; on_finish subtracts nothing then.
+            if event == "telemetry":
                 from .consumption import on_finish
                 on_finish(self, serial, previous, current)
         if quiet_hours_active(self.config): return False

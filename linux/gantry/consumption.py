@@ -119,80 +119,152 @@ def fetch_bambu_3mf(host: str, access_code: str, filename: str) -> bytes | None:
                 pass
 
 
-def _job_id(serial: str, telemetry: Any) -> str:
-    return f"{serial}|{telemetry.job_name or '?'}|{int(time.time() // 3600)}"
+_SESSIONS_KEY = "spoolbase-print-sessions"
 
 
-def _loaded_location(store: Any, serial: str, groups: list) -> Any:
-    """The slot carrying an assigned spool that is active (or present) — the one a single extruder feeds."""
+def observe_session(sessions: dict[str, dict[str, Any]], serial: str, previous_state: Any, state: Any,
+                    job_name: str | None, now: float) -> tuple[str | None, bool]:
+    """Which print a finished job belongs to. Returns (the job id when this update is the finish to
+    account for, whether the sessions changed). Mirrors macOS PrintJobSessions: the hour a FINISHED
+    packet arrived used to be the identity, so two short prints of one file within an hour merged and a
+    finish seen again after a restart in a later hour was subtracted twice. A session starts when the
+    printer is seen printing, ends when it finishes, and is kept in the config."""
+    from .core import PrinterState
+    job = job_name or "?"
+    session_id = f"{serial}|{job}|{int(now)}"
+    current = sessions.get(serial)
+    if state in (PrinterState.PRINTING, PrinterState.PAUSED):
+        if current and current.get("job") == job and not current.get("finished"):
+            return None, False
+        sessions[serial] = {"job": job, "id": session_id, "finished": False}
+        return None, True
+    if state == PrinterState.FINISHED:
+        if previous_state == PrinterState.FINISHED:
+            return None, False
+        if current and current.get("job") == job:
+            changed = not current.get("finished")
+            current["finished"] = True
+            return current["id"], changed
+        # Finished before Gantry saw it print. One session for it, kept, so a restart reuses it.
+        sessions[serial] = {"job": job, "id": session_id, "finished": True}
+        return session_id, True
+    return None, False
+
+
+def loaded_slot(serial: str, groups: list, has_spool: Any) -> tuple[dict[str, Any], Any] | None:
+    """The slot a single-extruder print came from: the active one, wherever it is. With none active, only
+    a lone loaded roll counts. Taking the first present slot charged whatever roll sat in A1 while A2 was
+    feeding, and the first unit's roll while the second unit was feeding."""
     from .physicalspool import location_for
+    active: list[tuple[dict[str, Any], Any]] = []
+    loaded: list[tuple[dict[str, Any], Any]] = []
     for gi, group in enumerate(groups):
         for si, slot in enumerate(group.slots):
-            if getattr(slot, "active", False) or getattr(slot, "present", False):
-                loc = location_for(serial, getattr(group, "external", False), gi, si)
-                if store.spool_at(loc) is not None:
-                    return loc
-    return None
+            entry = (location_for(serial, getattr(group, "external", False), gi, si), slot)
+            if getattr(slot, "active", False):
+                active.append(entry)
+            elif getattr(slot, "present", False) and has_spool(entry[0]):
+                loaded.append(entry)
+    if active:
+        return active[0] if len(active) == 1 else None
+    return loaded[0] if len(loaded) == 1 else None
+
+
+def assigned_spools(store: Any, serial: str, groups: list) -> dict[tuple[int, int], str]:
+    """The roll assigned to every slot, read when the print finishes."""
+    from .physicalspool import location_for
+    assigned: dict[tuple[int, int], str] = {}
+    for gi, group in enumerate(groups):
+        for si, _slot in enumerate(group.slots):
+            spool = store.spool_at(location_for(serial, getattr(group, "external", False), gi, si))
+            if spool is not None:
+                assigned[(gi, si)] = spool["id"]
+    return assigned
+
+
+def bambu_charges(serial: str, groups: list, filaments: list[dict[str, Any]],
+                  assigned: dict[tuple[int, int], str]) -> list[tuple[str, float, Any]]:
+    """Maps each sliced filament to a slot by colour (a single filament falls back to the loaded slot) and
+    to the roll that was assigned there when the print finished."""
+    def hex6(value: Any) -> str:
+        return (value or "").lstrip("#").upper()[:6]
+
+    def by_color(color_hex: str) -> tuple[int, int] | None:
+        wanted = hex6(color_hex)
+        if not wanted:
+            return None
+        for gi, group in enumerate(groups):
+            for si, slot in enumerate(group.slots):
+                if hex6(getattr(slot, "color", "")) == wanted:
+                    return gi, si
+        return None
+
+    charges: list[tuple[str, float, Any]] = []
+    for fil in filaments:
+        if fil["used_g"] <= 0:
+            continue
+        target = by_color(fil["color"])
+        if target is None and len(filaments) == 1:
+            chosen = loaded_slot(serial, groups, lambda loc: (loc["amsIndex"], loc["slot"]) in assigned)
+            target = (chosen[0]["amsIndex"], chosen[0]["slot"]) if chosen else None
+        if target is None or target not in assigned:
+            continue
+        charges.append((assigned[target], fil["used_g"], fil["id"]))
+    return charges
 
 
 def _consume_klipper(store: Any, serial: str, telemetry: Any, job_id: str) -> bool:
     if not telemetry.filament_used_mm or telemetry.filament_used_mm <= 0:
         return False
-    for gi, group in enumerate(telemetry.filament_groups):
-        for si, slot in enumerate(group.slots):
-            if not (getattr(slot, "active", False) or getattr(slot, "present", False)):
-                continue
-            from .physicalspool import location_for
-            loc = location_for(serial, getattr(group, "external", False), gi, si)
-            spool = store.spool_at(loc)
-            if spool is None:
-                continue
-            used = grams(telemetry.filament_used_mm, getattr(slot, "material", None))
-            return store.consume(spool["id"], used, serial, job_id)
-    return False
+    chosen = loaded_slot(serial, telemetry.filament_groups, lambda loc: store.spool_at(loc) is not None)
+    if chosen is None:
+        return False
+    location, slot = chosen
+    spool = store.spool_at(location)
+    if spool is None:
+        return False
+    used = grams(telemetry.filament_used_mm, getattr(slot, "material", None))
+    return store.consume(spool["id"], used, serial, job_id)
 
 
-def _consume_bambu(store: Any, serial: str, host: str, access_code: str, telemetry: Any, job_id: str) -> None:
-    if not telemetry.gcode_file:
+def _consume_bambu(store: Any, serial: str, host: str, access_code: str, telemetry: Any, job_id: str,
+                   assigned: dict[tuple[int, int], str], still_enabled: Any = lambda: True) -> None:
+    if not telemetry.gcode_file or not assigned:
         return
     data = fetch_bambu_3mf(host, access_code, telemetry.gcode_file)
     if not data:
         return
-    filaments = parse_3mf_filaments(data)
-    groups = telemetry.filament_groups
-
-    def by_color(color_hex: str):
-        from .physicalspool import location_for
-        for gi, group in enumerate(groups):
-            for si, slot in enumerate(group.slots):
-                slot_hex = (getattr(slot, "color", "") or "").lstrip("#").upper()[:6]
-                if color_hex and slot_hex == color_hex[:6]:
-                    return location_for(serial, getattr(group, "external", False), gi, si)
-        return None
-
-    single = _loaded_location(store, serial, groups) if len(filaments) == 1 else None
-    for fil in filaments:
-        if fil["used_g"] <= 0:
-            continue
-        loc = by_color(fil["color"]) or single
-        if loc is None:
-            continue
-        spool = store.spool_at(loc)
-        if spool is not None:
-            store.consume(spool["id"], fil["used_g"], serial, f"{job_id}#{fil['id']}")
+    # Spoolbase switched off during the download: the print is not accounted.
+    if not still_enabled():
+        return
+    for spool_id, used_g, filament_id in bambu_charges(serial, telemetry.filament_groups,
+                                                       parse_3mf_filaments(data), assigned):
+        store.consume(spool_id, used_g, serial, f"{job_id}#{filament_id}")
 
 
 def on_finish(app: Any, serial: str, previous: Any, current: Any) -> None:
-    """Decrement the assigned spool on the transition into FINISHED. Bambu fetches over the network in a
-    background thread; Klipper is immediate. Idempotent per job."""
-    from .core import PrinterState, PrinterKind
-    if previous.state == PrinterState.FINISHED or current.state != PrinterState.FINISHED:
-        return
+    """Follows print sessions on every state change and decrements the assigned roll when one finishes.
+    Bambu fetches over the network in a background thread; Klipper is immediate. Idempotent per job.
+
+    With Spoolbase off nothing is subtracted, and nothing is remembered as subtracted either: switching it
+    back on resumes from the grams the rolls had. Sessions are still followed, so a print that started
+    before the switch has the right identity when it ends."""
+    from .core import PrinterKind
     printer = next((p for p in app.printers if p.serial == serial), None)
-    store = getattr(app, "physical_spools", None)
-    if printer is None or store is None:
+    if printer is None:
         return
-    job_id = _job_id(serial, current)
+    config = getattr(app, "config", None)
+    data = getattr(config, "data", None)
+    sessions = data.setdefault(_SESSIONS_KEY, {}) if isinstance(data, dict) else {}
+    job_id, changed = observe_session(sessions, serial, previous.state, current.state, current.job_name, time.time())
+    if changed and callable(getattr(config, "save", None)):
+        config.save()
+    active = getattr(app, "_spoolbase_active", None)
+    if job_id is None or (callable(active) and not active()):
+        return
+    store = getattr(app, "physical_spools", None)
+    if store is None:
+        return
     if printer.kind == PrinterKind.KLIPPER:
         _consume_klipper(store, serial, current, job_id)
     elif printer.kind == PrinterKind.BAMBU:
@@ -201,5 +273,10 @@ def on_finish(app: Any, serial: str, previous: Any, current: Any) -> None:
         except Exception:
             access = None
         if access:
+            # The rolls are read now, at the finish. Looked up after the download, a roll swapped in while
+            # the file was still coming over was charged for the print that had come off the old one.
+            assigned = assigned_spools(store, serial, current.filament_groups)
+            enabled = active if callable(active) else (lambda: True)
             threading.Thread(target=_consume_bambu,
-                             args=(store, serial, printer.host, access, current, job_id), daemon=True).start()
+                             args=(store, serial, printer.host, access, current, job_id, assigned, enabled),
+                             daemon=True).start()

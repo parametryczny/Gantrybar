@@ -14,10 +14,10 @@ public static class Defaults
 {
     private static readonly object Gate = new();
     private static readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Gantry");
+        Path.Combine(AppDataRoot.Folder, "Gantry");
     // Pre-rebrand data location; migrated once so upgrades keep saved printers, pins and settings.
     private static readonly string LegacyDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BambuBar");
+        Path.Combine(AppDataRoot.Folder, "BambuBar");
     private static readonly string FilePath = Path.Combine(Dir, "defaults.json");
     private static Dictionary<string, JsonElement> _store = Load();
 

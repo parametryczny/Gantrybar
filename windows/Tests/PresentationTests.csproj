@@ -13,5 +13,6 @@
   <ItemGroup>
     <Compile Include="../Gantry.Windows/Services/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../Gantry.Windows/Services/UpdateAssetSelector.cs" Link="UpdateAssetSelector.cs" />
+    <Compile Include="../Gantry.Windows/Services/SpoolAccounting.cs" Link="SpoolAccounting.cs" />
   </ItemGroup>
 </Project>
