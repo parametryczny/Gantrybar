@@ -23,6 +23,7 @@ internal static class RenderHarness
         Safe(() => RenderWindow(new SpoolbaseEditWindow(store, null, false), Path.Combine(outDir, "win-editor.png")));
         Safe(() => RenderWindow(new SpoolbaseWindow(), Path.Combine(outDir, "win-spoolbase.png")));
         Safe(() => RenderDashboard(Path.Combine(outDir, "win-dashboard.png")));
+        Safe(() => RenderDetail(Path.Combine(outDir, "win-detail.png")));
         Safe(() => RenderAssignPanel(Path.Combine(outDir, "win-assign.png")));
     }
 
@@ -71,6 +72,41 @@ internal static class RenderHarness
         store.Startup.Finish();
         store.Startup.ClaimGuide(false);
         RenderWindow(new DashboardWindow(store), path);
+    }
+
+    /// <summary>The detail view with printer control on: setpoint capsules inside the nozzle and bed
+    /// tiles, the fan and speed tiles, and Advanced… on the camera card. Uses the printers
+    /// RenderDashboard saved.</summary>
+    private static void RenderDetail(string path)
+    {
+        var wasEnabled = AppSettings.PrinterControlEnabled;
+        AppSettings.PrinterControlEnabled = true;
+        try
+        {
+            var store = new PrinterStore(a => a());
+            store.Telemetry["X1"] = new PrinterTelemetry
+            {
+                State = PrinterState.Printing, Progress = 76, JobName = "benchy.3mf",
+                NozzleTemperature = 219, NozzleTargetTemperature = 220,
+                BedTemperature = 45, BedTargetTemperature = 0, ChamberTemperature = 44,
+                PartFanPercent = 40, AuxFanPercent = 0, ChamberFanPercent = 30,
+                SpeedLevel = 2, SpeedPercent = 100, NozzleDiameter = 0.4,
+                CurrentLayer = 185, TotalLayers = 240,
+            };
+            foreach (var printer in store.Printers) store.Startup.Report(printer.Serial);
+            store.Startup.Finish();
+            var window = new Window
+            {
+                Width = 480, Height = 2100,
+                Background = new SolidColorBrush(Color.FromRgb(0x0C, 0x0D, 0x0E)),
+                Content = new DetailView(store, "X1", () => { })
+            };
+            RenderWindow(window, path);
+        }
+        finally
+        {
+            AppSettings.PrinterControlEnabled = wasEnabled;
+        }
     }
 
     private static void RenderAssignPanel(string path)

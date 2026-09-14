@@ -27,7 +27,12 @@ public sealed class DetailView : UserControl
     private readonly TextBlock _name, _state, _percent, _remaining, _layers, _speed, _diameter;
     private readonly Grid _bar;   // segmented progress bar (32 blocks), matching the dashboard/macOS
     private readonly Canvas _graph;
-    private readonly StackPanel _temps, _fans, _ams;
+    private readonly StackPanel _fans, _ams;
+    // Temperature tiles are kept, not rebuilt: a setpoint capsule inside one has to survive telemetry.
+    private readonly TempTile _nozzleTile, _bedTile, _chamberTile;
+    // Printer control, opt-in in Advanced settings (Bambu and Klipper, like macOS).
+    private readonly bool _controlEnabled;
+    private readonly ControlStepper? _nozzleStepper, _bedStepper, _partFanStepper, _auxFanStepper, _chamberFanStepper, _speedStepper;
     private readonly StackPanel _recentPrints, _maintenance, _statistics;
 
     // Camera
@@ -138,8 +143,27 @@ public sealed class DetailView : UserControl
         // --- Temperatures card (graph + readouts) ---
         _graph = new Canvas { Height = 110, Background = GTheme.Brush(GTheme.Surface) };
         _graph.SizeChanged += (_, _) => DrawGraph();
-        _temps = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("TEMPERATURES")), _graph, _temps } })));
+        // The setpoint lives inside the tile it changes. The three tiles share one row height, so the
+        // chamber, which has no setpoint, keeps its reading on the nozzle's and bed's line.
+        _controlEnabled = AppSettings.PrinterControlEnabled && _kind is PrinterKind.Bambu or PrinterKind.Klipper;
+        if (_controlEnabled)
+        {
+            _nozzleStepper = new ControlStepper(0, 300, 5, true, "°");
+            _nozzleStepper.Commit += value => _store.SetNozzleTemperature(_serial, value);
+            _bedStepper = new ControlStepper(0, 120, 5, true, "°");
+            _bedStepper.Commit += value => _store.SetBedTemperature(_serial, value);
+        }
+        _nozzleTile = new TempTile(AppSettings.T("Nozzle"), NozzleBrush, _nozzleStepper, _controlEnabled);
+        _bedTile = new TempTile(AppSettings.T("Bed"), BedBrush, _bedStepper, _controlEnabled);
+        _chamberTile = new TempTile(AppSettings.T("Chamber"), ChamberBrush, null, _controlEnabled);
+        _nozzleTile.Root.Margin = new Thickness(0, 0, 4, 0);
+        _bedTile.Root.Margin = new Thickness(4, 0, 4, 0);
+        _chamberTile.Root.Margin = new Thickness(4, 0, 0, 0);
+        var temps = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, Margin = new Thickness(0, 8, 0, 0) };
+        temps.Children.Add(_nozzleTile.Root);
+        temps.Children.Add(_bedTile.Root);
+        temps.Children.Add(_chamberTile.Root);
+        stack.Children.Add(Draggable("temps", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("TEMPERATURES")), _graph, temps } })));
 
         // --- Fans + speed card ---
         _fans = new StackPanel { Orientation = Orientation.Horizontal };
@@ -150,7 +174,41 @@ public sealed class DetailView : UserControl
         infoRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         infoRow.Children.Add(_speed);
         Grid.SetColumn(_diameter, 1); infoRow.Children.Add(_diameter);
-        stack.Children.Add(Draggable("fans", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("FANS AND SPEED")), _fans, infoRow } })));
+        var fansBody = new StackPanel { Children = { SectionTitle(AppSettings.T("FANS AND SPEED")), _fans } };
+        if (_controlEnabled)
+        {
+            ControlStepper FanStepper(int index)
+            {
+                var fan = new ControlStepper(0, 100, 10, false, "%");
+                fan.Commit += value => _store.SetFan(_serial, index, value);
+                return fan;
+            }
+            _partFanStepper = FanStepper(1);
+            _speedStepper = new ControlStepper(10, 166, 10, false, "%");
+            _speedStepper.Commit += value => _store.SetPrintSpeed(_serial, value);
+            var tiles = new System.Collections.Generic.List<Border> { ControlStepper.Tile(AppSettings.T("Part"), "❋", _partFanStepper) };
+            // Klipper only drives the part fan, so there the grid is part fan and speed instead of two
+            // live tiles beside two that do nothing.
+            if (_kind == PrinterKind.Bambu)
+            {
+                _auxFanStepper = FanStepper(2);
+                _chamberFanStepper = FanStepper(3);
+                tiles.Add(ControlStepper.Tile(AppSettings.T("Aux"), "❋", _auxFanStepper));
+                tiles.Add(ControlStepper.Tile(AppSettings.T("Chamber"), "❋", _chamberFanStepper));
+            }
+            tiles.Add(ControlStepper.Tile(AppSettings.T("Speed"), "⏱", _speedStepper));
+            var tileGrid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                tiles[i].Margin = new Thickness(i % 2 == 0 ? 0 : 4, i < 2 ? 0 : 8, i % 2 == 0 ? 4 : 0, 0);
+                tileGrid.Children.Add(tiles[i]);
+            }
+            // The tiles carry the live values, so the read-only gauges would only repeat them.
+            _fans.Visibility = Visibility.Collapsed;
+            fansBody.Children.Add(tileGrid);
+        }
+        fansBody.Children.Add(infoRow);
+        stack.Children.Add(Draggable("fans", Card(fansBody)));
 
         // --- AMS / filaments card ---
         _ams = new StackPanel();
@@ -186,7 +244,7 @@ public sealed class DetailView : UserControl
             container.Children.Add(_cameraStatus);
             container.Children.Add(_cameraBadge);
             var frame = new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, Child = container };
-            stack.Children.Add(Draggable("camera", Card(new StackPanel { Children = { SectionTitle(AppSettings.T("CAMERA")), frame } })));
+            stack.Children.Add(Draggable("camera", Card(new StackPanel { Children = { CameraHeader(), frame } })));
             Loaded += (_, _) => StartCamera();
             Unloaded += (_, _) => StopCamera();
         }
@@ -404,12 +462,19 @@ public sealed class DetailView : UserControl
         if (tempSig != _lastTempSig)
         {
             _lastTempSig = tempSig;
-            _temps.Children.Clear();
-            _temps.Children.Add(TempChip(AppSettings.T("Nozzle"), t.NozzleTemperature, t.NozzleTargetTemperature, NozzleBrush, printingT, errorT));
-            _temps.Children.Add(TempChip(AppSettings.T("Bed"), t.BedTemperature, t.BedTargetTemperature, BedBrush, printingT, errorT));
-            _temps.Children.Add(TempChip(AppSettings.T("Chamber"), t.ChamberTemperature, null, ChamberBrush, printingT, errorT));
+            _nozzleTile.Update(t.NozzleTemperature, t.NozzleTargetTemperature, printingT, errorT);
+            _bedTile.Update(t.BedTemperature, t.BedTargetTemperature, printingT, errorT);
+            _chamberTile.Update(t.ChamberTemperature, null, printingT, errorT);
             DrawGraph();
         }
+        // Every tick rather than on change only: a capsule's echo window runs out on its own clock.
+        // A heater that is off reports target 0; that is its setpoint, not the current reading.
+        _nozzleStepper?.Show((int)Math.Round(t.NozzleTargetTemperature ?? 0));
+        _bedStepper?.Show((int)Math.Round(t.BedTargetTemperature ?? 0));
+        _partFanStepper?.Show(t.PartFanPercent ?? 0);
+        _auxFanStepper?.Show(t.AuxFanPercent ?? 0);
+        _chamberFanStepper?.Show(t.ChamberFanPercent ?? 0);
+        _speedStepper?.Show(t.SpeedPercent ?? 100);
 
         // Fans + speed
         var fanSig = $"{t.PartFanPercent}|{t.AuxFanPercent}|{t.ChamberFanPercent}";
@@ -421,9 +486,10 @@ public sealed class DetailView : UserControl
             _fans.Children.Add(FanChip("Aux", t.AuxFanPercent));
             _fans.Children.Add(FanChip("Chamber", t.ChamberFanPercent));
         }
+        // With controls on, the speed tile already shows the percentage; only the mode name is new.
         string? speedText = t.SpeedLevel is { } lvl
-            ? (AppSettings.T("Speed: ")) + SpeedName(lvl) + (t.SpeedPercent is { } mag ? $" · {mag}%" : "")
-            : t.SpeedPercent is { } sp ? (_pl ? $"Prędkość: {sp}%" : $"Speed: {sp}%") : null;
+            ? (AppSettings.T("Speed: ")) + SpeedName(lvl) + (t.SpeedPercent is { } mag && !_controlEnabled ? $" · {mag}%" : "")
+            : t.SpeedPercent is { } sp && !_controlEnabled ? (_pl ? $"Prędkość: {sp}%" : $"Speed: {sp}%") : null;
         _speed.Text = speedText ?? "";
         _speed.Visibility = speedText is null ? Visibility.Collapsed : Visibility.Visible;
         _diameter.Text = t.NozzleDiameter is { } d ? $"⌀ {d.ToString("0.0", CultureInfo.InvariantCulture)} mm" : "";
@@ -781,24 +847,80 @@ public sealed class DetailView : UserControl
         VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
     };
 
-    private UIElement TempChip(string title, double? current, double? target, Brush accent, bool printing, bool error)
+    /// <summary>One temperature tile, kept for the life of the view so a setpoint capsule inside it
+    /// survives telemetry. The dot keeps the sensor colour (a small legend) and the reading follows
+    /// state (kolorystyka.md §3). With a capsule, the reading is the live temperature and the capsule
+    /// carries the target; without one it stays the compact "current / target".</summary>
+    private sealed class TempTile
     {
-        // Dot keeps the sensor colour (a small legend), but the value follows STATE (kolorystyka.md §3).
-        var dot = new Ellipse { Width = 6, Height = 6, Fill = accent, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
-        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Children = { dot, new TextBlock { Text = title, FontSize = 9, Foreground = Muted() } } };
-        bool mono = AppSettings.Monochrome;
-        var st = TempStyle.Of(current, target, printing, error && target.HasValue);
-        string value = current is { } c
-            ? (int)c + "°" + (target is { } tg && tg > 0 ? $" / {(int)tg}°" : "")
-            : "—";
-        if (mono) value = TempStyle.Symbol(st) + " " + value;
-        var valueBlock = new TextBlock
+        public readonly Border Root;
+        private readonly TextBlock _value;
+        private readonly ControlStepper? _stepper;
+
+        public TempTile(string title, Brush accent, ControlStepper? stepper, bool largeReading)
         {
-            Text = value, FontSize = 13, FontWeight = TempStyle.Bold(st) ? FontWeights.Bold : FontWeights.SemiBold,
-            Foreground = TempStyle.BrushFor(st, mono)
+            _stepper = stepper;
+            var dot = new Ellipse { Width = 6, Height = 6, Fill = accent, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+            var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Children = { dot, new TextBlock { Text = title.ToUpper(CultureInfo.CurrentCulture), FontSize = 9, FontWeight = FontWeights.SemiBold, Foreground = Muted() } } };
+            // Larger on every tile of the row while controls show, the chamber included, so the three
+            // readings stay one size.
+            _value = new TextBlock { FontSize = largeReading ? 18 : 13, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 2, 0, 0) };
+            Typography.SetNumeralAlignment(_value, FontNumeralAlignment.Tabular);
+            var body = new StackPanel { Children = { titleRow, _value } };
+            if (stepper is not null)
+            {
+                stepper.Margin = new Thickness(-4, 6, -4, 0);
+                body.Children.Add(stepper);
+            }
+            Root = new Border
+            {
+                Background = GTheme.Brush(GTheme.Surface), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(GTheme.TileRadius), Padding = new Thickness(9, 7, 9, 7), Child = body
+            };
+        }
+
+        public void Update(double? current, double? target, bool printing, bool error)
+        {
+            bool mono = AppSettings.Monochrome;
+            var st = TempStyle.Of(current, target, printing, error && target.HasValue);
+            string value = current is { } c
+                ? (int)c + "°" + (_stepper is null && target is { } tg && tg > 0 ? $" / {(int)tg}°" : "")
+                : "—";
+            if (mono) value = TempStyle.Symbol(st) + " " + value;
+            _value.Text = value;
+            _value.FontWeight = TempStyle.Bold(st) ? FontWeights.Bold : FontWeights.SemiBold;
+            _value.Foreground = TempStyle.BrushFor(st, mono);
+        }
+    }
+
+    /// "Advanced…" (camera IP, light commands, Klipper object names) sits on the camera card, as on
+    /// macOS. Its right margin keeps it clear of the card's drag grip in the corner.
+    private FrameworkElement CameraHeader()
+    {
+        var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(AppSettings.T("Advanced…")))
+        {
+            TextDecorations = null, Foreground = GTheme.Brush(GTheme.Secondary)
         };
-        var stack = new StackPanel { Children = { titleRow, valueBlock } };
-        return new Border { Background = GTheme.Brush(GTheme.Surface), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 8, 0), Child = stack };
+        link.MouseEnter += (_, _) => link.Foreground = GTheme.Brush(GTheme.Text);
+        link.MouseLeave += (_, _) => link.Foreground = GTheme.Brush(GTheme.Secondary);
+        link.Click += (_, _) => OpenAdvanced();
+        var action = new TextBlock(link)
+        {
+            FontSize = 10, FontWeight = FontWeights.SemiBold, Cursor = Cursors.Hand,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 0, 18, 8)
+        };
+        var header = new Grid();
+        header.Children.Add(SectionTitle(AppSettings.T("CAMERA")));
+        header.Children.Add(action);
+        return header;
+    }
+
+    private void OpenAdvanced()
+    {
+        var window = new AdvancedWindow(_store, _serial);
+        // Owned, so the dashboard's Deactivated handler keeps the fleet open underneath it.
+        if (Window.GetWindow(this) is { IsLoaded: true } owner) window.Owner = owner;
+        window.Show();
     }
 
     private UIElement FanChip(string title, int? percent)

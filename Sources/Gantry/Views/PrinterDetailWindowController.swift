@@ -40,24 +40,29 @@ final class PrinterDetailViewController: NSViewController {
 
     // Temperatures
     private let graph = TemperatureGraphView()
-    private let nozzleChip = TempChipView(title: "Dysza")
-    private let bedChip = TempChipView(title: "Stół")
-    private let chamberChip = TempChipView(title: "Komora")
-    private let nozzleControl = CompactControlSlider(title: "Dysza", range: 0...300, suffix: "°")
-    private let bedControl = CompactControlSlider(title: "Stół", range: 0...120, suffix: "°")
-    private let temperatureControls = NSStackView()
+    private let nozzleChip = TempChipView(title: AppSettings.shared.t("Nozzle"))
+    private let bedChip = TempChipView(title: AppSettings.shared.t("Bed"))
+    private let chamberChip = TempChipView(title: AppSettings.shared.t("Chamber"))
+    private let nozzleControl = ControlStepperView(range: 0...300, step: 5, showsTargetCaption: true, suffix: "°")
+    private let bedControl = ControlStepperView(range: 0...120, step: 5, showsTargetCaption: true, suffix: "°")
 
     // Fans / speed
     private let partFan = FanChip(title: "Part")
     private let auxFan = FanChip(title: "Aux")
     private let chamberFan = FanChip(title: "Chamber")
+    private let fanGauges = NSStackView()
     private let speedLabel = NSTextField(labelWithString: "")
     private let diameterLabel = NSTextField(labelWithString: "")
-    private let partFanControl = CompactControlSlider(title: "Part", range: 0...100, suffix: "%")
-    private let auxFanControl = CompactControlSlider(title: "Aux", range: 0...100, suffix: "%")
-    private let chamberFanControl = CompactControlSlider(title: "Chamber", range: 0...100, suffix: "%")
-    private let speedControl = CompactControlSlider(title: "Prędkość", range: 10...166, suffix: "%")
+    private let partFanControl = ControlStepperView(range: 0...100, step: 10, showsTargetCaption: false, suffix: "%")
+    private let auxFanControl = ControlStepperView(range: 0...100, step: 10, showsTargetCaption: false, suffix: "%")
+    private let chamberFanControl = ControlStepperView(range: 0...100, step: 10, showsTargetCaption: false, suffix: "%")
+    private let speedControl = ControlStepperView(range: 10...166, step: 10, showsTargetCaption: false, suffix: "%")
+    private lazy var partFanTile = ControlTileView(title: AppSettings.shared.t("Part"), symbol: "wind", stepper: partFanControl)
+    private lazy var auxFanTile = ControlTileView(title: AppSettings.shared.t("Aux"), symbol: "wind", stepper: auxFanControl)
+    private lazy var chamberFanTile = ControlTileView(title: AppSettings.shared.t("Chamber"), symbol: "wind", stepper: chamberFanControl)
+    private lazy var speedTile = ControlTileView(title: AppSettings.shared.t("Speed"), symbol: "speedometer", stepper: speedControl)
     private let fanControls = NSStackView()
+    private var fanTilesSignature = ""
 
     // AMS / filaments — reuse the fleet card's dock so the layout logic stays identical.
     private let filamentDock = FilamentDockView()
@@ -514,63 +519,78 @@ final class PrinterDetailViewController: NSViewController {
         chips.orientation = .horizontal
         chips.distribution = .fillEqually
         chips.spacing = 8
-        temperatureControls.setViews([nozzleControl, bedControl], in: .top)
-        temperatureControls.orientation = .horizontal
-        temperatureControls.distribution = .fillEqually
-        temperatureControls.spacing = 10
-        nozzleControl.onChange = { [weak self] value in self?.store.setNozzleTemperature(serial: self?.serial ?? "", celsius: value) }
-        bedControl.onChange = { [weak self] value in self?.store.setBedTemperature(serial: self?.serial ?? "", celsius: value) }
-        let stack = NSStackView(views: [sectionTitle("Temperatury"), graph, chips, temperatureControls])
+        chips.alignment = .top
+        // The setpoint lives inside the tile it changes. The chamber has none, so it is held to the
+        // same height and its reading stays on the nozzle's and bed's line.
+        nozzleChip.attach(nozzleControl)
+        bedChip.attach(bedControl)
+        NSLayoutConstraint.activate([
+            bedChip.heightAnchor.constraint(equalTo: nozzleChip.heightAnchor),
+            chamberChip.heightAnchor.constraint(equalTo: nozzleChip.heightAnchor)
+        ])
+        nozzleControl.onCommit = { [weak self] value in self?.store.setNozzleTemperature(serial: self?.serial ?? "", celsius: value) }
+        bedControl.onCommit = { [weak self] value in self?.store.setBedTemperature(serial: self?.serial ?? "", celsius: value) }
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("TEMPERATURES")), graph, chips])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
         graph.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         chips.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        temperatureControls.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
     private func makeFansCard() -> NSView {
         let box = card()
-        let gauges = NSStackView(views: [partFan, auxFan, chamberFan])
-        gauges.orientation = .horizontal
-        gauges.distribution = .fillEqually
-        gauges.spacing = 8
+        fanGauges.setViews([partFan, auxFan, chamberFan], in: .leading)
+        fanGauges.orientation = .horizontal
+        fanGauges.distribution = .fillEqually
+        fanGauges.spacing = 8
         speedLabel.font = .systemFont(ofSize: 12, weight: .medium)
         diameterLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         diameterLabel.textColor = .secondaryLabelColor
         let infoRow = NSStackView(views: [speedLabel, NSView(), diameterLabel])
         infoRow.orientation = .horizontal
         infoRow.alignment = .centerY
-        let fanControlsTop = NSStackView(views: [partFanControl, auxFanControl])
-        let fanControlsBottom = NSStackView(views: [chamberFanControl, speedControl])
-        for row in [fanControlsTop, fanControlsBottom] {
-            row.orientation = .horizontal
-            row.distribution = .fillEqually
-            row.spacing = 10
-        }
-        fanControls.setViews([fanControlsTop, fanControlsBottom], in: .top)
         fanControls.orientation = .vertical
-        fanControls.spacing = 5
-        partFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 1, percent: value) }
-        auxFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 2, percent: value) }
-        chamberFanControl.onChange = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 3, percent: value) }
-        speedControl.onChange = { [weak self] value in self?.store.setPrintSpeed(serial: self?.serial ?? "", percent: value) }
-        let stack = NSStackView(views: [sectionTitle("Wentylatory i prędkość"), gauges, infoRow, fanControls])
+        fanControls.spacing = 8
+        partFanControl.onCommit = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 1, percent: value) }
+        auxFanControl.onCommit = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 2, percent: value) }
+        chamberFanControl.onCommit = { [weak self] value in self?.store.setFan(serial: self?.serial ?? "", index: 3, percent: value) }
+        speedControl.onCommit = { [weak self] value in self?.store.setPrintSpeed(serial: self?.serial ?? "", percent: value) }
+        // Controls on: the tiles carry the live value, so the read-only gauges would only repeat it.
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("FANS AND SPEED")), fanGauges, fanControls, infoRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         pin(stack, in: box, inset: 11)
-        gauges.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        fanGauges.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         infoRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         fanControls.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
     }
 
+    /// Two tiles to a row. Klipper only drives the part fan, so there the grid is part fan and speed
+    /// instead of two live tiles beside two greyed-out ones.
+    private func layoutFanTiles(bambu: Bool) {
+        let signature = bambu ? "bambu" : "other"
+        guard signature != fanTilesSignature else { return }
+        fanTilesSignature = signature
+        let tiles = bambu ? [partFanTile, auxFanTile, chamberFanTile, speedTile] : [partFanTile, speedTile]
+        let rows = stride(from: 0, to: tiles.count, by: 2).map { start -> NSStackView in
+            let row = NSStackView(views: Array(tiles[start..<min(start + 2, tiles.count)]))
+            row.orientation = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 8
+            return row
+        }
+        fanControls.setViews(rows, in: .top)
+        for row in rows { row.widthAnchor.constraint(equalTo: fanControls.widthAnchor).isActive = true }
+    }
+
     private func makeAMSCard() -> NSView {
         let box = card()
-        let stack = NSStackView(views: [sectionTitle("Filamenty / AMS"), filamentDock])
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("FILAMENTS / AMS")), filamentDock])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -658,7 +678,7 @@ final class PrinterDetailViewController: NSViewController {
         let buttons = NSStackView(views: [onButton, offButton, NSView(), automationsButton])
         buttons.orientation = .horizontal
         buttons.spacing = 8
-        let stack = NSStackView(views: [sectionTitle("Sterowanie i automatyzacje"), buttons])
+        let stack = NSStackView(views: [sectionTitle(AppSettings.shared.t("CONTROL AND AUTOMATIONS")), buttons])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -686,9 +706,12 @@ final class PrinterDetailViewController: NSViewController {
         advancedButton.isBordered = false
         advancedButton.font = .systemFont(ofSize: 10, weight: .medium)
         advancedButton.contentTintColor = .controlAccentColor
-        let header = NSStackView(views: [sectionTitle("Kamera"), NSView(), advancedButton])
+        let header = NSStackView(views: [sectionTitle(AppSettings.shared.t("CAMERA")), NSView(), advancedButton])
         header.orientation = .horizontal
         header.alignment = .centerY
+        // The card's drag grip sits in the top-right corner (8 pt in, 22 wide); the button used to
+        // run underneath it.
+        header.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 24)
         let stack = NSStackView(views: [header, cameraView])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -750,34 +773,37 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         graph.samples = store.temperatureHistory[serial] ?? []
+        let kind = printer?.kind
+        let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper)
+        for chip in [nozzleChip, bedChip, chamberChip] { chip.largeReading = controlEnabled }
+        nozzleChip.showsControl = controlEnabled
+        bedChip.showsControl = controlEnabled
         nozzleChip.set(current: t.nozzleTemperature, target: t.nozzleTargetTemperature, accent: Self.nozzleColor)
         bedChip.set(current: t.bedTemperature, target: t.bedTargetTemperature, accent: Self.bedColor)
         chamberChip.set(current: t.chamberTemperature,
                         target: (t.chamberTargetTemperature ?? 0) > 0 ? t.chamberTargetTemperature : nil,
                         accent: Self.chamberColor)
+        // A heater that is off reports target 0; that is the setpoint, not the current reading.
+        nozzleControl.show(reported: Int((t.nozzleTargetTemperature ?? 0).rounded()))
+        bedControl.show(reported: Int((t.bedTargetTemperature ?? 0).rounded()))
 
-        let kind = printer?.kind
-        let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper)
-        temperatureControls.isHidden = !controlEnabled
+        fanGauges.isHidden = controlEnabled
         fanControls.isHidden = !controlEnabled
-        nozzleControl.set(value: Int((t.nozzleTargetTemperature ?? t.nozzleTemperature ?? 0).rounded()))
-        bedControl.set(value: Int((t.bedTargetTemperature ?? t.bedTemperature ?? 0).rounded()))
-
+        if controlEnabled { layoutFanTiles(bambu: kind == .bambu) }
         partFan.set(percent: t.partFanPercent)
         auxFan.set(percent: t.auxFanPercent)
         chamberFan.set(percent: t.chamberFanPercent)
-        partFanControl.set(value: t.partFanPercent ?? 0)
-        auxFanControl.set(value: t.auxFanPercent ?? 0)
-        chamberFanControl.set(value: t.chamberFanPercent ?? 0)
-        auxFanControl.isEnabled = kind == .bambu
-        chamberFanControl.isEnabled = kind == .bambu
-        speedControl.set(value: t.speedPercent ?? 100)
+        partFanControl.show(reported: t.partFanPercent ?? 0)
+        auxFanControl.show(reported: t.auxFanPercent ?? 0)
+        chamberFanControl.show(reported: t.chamberFanPercent ?? 0)
+        speedControl.show(reported: t.speedPercent ?? 100)
+        // With controls on, the speed tile already shows the percentage; only the mode name is new.
         if let level = t.speedLevel {
             var text = settings.t("Speed: ") + speedName(level)
-            if let mag = t.speedPercent { text += " · \(mag)%" }
+            if let mag = t.speedPercent, !controlEnabled { text += " · \(mag)%" }
             speedLabel.stringValue = text
             speedLabel.isHidden = false
-        } else if let mag = t.speedPercent {
+        } else if let mag = t.speedPercent, !controlEnabled {
             speedLabel.stringValue = settings.t("Speed: {0}%%", mag)
             speedLabel.isHidden = false
         } else {
@@ -939,100 +965,284 @@ private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 
-// MARK: - Compact, opt-in control
+// MARK: - Opt-in control: a setpoint capsule inside its tile
 
+/// A setpoint the user nudges, drawn as one inset capsule [ − | value | + ] that belongs to the tile
+/// it sits in, instead of two loose squares on the card. Holding a button repeats. The command goes
+/// out once the value settles, and for a few seconds telemetry still carrying the old setpoint is
+/// ignored, so the number does not jump back under the pointer while the printer catches up.
 @MainActor
-private final class CompactControlSlider: NSView {
-    var onChange: ((Int) -> Void)?
-    private let nameLabel = NSTextField(labelWithString: "")
-    private let valueLabel = NSTextField(labelWithString: "")
-    private let minusButton = NSButton()
-    private let plusButton = NSButton()
-    private let suffix: String
-    private let step: Int
+final class ControlStepperView: NSView {
+    static let height: CGFloat = 28
+    private static let buttonWidth: CGFloat = 26
+    private static let settleDelay: TimeInterval = 0.6
+    private static let echoWindow: TimeInterval = 6
+
+    var onCommit: ((Int) -> Void)?
     private let range: ClosedRange<Int>
+    private let step: Int
+    private let suffix: String
+    private let showsTargetCaption: Bool
+    private let minusButton = StepButton(symbol: "minus", label: AppSettings.shared.t("Decrease"))
+    private let plusButton = StepButton(symbol: "plus", label: AppSettings.shared.t("Increase"))
+    private let valueLabel = NSTextField(labelWithString: "")
     private var value: Int
+    private var commitTimer: Timer?
+    private var ignoreReportsUntil = Date.distantPast
 
-    var isEnabled: Bool {
-        get { minusButton.isEnabled }
-        set {
-            minusButton.isEnabled = newValue
-            plusButton.isEnabled = newValue
-            alphaValue = newValue ? 1 : 0.38
-        }
-    }
-
-    init(title: String, range: ClosedRange<Int>, suffix: String) {
-        self.suffix = suffix
-        self.step = 5
+    init(range: ClosedRange<Int>, step: Int, showsTargetCaption: Bool, suffix: String) {
         self.range = range
+        self.step = step
+        self.suffix = suffix
+        self.showsTargetCaption = showsTargetCaption
         self.value = range.lowerBound
         super.init(frame: .zero)
-        nameLabel.stringValue = AppSettings.shared.t(title)
-        nameLabel.font = .systemFont(ofSize: 10, weight: .medium)
-        nameLabel.textColor = GantryTheme.secondary
-        nameLabel.alignment = .left
-        nameLabel.widthAnchor.constraint(equalToConstant: 52).isActive = true
-        valueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
-        valueLabel.textColor = GantryTheme.text
-        valueLabel.alignment = .right
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.masksToBounds = true
+        layer?.borderWidth = 1
+        layer?.borderColor = GantryTheme.line.cgColor
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.24).cgColor
+
         valueLabel.alignment = .center
-        valueLabel.widthAnchor.constraint(equalToConstant: 42).isActive = true
-        configureStepButton(minusButton, symbol: "minus", action: #selector(decrement))
-        configureStepButton(plusButton, symbol: "plus", action: #selector(increment))
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let row = NSStackView(views: [nameLabel, spacer, minusButton, valueLabel, plusButton])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 7
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
+        valueLabel.lineBreakMode = .byTruncatingTail
+        valueLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        minusButton.onStep = { [weak self] in self?.nudge(-1) }
+        plusButton.onStep = { [weak self] in self?.nudge(1) }
+        let leftRule = Self.rule()
+        let rightRule = Self.rule()
+        for view in [minusButton, plusButton, valueLabel, leftRule, rightRule] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor),
-            row.topAnchor.constraint(equalTo: topAnchor),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor),
-            heightAnchor.constraint(equalToConstant: 22)
+            heightAnchor.constraint(equalToConstant: Self.height),
+            minusButton.leadingAnchor.constraint(equalTo: leadingAnchor),
+            minusButton.topAnchor.constraint(equalTo: topAnchor),
+            minusButton.bottomAnchor.constraint(equalTo: bottomAnchor),
+            minusButton.widthAnchor.constraint(equalToConstant: Self.buttonWidth),
+            plusButton.trailingAnchor.constraint(equalTo: trailingAnchor),
+            plusButton.topAnchor.constraint(equalTo: topAnchor),
+            plusButton.bottomAnchor.constraint(equalTo: bottomAnchor),
+            plusButton.widthAnchor.constraint(equalToConstant: Self.buttonWidth),
+            leftRule.leadingAnchor.constraint(equalTo: minusButton.trailingAnchor),
+            rightRule.trailingAnchor.constraint(equalTo: plusButton.leadingAnchor),
+            valueLabel.leadingAnchor.constraint(equalTo: leftRule.trailingAnchor, constant: 2),
+            valueLabel.trailingAnchor.constraint(equalTo: rightRule.leadingAnchor, constant: -2),
+            valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
-        set(value: range.lowerBound)
+        for rule in [leftRule, rightRule] {
+            NSLayoutConstraint.activate([
+                rule.widthAnchor.constraint(equalToConstant: 1),
+                rule.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+                rule.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7)
+            ])
+        }
+        setValue(range.lowerBound)
     }
 
     required init?(coder: NSCoder) { nil }
 
-    private func configureStepButton(_ button: NSButton, symbol: String, action: Selector) {
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        button.imagePosition = .imageOnly
-        button.isBordered = false
-        button.bezelStyle = .regularSquare
-        button.wantsLayer = true
-        button.layer?.cornerRadius = 6
-        button.layer?.backgroundColor = GantryTheme.surface.cgColor
-        button.target = self
-        button.action = action
-        button.translatesAutoresizingMaskIntoConstraints = false
+    private static func rule() -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = GantryTheme.line.cgColor
+        return view
+    }
+
+    /// The printer's own setpoint. Held back while the user is still stepping and just after a
+    /// command, unless the printer already reports the value that was sent.
+    func show(reported: Int) {
+        guard commitTimer == nil else { return }
+        if Date() < ignoreReportsUntil {
+            if clamp(reported) == value { ignoreReportsUntil = .distantPast }
+            return
+        }
+        setValue(reported)
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        // Closing the details right after a click must not swallow the change.
+        if newWindow == nil, commitTimer != nil { commit() }
+    }
+
+    private func nudge(_ direction: Int) {
+        // Onto the step grid first, so 223° goes to 225° and 220°, not 228° and 218°.
+        let next = direction > 0 ? (value / step + 1) * step : ((value + step - 1) / step - 1) * step
+        setValue(next)
+        commitTimer?.invalidate()
+        commitTimer = Timer.scheduledTimer(withTimeInterval: Self.settleDelay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.commit() }
+        }
+    }
+
+    private func commit() {
+        commitTimer?.invalidate()
+        commitTimer = nil
+        ignoreReportsUntil = Date().addingTimeInterval(Self.echoWindow)
+        onCommit?(value)
+    }
+
+    private func clamp(_ candidate: Int) -> Int { min(range.upperBound, max(range.lowerBound, candidate)) }
+
+    private func setValue(_ candidate: Int) {
+        value = clamp(candidate)
+        minusButton.isEnabled = value > range.lowerBound
+        plusButton.isEnabled = value < range.upperBound
+        let settings = AppSettings.shared
+        let text = NSMutableAttributedString()
+        if showsTargetCaption {
+            text.append(NSAttributedString(string: settings.t("Target").lowercased() + " ", attributes: [
+                .font: NSFont.systemFont(ofSize: 9, weight: .medium),
+                .foregroundColor: GantryTheme.secondary
+            ]))
+        }
+        let off = showsTargetCaption && value == 0
+        text.append(NSAttributedString(string: off ? settings.t("Off").lowercased() : "\(value)\(suffix)", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+            .foregroundColor: off ? GantryTheme.secondary : GantryTheme.text
+        ]))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byTruncatingTail
+        text.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: text.length))
+        valueLabel.attributedStringValue = text
+        setAccessibilityValue(text.string)
+    }
+}
+
+/// One end of the capsule. A plain view rather than an NSButton so the hover and pressed fills can
+/// run edge to edge and follow the capsule's rounded corners.
+@MainActor
+private final class StepButton: NSView {
+    var onStep: (() -> Void)?
+    var isEnabled = true { didSet { if !isEnabled { stopRepeating() }; refresh() } }
+    private let imageView = NSImageView()
+    private var hovering = false
+    private var pressed = false
+    private var repeatTimer: Timer?
+
+    init(symbol: String, label: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        imageView.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .bold))
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 22),
-            button.heightAnchor.constraint(equalToConstant: 22)
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(label)
+        refresh()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
+        onStep?()
+        return true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func resetCursorRects() {
+        if isEnabled { addCursorRect(bounds, cursor: .pointingHand) }
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true; refresh() }
+    override func mouseExited(with event: NSEvent) { hovering = false; refresh() }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEnabled else { return }
+        pressed = true
+        refresh()
+        onStep?()
+        repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.startRepeating() }
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        pressed = false
+        stopRepeating()
+        refresh()
+    }
+
+    private func startRepeating() {
+        guard pressed else { return }
+        repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.pressed, self.isEnabled else { self?.stopRepeating(); return }
+                self.onStep?()
+            }
+        }
+    }
+
+    private func stopRepeating() {
+        repeatTimer?.invalidate()
+        repeatTimer = nil
+    }
+
+    private func refresh() {
+        let fill: CGFloat = !isEnabled ? 0 : pressed ? 0.16 : hovering ? 0.08 : 0
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(fill).cgColor
+        imageView.contentTintColor = isEnabled ? GantryTheme.text : GantryTheme.muted.withAlphaComponent(0.55)
+        window?.invalidateCursorRects(for: self)
+    }
+}
+
+/// A fan or the print speed as a tile: what it is on top, its setpoint capsule below. Same surface,
+/// border and radius as the temperature tiles, so the two cards read as one set.
+@MainActor
+final class ControlTileView: NSView {
+    init(title: String, symbol: String, stepper: ControlStepperView) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = GantryTheme.tileRadius
+        layer?.borderWidth = 1
+        layer?.borderColor = GantryTheme.line.cgColor
+        layer?.backgroundColor = GantryTheme.surface.cgColor
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            ?? NSImage(systemSymbolName: "wind", accessibilityDescription: nil) ?? NSImage()
+        let icon = NSImageView(image: image)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 8, weight: .bold)
+        icon.contentTintColor = NSColor.white.withAlphaComponent(0.5)
+        let titleLabel = NSTextField(labelWithString: title.uppercased())
+        titleLabel.font = .systemFont(ofSize: 8, weight: .bold)
+        titleLabel.textColor = NSColor.white.withAlphaComponent(0.5)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        let titleRow = NSStackView(views: [icon, titleLabel])
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .centerY
+        titleRow.spacing = 4
+        for view in [titleRow, stepper] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            titleRow.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+            titleRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
+            titleRow.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -9),
+            stepper.topAnchor.constraint(equalTo: titleRow.bottomAnchor, constant: 7),
+            stepper.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            stepper.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            stepper.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
     }
 
-    func set(value: Int) {
-        let clamped = min(range.upperBound, max(range.lowerBound, value))
-        self.value = clamped
-        valueLabel.stringValue = "\(clamped)\(suffix)"
-        minusButton.isEnabled = isEnabled && clamped > range.lowerBound
-        plusButton.isEnabled = isEnabled && clamped < range.upperBound
-    }
-
-    @objc private func decrement() { commit(value - step) }
-    @objc private func increment() { commit(value + step) }
-
-    private func commit(_ candidate: Int) {
-        let clamped = min(range.upperBound, max(range.lowerBound, candidate))
-        set(value: clamped)
-        onChange?(clamped)
-    }
+    required init?(coder: NSCoder) { nil }
 }
 
 // MARK: - Temperature graph
@@ -1125,6 +1335,28 @@ final class TempChipView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let valueLabel = NSTextField(labelWithString: "")
     private let dot = NSView()
+    private var stepper: ControlStepperView?
+    private var controlConstraints: [NSLayoutConstraint] = []
+
+    /// With a setpoint capsule shown, the tile reads the live temperature large above it; the capsule
+    /// carries the target. Without one it keeps the compact "current / target" reading.
+    var showsControl = false {
+        didSet {
+            guard showsControl != oldValue, let stepper else { return }
+            stepper.isHidden = !showsControl
+            if showsControl { NSLayoutConstraint.activate(controlConstraints) }
+            else { NSLayoutConstraint.deactivate(controlConstraints) }
+        }
+    }
+
+    /// The larger reading used while the card shows controls. Set on every tile in the row, the
+    /// chamber included, so the three readings stay one size.
+    var largeReading = false {
+        didSet {
+            guard largeReading != oldValue else { return }
+            valueLabel.font = .monospacedDigitSystemFont(ofSize: largeReading ? 18 : 15, weight: .medium)
+        }
+    }
 
     init(title: String) {
         super.init(frame: .zero)
@@ -1143,6 +1375,10 @@ final class TempChipView: NSView {
         dot.widthAnchor.constraint(equalToConstant: 5).isActive = true
         dot.heightAnchor.constraint(equalToConstant: 5).isActive = true
         heightAnchor.constraint(greaterThanOrEqualToConstant: 46).isActive = true
+        // Only a floor otherwise; this settles the height when nothing inside asks for more.
+        let resting = heightAnchor.constraint(equalToConstant: 46)
+        resting.priority = .defaultLow
+        resting.isActive = true
 
         let titleRow = NSStackView(views: [dot, titleLabel])
         titleRow.orientation = .horizontal
@@ -1155,8 +1391,11 @@ final class TempChipView: NSView {
         NSLayoutConstraint.activate([
             titleRow.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             titleRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            // Hung from the title, not the bottom edge, so a taller neighbour does not push this
+            // reading off the line the others sit on.
+            valueLabel.topAnchor.constraint(equalTo: titleRow.bottomAnchor, constant: 3),
             valueLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            valueLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
+            valueLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -7),
             valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
             valueLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4)
         ])
@@ -1164,11 +1403,27 @@ final class TempChipView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
+    func attach(_ stepper: ControlStepperView) {
+        self.stepper = stepper
+        stepper.translatesAutoresizingMaskIntoConstraints = false
+        stepper.isHidden = !showsControl
+        addSubview(stepper)
+        controlConstraints = [
+            stepper.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 6),
+            stepper.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            stepper.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            stepper.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
+        ]
+        if showsControl { NSLayoutConstraint.activate(controlConstraints) }
+    }
+
     func set(current: Double?, target: Double?, accent: NSColor) {
         dot.layer?.backgroundColor = accent.cgColor
         layer?.backgroundColor = accent.withAlphaComponent(0.06).cgColor
         guard let current else { valueLabel.stringValue = "—"; return }
-        if let target, target > 0 {
+        if showsControl, stepper != nil {
+            valueLabel.stringValue = "\(Int(current))°"
+        } else if let target, target > 0 {
             valueLabel.stringValue = "\(Int(current))° / \(Int(target))°"
         } else {
             valueLabel.stringValue = "\(Int(current))°"

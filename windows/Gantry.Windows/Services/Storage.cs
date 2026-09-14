@@ -164,6 +164,14 @@ public static class AppSettings
         set => Defaults.SetBool("developer-mode", value);
     }
 
+    /// Printer control: temperature, fan and speed setpoints in the detail view (Bambu and Klipper).
+    /// Off by default; the same key as macOS.
+    public static bool PrinterControlEnabled
+    {
+        get => Defaults.GetBool("printer-control-enabled");
+        set => Defaults.SetBool("printer-control-enabled", value);
+    }
+
     /// <summary>Second surface: the fleet in a resizable desktop window instead of the tray flyout.
     /// LITE ships the flyout only, so it reads false here whatever a full Gantry left in the shared
     /// defaults file (the setters stay live so the full app's own value is never rewritten).</summary>

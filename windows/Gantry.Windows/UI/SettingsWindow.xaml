@@ -390,6 +390,8 @@
                         </Grid.RowDefinitions>
                         <TextBlock x:Name="DeveloperHeading" Style="{StaticResource PaneCaption}"/>
                         <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                            <CheckBox x:Name="PrinterControlCheckBox"/>
+                            <TextBlock x:Name="PrinterControlHint" Style="{StaticResource PaneNote}" Margin="0,0,0,6"/>
                             <CheckBox x:Name="DeveloperCheckBox"/>
                             <CheckBox x:Name="ScriptActionsCheckBox"/>
                         </StackPanel>

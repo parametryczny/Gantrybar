@@ -673,6 +673,32 @@ public sealed class PrinterStore
         if (_clients.TryGetValue(serial, out var c) && c is MoonrakerClient m) m.SendGcode(script);
     }
 
+    /// One G-code line to a printer that takes them: Klipper over Moonraker, Bambu as an MQTT
+    /// gcode_line. Other brands have no route for it and are left alone, as on macOS.
+    private void SendPrinterGcode(string serial, string line)
+    {
+        var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
+        if (kind == PrinterKind.Klipper) SendGcode(serial, line);
+        else if (kind == PrinterKind.Bambu)
+            SendCommand(serial, JsonSerializer.Serialize(new { print = new { sequence_id = "2006", command = "gcode_line", param = line + "\n" } }));
+    }
+
+    public void SetNozzleTemperature(string serial, int celsius) => SendPrinterGcode(serial, $"M104 S{Math.Clamp(celsius, 0, 300)}");
+
+    public void SetBedTemperature(string serial, int celsius) => SendPrinterGcode(serial, $"M140 S{Math.Clamp(celsius, 0, 120)}");
+
+    /// Bambu fan indices: P1 part, P2 auxiliary, P3 chamber. Klipper exposes the standard part fan
+    /// through M106; model-specific auxiliary and chamber macros stay unavailable.
+    public void SetFan(string serial, int index, int percent)
+    {
+        int value = (int)Math.Round(Math.Clamp(percent, 0, 100) * 2.55);
+        var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
+        if (kind == PrinterKind.Klipper) { if (index == 1) SendGcode(serial, $"M106 S{value}"); }
+        else if (kind == PrinterKind.Bambu) SendPrinterGcode(serial, $"M106 P{index} S{value}");
+    }
+
+    public void SetPrintSpeed(string serial, int percent) => SendPrinterGcode(serial, $"M220 S{Math.Clamp(percent, 10, 166)}");
+
     public async Task<(PrintObjectLayout? Layout, string? Error)> LoadPrintObjectLayoutAsync(string serial)
     {
         var printer = Printers.FirstOrDefault(p => p.Serial == serial);

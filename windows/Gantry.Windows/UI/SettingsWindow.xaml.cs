@@ -110,6 +110,7 @@ public partial class SettingsWindow : Window
         };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
         SpoolbaseCheckBox.Click += (_, _) => AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;
+        PrinterControlCheckBox.Click += (_, _) => AppSettings.PrinterControlEnabled = PrinterControlCheckBox.IsChecked == true;
         DeveloperCheckBox.Click += (_, _) => AppSettings.DeveloperMode = DeveloperCheckBox.IsChecked == true;
         ScriptActionsCheckBox.Click += (_, _) => AppSettings.AllowScriptActions = ScriptActionsCheckBox.IsChecked == true;
         AutoUpdateCheckBox.Click += (_, _) => AppSettings.AutoUpdate = AutoUpdateCheckBox.IsChecked == true;
@@ -341,6 +342,8 @@ public partial class SettingsWindow : Window
         TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         StartupCheckBox.Content = AppSettings.T("Start with Windows");
         SpoolbaseCheckBox.Content = AppSettings.T("Spoolbase — filament stock");
+        PrinterControlCheckBox.Content = AppSettings.T("Printer control");
+        PrinterControlHint.Text = AppSettings.T("Enables temperature, fan and speed controls in Details. Off by default.");
         DeveloperCheckBox.Content = AppSettings.T("Developer mode (control + automations)");
         ScriptActionsCheckBox.Content = AppSettings.T("Allow automations to run scripts and custom commands");
         ScriptActionsHint.Text = AppSettings.T("Off by default for safety: stops a planted rule from silently running code. Each rule still asks for confirmation the first time it fires.");
@@ -468,6 +471,7 @@ public partial class SettingsWindow : Window
     {
         StartupCheckBox.IsChecked = LaunchAtLogin.IsEnabled;
         SpoolbaseCheckBox.IsChecked = AppSettings.SpoolbaseEnabled;
+        PrinterControlCheckBox.IsChecked = AppSettings.PrinterControlEnabled;
         DeveloperCheckBox.IsChecked = AppSettings.DeveloperMode;
         ScriptActionsCheckBox.IsChecked = AppSettings.AllowScriptActions;
         AutoUpdateCheckBox.IsChecked = AppSettings.AutoUpdate;

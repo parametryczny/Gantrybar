@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "date": "2026-09-14",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
@@ -713,5 +713,25 @@
       "edge-dock-camera-serials"
     ],
     "ringPlacement": "the ring stays beside the physical screen edge while the text unfolds inward"
+  },
+  "detailControls": {
+    "setting": "printer-control-enabled",
+    "kinds": ["bambu", "klipper"],
+    "platforms": ["macOS", "Windows"],
+    "capsule": {
+      "height": 28,
+      "buttonWidth": 26,
+      "radius": 8,
+      "captionFontSize": 9,
+      "valueFontSize": 12,
+      "layout": "one inset capsule [ minus | caption value | plus ] with hairline separators; flat ends with hover and pressed fills"
+    },
+    "steps": {"temperature": 5, "fan": 10, "speed": 10},
+    "ranges": {"nozzle": [0, 300], "bed": [0, 120], "fan": [0, 100], "speed": [10, 166]},
+    "timing": {"settleSeconds": 0.6, "echoWindowSeconds": 6, "repeatDelayMs": 400, "repeatIntervalMs": 70},
+    "values": "snapped to the step grid; a heater target of 0 reads as off; the command goes out once the value settles and a pending one is sent when the view closes",
+    "temperatureTiles": "the capsule sits inside the nozzle and bed tiles and carries the target; the tile reads the live temperature; all three readings share one size and line",
+    "fanTiles": "two to a row; Klipper shows part fan and speed only; the read-only gauges are hidden while the tiles show",
+    "advanced": "Advanced… sits on the camera card header, clear of the drag grip"
   }
 }

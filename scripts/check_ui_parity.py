@@ -945,6 +945,38 @@ require("linux/gantry/http_clients.py", r'exclude_object[\s\S]*?print_objects',
 require("linux/gantry/skipobjects.py", r'class SkipObjectsPanel[\s\S]*?Confirm skip[\s\S]*?skip_objects',
         "Linux is missing the protected object-skipping panel")
 
+# Printer control in Details (macOS and Windows): the setpoint capsule sits inside the tile it changes.
+detail_controls = CONTRACT["detailControls"]
+capsule = detail_controls["capsule"]
+steps = detail_controls["steps"]
+ranges = detail_controls["ranges"]
+timing = detail_controls["timing"]
+mac_detail = "Sources/Gantry/Views/PrinterDetailWindowController.swift"
+win_stepper = "windows/Gantry.Windows/UI/ControlStepper.cs"
+win_detail = "windows/Gantry.Windows/UI/DetailWindow.cs"
+require(mac_detail, rf"static let height: CGFloat = {capsule['height']}\b[\s\S]*?buttonWidth: CGFloat = {capsule['buttonWidth']}\b"
+        rf"[\s\S]*?settleDelay: TimeInterval = {timing['settleSeconds']}\b[\s\S]*?echoWindow: TimeInterval = {timing['echoWindowSeconds']}\b",
+        "macOS setpoint capsule geometry or timing differs from the contract")
+require(win_stepper, rf"CapsuleHeight = {capsule['height']};[\s\S]*?ButtonWidth = {capsule['buttonWidth']};[\s\S]*?Radius = {capsule['radius']};"
+        rf"[\s\S]*?FromMilliseconds\({int(timing['settleSeconds'] * 1000)}\)[\s\S]*?EchoWindow = TimeSpan\.FromSeconds\({timing['echoWindowSeconds']}\)",
+        "Windows setpoint capsule geometry or timing differs from the contract")
+require(win_stepper, rf"Delay = {timing['repeatDelayMs']}, Interval = {timing['repeatIntervalMs']}",
+        "Windows capsule buttons do not repeat like macOS")
+for label, key, step, caption in (("nozzle", "nozzle", steps["temperature"], True), ("bed", "bed", steps["temperature"], True),
+                                   ("fan", "fan", steps["fan"], False), ("speed", "speed", steps["speed"], False)):
+    low, high = ranges[key]
+    require(mac_detail, rf"ControlStepperView\(range: {low}\.\.\.{high}, step: {step}, showsTargetCaption: {str(caption).lower()}",
+            f"macOS {label} capsule range or step differs from the contract")
+    require(win_detail, rf"new ControlStepper\({low}, {high}, {step}, {str(caption).lower()},",
+            f"Windows {label} capsule range or step differs from the contract")
+forbid(mac_detail, r"CompactControlSlider", "macOS brought back the loose plus/minus row under the tiles")
+forbid(win_detail, r"TempChip\(", "Windows rebuilds temperature chips, which would drop a capsule mid-change")
+require("windows/Gantry.Windows/Services/Storage.cs", rf'"{detail_controls["setting"]}"', "Windows is missing the printer-control setting")
+require("windows/Gantry.Windows/Services/PrinterStore.cs", r"M104 S[\s\S]*?M140 S[\s\S]*?M106 P\{index\}[\s\S]*?M220 S",
+        "Windows is missing the temperature, fan or speed commands")
+require(mac_detail, r'sectionTitle\(AppSettings\.shared\.t\("CAMERA"\)\), NSView\(\), advancedButton', "macOS camera card lost Advanced…")
+require(win_detail, r'new AdvancedWindow\(_store, _serial\)', "Windows has no way to open Advanced…")
+
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)
     for error in ERRORS:
