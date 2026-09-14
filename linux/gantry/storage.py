@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import locale
 import os
@@ -96,7 +97,9 @@ DEFAULTS: dict[str, Any] = {
 class Config:
     def __init__(self) -> None:
         _migrate_legacy_config()
-        self.data = dict(DEFAULTS)
+        # A deep copy: dict(DEFAULTS) shared the nested automations, pins and lists between every Config
+        # and the constant itself, so a change in one leaked into the next.
+        self.data = copy.deepcopy(DEFAULTS)
         if not CONFIG_FILE.exists():
             language = (locale.getlocale()[0] or os.environ.get("LANG", "")).lower()
             self.data["language"] = "pl" if language.startswith("pl") else "en"

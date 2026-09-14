@@ -65,8 +65,6 @@
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
     <!-- Local duplicate backups are not source files; retain them on disk without compiling twice. -->
-    <Compile Remove="Services\HmsResolver 2.cs" />
-    <Compile Remove="UI\MaintenanceWindow 2.cs" />
   </ItemGroup>
 
 </Project>

@@ -170,19 +170,20 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         }
 
         let editRoot = NSMenuItem()
-        let editMenu = NSMenu(title: "Edycja")
+        // Through the catalogue like every other menu: these were Polish whatever the language setting.
+        let editMenu = NSMenu(title: settings.t("Edit menu"))
 
         func command(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
-            NSMenuItem(title: title, action: action, keyEquivalent: key)
+            NSMenuItem(title: settings.t(title), action: action, keyEquivalent: key)
         }
 
-        editMenu.addItem(command("Cofnij", Selector(("undo:")), "z"))
-        editMenu.addItem(command("Ponów", Selector(("redo:")), "Z"))
+        editMenu.addItem(command("Undo", Selector(("undo:")), "z"))
+        editMenu.addItem(command("Redo", Selector(("redo:")), "Z"))
         editMenu.addItem(.separator())
-        editMenu.addItem(command("Wytnij", #selector(NSText.cut(_:)), "x"))
-        editMenu.addItem(command("Kopiuj", #selector(NSText.copy(_:)), "c"))
-        editMenu.addItem(command("Wklej", #selector(NSText.paste(_:)), "v"))
-        editMenu.addItem(command("Zaznacz wszystko", #selector(NSText.selectAll(_:)), "a"))
+        editMenu.addItem(command("Cut", #selector(NSText.cut(_:)), "x"))
+        editMenu.addItem(command("Copy", #selector(NSText.copy(_:)), "c"))
+        editMenu.addItem(command("Paste", #selector(NSText.paste(_:)), "v"))
+        editMenu.addItem(command("Select All", #selector(NSText.selectAll(_:)), "a"))
 
         editRoot.submenu = editMenu
         mainMenu.addItem(editRoot)

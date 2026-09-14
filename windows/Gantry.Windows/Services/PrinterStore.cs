@@ -896,7 +896,7 @@ public sealed class PrinterStore
             var msg = string.Format(
                 AppSettings.T("Automation \"{0}\" ({1}) wants to run {2}:\n\n{3}\n\nAllow and remember for this rule?"),
                 auto.Name, printerName,
-                script ? AppSettings.T("a script on this Mac") : AppSettings.T("a printer command"),
+                script ? AppSettings.T("a script on this computer") : AppSettings.T("a printer command"),
                 preview);
             approved = System.Windows.MessageBox.Show(msg, "Gantry — " + AppSettings.T("Confirm"),
                 System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning) == System.Windows.MessageBoxResult.Yes;

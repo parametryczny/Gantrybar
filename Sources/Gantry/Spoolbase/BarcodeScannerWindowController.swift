@@ -22,7 +22,7 @@ final class BarcodeScannerWindowController: NSWindowController,
             backing: .buffered,
             defer: false
         )
-        window.title = "Skanuj kod filamentu"
+        window.title = AppSettings.shared.t("Scan a filament code")
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
@@ -41,11 +41,11 @@ final class BarcodeScannerWindowController: NSWindowController,
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 Task { @MainActor [weak self] in
                     if granted { self?.configureAndStart() }
-                    else { self?.showCameraError("Spoolbase nie ma dostępu do kamery.") }
+                    else { self?.showCameraError(AppSettings.shared.t("Spoolbase has no access to the camera.")) }
                 }
             }
         default:
-            showCameraError("Włącz dostęp do kamery dla Spoolbase w Ustawieniach systemowych → Prywatność i ochrona → Kamera.")
+            showCameraError(AppSettings.shared.t("Allow camera access for Spoolbase in System Settings → Privacy & Security → Camera."))
         }
     }
 
@@ -69,9 +69,9 @@ final class BarcodeScannerWindowController: NSWindowController,
         cameraView.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(cameraView)
 
-        let title = NSTextField(labelWithString: "Skanuj kod z etykiety szpuli")
+        let title = NSTextField(labelWithString: AppSettings.shared.t("Scan the code on the spool label"))
         title.font = .systemFont(ofSize: 17, weight: .semibold)
-        let subtitle = NSTextField(labelWithString: "Wypełnij kodem ramkę i przytrzymaj etykietę nieruchomo")
+        let subtitle = NSTextField(labelWithString: AppSettings.shared.t("Fill the frame with the code and hold the label still"))
         subtitle.font = .systemFont(ofSize: 10.5)
         subtitle.textColor = .secondaryLabelColor
         let labels = NSStackView(views: [title, subtitle])
@@ -89,7 +89,7 @@ final class BarcodeScannerWindowController: NSWindowController,
         frame.translatesAutoresizingMaskIntoConstraints = false
         cameraView.addSubview(frame)
 
-        let cancel = NSButton(title: "Anuluj", target: self, action: #selector(cancelPressed))
+        let cancel = NSButton(title: AppSettings.shared.t("Cancel"), target: self, action: #selector(cancelPressed))
         cancel.keyEquivalent = "\u{1b}"
         cancel.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(cancel)
@@ -120,7 +120,7 @@ final class BarcodeScannerWindowController: NSWindowController,
             return
         }
         guard let camera = AVCaptureDevice.default(for: .video) else {
-            showCameraError("Nie znaleziono kamery.")
+            showCameraError(AppSettings.shared.t("No camera found."))
             return
         }
         do {
@@ -214,7 +214,7 @@ final class BarcodeScannerWindowController: NSWindowController,
 
     private func showCameraError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Nie można uruchomić skanera"
+        alert.messageText = AppSettings.shared.t("Could not start the scanner")
         alert.informativeText = message
         if let window { alert.beginSheetModal(for: window) }
     }

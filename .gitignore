@@ -13,3 +13,6 @@ vendor/
 # Staged from i18n/ and Resources/ by the Linux packaging scripts.
 linux/gantry/data/i18n/
 linux/gantry/data/web-dashboard.html
+
+# Local Windows test installers belong to CI artifacts and releases, not the source tree.
+dist-windows-test/
