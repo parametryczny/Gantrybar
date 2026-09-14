@@ -151,7 +151,7 @@ internal static class RenderHarness
 
     private static void Safe(System.Action action)
     {
-        try { action(); } catch { /* one render failing should not block the others */ }
+        action(); // Propagate failure to --render and CI; a partial preview is not a passing render.
     }
 
     private static void Seed(FilamentStore store)

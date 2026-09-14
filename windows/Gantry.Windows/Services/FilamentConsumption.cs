@@ -49,7 +49,7 @@ public static class FilamentConsumption
             _ => JobPhase.Other
         };
         var (job, changed) = Sessions.Observe(printer.Serial, previous?.State == PrinterState.Finished, phase,
-                                              current.JobName, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                                              current.JobName, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), AppSettings.SpoolbaseEnabled);
         if (changed) Defaults.SetRaw(SessionsKey, Sessions.ToJson());
         if (job is null || !AppSettings.SpoolbaseEnabled) return;
         switch (printer.Kind)
@@ -112,12 +112,16 @@ public static class FilamentConsumption
                 {
                     // Spoolbase switched off during the download: the print is not accounted.
                     if (!AppSettings.SpoolbaseEnabled) return;
-                    foreach (var charge in SpoolAccounting.BambuCharges(slots, filaments, s => assigned.TryGetValue(s, out var id) ? id : null))
+                    var charges = SpoolAccounting.BambuCharges(slots, filaments, s => assigned.TryGetValue(s, out var id) ? id : null);
+                    if (filaments.Count == 0 || charges.Count < filaments.Count(f => f.UsedGrams > 0))
+                        SpoolbaseShared.Spools.WarnAccounting(job, t.JobName ?? serial);
+                    foreach (var charge in charges)
                         SpoolbaseShared.Spools.Consume(charge.SpoolId, charge.Grams, serial, $"{job}#{charge.FilamentId}");
                 });
             }
             catch (Exception e)
             {
+                System.Windows.Application.Current?.Dispatcher.Invoke(() => SpoolbaseShared.Spools.WarnAccounting(job, t.JobName ?? serial));
                 System.Diagnostics.Debug.WriteLine($"Spoolbase: 3mf fetch/parse failed for {serial} ({file}): {e.Message}");
             }
         });

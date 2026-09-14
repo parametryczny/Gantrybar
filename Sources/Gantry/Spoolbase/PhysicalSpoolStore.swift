@@ -24,12 +24,31 @@ final class PhysicalSpoolStore {
     private let spoolsURL: URL
     private let usageURL: URL
     var onChange: (() -> Void)?
+    private(set) var accountingWarnings: [String: String] = [:]
+    private(set) var lastError: String?
+    private var reviewed: [String] = []
+    private var committed: State?
+    private var stateURL: URL { spoolsURL.deletingPathExtension().appendingPathExtension("state-v2.json") }
+    private struct State: Codable {
+        var version = 2
+        var spools: [PhysicalSpool]
+        var usage: [SpoolUsageEvent]
+        var warnings: [String: String]
+        var reviewed: [String]? = nil
+    }
 
     init(spoolsURL: URL? = nil, usageURL: URL? = nil) {
         self.spoolsURL = spoolsURL ?? Self.defaultSpoolsURL
         self.usageURL = usageURL ?? Self.defaultUsageURL
         spools = Self.load([PhysicalSpool].self, from: self.spoolsURL) ?? []
         usageEvents = Self.load([SpoolUsageEvent].self, from: self.usageURL) ?? []
+        if let state = Self.load(State.self, from: stateURL) ?? Self.load(State.self, from: stateURL.appendingPathExtension("bak")) {
+            spools = state.spools; usageEvents = state.usage; accountingWarnings = state.warnings; reviewed = state.reviewed ?? []
+        } else if FileManager.default.fileExists(atPath: stateURL.path) || FileManager.default.fileExists(atPath: stateURL.appendingPathExtension("bak").path) {
+            spools = []; usageEvents = []
+            lastError = "Spoolbase state is unreadable"
+        }
+        committed = State(spools: spools, usage: usageEvents, warnings: accountingWarnings, reviewed: reviewed)
     }
 
     // MARK: Lookup
@@ -200,8 +219,8 @@ final class PhysicalSpoolStore {
     /// the job was already applied (or the spool is unknown).
     @discardableResult
     func consume(spoolID: String, grams: Double, printerSerial: String, printJobID: String) -> Bool {
-        guard grams > 0 else { return false }
-        guard !usageEvents.contains(where: { $0.printJobID == printJobID && $0.spoolID == spoolID }) else { return false }
+        guard grams > 0, !reviewed.contains(where: { printJobID == $0 || printJobID.hasPrefix($0 + "#") }) else { return false }
+        guard !usageEvents.contains(where: { $0.printJobID == printJobID && $0.printerSerial == printerSerial }) else { return false }
         guard let index = spools.firstIndex(where: { $0.id == spoolID }) else { return false }
         spools[index].remainingWeightGrams = max(0, spools[index].remainingWeightGrams - grams)
         spools[index].totalConsumedGrams += grams
@@ -213,39 +232,59 @@ final class PhysicalSpoolStore {
         }
         usageEvents.append(SpoolUsageEvent(spoolID: spoolID, printerSerial: printerSerial,
                                            printJobID: printJobID, consumedGrams: grams))
-        saveUsage()
-        changed()
-        return true
+        return changed()
     }
 
     // MARK: Persistence
 
-    private func changed() {
-        save()
-        onChange?()
-        NotificationCenter.default.post(name: .gantryPhysicalSpoolsDidChange, object: self)
+    func warnAccounting(job: String, name: String) {
+        guard !reviewed.contains(job) else { return }
+        accountingWarnings[job] = name
+        changed()
     }
 
-    private func save() { Self.write(spools, to: spoolsURL) }
-    private func saveUsage() { Self.write(usageEvents, to: usageURL) }
+    func clearAccountingWarnings() {
+        reviewed.append(contentsOf: accountingWarnings.keys.filter { !reviewed.contains($0) })
+        accountingWarnings.removeAll()
+        changed()
+    }
+
+    @discardableResult
+    private func changed() -> Bool {
+        let saved = save()
+        onChange?()
+        NotificationCenter.default.post(name: .gantryPhysicalSpoolsDidChange, object: self)
+        return saved
+    }
+
+    private func save() -> Bool {
+        // A corrupt v2 file must never be replaced by an empty legacy migration.
+        if lastError == "Spoolbase state is unreadable" { return false }
+        let state = State(spools: spools, usage: usageEvents, warnings: accountingWarnings, reviewed: reviewed)
+        do {
+            try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            if let previous = Self.load(State.self, from: stateURL) {
+                try encoder.encode(previous).write(to: stateURL.appendingPathExtension("bak"), options: .atomic)
+            }
+            try encoder.encode(state).write(to: stateURL, options: .atomic)
+            committed = state; lastError = nil
+            return true
+        } catch {
+            if let old = committed { spools = old.spools; usageEvents = old.usage; accountingWarnings = old.warnings; reviewed = old.reviewed ?? [] }
+            lastError = error.localizedDescription
+            NSLog("Spoolbase save failed: %@", error.localizedDescription)
+            return false
+        }
+    }
 
     private static func load<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? decoder.decode(T.self, from: data)
-    }
-
-    private static func write<T: Encodable>(_ value: T, to url: URL) {
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(value).write(to: url, options: .atomic)
-        } catch {
-            NSLog("Nie można zapisać rolek Spoolbase: %@", error.localizedDescription)
-        }
     }
 
     private static var baseDirectory: URL {

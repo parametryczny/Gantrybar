@@ -97,22 +97,27 @@ actor BambuFileClient {
 
     /// Fetches the print file. `fileName` is the MQTT `gcode_file` (may be a path or a bare name); we try
     /// it directly and under the usual Bambu roots. Returns the raw 3mf bytes.
-    func fetch(fileName: String) async throws -> Data {
+    static func cacheKey(host: String, fileName: String, scope: String?) -> String? {
+        guard let scope else { return nil }
+        return host + "|" + scope + "|" + fileName
+    }
+
+    func fetch(fileName: String, cacheScope: String? = nil) async throws -> Data {
         let base = (fileName as NSString).lastPathComponent
-        // The whole reported path, not its last component: two folders holding a file of the same name
-        // are two different prints.
-        let cacheKey = host + "|" + fileName
-        if let cached = await BambuFTPBroker.shared.cached(cacheKey) { return cached }
+        // Reuse only within a known print session. Callers without a job identity (object preview)
+        // always fetch fresh bytes, including a project overwritten at the same path.
+        let cacheKey = Self.cacheKey(host: host, fileName: fileName, scope: cacheScope)
+        if let cacheKey, let cached = await BambuFTPBroker.shared.cached(cacheKey) { return cached }
 
         await BambuFTPBroker.shared.acquire(host: host)
         do {
             // The same file may have completed while this caller waited behind another transfer.
-            if let cached = await BambuFTPBroker.shared.cached(cacheKey) {
+            if let cacheKey, let cached = await BambuFTPBroker.shared.cached(cacheKey) {
                 await BambuFTPBroker.shared.release(host: host)
                 return cached
             }
             let data = try await fetchUncoordinated(fileName: fileName, base: base)
-            await BambuFTPBroker.shared.store(data, for: cacheKey)
+            if let cacheKey { await BambuFTPBroker.shared.store(data, for: cacheKey) }
             await BambuFTPBroker.shared.release(host: host)
             return data
         } catch {

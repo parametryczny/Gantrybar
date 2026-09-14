@@ -133,6 +133,12 @@ class SpoolbaseWindow(Gtk.Window):
         # The name and the add button live in the shared window header now.
         panel_header(self, "Spoolbase", (add,))
         root.pack_start(header, False, False, 0)
+        self.accounting_notice = Gtk.Button(label=i18n.t("Review filament usage"))
+        self.accounting_notice.set_no_show_all(True)
+        self.accounting_notice.connect("clicked", self._review_accounting)
+        root.pack_start(self.accounting_notice, False, False, 6)
+        notice_source = GLib.timeout_add_seconds(1, self._refresh_accounting)
+        self.connect("destroy", lambda *_: GLib.source_remove(notice_source))
 
         self.search = Gtk.SearchEntry()
         self.search.get_style_context().add_class("sb-search")
@@ -186,7 +192,33 @@ class SpoolbaseWindow(Gtk.Window):
                 result.append(item)
         return result
 
+    def _refresh_accounting(self) -> bool:
+        store = getattr(self.app, "physical_spools", None)
+        visible = store is not None and bool(store.warnings or store.last_error)
+        self.accounting_notice.set_visible(visible)
+        if visible:
+            self.accounting_notice.set_tooltip_text(i18n.t("Some prints could not be accounted for. Check the remaining filament weights.")
+                                                   + "\n" + "\n".join(store.warnings.values()))
+        return True
+
+    def _review_accounting(self, *_args: Any) -> None:
+        store = self.app.physical_spools
+        dialog = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                                   text=i18n.t("Review filament usage"))
+        body = i18n.t("Some prints could not be accounted for. Check the remaining filament weights.")
+        if store.last_error:
+            body += "\n" + i18n.t("Could not save filament data. The change was not saved.")
+        dialog.format_secondary_text(body + "\n" + "\n".join(store.warnings.values()))
+        dialog.add_button(i18n.t("Close"), Gtk.ResponseType.CANCEL)
+        if store.warnings:
+            dialog.add_button(i18n.t("Mark as reviewed"), Gtk.ResponseType.OK)
+        if dialog.run() == Gtk.ResponseType.OK:
+            store.clear_accounting_warnings()
+        dialog.destroy()
+        self._refresh_accounting()
+
     def _render(self) -> None:
+        self._refresh_accounting()
         for child in self.list_box.get_children():
             self.list_box.remove(child)
         self._render_chips()

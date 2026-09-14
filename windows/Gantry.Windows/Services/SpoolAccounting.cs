@@ -22,13 +22,14 @@ public sealed class PrintJobSessions
         public string Job { get; set; } = "";
         public string Id { get; set; } = "";
         public bool Finished { get; set; }
+        public bool Skipped { get; set; }
     }
 
     public Dictionary<string, Session> Sessions { get; set; } = new();
 
     /// <summary>Feeds one update. Returns the job id when this update is the finish to account for, and
     /// whether the sessions changed, so they are only written then.</summary>
-    public (string? JobId, bool Changed) Observe(string serial, bool previousFinished, JobPhase phase, string? jobName, long unixSeconds)
+    public (string? JobId, bool Changed) Observe(string serial, bool previousFinished, JobPhase phase, string? jobName, long unixSeconds, bool accountingEnabled = true)
     {
         var job = jobName ?? "?";
         var id = $"{serial}|{job}|{unixSeconds}";
@@ -44,12 +45,13 @@ public sealed class PrintJobSessions
                 if (current is not null && current.Job == job)
                 {
                     bool changed = !current.Finished;
+                    if (changed && !accountingEnabled) current.Skipped = true;
                     current.Finished = true;
-                    return (current.Id, changed);
+                    return (current.Skipped ? null : current.Id, changed);
                 }
                 // Finished before Gantry saw it print. One session for it, kept, so a restart reuses it.
-                Sessions[serial] = new Session { Job = job, Id = id, Finished = true };
-                return (id, true);
+                Sessions[serial] = new Session { Job = job, Id = id, Finished = true, Skipped = !accountingEnabled };
+                return (accountingEnabled ? id : null, true);
             default:
                 return (null, false);
         }

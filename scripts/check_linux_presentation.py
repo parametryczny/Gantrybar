@@ -106,6 +106,17 @@ def open_panel(open_it, name):
     assert not app.window._suppress_hide, f"{name} left its hold on the fleet behind"
 
 open_panel(lambda: app.window.show_maintenance(app.printers[0], app.telemetry["0"]), "Maintenance")
+# Regression: a long diagnostic message and an unbroken code must fit at the default width.
+from unittest.mock import patch
+from gantry.maintenance import MaintenancePanel
+with patch.object(MaintenancePanel, "_alerts", return_value=[("Long diagnostic message " * 30, "03000D000001000B" * 20)]):
+    app.window.show_maintenance(app.printers[0], app.telemetry["0"]); pump()
+    maintenance = app.window._maintenance_window
+    assert maintenance.get_size()[0] <= 520, maintenance.get_size()
+    labels = [w for w in descendants(maintenance) if isinstance(w, Gtk.Label) and w.get_text().startswith("!  ")]
+    assert labels and labels[0].get_allocated_height() > 30
+    assert labels[0].get_allocated_width() <= 470
+    maintenance.destroy(); pump()
 open_panel(app.open_fleet_stats, "Statistics")
 open_panel(app.open_diagnostics, "Diagnostics")
 app.window._hide(); pump()

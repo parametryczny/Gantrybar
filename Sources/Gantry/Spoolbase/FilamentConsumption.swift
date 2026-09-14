@@ -11,13 +11,14 @@ struct PrintJobSessions: Codable, Equatable, Sendable {
         var job: String
         var id: String
         var finished: Bool
+        var skipped: Bool? = nil
     }
 
     private(set) var sessions: [String: Session] = [:]
 
     /// Feeds one update. Returns the job id when this update is the finish to account for, nil otherwise.
     mutating func observe(serial: String, previous: PrinterState?, state: PrinterState,
-                          jobName: String?, now: Date) -> String? {
+                          jobName: String?, now: Date, accountingEnabled: Bool = true) -> String? {
         let job = jobName ?? "?"
         let id = "\(serial)|\(job)|\(Int(now.timeIntervalSince1970))"
         switch state {
@@ -28,13 +29,14 @@ struct PrintJobSessions: Codable, Equatable, Sendable {
         case .finished:
             guard previous != .finished else { return nil }
             if var current = sessions[serial], current.job == job {
+                if !current.finished && !accountingEnabled { current.skipped = true }
                 current.finished = true
                 sessions[serial] = current
-                return current.id
+                return current.skipped == true ? nil : current.id
             }
             // Finished before Gantry saw it print. One session for it, kept, so a restart reuses it.
-            sessions[serial] = Session(job: job, id: id, finished: true)
-            return id
+            sessions[serial] = Session(job: job, id: id, finished: true, skipped: !accountingEnabled)
+            return accountingEnabled ? id : nil
         default:
             return nil
         }
@@ -87,7 +89,7 @@ enum FilamentConsumption {
     static func onUpdate(printer: SavedPrinter, previous: PrinterTelemetry?, current: PrinterTelemetry) {
         let before = sessions
         let job = sessions.observe(serial: printer.serial, previous: previous?.state, state: current.state,
-                                   jobName: current.jobName, now: Date())
+                                   jobName: current.jobName, now: Date(), accountingEnabled: AppSettings.shared.spoolbaseEnabled)
         if sessions != before, let data = try? JSONEncoder().encode(sessions) {
             BambuDefaults.shared.set(data, forKey: sessionsKey)
         }
@@ -195,17 +197,22 @@ enum FilamentConsumption {
         Task {
             let client = BambuFileClient(host: host, accessCode: code)
             do {
-                let data = try await client.fetch(fileName: file)
+                let data = try await client.fetch(fileName: file, cacheScope: job)
                 let filaments = ThreeMFReader.filaments(fromData: data)
                 await MainActor.run {
                     // Spoolbase switched off during the download: the print is not accounted.
                     guard AppSettings.shared.spoolbaseEnabled else { return }
-                    for charge in bambuCharges(serial: serial, groups: groups, filaments: filaments, assigned: assigned) {
+                    let charges = bambuCharges(serial: serial, groups: groups, filaments: filaments, assigned: assigned)
+                    if filaments.isEmpty || charges.count < filaments.filter({ $0.usedGrams > 0 }).count {
+                        SpoolbaseShared.spools.warnAccounting(job: job, name: telemetry.jobName ?? serial)
+                    }
+                    for charge in charges {
                         SpoolbaseShared.spools.consume(spoolID: charge.spoolID, grams: charge.grams,
                                                        printerSerial: serial, printJobID: "\(job)#\(charge.filamentID)")
                     }
                 }
             } catch {
+                SpoolbaseShared.spools.warnAccounting(job: job, name: telemetry.jobName ?? serial)
                 NSLog("Spoolbase: nie udało się pobrać/odczytać 3mf dla %@ (%@): %@", serial, file, "\(error)")
             }
         }

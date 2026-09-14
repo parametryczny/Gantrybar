@@ -114,7 +114,7 @@ internal sealed class MaintenancePanel
     {
         var stack = new StackPanel();
         var heading = Text(11, FontWeights.SemiBold, $"!  {message}");
-        heading.MaxHeight = 30;
+        heading.TextWrapping = TextWrapping.Wrap; // Full message at the available panel width.
         stack.Children.Add(heading);
         if (!string.IsNullOrWhiteSpace(code)) stack.Children.Add(Text(10, FontWeights.Normal, code, Muted()));
         return new Border { Padding = new Thickness(9, 6, 9, 6), Child = stack };

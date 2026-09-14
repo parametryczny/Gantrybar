@@ -8,6 +8,9 @@ in ``$XDG_DATA_HOME/Spoolbase/`` next to the filament catalogue.
 from __future__ import annotations
 
 import json
+import copy
+import threading
+from functools import wraps
 import logging
 import os
 import uuid
@@ -51,6 +54,14 @@ def location_for(serial: str, external: bool, ams_index: int, slot: int) -> dict
     return {"printerSerial": serial, "feeder": "ext" if external else "ams", "amsIndex": ams_index, "slot": slot}
 
 
+def serialized(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return run
+
+
 class PhysicalSpoolStore:
     """Spools and their consumption history, as lists of plain dicts (the JSON shape itself)."""
 
@@ -59,6 +70,23 @@ class PhysicalSpoolStore:
         self._usage_path = usage_path or (_DATA_DIR / "usage-v1.json")
         self.spools: list[dict[str, Any]] = _load(self._spools_path)
         self.usage: list[dict[str, Any]] = _load(self._usage_path)
+        self._lock = threading.RLock()
+        self._state_path = self._spools_path.with_suffix(".state-v2.json")
+        self.warnings: dict[str, str] = {}
+        self.reviewed: list[str] = []
+        self.last_error: str | None = None
+        self._unreadable = False
+        text = read_text_with_backup(self._state_path, _is_state)
+        if text is not None:
+            state = json.loads(text)
+            self.spools, self.usage = state["spools"], state["usage"]
+            self.warnings = state.get("warnings", {})
+            self.reviewed = state.get("reviewed", [])
+        elif self._state_path.exists() or self._state_path.with_name(self._state_path.name + ".bak").exists():
+            self.spools, self.usage = [], []
+            self._unreadable = True
+            self.last_error = "Spoolbase state is unreadable; refusing to load obsolete migration files"
+        self._committed = self._state()
         self.on_change = None  # optional callback
 
     # --- lookup ---------------------------------------------------------------
@@ -89,12 +117,14 @@ class PhysicalSpoolStore:
         return f"SP-{highest + 1:05d}"
 
     # --- mutation -------------------------------------------------------------
+    @serialized
     def add(self, spool: dict[str, Any]) -> None:
         self.spools.append(spool)
         self._save()
         if callable(self.on_change):
             self.on_change()
 
+    @serialized
     def create_rolls(self, definition_id: str, count: int, weight: float,
                      remaining: float | None = None) -> list[dict[str, Any]]:
         """Create real rolls for a Spoolbase definition and leave them in storage."""
@@ -124,6 +154,7 @@ class PhysicalSpoolStore:
                 self.on_change()
         return created
 
+    @serialized
     def delete(self, spool_id: str) -> None:
         before = len(self.spools)
         self.spools = [spool for spool in self.spools if spool.get("id") != spool_id]
@@ -133,6 +164,7 @@ class PhysicalSpoolStore:
         if callable(self.on_change):
             self.on_change()
 
+    @serialized
     def create_spool(self, definition_id: str | None, nominal: float, remaining: float,
                      location: dict[str, Any]) -> dict[str, Any]:
         """Make a new physical roll and drop it straight into a slot (bumping whatever was there)."""
@@ -154,6 +186,7 @@ class PhysicalSpoolStore:
         self.assign(spool["id"], location)   # assign saves + notifies
         return spool
 
+    @serialized
     def assign(self, spool_id: str, location: dict[str, Any]) -> None:
         """Move a roll into a slot. One roll per slot: anything already there goes back to storage."""
         target = self.spool(spool_id)
@@ -178,6 +211,7 @@ class PhysicalSpoolStore:
         if callable(self.on_change):
             self.on_change()
 
+    @serialized
     def set_remaining(self, spool_id: str, grams: float) -> None:
         spool = self.spool(spool_id)
         if spool is None:
@@ -192,6 +226,7 @@ class PhysicalSpoolStore:
         if callable(self.on_change):
             self.on_change()
 
+    @serialized
     def correct_weight(self, spool_id: str, net_grams: float, tare: float | None = None) -> None:
         spool = self.spool(spool_id)
         if spool is None:
@@ -212,6 +247,7 @@ class PhysicalSpoolStore:
         if callable(self.on_change):
             self.on_change()
 
+    @serialized
     def reset_to_full(self, spool_id: str, nominal: float | None = None) -> None:
         spool = self.spool(spool_id)
         if spool is None:
@@ -230,6 +266,7 @@ class PhysicalSpoolStore:
             self.on_change()
 
     # --- mutation -------------------------------------------------------------
+    @serialized
     def clear_slot(self, location: dict[str, Any]) -> None:
         spool = self.spool_at(location)
         if spool is None:
@@ -242,6 +279,7 @@ class PhysicalSpoolStore:
         if callable(self.on_change):
             self.on_change()
 
+    @serialized
     def detach_assignments_replaced_by_nfc(self, serial: str, previous_groups: list, current_groups: list) -> list[tuple[str, str]]:
         """A newly-inserted RFID/NFC roll supersedes a stale manual assignment in that slot: send the
         assigned roll back to storage. Fires only on the insert transition. Returns (spool_id, slot)."""
@@ -262,12 +300,13 @@ class PhysicalSpoolStore:
                     detached.append((assigned.get("id", "?"), label))
         return detached
 
+    @serialized
     def consume(self, spool_id: str, grams: float, printer_serial: str, print_job_id: str) -> bool:
-        """Subtract filament for a finished job. Idempotent per (printJobID, spoolID) so a reconnect or a
+        """Subtract filament for a finished job. Idempotent per (printerSerial, printJobID) so a reconnect or a
         second machine watching the same printer never double-counts."""
-        if grams <= 0:
+        if grams <= 0 or any(print_job_id == job or print_job_id.startswith(job + "#") for job in self.reviewed):
             return False
-        if any(u.get("printJobID") == print_job_id and u.get("spoolID") == spool_id for u in self.usage):
+        if any(u.get("printJobID") == print_job_id and u.get("printerSerial") == printer_serial for u in self.usage):
             return False
         spool = self.spool(spool_id)
         if spool is None:
@@ -282,14 +321,48 @@ class PhysicalSpoolStore:
             spool["emptiedAt"] = _now_iso()
         self.usage.append({"id": str(uuid.uuid4()), "spoolID": spool_id, "printerSerial": printer_serial,
                            "printJobID": print_job_id, "consumedGrams": grams, "timestamp": _now_iso()})
+        saved = self._save()
+        if callable(self.on_change):
+            self.on_change()
+        return saved
+
+    def _state(self) -> dict:
+        return copy.deepcopy({"version": 2, "spools": self.spools, "usage": self.usage, "warnings": self.warnings, "reviewed": self.reviewed})
+
+    @serialized
+    def warn_accounting(self, job: str, name: str) -> None:
+        if job in self.reviewed:
+            return
+        self.warnings[job] = name
         self._save()
         if callable(self.on_change):
             self.on_change()
-        return True
 
-    def _save(self) -> None:
-        _save(self._spools_path, self.spools)
-        _save(self._usage_path, self.usage)
+    @serialized
+    def clear_accounting_warnings(self) -> None:
+        self.reviewed.extend(job for job in self.warnings if job not in self.reviewed)
+        self.warnings.clear()
+        self._save()
+        if callable(self.on_change):
+            self.on_change()
+
+    @serialized
+    def _save(self) -> bool:
+        if self._unreadable:
+            return False
+        try:
+            state = self._state()
+            write_text_atomic(self._state_path, json.dumps(state, indent=2, sort_keys=True), keep_backup_if=_is_state)
+            self._committed = state
+            self.last_error = None
+            return True
+        except (OSError, TypeError, ValueError) as error:
+            old = copy.deepcopy(self._committed)
+            self.spools, self.usage, self.warnings = old["spools"], old["usage"], old["warnings"]
+            self.reviewed = old.get("reviewed", [])
+            self.last_error = str(error)
+            logging.getLogger("gantry.spoolbase").warning("Could not save Spoolbase: %s", error)
+            return False
 
 
 def _is_json_list(text: str) -> bool:
@@ -310,3 +383,9 @@ def _save(path: Path, value: list[dict[str, Any]]) -> None:
         write_text_atomic(path, json.dumps(value, indent=2, sort_keys=True), keep_backup_if=_is_json_list)
     except (OSError, TypeError, ValueError) as error:
         logging.getLogger("gantry.spoolbase").warning("Could not save %s: %s", path, error)
+
+
+def _is_state(text: str) -> bool:
+    state = json.loads(text)
+    return (isinstance(state, dict) and state.get("version") == 2 and isinstance(state.get("spools"), list)
+            and isinstance(state.get("usage"), list) and isinstance(state.get("warnings", {}), dict))
