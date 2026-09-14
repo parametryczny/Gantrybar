@@ -20,6 +20,19 @@ internal sealed class MaintenancePanel
     public static FrameworkElement Build(SavedPrinter printer, PrinterTelemetry telemetry, Action close, Action changed)
         => new MaintenancePanel(printer, telemetry, close, changed).Root;
 
+    /// <summary>The panel itself, for a host that also wants its header accessories.</summary>
+    internal static MaintenancePanel Create(SavedPrinter printer, PrinterTelemetry telemetry, Action close, Action changed)
+        => new(printer, telemetry, close, changed);
+
+    /// <summary>For the trailing end of the shared window header. It lives there rather than in the
+    /// body because the body is rebuilt on every change, and the header is built once.</summary>
+    internal IReadOnlyList<UIElement> HeaderAccessories()
+    {
+        var instructions = Button(AppSettings.T("Instructions"));
+        instructions.Click += (_, _) => ShowInstructions();
+        return new UIElement[] { instructions };
+    }
+
     private MaintenancePanel(SavedPrinter printer, PrinterTelemetry telemetry, Action close, Action changed)
     {
         _printer = printer; _telemetry = telemetry; _close = close; _changed = changed;
@@ -40,21 +53,6 @@ internal sealed class MaintenancePanel
     {
         var snap = PrinterInsights.GetSnapshot(_printer.Serial, _pl);
         var body = new StackPanel { Margin = new Thickness(18, 16, 18, 14) };
-        var title = Text(18, FontWeights.Bold, string.Format(AppSettings.T("Maintenance · {0}"), _printer.Name));
-        var instructions = Button(AppSettings.T("Instructions"));
-        instructions.Click += (_, _) => ShowInstructions();
-        var close = Button("×");
-        close.Width = 28; close.Height = 28; close.FontSize = 18; close.Padding = new Thickness(0); close.ToolTip = AppSettings.T("Close");
-        close.Click += (_, _) => _close();
-        var header = new Grid();
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.Children.Add(title);
-        Grid.SetColumn(instructions, 2); header.Children.Add(instructions);
-        Grid.SetColumn(close, 3); header.Children.Add(close);
-        body.Children.Add(header);
         string nozzle = _telemetry.NozzleDiameter is { } d ? $"{d:0.0} mm" : "—";
         body.Children.Add(Text(11, FontWeights.Normal,
             _pl ? $"{snap.TotalPrintHours:0.0} h druku · dysza {nozzle}" : $"{snap.TotalPrintHours:0.0} print h · nozzle {nozzle}", Muted()));

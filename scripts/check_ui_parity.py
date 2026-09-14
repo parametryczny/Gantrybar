@@ -25,6 +25,21 @@ def require(relative: str, pattern: str, description: str) -> None:
         ERRORS.append(f"{relative}: {description}")
 
 
+def forbid(relative: str, pattern: str, description: str) -> None:
+    """For a shape that was removed on purpose and must not come back."""
+    if re.search(pattern, source(relative), re.MULTILINE) is not None:
+        ERRORS.append(f"{relative}: {description}")
+
+
+def require_count(relative: str, pattern: str, expected: int, description: str) -> None:
+    """Counts occurrences in Python instead of asking one regex to. A repeated group wrapped around
+    a wildcard bridge — (?:[\\s\\S]*?X[\\s\\S]*?){n} — backtracks exponentially the moment it fails
+    to match, which turns a broken rule into a hung check instead of a reported one."""
+    found = len(re.findall(pattern, source(relative), re.MULTILINE))
+    if found != expected:
+        ERRORS.append(f"{relative}: {description} (found {found}, expected {expected})")
+
+
 one = FLEET["panelWidth"]["oneColumn"]
 two = FLEET["panelWidth"]["twoColumns"]
 compact = FLEET["panelWidth"]["list"]
@@ -32,8 +47,12 @@ column_gap = FLEET["columnGap"]
 row_gap = FLEET["rowGap"]["cards"]
 theme_gap = TOKENS["gap"]
 radius = TOKENS["radius"]["card"]
-settings = CONTRACT["settingsWindow"]["window"]
+settings_window = CONTRACT["settingsWindow"]
+settings_metrics = settings_window["metrics"]
 floating = CONTRACT["floatingWindow"]
+panel_window = CONTRACT["panelWindow"]
+edge_dock = CONTRACT["edgeDock"]
+slot_assignment = panel_window["slotAssignment"]
 
 # macOS is the visual reference, but it is checked too so a macOS change must update the contract.
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
@@ -47,9 +66,492 @@ require("Sources/Gantry/App/GantryTheme.swift", rf"cardRadius:\s*CGFloat\s*=\s*{
         "card radius differs from the contract")
 require("Sources/Gantry/App/GantryTheme.swift", rf"gap:\s*CGFloat\s*=\s*{theme_gap}\b",
         "theme gap differs from the contract")
+# No platform pins a settings-window size any more: the window fits whichever pane is showing,
+# which is what a system settings window does. The per-platform chrome rules live further down.
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        rf"contentRect:\s*NSRect\(x:\s*0,\s*y:\s*0,\s*width:\s*{settings['width']},\s*height:\s*{settings['height']}\)",
-        "settings window size differs from the contract")
+        r"tabStyle = \.toolbar",
+        "macOS settings window does not use the system's toolbar-style pane switcher")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"toolbarStyle = \.preference",
+        "macOS settings window lays its toolbar out like a document window's")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        rf"enum SettingsPaneID: String \{{\s*case (?:\w+, ){{{len(settings_window['panes']) - 1}}}\w+",
+        "macOS settings pane count differs from the contract")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"\.general, \.appearance, \.notifications, \.windows, \.integrations, \.advanced",
+        "macOS settings panes are not in the contract's order")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        rf"captionColumn: CGFloat = {settings_metrics['captionColumn']}[\s\S]*?"
+        rf"controlColumn: CGFloat = {settings_metrics['controlColumn']}",
+        "macOS settings columns differ from the contract")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"NSGridView\(numberOfColumns: 2[\s\S]*?column\(at: 0\)\.xPlacement = \.trailing"
+        r"[\s\S]*?column\(at: 1\)\.xPlacement = \.leading",
+        "macOS settings do not use the two-column preferences grid")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"NSButton\(checkboxWithTitle:",
+        "macOS settings booleans are not checkboxes")
+# The two things that make the window fit its pane. Both were bugs first, both are one line, and both
+# fail silently: the content simply sits at the wrong offset and runs off the bottom edge. A height
+# constraint on the content view controller's own view is the only mechanism the window honours
+# (preferredContentSize did nothing on the child and raced on the parent), and a pane root view must
+# keep autoresizing because NSTabView positions its children by frame, not by constraint.
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"heightAnchor\.constraint\(equalToConstant:[\s\S]*?paneHeight = height",
+        "macOS settings window height is not driven by a constraint on the content view controller")
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"root\.autoresizingMask = \[\.width, \.height\]",
+        "macOS settings pane opts out of autoresizing, so NSTabView cannot reposition it")
+# One refresh per run loop turn and only for the pane on screen. Measured before this: a single
+# notification click wrote six @Published properties and cost six whole-window refreshes, a
+# card-content click seven, and every one of them re-rendered the dashboard QR code.
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"guard !refreshScheduled else \{ return \}[\s\S]*?refreshScheduled = true",
+        "macOS settings refresh once per written setting instead of once per run loop turn")
+# Every pane is filled on every refresh, and every pane whose content changed is measured in the same
+# pass. Filling only the visible one was audited and cost eight controls across five of the six panes
+# that were wrong until visited, so the switch itself was when they visibly changed.
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"for id in SettingsPaneID\.visible \{ refreshPane\(id\) \}[\s\S]*?"
+        r"for pane in panes\.values \{ pane\.updatePreferredSize\(\) \}",
+        "macOS settings leave hidden panes showing stale values until they are switched to")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"onWillSelect = \{ \[weak self\] index in self\?\.resizeToPane\(at: index\) \}",
+        "macOS settings resize the window after the new pane is already on screen")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"if qrCache\?\.url != target",
+        "macOS settings re-render the dashboard QR code on unrelated refreshes")
+# The edge-dock choices are two plain columns of checkboxes, laid out like every other group in the
+# window. They were a bordered, scrolling list with a camera glyph button hanging off each row, which
+# read as a widget from another program and put a scroller next to five items that had room to sit
+# in the open.
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"grid\.field\(dockPrintersCaption, dockPrintersHolder\)[\s\S]*?"
+        r"grid\.field\(dockCamerasCaption, dockCamerasHolder\)",
+        "macOS edge-dock printers and cameras are not two plain checkbox columns")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"NSButton\(checkboxWithTitle: printer\.name[\s\S]*?"
+        r"NSButton\(checkboxWithTitle: printer\.name",
+        "macOS edge-dock camera choice is not a checkbox like the printer choice")
+# Switching a pane is dominated by laying it out and measuring it, and almost nothing a user clicks
+# changes any pane's height. Writes that can are counted, and a refresh that touched none of them
+# leaves the measured height alone: measured, this took layout and fitting from 18 ms to zero.
+require("Sources/Gantry/Views/SettingsRowKit.swift",
+        r"enum SettingsLayoutTouches[\s\S]*?static func touch\(\)",
+        "macOS settings do not track which writes can change a pane's height")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"let touchesBefore = SettingsLayoutTouches\.count[\s\S]*?"
+        r"if SettingsLayoutTouches\.count != touchesBefore \{ panes\[id\]\?\.contentDirty = true \}",
+        "macOS settings re-measure a pane whose content did not change")
+require("Sources/Gantry/Views/SettingsWindowController.swift",
+        r"let info = webInfo \?\?",
+        "macOS settings re-read the network interfaces every time the Integrations pane opens")
+
+# The same window on Windows and GNU/Linux: the system's own frame, a sidebar of panes in the
+# contract's order, captions in a fixed trailing column, plain check boxes, and a height that
+# follows the pane instead of one size for all six.
+pane_count = len(settings_window["panes"])
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'WindowStyle="SingleBorderWindow"',
+        "the Windows settings window still draws its own chrome, so the system title bar, dark "
+        "mode and rounded corners it asks DWM for do nothing")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'SizeToContent="Height"',
+        "the Windows settings window does not fit the pane on screen")
+require_count("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'<ListBoxItem x:Name="PaneItem',
+              pane_count,
+              "the Windows settings sidebar does not carry one row per contract pane")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
+        rf'x:Key="PaneCaption"[\s\S]*?Value="{settings_metrics["captionColumn"]}"',
+        "the Windows settings caption column differs from the contract")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
+        r'x:Key="PaneCaption"[\s\S]*?Property="TextAlignment" Value="Right"',
+        "Windows settings captions are not trailing in their column")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml.cs",
+        r'"General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Advanced"',
+        "the Windows settings panes are not in the contract's order")
+# The hand-drawn switch track is what made it look like something other than a Windows window.
+forbid("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'x:Name="track"',
+       "the Windows settings booleans are switch rows again instead of check boxes")
+
+require("linux/gantry/settings.py", r"use_header_bar=True",
+        "the GNU/Linux settings window is not a header-bar preferences window")
+require("linux/gantry/settings.py", r"Gtk\.StackSidebar\(\)",
+        "the GNU/Linux settings panes are not picked from a sidebar")
+require("linux/gantry/settings.py", r"set_vhomogeneous\(False\)",
+        "the GNU/Linux settings stack asks for the tallest pane's height, so the window cannot fit "
+        "the pane on screen")
+require("linux/gantry/settings.py",
+        rf"CAPTION_COLUMN = {settings_metrics['captionColumn']}[\s\S]*?"
+        rf"CONTROL_COLUMN = {settings_metrics['controlColumn']}",
+        "the GNU/Linux settings columns differ from the contract")
+require("linux/gantry/settings.py",
+        rf"PANES = \((?:\s*\"\w[\w ]*\",){{{pane_count - 1}}}\s*\"\w[\w ]*\",?\s*\)",
+        "the GNU/Linux settings pane count differs from the contract")
+require("linux/gantry/settings.py", r"xalign=1[\s\S]*?set_size_request\(self\.CAPTION_COLUMN",
+        "GNU/Linux settings captions are not trailing in a fixed column")
+
+# Ported with the settings window: the panel stops laying itself out when nobody is looking at it,
+# and catches up before it comes back. The tray text and the strip keep running either way.
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"if \(!IsVisible\) \{ _dashboardStale = true; return; \}",
+        "the Windows panel rebuilds its cards while hidden")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"IsVisibleChanged \+= .*_dashboardStale.*Rebuild\(\)",
+        "the Windows panel does not catch up on telemetry it skipped while hidden")
+require("linux/gantry/app.py", r"if not self\.dashboard_visible\(\):\s*\n\s*self\._dashboard_stale = True",
+        "the GNU/Linux panel updates its cards while hidden")
+require("linux/gantry/app.py",
+        r"if getattr\(self, \"_dashboard_stale\", False\):[\s\S]*?self\.rebuild_cards\(\)",
+        "the GNU/Linux panel does not catch up on telemetry it skipped while hidden")
+require("linux/gantry/edgedock.py", r"signature == getattr\(self, \"_drawn_signature\", None\)",
+        "the GNU/Linux strip repositions and redraws for telemetry that says nothing new")
+require("linux/gantry/edgedock.py", r"_expanded_width_cache",
+        "the GNU/Linux strip re-measures every row through Pango on every draw")
+
+# A camera that produced frames and then went silent is restarted, with a growing delay. The X1
+# stops without an error or an EOS, so nothing else notices.
+require("windows/Gantry.Windows/UI/DetailWindow.cs",
+        r"MinimumCameraRestartDelay = 8[\s\S]*?MaximumCameraRestartDelay = 30",
+        "the Windows camera has no silence watchdog")
+require("windows/Gantry.Windows/UI/DetailWindow.cs",
+        r"private void StopCamera\(\)\s*\{[\s\S]{0,400}?_cameraStarted = false;",
+        "Windows StopCamera leaves _cameraStarted set, so the camera cannot be restarted")
+require("windows/Gantry.Windows/Services/BambuCameraStream.cs",
+        r"timeout=\", StringComparison\.OrdinalIgnoreCase",
+        "the Windows RTSP client ignores the session timeout the printer declares")
+require("linux/gantry/camera.py",
+        r"MINIMUM_RESTART_DELAY = 8\.0[\s\S]*?MAXIMUM_RESTART_DELAY = 30\.0",
+        "the GNU/Linux camera has no silence watchdog")
+require("linux/gantry/camera.py", r"def _run\(self, stop: threading\.Event\)",
+        "a restarted GNU/Linux camera worker shares the stop flag with the run it replaced")
+
+# The state belongs beside the printer's name, in the card, not at the end of a navigation row.
+require("windows/Gantry.Windows/UI/DetailWindow.cs",
+        r"titleRow\.Children\.Add\(_name\);\s*\n\s*Grid\.SetColumn\(_state, 1\)",
+        "the Windows detail state is not beside the printer's name")
+require("windows/Gantry.Windows/UI/DetailWindow.cs", r"_name\.MaxWidth = room > 40",
+        "a long printer name can push the Windows detail state out of its card")
+require("linux/gantry/details.py",
+        r"top\.pack_start\(self\.name[\s\S]{0,200}?top\.pack_start\(self\.state_dot"
+        r"[\s\S]{0,120}?top\.pack_start\(self\.state_label",
+        "the GNU/Linux detail state is not beside the printer's name")
+require("linux/gantry/details.py", r"if color != getattr\(self, \"_state_color\", None\)",
+        "the GNU/Linux detail view attaches a new style provider per telemetry packet")
+
+# Found by sampling the live macOS app: the detail popover was where the main thread's busy time
+# went, and most of it was rebuilding the history/maintenance/statistics labels behind a popover
+# nobody had open. Same two guards as the dashboard: visibility, then rebuild only on a change.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"guard self\.view\.window\?\.isVisible == true else \{[\s\S]{0,120}?refreshStale = true",
+        "the macOS detail view refreshes behind a dismissed popover")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"override func viewWillAppear\(\)[\s\S]{0,400}?if refreshStale \{",
+        "the macOS detail view does not catch up on telemetry it skipped while dismissed")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"guard signature != renderedInsightsSignature else \{ return \}",
+        "macOS detail insights are rebuilt per telemetry packet instead of on a real change")
+
+# Remaining percent, grams and the active slot change on every telemetry packet, so a signature that
+# includes them can never spare the dock a rebuild — and rebuilding it tore down and recreated every
+# filament chip on every card, several times a second. The readings are written into the views that
+# are already there; only a shape change (a spool appears or goes, a setting flips) rebuilds.
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"if !filamentDock\.apply\(groups, settings: settings\) \{",
+        "the macOS filament dock is rebuilt for a reading change instead of updated in place")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"func apply\(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool,",
+        "a macOS filament slot cannot take a new reading without being rebuilt")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"var shape: String \{[\s\S]{0,200}?showsLowWarning",
+        "the macOS filament slot does not separate its shape from its readings")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"static func settingsKey\(_ settings: AppSettings\) -> String",
+        "the macOS filament dock does not notice the settings that change what a slot is made of")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"func apply\(color: NSColor, fraction: CGFloat\)",
+        "the macOS filament swatch needs a new view for a new level")
+
+# Every auxiliary panel is its own screen-centred window, not an overlay on the fleet panel. As an
+# overlay the slot-assignment list could not be larger than the popover, and growing the popover to
+# fit it threw the whole menu-bar window down the screen in one step.
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"window\.center\(\)[\s\S]{0,120}?makeKeyAndOrderFront",
+        "a detached panel does not open centred on the screen")
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"window\.level = PanelWindowController\.companionWindow\?\(\)\?\.level",
+        "a detached panel does not borrow the fleet panel's window level, so it opens behind it")
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"if holds == 1 \{ onHoldChanged\?\(true\) \}[\s\S]{0,240}?if holds == 0 \{ onHoldChanged\?\(false\) \}",
+        "the fleet-panel hold is not reference counted, so closing one of two panels drops it")
+forbid("Sources/Gantry/Views/PanelWindowController.swift",
+       r"(?:onPreferredContentSize|popover\.contentSize)",
+       "a detached panel resizes the fleet panel again, which jumps the whole window")
+require("Sources/Gantry/Views/MenuBarController.swift",
+        r"popover\.behavior = held \? \.applicationDefined : \.transient",
+        "the fleet popover is not held open while a panel is on screen, so it closes under it")
+require("Sources/Gantry/Views/MenuBarController.swift",
+        r"PanelWindowController\.onHoldChanged = \{[\s\S]{0,200}?PanelWindowController\.companionWindow = \{",
+        "the panel hooks are not installed, so panels cannot reach the live fleet presentation")
+for panel_name, panel_file in (
+    ("FleetStatsViewController", "Sources/Gantry/Views/FleetStatsViewController.swift"),
+    ("DiagnosticCenterViewController", "Sources/Gantry/Views/DiagnosticCenterWindowController.swift"),
+    ("MaintenancePanelViewController", "Sources/Gantry/Views/MaintenancePanelWindowController.swift"),
+):
+    require(panel_file, r"activePanel = PanelWindowController\.present\(",
+            f"{panel_name} is not presented as its own window")
+    # The static is emptied before the window closes; closing it runs the dismissal callback, which
+    # lands back in dismiss(), and the empty static is the only thing that stops the recursion.
+    require(panel_file, r"let panel = activePanel\s*\n\s*activePanel = nil[\s\S]{0,160}?panel\?\.dismiss\(\)",
+            f"{panel_name}.dismiss() closes the window before clearing its static, which recurses")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"PrinterCardView\.activeSpoolPanel = PanelWindowController\.present\(",
+        "the slot-assignment panel is not its own window")
+require("Sources/Gantry/Spoolbase/SpoolbaseController.swift",
+        r"panel = PanelWindowController\.present\(",
+        "Spoolbase is not its own window")
+
+# GNU/Linux: the same detachment, with the tray panel's focus-out hide held off instead of a
+# popover's behaviour. Measured here: focus-out with a panel open leaves the fleet up, and with
+# nothing open it still hides, which is what a tray panel is supposed to do.
+require("linux/gantry/panelwindow.py", r"self\.set_position\(Gtk\.WindowPosition\.CENTER\)",
+        "a GNU/Linux panel window is not centred on the screen")
+require("linux/gantry/panelwindow.py", r"if event\.keyval == Gdk\.KEY_Escape",
+        "a GNU/Linux panel window cannot be closed with Escape")
+require("linux/gantry/panelwindow.py", r"app\.window\.hold_fleet_panel\(self\)",
+        "a GNU/Linux panel window does not hold the fleet panel open")
+require("linux/gantry/dashboard.py",
+        r"self\._hide_holds = max\(0, self\._hide_holds \+ \(1 if value else -1\)\)",
+        "the GNU/Linux fleet hold is a flag, so closing one of two dialogs lets the panel hide")
+require("linux/gantry/dashboard.py",
+        r'widget\.connect\("map"[\s\S]{0,160}?widget\.connect\("unmap"',
+        "the GNU/Linux fleet hold is not bound to the panel being on screen")
+require("linux/gantry/dashboard.py", r"from \.panelwindow import PanelWindow",
+        "GNU/Linux maintenance is not presented as its own window")
+# embed_dialog pulled a dialog apart and re-hosted its child as a dimmed overlay in the fleet window.
+forbid("linux/gantry/presentation.py", r"def embed_dialog",
+       "the GNU/Linux dialog-into-overlay host is back")
+forbid("linux/gantry/app.py", r"embed_dialog",
+       "a GNU/Linux dialog is embedded in the fleet window again")
+forbid("linux/gantry/spoolassign.py", r"embed_dialog",
+       "the GNU/Linux slot-assignment dialog is embedded in the fleet window again")
+require("linux/gantry/spoolassign.py", r"app\.window\.hold_fleet_panel\(dialog\)",
+        "the GNU/Linux slot-assignment dialog does not hold the fleet panel open")
+require("linux/gantry/spoolbase.py", r"app\.window\.hold_fleet_panel\(self\)",
+        "the GNU/Linux Spoolbase window does not hold the fleet panel open")
+forbid("linux/gantry/spoolbase.py", r"_position_top_right",
+       "GNU/Linux Spoolbase is pinned to the corner again instead of centred")
+for holder in ("open_diagnostics", "open_fleet_stats"):
+    require("linux/gantry/app.py",
+            rf"def {holder}\(self\)[\s\S]{{0,900}}?hold_fleet_panel\(dialog\)",
+            f"GNU/Linux {holder} does not hold the fleet panel open")
+# Statistics are a panel like the others (audit A22): a modal run() locked the fleet and closed on export.
+forbid("linux/gantry/app.py", r"def open_fleet_stats\(self\)[\s\S]{0,900}?dialog\.run\(\)",
+       "GNU/Linux statistics run as a modal loop again")
+require("linux/gantry/fleetstats.py", r"transient_for=app\.window, modal=False",
+        "GNU/Linux statistics dialog is modal again")
+
+# Windows: the same detachment. The hold is the dashboard's own Deactivated handler, which walks
+# OwnedWindows and refuses to hide while any of them is visible — so it is only a hold if every
+# panel actually sets Owner, which nothing on the auxiliary path did before.
+require("windows/Gantry.Windows/UI/PanelWindow.cs",
+        r"WindowStartupLocation = WindowStartupLocation\.CenterScreen",
+        "a Windows panel window is not centred on the screen")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"if \(owner\.IsLoaded\) Owner = owner;",
+        "a Windows panel window is not owned by the fleet panel, so it hides from under it")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"if \(e\.Key != Key\.Escape\) return;",
+        "a Windows panel window cannot be closed with Escape")
+require("windows/Gantry.Windows/UI/TrayIcon.cs",
+        r"private void ShowAuxiliary\(System\.Windows\.Window controller\)[\s\S]{0,400}?"
+        r"if \(dashboard\.IsLoaded\) controller\.Owner = dashboard;",
+        "Windows auxiliary windows are not owned by the fleet panel, so it hides from under them")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"_spoolAssignWindow = PanelWindow\.Present\(",
+        "the Windows slot-assignment panel is not its own window")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"_maintenanceWindow = PanelWindow\.Present\(",
+        "the Windows maintenance panel is not its own window")
+for field in ("_spoolAssignWindow", "_maintenanceWindow"):
+    require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+            rf"var window = {field};\s*\n\s*{field} = null;\s*\n\s*window\?\.Close\(\);",
+            f"Windows {field} is closed before it is cleared, which recurses")
+forbid("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs", r"internal void EmbedWindow",
+       "the Windows dialog-into-overlay host is back")
+forbid("windows/Gantry.Windows/UI/TrayIcon.cs", r"EmbedWindow",
+       "a Windows dialog is embedded in the fleet panel again")
+forbid("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r"area\.Right - Width",
+       "Windows Spoolbase is pinned to the corner again instead of centred")
+forbid("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r"WindowStyle = WindowStyle\.None",
+       "Windows Spoolbase drops its title bar again, which also makes the DWM calls inert")
+require("windows/Gantry.Windows/UI/SpoolbaseWindow.cs",
+        r"WindowStartupLocation = WindowStartupLocation\.CenterScreen",
+        "Windows Spoolbase does not open centred on the screen")
+for centred in ("SettingsWindow.xaml", "AddPrinterWindow.xaml"):
+    forbid(f"windows/Gantry.Windows/UI/{centred}", r'WindowStartupLocation="CenterOwner"',
+           f"Windows {centred} centres on the fleet panel, which sits in a screen corner")
+
+
+# ---- One frame for every panel window (contract panelWindow.header / slotAssignment) -----------------
+# Every panel wears the fleet panel's own header, GANTRY · name, and none draws its own title or close.
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r'static func windowTitle\(for name: String\) -> String \{ "Gantry · \\\(name\)" \}',
+        "the macOS panel window title is not \"Gantry · name\"")
+require("Sources/Gantry/Views/PanelWindowController.swift", r"window\.toolbarStyle = \.unifiedCompact",
+        "the macOS panel header is not in a unified title bar beside the traffic lights")
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"GantryLogo\.wordmarkImage\(height: Self\.wordmarkHeight\)[\s\S]{0,700}?NSTextField\(labelWithString: \"·\"\)",
+        "the macOS panel header does not carry the fleet header's wordmark and dot")
+require("Sources/Gantry/Views/PanelWindowController.swift", r"content\.topAnchor\.constraint\(equalTo: header\.bottomAnchor\)",
+        "macOS panel content is not laid out below the shared header")
+for own in ("Sources/Gantry/Views/FleetStatsViewController.swift",
+            "Sources/Gantry/Views/DiagnosticCenterWindowController.swift",
+            "Sources/Gantry/Views/MaintenancePanelWindowController.swift"):
+    forbid(own, r"#selector\(closePressed\)", "a macOS panel draws its own close button again beside the shared header")
+forbid("Sources/Gantry/Spoolbase/MinimalFilamentPopoverViewController.swift", r'NSTextField\(labelWithString: "Spoolbase"\)',
+       "macOS Spoolbase draws its own title again under the shared header")
+forbid("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift", r"func addCloseButton",
+       "the macOS slot panel draws its own close button again")
+forbid("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift", r"preferredContentWidth",
+       "the macOS slot panel sizes itself from its longest name again instead of filling its window")
+require("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift",
+        r"present\(columns: \[[\s\S]{0,200}?scrollFrom: 3\),[\s\S]{0,120}?scrollFrom: 1\)",
+        "the macOS slot panel's main screen is not two columns")
+require("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift", r"row\.distribution = \.fillEqually",
+        "the macOS slot panel's columns are not equal")
+require("Sources/Gantry/Spoolbase/SpoolAssignPopoverViewController.swift",
+        rf"singleColumnWidth: CGFloat = {slot_assignment['singleColumnWidth']}\b[\s\S]{{0,160}}?columnGap: CGFloat = {slot_assignment['columnGap']}\b",
+        "macOS slot panel column metrics differ from the contract")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        rf"name: title,\s*size: NSSize\(width: {panel_window['sizes']['slotAssignment']['width']}, height: {panel_window['sizes']['slotAssignment']['height']}\)",
+        "the macOS slot panel window size differs from the contract")
+
+require("linux/gantry/panelwindow.py", r'return f"Gantry · \{name\}"', "the GNU/Linux panel window title is not \"Gantry · name\"")
+require("linux/gantry/panelwindow.py", r'header\.set_custom_title\(Gtk\.Box\(\)\)[\s\S]{0,300}?Gtk\.Label\(label="GANTRY"\)',
+        "the GNU/Linux panel header does not carry the wordmark at its leading edge")
+require("linux/gantry/panelwindow.py", r"panel_header\(self, name, accessories\)", "GNU/Linux PanelWindow does not wear the shared header")
+for own, target in (("linux/gantry/fleetstats.py", "self"), ("linux/gantry/diagnostics.py", "self"),
+                    ("linux/gantry/spoolbase.py", "self"), ("linux/gantry/spoolassign.py", "dialog")):
+    require(own, rf"panel_header\({target}, ", f"{own} does not wear the shared panel header")
+forbid("linux/gantry/maintenance.py", r'Gtk\.Button\(label="×"\)', "GNU/Linux maintenance draws its own close button again")
+require("linux/gantry/spoolassign.py", r"columns = Gtk\.Box\(spacing=20\)[\s\S]{0,400}?columns\.pack_start\(right",
+        "the GNU/Linux slot dialog is not two columns")
+require("linux/gantry/dashboard.py", r"\.panel-wordmark \{", "the GNU/Linux panel header has no wordmark style")
+
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r'public static string WindowTitle\(string name\) => \$"Gantry · \{name\}";',
+        "the Windows panel window title is not \"Gantry · name\"")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r'Text = "GANTRY"[\s\S]{0,400}?Text = "·"',
+        "the Windows panel header does not carry the wordmark and dot")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"Wrap\(this, name, body, accessories\);",
+        "Windows PanelWindow does not wear the shared header")
+require("windows/Gantry.Windows/UI/PanelWindow.cs", r"content\.MaxHeight = double\.PositiveInfinity;",
+        "a Windows panel keeps the overlay's pinned size inside its window")
+for own, name in (("windows/Gantry.Windows/UI/DiagnosticsWindow.cs", r'AppSettings\.T\("Diagnostic Center"\)'),
+                  ("windows/Gantry.Windows/UI/FleetStatsWindow.cs", r'AppSettings\.T\("Fleet statistics"\)'),
+                  ("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r'"Spoolbase"')):
+    require(own, rf"PanelWindow\.Wrap\(this, {name}", f"{own} does not wear the shared panel header")
+forbid("windows/Gantry.Windows/UI/MaintenanceWindow.cs", r'Button\("×"\)', "Windows maintenance draws its own close button again")
+forbid("windows/Gantry.Windows/UI/SpoolbaseWindow.cs", r'Text = "Spoolbase", FontSize = 18',
+       "Windows Spoolbase draws its own title again under the shared header")
+require("windows/Gantry.Windows/UI/SpoolAssignPanel.cs", r"SetColumns\(left, right\);", "the Windows slot panel's main screen is not two columns")
+require("windows/Gantry.Windows/UI/SpoolAssignPanel.cs",
+        rf"SingleColumnWidth = {slot_assignment['singleColumnWidth']};[\s\S]{{0,200}}?ColumnGap = {slot_assignment['columnGap']};",
+        "Windows slot panel column metrics differ from the contract")
+forbid("windows/Gantry.Windows/UI/SpoolAssignPanel.cs", r"PreferredWidth\(\)|MaxHeight = 440",
+       "the Windows slot panel pins its overlay size again instead of filling its window")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        rf"title, {panel_window['sizes']['slotAssignment']['width']}, 600, cleanup: CloseSpoolAssign",
+        "the Windows slot panel window size differs from the contract")
+
+
+# ---- Windows edge dock: pin/release and live pictures (issue #34, ported from macOS) ----------------
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"private bool Expanded => _hovering \|\| AppSettings\.EdgeDockPinned;",
+        "a pinned Windows edge dock still folds when the pointer leaves")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"AppSettings\.EdgeDockPinned = !AppSettings\.EdgeDockPinned;",
+        "the Windows edge dock cannot be pinned or released from the strip itself")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"new DockCameraFeed\(_store, serial\)",
+        "the Windows edge dock shows no live pictures")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"if \(wanted\.SetEquals\(_cameraFeeds\.Keys\)\) return;",
+        "the Windows edge dock restarts camera streams on refreshes that did not change which printers stream")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"private void HideStrip\(\)\s*\{\s*DetachCameras\(\);",
+        "a hidden Windows edge dock keeps its camera streams running")
+require("windows/Gantry.Windows/UI/DockCameraFeed.cs",
+        r"kind is PrinterKind\.Bambu or PrinterKind\.Klipper or PrinterKind\.ElegooCc1\s+or PrinterKind\.ElegooCc2 or PrinterKind\.AnycubicKobraS1",
+        "Windows dock cameras support a different set of printer brands than macOS")
+for key in ("edge-dock-pinned", "edge-dock-camera", "edge-dock-camera-serials"):
+    require("windows/Gantry.Windows/Services/Storage.cs", rf'"{key}"', f"Windows does not share the {key} setting with macOS")
+for control in ("DockPinnedCheckBox", "DockCameraCheckBox", "DockCamerasList"):
+    require("windows/Gantry.Windows/UI/SettingsWindow.xaml", rf'x:Name="{control}"', f"Windows settings are missing {control}")
+# The fleet header's tools stay on one line: a WrapPanel capped at 300 px folded nine buttons into two.
+forbid("windows/Gantry.Windows/UI/DashboardWindow.xaml", r'<WrapPanel x:Name="HeaderTools"',
+       "the Windows fleet header tools wrap onto a second line again")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml", r'<StackPanel x:Name="HeaderTools" Grid\.Column="1" Orientation="Horizontal"',
+        "the Windows fleet header tools are not a single row")
+
+
+# ---- Edge dock on all three platforms (contract edgeDock) --------------------------------------------
+def _number(value: float) -> str:
+    """A contract number as each platform may spell it: 5, 5.0 and 1.5 all match their own value."""
+    whole = float(value).is_integer()
+    return rf"{int(value)}(?:\.0)?" if whole else re.escape(repr(float(value)))
+
+# One pin shape everywhere: the same points, in order, in all three sources.
+PIN_POINTS_PATTERN = r",\s*".join(rf"\(\s*{_number(x)},\s*{_number(y)}\s*\)" for x, y in edge_dock["pinControl"]["points"])
+for pin_source in ("Sources/Gantry/Views/EdgeDockWindowController.swift",
+                   "windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+                   "linux/gantry/edgedock.py"):
+    require(pin_source, PIN_POINTS_PATTERN, "the edge-dock pin is not the contract's shape")
+released = _number(edge_dock["pinControl"]["releasedAngle"])
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", rf"pinReleasedAngle: CGFloat = {released}\b",
+        "the macOS released pin angle differs from the contract")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", rf"PinReleasedAngle = {released};",
+        "the Windows released pin angle differs from the contract")
+require("linux/gantry/edgedock.py", rf"PIN_RELEASED_ANGLE = {released}\b",
+        "the GNU/Linux released pin angle differs from the contract")
+# Drawn, not borrowed: an emoji or a platform symbol is a different pin on every system.
+forbid("windows/Gantry.Windows/UI/EdgeDockWindow.cs", "📌", "the Windows edge dock draws the pin as an emoji again")
+forbid("Sources/Gantry/Views/EdgeDockWindowController.swift", r'"pin\.fill"', "the macOS edge dock draws the pin as an SF Symbol again")
+# The pin both pins and releases, and its band is there whenever the strip is open.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", r"edgeDockPinned\.toggle\(\)",
+        "the macOS strip can only release itself, not pin itself")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"isExpanded \? \(Self\.pinRow \+ Self\.pinGap\) \* scale : 0",
+        "the macOS pin band is not there whenever the strip is open")
+require("linux/gantry/edgedock.py", r'pinned = not self\.pinned\s*\n\s*self\.app\.config\.data\["edge-dock-pinned"\] = pinned',
+        "the GNU/Linux strip cannot be pinned or released from the strip itself")
+require("linux/gantry/edgedock.py", r"body = PAD_Y \* 2 \+ PIN_ROW \+ PIN_GAP \+ self\._rows_height\(width\)",
+        "the GNU/Linux pin band is not there whenever the strip is open")
+require("linux/gantry/edgedock.py", r"return self\.hovering or self\.pinned",
+        "a pinned GNU/Linux strip still folds when the pointer leaves")
+# Pictures: same width band, same brands, same stream rules.
+cams = edge_dock["cameras"]
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        rf"cameraMinStripWidth: CGFloat = {_number(cams['minStripWidth'])}\b[\s\S]{{0,40}}?cameraMaxStripWidth: CGFloat = {_number(cams['maxStripWidth'])}\b",
+        "macOS edge-dock picture width band differs from the contract")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        rf"CameraMinStripWidth = {_number(cams['minStripWidth'])}, CameraMaxStripWidth = {_number(cams['maxStripWidth'])};",
+        "Windows edge-dock picture width band differs from the contract")
+require("linux/gantry/edgedock.py",
+        rf"CAMERA_MIN_STRIP_WIDTH = {_number(cams['minStripWidth'])}\s*\nCAMERA_MAX_STRIP_WIDTH = {_number(cams['maxStripWidth'])}",
+        "GNU/Linux edge-dock picture width band differs from the contract")
+require("linux/gantry/camera.py",
+        r"CAMERA_KINDS = frozenset\(\{PrinterKind\.BAMBU, PrinterKind\.KLIPPER, PrinterKind\.ELEGOO_CC1,\s*PrinterKind\.ELEGOO_CC2, PrinterKind\.ANYCUBIC_KOBRA_S1\}\)",
+        "GNU/Linux camera brands differ from macOS and Windows")
+require("linux/gantry/camera.py", r"sink = self\.frame_sink\s*\n\s*if sink is not None:",
+        "the GNU/Linux camera cannot hand frames to the edge dock")
+require("linux/gantry/edgedock.py", r"view\.frame_sink = lambda pixbuf",
+        "the GNU/Linux edge dock shows no live pictures")
+require("linux/gantry/edgedock.py", r"if wanted == set\(self\.camera_views\):\s*\n\s*return",
+        "the GNU/Linux edge dock restarts streams on refreshes that did not change which printers stream")
+require("linux/gantry/edgedock.py", r"def hide\(self\) -> None:[\s\S]{0,300}?self\._detach_cameras\(\)",
+        "a hidden GNU/Linux edge dock keeps its camera streams running")
+for key in edge_dock["settingsKeys"]:
+    require("linux/gantry/settings.py", rf'"{key}"', f"GNU/Linux settings do not write the shared {key} setting")
+# Geometry fixed along the way: the ring beside the physical edge, the silhouette mirrored only for the
+# left edge, and folding after a grace period instead of on the leave event the resize itself causes.
+require("linux/gantry/edgedock.py", r"ring_x = EXPANDED_PAD_X \+ RING / 2 if left else width - EXPANDED_PAD_X - RING / 2",
+        "the GNU/Linux ring is not beside the physical screen edge")
+require("linux/gantry/edgedock.py", r"if left:\s*\n\s*# The silhouette is drawn flush against the right edge",
+        "the GNU/Linux silhouette is mirrored for the wrong edge")
+require("linux/gantry/edgedock.py", r"GLib\.timeout_add\(COLLAPSE_DELAY_MS, self\._collapse_if_left\)",
+        "the GNU/Linux strip folds on the leave event its own resize emits")
 
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
@@ -74,7 +576,7 @@ require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         r"measuredContent \* cardScale",
         "macOS popover height does not include printer card magnification")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"cardScaleRow[\s\S]*?dockScaleRow",
+        r"cardScaleControl[\s\S]*?dockScaleControl",
         "macOS settings are missing card and edge-dock scale controls")
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         r"edgeDockScalePercent[\s\S]*?Self\.collapsedWidth \* scale",
@@ -97,12 +599,90 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/CameraFeed.swift",
         r"final class CameraFeedController[\s\S]*?func start\(\)[\s\S]*?func stop\(\)",
         "the camera feed is not reusable outside the detail view")
+# A camera stream that dies loudly is handled by its state callback. One that simply goes quiet was
+# handled by nothing: measured on an X1, frames stopped after five to ten seconds with no error, no
+# teardown and no state change, and the last frame stayed on screen for ever, which is what a camera
+# "lagging" in the strip actually was. The keep-alive is the cause, the watchdog is the net.
+require("Sources/Gantry/Services/RTSPCameraStream.swift",
+        r"private func startKeepAlive\(\)[\s\S]*?OPTIONS \\\(self\.requestURL\)",
+        "the RTSP session is never kept alive, so a printer stops feeding it")
+require("Sources/Gantry/Services/RTSPCameraStream.swift",
+        r"timeout=[\s\S]*?sessionTimeout = max\(5, seconds\)",
+        "the RTSP session timeout is parsed away instead of driving the keep-alive")
+require("Sources/Gantry/Views/CameraFeed.swift",
+        r"private func checkForSilence\(\)[\s\S]*?restartDelay \* 2[\s\S]*?start\(\)",
+        "a camera feed that goes silent is never restarted")
+# The detail popover has one width. It used to have two: the root view was pinned to 480 while the
+# host was told 600, both when the popover was opened and in every size reported afterwards, so 120
+# points of it were empty down the right-hand side. It showed up in an error state because the report
+# only went out when the height changed, and an error changes the height.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"static let popoverContentWidth: CGFloat = 480[\s\S]*?"
+        r"root\.widthAnchor\.constraint\(equalToConstant: Self\.popoverContentWidth\)",
+        "the macOS detail view lays itself out at a width of its own")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"NSSize\(width: Self\.popoverContentWidth, height: target\)",
+        "the macOS detail view reports a width it does not lay itself out at")
+require("Sources/Gantry/Views/MenuBarController.swift",
+        r"PrinterDetailViewController\.popoverContentWidth",
+        "the popover opens the detail view at a width of its own")
+# Both the header and the cards hang off the clip view, so they keep one right edge whether or not a
+# scroller is taking its lane, and the document can never come out wider than what is visible.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"header\.trailingAnchor\.constraint\(equalTo: scroll\.contentView\.trailingAnchor",
+        "the macOS detail header does not share its right edge with the cards")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"flipped\.widthAnchor\.constraint\(equalTo: scroll\.contentView\.widthAnchor\)",
+        "the macOS detail column does not track the visible width, so its edge can be clipped")
+# The state rides next to the printer's name inside the status card, not at the far right of the
+# navigation row a whole row away from the printer it describes.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"NSStackView\(views: \[nameLabel, stateDot, stateLabel, NSView\(\), percentLabel\]\)",
+        "the macOS detail state is not beside the printer's name")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"nameLabel\.setContentCompressionResistancePriority\(\.defaultLow, for: \.horizontal\)",
+        "a long printer name pushes the state out instead of truncating")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"dockPinnedRow[\s\S]*?dockCameraRow",
+        r"dockPinnedCheck[\s\S]*?dockCameraCheck",
         "macOS settings are missing the edge-dock pin and camera switches")
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
-        r"pinButtonRect\(\)[\s\S]*?onUnpin\?\(\)",
+        r"pinButtonRect\(\)[\s\S]*?onTogglePin\?\(\)",
         "macOS pinned edge dock cannot be released from the strip itself")
+
+# Frosted glass and an animated unfold, macOS only for now. The grace timer is not decoration: an
+# animated edge slides out from under the pointer and the leave event that follows would fold the
+# strip straight back, the loop the Windows port hit in issue #32.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"blendingMode = \.behindWindow[\s\S]*?backdrop\.maskImage = mask",
+        "macOS edge dock has no frosted backdrop clipped to its silhouette")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"unfoldDuration[\s\S]*?panel\.animator\(\)\.setFrame",
+        "macOS edge dock snaps open instead of animating")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"collapseTimer = Timer\.scheduledTimer[\s\S]*?collapseIfPointerLeft",
+        "macOS edge dock can fold on the leave event its own animation causes")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"sin\(CGFloat\.pi \* progress\)[\s\S]*?kCIInputRadiusKey[\s\S]*?rowsView\.contentFilters = \[blur\]",
+        "macOS edge dock rows do not blur along the unfold")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"class EdgeDockRowsView[\s\S]*?owner\?\.drawRows\(\)",
+        "macOS edge dock draws its rows into the silhouette, so a blur would soften its edges")
+
+# Smoothness, measured rather than assumed. Each of these replaced work that ran on every frame or
+# every telemetry packet; a sample of the running app put two thirds of the main thread in the last
+# one. They are invariants, not preferences: undo any of them and the stutter comes straight back.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"override func setFrameSize[\s\S]*?syncUnfoldProgress\(\)",
+        "macOS edge dock runs a second animation clock instead of following the window's own width")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"guard key != maskKey else \{ return \}",
+        "macOS edge dock re-masks its frosted backdrop on layout passes that never changed the shape")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"guard view\.window\?\.isVisible == true else \{ return \}",
+        "macOS dashboard lays out and measures its cards while nobody is looking at them")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"if shape != zoneShape \{[\s\S]*?ThermalZoneView\(label: zone\.0,",
+        "macOS temperature tiles are rebuilt per telemetry packet instead of updated in place")
 
 # Issue #34, the second half: the detail panel must take the height its cards need, capped by the
 # screen, instead of the constant it used to be nailed to. GNU/Linux already sizes to content through
@@ -146,9 +726,6 @@ require("linux/gantry/layout.py", rf"return\s+{one}\s+if.*else\s+{two}\b",
 require("linux/gantry/layout.py", rf"return\s+{compact}\b", "compact width does not match macOS")
 require("linux/gantry/dashboard.py", rf"CARD_GAP\s*=\s*{column_gap}\b", "column gap does not match macOS")
 require("linux/gantry/dashboard.py", rf"CARD_ROW_GAP\s*=\s*{row_gap}\b", "row gap does not match macOS")
-require("linux/gantry/settings.py",
-        rf"set_default_size\({settings['width']},\s*{settings['height']}\)",
-        "settings window size does not match macOS")
 
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", rf"Width\s*=\s*{compact};",
         "compact width does not match macOS")
@@ -162,9 +739,6 @@ require("windows/Gantry.Windows/UI/GantryTheme.cs", rf"CardRadius\s*=\s*{radius}
         "card radius differs from the contract")
 require("windows/Gantry.Windows/UI/GantryTheme.cs", rf"public const double Gap\s*=\s*{theme_gap};",
         "theme gap differs from the contract")
-require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
-        rf"Width=\"{settings['width']}\"\s+Height=\"{settings['height']}\"",
-        "settings window size does not match macOS")
 
 # Compact card variant B (macOS is authoritative): percentage is part of the status row, the
 # segmented bar shares one row with ETA/layers, temperatures are 22 px and the Details shortcut is
@@ -375,6 +949,82 @@ require("linux/gantry/http_clients.py", r'exclude_object[\s\S]*?print_objects',
         "Linux is missing Klipper object discovery")
 require("linux/gantry/skipobjects.py", r'class SkipObjectsPanel[\s\S]*?Confirm skip[\s\S]*?skip_objects',
         "Linux is missing the protected object-skipping panel")
+
+# Printer control in Details (macOS and Windows): the setpoint capsule sits inside the tile it changes.
+detail_controls = CONTRACT["detailControls"]
+capsule = detail_controls["capsule"]
+steps = detail_controls["steps"]
+ranges = detail_controls["ranges"]
+timing = detail_controls["timing"]
+mac_detail = "Sources/Gantry/Views/PrinterDetailWindowController.swift"
+win_stepper = "windows/Gantry.Windows/UI/ControlStepper.cs"
+win_detail = "windows/Gantry.Windows/UI/DetailWindow.cs"
+require(mac_detail, rf"static let height: CGFloat = {capsule['height']}\b[\s\S]*?buttonWidth: CGFloat = {capsule['buttonWidth']}\b"
+        rf"[\s\S]*?settleDelay: TimeInterval = {timing['settleSeconds']}\b[\s\S]*?echoWindow: TimeInterval = {timing['echoWindowSeconds']}\b",
+        "macOS setpoint capsule geometry or timing differs from the contract")
+require(win_stepper, rf"CapsuleHeight = {capsule['height']};[\s\S]*?ButtonWidth = {capsule['buttonWidth']};[\s\S]*?Radius = {capsule['radius']};"
+        rf"[\s\S]*?FromMilliseconds\({int(timing['settleSeconds'] * 1000)}\)[\s\S]*?EchoWindow = TimeSpan\.FromSeconds\({timing['echoWindowSeconds']}\)",
+        "Windows setpoint capsule geometry or timing differs from the contract")
+require(win_stepper, rf"Delay = {timing['repeatDelayMs']}, Interval = {timing['repeatIntervalMs']}",
+        "Windows capsule buttons do not repeat like macOS")
+for label, key, step, caption in (("nozzle", "nozzle", steps["temperature"], True), ("bed", "bed", steps["temperature"], True),
+                                   ("fan", "fan", steps["fan"], False), ("speed", "speed", steps["speed"], False)):
+    low, high = ranges[key]
+    require(mac_detail, rf"ControlStepperView\(range: {low}\.\.\.{high}, step: {step}, showsTargetCaption: {str(caption).lower()}",
+            f"macOS {label} capsule range or step differs from the contract")
+    require(win_detail, rf"new ControlStepper\({low}, {high}, {step}, {str(caption).lower()},",
+            f"Windows {label} capsule range or step differs from the contract")
+bambu_speed = detail_controls["bambuSpeed"]
+speed_low, speed_high = bambu_speed["levels"]
+require(mac_detail, rf"ControlStepperView\(range: {speed_low}\.\.\.{speed_high}, step: 1,",
+        "macOS Bambu speed is not a speed-mode capsule")
+require(win_detail, rf"new ControlStepper\({speed_low}, {speed_high}, 1, false,",
+        "Windows Bambu speed is not a speed-mode capsule")
+require("Sources/Gantry/App/PrinterStore.swift", rf'"command":"{bambu_speed["command"]}"',
+        "macOS does not send the Bambu speed mode command")
+require("windows/Gantry.Windows/Services/PrinterStore.cs", rf'command = "{bambu_speed["command"]}"',
+        "Windows does not send the Bambu speed mode command")
+require(mac_detail, rf"fan\.echoTolerance = {detail_controls['fanEchoTolerance']}\b",
+        "macOS fan capsules do not accept Bambu's rounded echo")
+require(win_detail, rf"EchoTolerance = {detail_controls['fanEchoTolerance']}\b",
+        "Windows fan capsules do not accept Bambu's rounded echo")
+require("Sources/Gantry/Services/MQTTClient.swift", r"BambuCommandReply\.parse\(payload\)",
+        "macOS does not read the printer's replies to control commands")
+require("windows/Gantry.Windows/Services/MqttClient.cs", r"BambuCommandReply\.Parse\(payload\)",
+        "Windows does not read the printer's replies to control commands")
+signing = detail_controls["commandSigning"]
+signing_bit = int(signing["bit"], 16)
+require("Sources/Gantry/Services/BambuStatusParser.swift", rf'report\["fun"\][\s\S]*?mask & 0x{signing_bit:_X}'.replace("0x2_0000000", "0x2000_0000"),
+        "macOS does not read Bambu's command-signing bit")
+require("windows/Gantry.Windows/Services/StatusParser.cs", rf'"fun"[\s\S]*?mask & 0x{signing_bit:X}UL',
+        "Windows does not read Bambu's command-signing bit")
+require(mac_detail, r"&& !signingBlocked", "macOS shows Bambu controls a signing printer would refuse")
+require(win_detail, r"&& !_signingBlocked", "Windows shows Bambu controls a signing printer would refuse")
+forbid(mac_detail, r"CompactControlSlider", "macOS brought back the loose plus/minus row under the tiles")
+forbid(win_detail, r"TempChip\(", "Windows rebuilds temperature chips, which would drop a capsule mid-change")
+require("windows/Gantry.Windows/Services/Storage.cs", rf'"{detail_controls["setting"]}"', "Windows is missing the printer-control setting")
+require("windows/Gantry.Windows/Services/PrinterStore.cs", r"M104 S[\s\S]*?M140 S[\s\S]*?M106 P\{index\}[\s\S]*?M220 S",
+        "Windows is missing the temperature, fan or speed commands")
+require(mac_detail, r'sectionTitle\(AppSettings\.shared\.t\("CAMERA"\)\), NSView\(\), advancedButton', "macOS camera card lost Advanced…")
+require(win_detail, r'new AdvancedWindow\(_store, _serial\)', "Windows has no way to open Advanced…")
+
+# Spool accounting: a print is identified by its session, not the hour a FINISHED packet arrived.
+for accounting_file, hour_bucket in (("Sources/Gantry/Spoolbase/FilamentConsumption.swift", r"/\s*3600"),
+                                     ("windows/Gantry.Windows/Services/FilamentConsumption.cs", r"/\s*3600"),
+                                     ("linux/gantry/consumption.py", r"//\s*3600")):
+    require(accounting_file, r'"spoolbase-print-sessions"', "spool accounting does not keep print sessions")
+    forbid(accounting_file, hour_bucket, "spool accounting identifies a print by the hour again")
+# The slot a print came from: the active one, or a lone loaded roll, never the first present slot.
+for slot_file, rule in (("Sources/Gantry/Spoolbase/FilamentConsumption.swift", r"active\.count == 1 \? active\[0\] : nil[\s\S]{0,80}?loaded\.count == 1"),
+                        ("windows/Gantry.Windows/Services/SpoolAccounting.cs", r"active\.Count == 1 \? active\[0\] : null[\s\S]{0,160}?loaded\.Count == 1"),
+                        ("linux/gantry/consumption.py", r"if len\(active\) == 1 else None[\s\S]{0,80}?len\(loaded\) == 1")):
+    require(slot_file, rule, "spool accounting guesses the slot instead of taking the active one")
+# The --render harness must work on a throwaway data folder, never the user's stores.
+require("windows/Gantry.Windows/App.xaml.cs", r'"--render"[\s\S]{0,120}?AppDataRoot\.UseTemporaryFolder[\s\S]*?base\.OnStartup',
+        "Windows --render does not switch to a throwaway data folder before startup")
+for data_file in ("windows/Gantry.Windows/Services/Storage.cs", "windows/Gantry.Windows/Services/PhysicalSpoolStore.cs",
+                  "windows/Gantry.Windows/Services/FilamentInventory.cs"):
+    forbid(data_file, r"SpecialFolder\.ApplicationData", "a Windows store bypasses AppDataRoot")
 
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)

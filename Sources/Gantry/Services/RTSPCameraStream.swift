@@ -33,6 +33,10 @@ final class RTSPCameraStream: @unchecked Sendable {
     private var realm = ""
     private var nonce = ""
     private var sessionID = ""
+    /// Seconds the server will hold the session without hearing from us. Announced in the `Session`
+    /// header as `timeout=`, and 60 by convention when it says nothing.
+    private var sessionTimeout: TimeInterval = 60
+    private var keepAlive: DispatchSourceTimer?
     private var baseURL = ""
     private var controlURL = ""
     private enum Phase { case options, describe, describeAuth, setup, play, streaming }
@@ -87,8 +91,30 @@ final class RTSPCameraStream: @unchecked Sendable {
         conn.start(queue: queue)
     }
 
+    /// Keeps the session alive for as long as we want frames.
+    ///
+    /// There was nothing here before, and a printer that stops feeding a session it considers idle
+    /// simply went quiet: measured on an X1, frames stopped after five to ten seconds with no error
+    /// of any kind. `OPTIONS` is the universally supported RTSP no-op; its reply arrives interleaved
+    /// with the video, which the frame parser already resynchronises past.
+    private func startKeepAlive() {
+        keepAlive?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let interval = max(2, sessionTimeout / 3)
+        timer.schedule(deadline: .now() + interval, repeating: interval)
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.stopped, self.phase == .streaming else { return }
+            self.sendRaw("OPTIONS \(self.requestURL) RTSP/1.0\r\nCSeq: \(self.cseq)\r\n"
+                         + self.authHeader("OPTIONS") + self.sessionLine() + "\r\n")
+        }
+        timer.resume()
+        keepAlive = timer
+    }
+
     func stop() {
         stopped = true
+        keepAlive?.cancel()
+        keepAlive = nil
         if !controlURL.isEmpty || !sessionID.isEmpty {
             sendRaw("TEARDOWN \(requestURL) RTSP/1.0\r\nCSeq: \(cseq)\r\n\(authHeader("TEARDOWN"))\(sessionLine())\r\n")
         }
@@ -183,6 +209,12 @@ final class RTSPCameraStream: @unchecked Sendable {
         }
         if let s = value(of: "Session", in: header) {
             sessionID = s.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? s
+            // The timeout used to be parsed away with the rest of the header's parameters, which is
+            // how a stream with no keep-alive at all went unnoticed.
+            if let parameter = s.split(separator: ";").first(where: { $0.contains("timeout=") }),
+               let value = parameter.split(separator: "=").last, let seconds = TimeInterval(value.trimmingCharacters(in: .whitespaces)) {
+                sessionTimeout = max(5, seconds)
+            }
         }
 
         switch phase {
@@ -194,7 +226,11 @@ final class RTSPCameraStream: @unchecked Sendable {
         case .setup:
             if isOK { sendPlay() } else { onState(.failed("SETUP: \(statusLine)")) }
         case .play:
-            if isOK { phase = .streaming; onState(.playing) } else { onState(.failed("PLAY: \(statusLine)")) }
+            if isOK {
+                phase = .streaming
+                startKeepAlive()
+                onState(.playing)
+            } else { onState(.failed("PLAY: \(statusLine)")) }
         default:
             break
         }

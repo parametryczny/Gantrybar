@@ -89,15 +89,25 @@ for width, height in ((1200, 750), (560, 400), (380, 300), (750, 650)):
 shot = Gdk.pixbuf_get_from_window(app.window.get_window(), 0, 0, *app.window.get_size())
 if shot: shot.savev(str(Path(tempfile.gettempdir()) / "gantry-gtk-guide.png"), "png", [], [])
 app.window.close_panel(); pump()
-app.window.show_maintenance(app.printers[0], app.telemetry["0"]); pump()
-assert app.window._panel_layer is not None
-app.window.close_panel()
-app.open_fleet_stats(); pump()
-assert app.window._panel_layer is not None
-app.window.close_panel()
-app.open_diagnostics(); pump()
-assert app.window._panel_layer is not None
-app.window.close_panel()
+
+# Maintenance, statistics and diagnostics open as windows of their own (contract panelWindow), centred,
+# with the Gantry header, and none of them locks the fleet or folds it away while it is open.
+def open_panel(open_it, name):
+    before = set(Gtk.Window.list_toplevels())
+    open_it(); pump()
+    opened = [w for w in Gtk.Window.list_toplevels() if w not in before and w.get_visible()]
+    assert len(opened) == 1, f"{name}: expected one new window, got {len(opened)}"
+    panel = opened[0]
+    assert (panel.get_title() or "").startswith("Gantry · "), f"{name}: title {panel.get_title()!r}"
+    assert not panel.get_modal(), f"{name} must not lock the fleet"
+    assert app.window._panel_layer is None, f"{name} must not be embedded in the fleet"
+    assert app.window.get_visible() and app.window._suppress_hide, f"{name} must hold the fleet open"
+    panel.destroy(); pump()
+    assert not app.window._suppress_hide, f"{name} left its hold on the fleet behind"
+
+open_panel(lambda: app.window.show_maintenance(app.printers[0], app.telemetry["0"]), "Maintenance")
+open_panel(app.open_fleet_stats, "Statistics")
+open_panel(app.open_diagnostics, "Diagnostics")
 app.window._hide(); pump()
 assert app.config.data["floating-window-enabled"] and not app.window.tray_mode
 app.show(); pump()
@@ -108,4 +118,4 @@ assert app.window.tray_mode and not app.window.get_decorated()
 app.window.show_onboarding(); pump()
 assert app.window._panel_layer is not None
 app.window.destroy()
-print("GTK presentation OK — launch, production-card guide, bounded panels, resize and persistent window mode")
+print("GTK presentation OK: launch, production-card guide, panel windows, resize and persistent window mode")

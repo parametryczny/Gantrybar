@@ -97,6 +97,11 @@ public static class StatusParser
         if (FanPercent(report, "big_fan2_speed") is { } cf) result.ChamberFanPercent = cf;
         if (Int(report, "spd_lvl") is { } sl) result.SpeedLevel = sl;
         if (Int(report, "spd_mag") is { } sm) result.SpeedPercent = sm;
+        // "fun" is a hex feature mask. Bit 0x20000000 set means the printer only takes commands signed by
+        // Bambu Connect; LAN Only with Developer Mode clears it (as read by ha-bambulab).
+        if (Str(report, "fun") is { Length: > 0 } fun
+            && ulong.TryParse(fun, System.Globalization.NumberStyles.HexNumber, null, out var mask))
+            result.CommandSigningRequired = (mask & 0x20000000UL) != 0;
         if (Num(report, "nozzle_diameter") is { } nd && nd > 0) result.NozzleDiameter = nd;
 
         if (report.TryGetProperty("stage", out var stage) && stage.ValueKind == JsonValueKind.Object && Int(stage, "_id") is { } sid)

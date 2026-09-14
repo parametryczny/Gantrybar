@@ -21,7 +21,7 @@ public sealed class DiagnosticsWindow : Window
         _store = store;
         Title = AppSettings.T("Diagnostic Center");
         Width = 520; Height = 560; MinWidth = 450; MinHeight = 400;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = GTheme.Brush(GTheme.Canvas);
         _status.Text = AppSettings.T("Check connectivity for every printer.");
         _status.Foreground = GTheme.Brush(GTheme.Secondary); _status.TextWrapping = TextWrapping.Wrap;
@@ -30,7 +30,8 @@ public sealed class DiagnosticsWindow : Window
         _progress.Height = 4; _progress.Minimum = 0; _progress.Visibility = Visibility.Collapsed;
         _progress.Margin = new Thickness(0, 8, 0, 0);
         var body = new StackPanel { Margin = new Thickness(18), Children = { _status, _progress, _run, _results } };
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = body };
+        PanelWindow.Wrap(this, AppSettings.T("Diagnostic Center"),
+            new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = body });
     }
 
     private async Task RunAsync()

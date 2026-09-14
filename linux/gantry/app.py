@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import threading
 import time
@@ -55,10 +56,12 @@ STAGES = {
 
 
 def quiet_hours_active(config: Config, now: datetime | None = None) -> bool:
-    if not config.data.get("quiet_hours_enabled", True): return False
+    if not config.data.get("quiet_hours_enabled", False): return False
     current = (now or datetime.now()).strftime("%H:%M")
     start = str(config.data.get("quiet_hours_start", "22:00"))
     end = str(config.data.get("quiet_hours_end", "07:00"))
+    # Same start and end is an empty range, as on macOS and Windows, not a whole day of silence.
+    if start == end: return False
     return start <= current < end if start < end else current >= start or current < end
 
 class PrinterDialog(Gtk.Dialog):
@@ -306,6 +309,8 @@ class Gantry:
         self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
         self.detail_window: Any | None = None
         self.expanded_compact_serial: str | None = None
+        # Set when telemetry lands on a hidden panel, cleared by the catch-up rebuild in show().
+        self._dashboard_stale = False
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         GLib.timeout_add_seconds(15, self._finish_startup)
         self.reconnect_all()
@@ -666,6 +671,12 @@ class Gantry:
             done.set()
             return False
 
+        # Already on the GTK loop (the engine runs from on_event, the Run button from a click): queuing
+        # the dialog and then waiting would block the very loop that has to show it for the whole
+        # timeout, and the answer would arrive after the action had already been refused.
+        if threading.current_thread() is threading.main_thread():
+            ask()
+            return result.get("ok", False)
         GLib.idle_add(ask)
         done.wait(120)
         return result.get("ok", False)
@@ -718,13 +729,17 @@ class Gantry:
 
     def open_fleet_stats(self) -> None:
         from .fleetstats import FleetStatsDialog
+        # A panel like the others, not a modal loop: it used to lock the fleet while open, and run()
+        # also returned on the export button's response, which closed the statistics along with it.
+        existing = getattr(self, "fleet_stats_dialog", None)
+        if existing is not None:
+            existing.present(); return
         dialog = FleetStatsDialog(self)
-        if not self.window.tray_mode:
-            self.show()
-            self.window.embed_dialog(dialog)
-            return
-        dialog.run()
-        dialog.destroy()
+        self.fleet_stats_dialog = dialog
+        dialog.connect("destroy", lambda *_: setattr(self, "fleet_stats_dialog", None))
+        self.window.hold_fleet_panel(dialog)
+        dialog.show()
+        dialog.present()
 
     def open_details(self, serial: str) -> None:
         from .details import DetailPanel
@@ -740,14 +755,6 @@ class Gantry:
         self.window.show_panel(panel, 500, 680)
 
     def toggle_spoolbase(self) -> None:
-        if not self.window.tray_mode:
-            from .spoolbase import SpoolbaseWindow
-            self.show()
-            window = SpoolbaseWindow(self)
-            child = window.get_child()
-            window.remove(child)
-            self.window.show_panel(child, 520, 620, cleanup=window.destroy)
-            return
         window = getattr(self, "spoolbase_window", None)
         if window is None:
             from .spoolbase import SpoolbaseWindow
@@ -758,7 +765,21 @@ class Gantry:
         else:
             window.present_panel()
 
+    def dashboard_visible(self) -> bool:
+        """True when the fleet panel is actually on screen. A hidden tray popover still holds all
+        its widgets, so the window object alone says nothing."""
+        window = getattr(self, "window", None)
+        getter = getattr(window, "get_visible", None)
+        if not callable(getter):
+            return True  # headless/kiosk harnesses have no real window; never skip their updates
+        return bool(getter())
+
     def show(self) -> None:
+        # Telemetry that arrived while the panel was hidden was not drawn. Catch up before it shows,
+        # so the first frame the user sees is already current instead of settling afterwards.
+        if getattr(self, "_dashboard_stale", False):
+            self._dashboard_stale = False
+            self.rebuild_cards()
         self.window.show_all()
         self.window.deiconify()
         self.window.update_startup()
@@ -1023,19 +1044,37 @@ class Gantry:
                 card = self.cards.get(serial)
                 if card is not None:
                     card.show_notice(msg)
-        if (first_report and serial in self.startup.received) or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()):
+        # Card layout, header and window fitting only matter when somebody can see them. With the
+        # popover hidden this was the whole cost of a telemetry packet, several times a second, for
+        # nothing. Notifications, Telegram, the tray label and the strip below are unaffected: they
+        # are what the app is for while the panel is closed.
+        if not self.dashboard_visible():
+            self._dashboard_stale = True
+        elif (first_report and serial in self.startup.received) or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()):
             self.rebuild_cards()
-        elif card := self.cards.get(serial):
-            card.update(current, str(value) if event == "disconnected" else None)
-        self.window.update_header()
-        if hasattr(self.window, "update_startup"):
-            self.window.update_startup()
+        else:
+            if card := self.cards.get(serial):
+                card.update(current, str(value) if event == "disconnected" else None)
+            self.window.update_header()
+            if hasattr(self.window, "update_startup"):
+                self.window.update_startup()
         self._refresh_progress_indicators()
         dock = getattr(self, "edge_dock", None)
         if dock is not None:
             dock.refresh()
-        if quiet_hours_active(self.config): return False
         printer_name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
+        # Bookkeeping first, whatever the clock says: quiet hours silence alerts, not the record of a
+        # print. The return below used to skip both, so a job finishing at night never came off its
+        # roll, and the next packet already reads FINISHED, so nothing caught up later.
+        if current.state != previous.state:
+            if current.state == PrinterState.FINISHED:
+                from . import telegram
+                telegram.record_history(self, serial, printer_name, current.job_name or "")
+            # Print sessions are followed with Spoolbase off too; on_finish subtracts nothing then.
+            if event == "telemetry":
+                from .consumption import on_finish
+                on_finish(self, serial, previous, current)
+        if quiet_hours_active(self.config): return False
         # Heads-up before the end. Armed once per print: it re-arms as soon as the remaining time is
         # back above the threshold (a new job) or the printer stops printing, so one job cannot nag.
         warned = getattr(self, "_finishing_soon_warned", None)
@@ -1055,9 +1094,6 @@ class Gantry:
         else:
             warned.discard(serial)
         if current.state != previous.state:
-            if current.state == PrinterState.FINISHED:
-                from . import telegram
-                telegram.record_history(self, serial, printer_name, current.job_name or "")
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key):
@@ -1070,11 +1106,6 @@ class Gantry:
                 self.notify(printer_name, body)
                 from . import telegram
                 telegram.notify(self, printer_name, body, "")
-            # Nothing is subtracted while Spoolbase is off, and nothing is remembered as subtracted
-            # either: switching it back on resumes from the grams the rolls had when it went off.
-            if event == "telemetry" and self._spoolbase_active():
-                from .consumption import on_finish
-                on_finish(self, serial, previous, current)
         previous_remaining = {slot.slot_id: slot.remaining for slot in previous.ams_slots}
         # Only warn for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain (issue #27).
         low = next((slot for slot in current.ams_slots if slot.remaining_weight_g is not None
@@ -1165,12 +1196,12 @@ class Gantry:
 
     def open_diagnostics(self) -> None:
         from .diagnostics import DiagnosticsDialog
+        # A window of its own in both presentations. In the desktop window it used to be pulled apart
+        # and re-hosted as a dimmed overlay inside the fleet, which capped it at the fleet's size and
+        # greyed out the cards behind it.
         dialog = DiagnosticsDialog(self)
-        if not self.window.tray_mode:
-            self.show()
-            self.window.embed_dialog(dialog)
-        else:
-            dialog.present()
+        self.window.hold_fleet_panel(dialog)
+        dialog.present()
 
     def open_settings(self) -> None:
         existing = getattr(self, "settings_dialog", None)

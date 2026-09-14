@@ -162,6 +162,11 @@ class DesktopPresentation:
 
     def close_panel(self):
         layer, cleanup = self._panel_layer, self._panel_cleanup
+        # Release the hold only when there really was an overlay. close_panel is also called
+        # defensively (on hide, on show_fleet, at the top of show_panel), and each of those used to
+        # clear the flag outright, which would have taken the hold a dialog was still relying on.
+        if layer is not None:
+            self._suppress_hide = False
         self._panel_layer = self._panel_cleanup = self._guide_refresh = None
         if self._panel_fit_id is not None:
             self.window_overlay.disconnect(self._panel_fit_id)
@@ -173,20 +178,7 @@ class DesktopPresentation:
             self.window_overlay.remove(layer)
         if cleanup:
             cleanup()
-        self._suppress_hide = False
         self.stack.set_sensitive(True)
-
-    def embed_dialog(self, dialog):
-        """Retain the original dialog/controller, including its cleanup and response handlers."""
-        dialog.hide()
-        dialog.set_modal(False)
-        child = dialog.get_child()
-        if child is None:
-            return
-        dialog.remove(child)
-        self.show_panel(child, 500, 600, cleanup=dialog.destroy)
-        # Let each dialog validate/handle its response first. It closes the host only when destroyed.
-        dialog.connect("destroy", lambda *_: self.close_panel() if self._panel_cleanup == dialog.destroy else None)
 
     def update_startup(self):
         if not hasattr(self, "_startup_layer"):

@@ -123,10 +123,7 @@ button.printer-alert { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .card-notice { background: alpha(#ff6857, 0.16); border: 1px solid alpha(#ff6857, 0.34); border-radius: 9px; padding: 5px 6px 5px 9px; }
 .card-notice label { color: #f0d9d5; font-size: 10px; }
 .settings-root { padding: 18px 20px 16px; }
-.settings-header { padding: 1px 2px 4px; }
 .settings-title { color: %(text)s; font-size: 22px; font-weight: 700; }
-.settings-author { color: %(secondary)s; font-size: 13px; font-weight: 600; }
-.settings-links { padding-top: 2px; }
 .settings-card { background: alpha(%(card)s, 0.72); border: 1px solid alpha(#ffffff, 0.09); border-radius: 16px; padding: 12px 14px; }
 .maintenance-backdrop { background: alpha(#000000, 0.30); }
 .maintenance-panel { background: alpha(%(card)s, 0.98); border: 1px solid %(line)s; border-radius: 16px; }
@@ -147,6 +144,15 @@ button.guide-action:disabled { color: %(muted)s; }
 .maintenance-stat-value { color: %(text)s; font-size: 14px; font-weight: 700; }
 .maintenance-stat-label { color: %(muted)s; font-size: 9px; }
 .settings-section { color: %(muted)s; font-size: 10px; font-weight: 700; }
+/* The settings window is drawn by the system theme, so its own type sets size and weight only and
+   leaves every colour to GTK. The rules above still dress the card-based windows (diagnostics,
+   fleet statistics, maintenance), which are not preferences windows. */
+.settings-heading { font-size: 13px; font-weight: 600; padding-top: 2px; }
+/* The shared panel-window header (panelwindow.panel_header): the fleet header's wordmark and dot,
+   then the panel's name. Smaller than the fleet's 17px wordmark: it shares a title bar. */
+.panel-wordmark { color: %(text)s; font-size: 13px; font-weight: 800; }
+.panel-dot { color: alpha(%(text)s, 0.45); font-weight: 600; }
+.panel-name { color: %(text)s; font-size: 13px; font-weight: 600; }
 .settings-label { color: %(secondary)s; font-size: 12px; }
 .settings-hint { color: %(muted)s; font-size: 10px; }
 .settings-version { color: %(muted)s; font-size: 10px; }
@@ -951,7 +957,7 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         super().__init__()
         self.app = app
         self._just_shown = False
-        self._suppress_hide = False
+        self._hide_holds = 0
         self.tray_mode = bool(app.indicator_available and not app.config.data.get("floating-window-enabled", False))
         rgba = self.get_screen().get_rgba_visual()
         if rgba is not None: self.set_visual(rgba)
@@ -973,19 +979,45 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.window_overlay.add(self.stack)
-        self._maintenance_overlay: Gtk.Widget | None = None
+        self._maintenance_window: Any = None
         self.fleet = self._build_fleet()
         self.stack.add_named(self.fleet, "fleet")
         self.stack.set_visible_child_name("fleet")
         self.setup_desktop()
 
+    # The tray panel hides on focus-out, which would take it away the moment any dialog it opened
+    # became focused. This is a count and not a flag on purpose: with two dialogs open at once,
+    # closing the first must not let the panel hide from under the second.
+    @property
+    def _suppress_hide(self) -> bool:
+        return self._hide_holds > 0
+
+    @_suppress_hide.setter
+    def _suppress_hide(self, value: bool) -> None:
+        self._hide_holds = max(0, self._hide_holds + (1 if value else -1))
+
+    def hold_fleet_panel(self, widget: Gtk.Widget) -> None:
+        """Keeps the tray panel on screen for exactly as long as `widget` is.
+
+        Bound to map/unmap rather than to show/destroy: unmap is emitted when the widget is hidden
+        *and* on the way out of a destroy, so a dialog cannot leave its hold behind.
+        """
+        widget.connect("map", lambda *_: setattr(self, "_suppress_hide", True))
+        widget.connect("unmap", lambda *_: setattr(self, "_suppress_hide", False))
+
     def show_maintenance(self, printer: Any, telemetry: Any) -> None:
         from .maintenance import MaintenancePanel
+        from .panelwindow import PanelWindow
         panel = MaintenancePanel(self.app, printer, telemetry, self.close_maintenance)
-        self.show_panel(panel, 470, 560)
+        window = PanelWindow(self.app, panel, i18n.t("Maintenance · {0}").format(printer.name),
+                             470, 560, accessories=panel.header_accessories())
+        self._maintenance_window = window
+        window.present_centered()
 
     def close_maintenance(self) -> None:
-        self.close_panel()
+        window, self._maintenance_window = getattr(self, "_maintenance_window", None), None
+        if window is not None:
+            window.destroy()
 
     def _build_fleet(self) -> Gtk.Widget:
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)

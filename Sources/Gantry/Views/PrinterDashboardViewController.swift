@@ -15,13 +15,6 @@ private final class PassthroughView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// Dimmed backdrop behind the spool-assignment panel. A click that lands on the backdrop itself (not on
-/// the panel above it) dismisses the overlay; clicks on the panel are handled by the panel's controls.
-private final class SpoolBackdropView: NSView {
-    var onClickOutside: (() -> Void)?
-    override func mouseDown(with event: NSEvent) { onClickOutside?() }
-}
-
 enum DashboardPresentation {
     case popover
     case floatingWindow
@@ -466,6 +459,13 @@ final class PrinterDashboardViewController: NSViewController {
         footerHeightConstraint?.constant = footerLabel.isHidden ? 0 : 14
     }
 
+    /// Before the first frame, not after it: the popover takes its size from what this reports, so a
+    /// refresh that only ran in `viewDidAppear` would show the previous fleet's height for one frame.
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        refreshDashboard()
+    }
+
     override func viewDidAppear() {
         super.viewDidAppear()
         refreshDashboard()
@@ -541,6 +541,20 @@ final class PrinterDashboardViewController: NSViewController {
 
     private func refreshDashboard() {
         guard isViewLoaded else { return }
+        // A closed menu-bar popover keeps its view controller alive, and telemetry kept driving a full
+        // refresh through it several times a second for nobody to see. Worse than wasted: with the view
+        // out of any window, AppKit has to build a throwaway Auto Layout engine for the whole card tree
+        // on each of the two measuring passes at the end of this method, install it into every
+        // descendant, solve, and tear it down. A sample of the running app put 1134 of 1447 main-thread
+        // samples in exactly those two lines. `viewWillAppear` refreshes on the way back in, so nothing
+        // is stale when the panel opens.
+        //
+        // The test is visibility, not `view.window != nil`: a dismissed popover keeps its window and
+        // its whole view tree, only marking the window invisible, so the obvious check would have been
+        // a no-op here. This is a skip and not a latch, which is what makes it safe for a minimised
+        // floating window too: telemetry keeps calling in, so the first packet after the window comes
+        // back renders it again.
+        guard view.window?.isVisible == true else { return }
         let settings = AppSettings.shared
         updateStartupPresentation(settings: settings)
         let visiblePrinters = store.dashboardPrinters
@@ -714,8 +728,7 @@ final class PrinterDashboardViewController: NSViewController {
         // popover's bottom edge visibly pulse on every telemetry tick.
         view.layoutSubtreeIfNeeded()
         let measuredContent = cardsStack.fittingSize.height
-        if measuredContent > 1 && !spoolOverlaySizingActive && onboardingPanel == nil
-            && view.window?.inLiveResize != true {
+        if measuredContent > 1 && onboardingPanel == nil && view.window?.inLiveResize != true {
             // Include every fixed vertical inset around the scroll view. Four extra points absorb
             // AppKit pixel rounding, preventing a scrollbar for content that mathematically fits.
             let footerHeight = footerLabel.isHidden ? CGFloat.zero : CGFloat(14)
@@ -738,37 +751,6 @@ final class PrinterDashboardViewController: NSViewController {
     }
 
     private var lastReportedContentSize: NSSize = .zero
-    // While the slot-assignment overlay is open, the popover is grown to a comfortable height so plenty
-    // of rolls/filaments show even for a single short printer card — and the normal per-tick auto-size is
-    // suspended so it doesn't shrink the popover back under the open panel.
-    private var spoolOverlaySizingActive = false
-    private static weak var overlaySizingHost: PrinterDashboardViewController?
-
-    /// Grow the popover to a tall, comfortable size for the open assignment overlay (spec: a small app
-    /// window must not squeeze the filament list). Keeps the current height if it is already taller.
-    func beginSpoolOverlaySizing() {
-        guard presentation == .popover else { return }
-        spoolOverlaySizingActive = true
-        PrinterDashboardViewController.overlaySizingHost = self
-        let screenH = (view.window?.screen ?? NSScreen.main)?.visibleFrame.height ?? 900
-        // Grow only the height: the popover width is pinned by the cards' own layout, so forcing it wider
-        // has no effect (the panel is instead sized to fit the narrowest popover). Make it tall enough to
-        // show plenty of the list; restored on close.
-        let width = preferredContentSize.width > 0 ? preferredContentSize.width : 540
-        let height = min(screenH - 24, max(preferredContentSize.height, 780))
-        let size = NSSize(width: width, height: height)
-        preferredContentSize = size
-        onPreferredContentSize(size)
-    }
-
-    /// Restore the popover to its natural content-driven height once the overlay closes.
-    static func endSpoolOverlaySizing() {
-        guard let host = overlaySizingHost else { return }
-        overlaySizingHost = nil
-        host.spoolOverlaySizingActive = false
-        host.lastReportedContentSize = .zero
-        host.refreshDashboard()
-    }
     // Equal-height constraints tying the cards of each row together; rebuilt every populate so a
     // card re-paired into a different row never keeps a stale partner.
     private var rowHeightConstraints: [NSLayoutConstraint] = []
@@ -1123,12 +1105,9 @@ final class PrinterDashboardViewController: NSViewController {
     }
 
     private func showMaintenanceOverlay(printer: SavedPrinter, telemetry: PrinterTelemetry) {
-        guard let host = view.window?.contentView else { return }
         MaintenancePanelViewController.dismiss()
         PrinterCardView.dismissSpoolOverlay()
-        // Maintenance scrolls inside its own card. Resizing the status popover here made the whole
-        // Gantry panel visibly jump even when there was already enough room.
-        MaintenancePanelViewController.show(printer: printer, telemetry: telemetry, in: host)
+        MaintenancePanelViewController.show(printer: printer, telemetry: telemetry)
     }
 
     /// Toggles whether one printer's full card is shown beneath its compact row (accordion).
@@ -1456,15 +1435,17 @@ final class PrinterCardView: NSView, NSDraggingSource {
     private let noticeLabel = NSTextField(labelWithString: "")
     private let noticeOKButton = NSButton()
     private var onDismissNotice: (() -> Void)?
-    // The spool-assignment overlay lives on the popover's content view (not a nested NSPopover, which a
-    // transient menu-bar popover would instantly dismiss). Static so it survives a card rebuild.
-    private static var activeSpoolBackdrop: NSView?
+    // The slot-assignment panel is its own window. Static so it survives a card rebuild: the card
+    // that opened it is torn down and recreated whenever the fleet relayouts.
+    private static var activeSpoolPanel: PanelWindowController?
     private static var activeSpoolVC: SpoolAssignPopoverViewController?
+    /// Cleared before the window is closed, not after: closing it runs the dismissal callback, which
+    /// lands back here, and an already-empty static is what stops the recursion.
     static func dismissSpoolOverlay() {
-        activeSpoolBackdrop?.removeFromSuperview()
-        activeSpoolBackdrop = nil
+        let panel = activeSpoolPanel
+        activeSpoolPanel = nil
         activeSpoolVC = nil
-        PrinterDashboardViewController.endSpoolOverlaySizing()
+        panel?.dismiss()
     }
     private var layoutWidthConstraint: NSLayoutConstraint?
     private var dragHandle: PrinterDragHandle?
@@ -2233,46 +2214,34 @@ final class PrinterCardView: NSView, NSDraggingSource {
         if filamentSig != lastFilamentSignature {
         lastFilamentSignature = filamentSig
         renderedGroups = groups
+        // Remaining percent, grams and the active slot move on every telemetry packet; the dock's
+        // shape moves only when a spool appears or goes, a module changes, or a setting flips. The
+        // signature above catches both, so ask the dock to write the new readings into the views
+        // that are already there, and rebuild only when it reports it cannot. Rebuilding was tearing
+        // down and recreating every filament chip on every card several times a second, which is
+        // what made them blink.
+        if !filamentDock.apply(groups, settings: settings) {
         filamentDock.setGroups(groups, settings: settings, showRemaining: true,
                                printerSerial: printer.serial,
                                onSlotTapped: { [weak self] location, title, material, colorHex, anchor in
-            guard let self, !self.isGuidePreview, let host = self.window?.contentView else { return }
+            guard let self, !self.isGuidePreview else { return }
             PrinterCardView.dismissSpoolOverlay()
             let vc = SpoolAssignPopoverViewController(printerSerial: printer.serial, location: location,
                                                       slotTitle: title, amsMaterial: material,
                                                       amsColorHex: colorHex, onChange: {})
             vc.onClose = { PrinterCardView.dismissSpoolOverlay() }
-            if self.window?.windowController is FloatingDashboardWindowController {
-                PrinterCardView.activeSpoolVC = vc
-                PrinterCardView.activeSpoolBackdrop = EmbeddedPanelView.show(vc.view, in: host,
-                    size: NSSize(width: 460, height: 560),
-                    fillsViewport: true, showsCloseButton: false,
-                    onDismiss: { PrinterCardView.dismissSpoolOverlay() })
-                return
-            }
-            let backdrop = SpoolBackdropView(frame: host.bounds)
-            backdrop.autoresizingMask = [.width, .height]
-            backdrop.wantsLayer = true
-            backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.3).cgColor
-            backdrop.onClickOutside = { PrinterCardView.dismissSpoolOverlay() }
-            let panel = vc.view
-            panel.translatesAutoresizingMaskIntoConstraints = false
-            backdrop.addSubview(panel)
-            NSLayoutConstraint.activate([
-                panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
-                panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
-                // The panel sizes itself to its content (longest filament name + padding); here we only
-                // cap it so it can never be wider than the popover. Rows fill whatever width results.
-                panel.widthAnchor.constraint(lessThanOrEqualTo: backdrop.widthAnchor, constant: -24),
-                panel.heightAnchor.constraint(lessThanOrEqualTo: backdrop.heightAnchor, constant: -24)
-            ])
-            host.addSubview(backdrop)
-            PrinterCardView.activeSpoolBackdrop = backdrop
+            // A window, not an overlay on the fleet panel. The roll list wants 700-odd points and the
+            // popover had nowhere to put them: growing it threw the whole window across the screen,
+            // and not growing it left the list scrolling inside 126. Its own window has the room, and
+            // the cards stay lit and live behind it. Wide rather than tall: the panel lays out in two
+            // columns, so it does not stand on the screen as a narrow strip.
             PrinterCardView.activeSpoolVC = vc
-            // Grow the popover so the roll/filament list has room even when the app window is short.
-            (self.window?.contentViewController as? PrinterDashboardViewController)?.beginSpoolOverlaySizing()
+            PrinterCardView.activeSpoolPanel = PanelWindowController.present(vc.view, name: title,
+                size: NSSize(width: 760, height: 520),
+                onDismiss: { PrinterCardView.dismissSpoolOverlay() })
             _ = anchor
         })
+        }
         }
 
         // User-controlled card content (Settings → "Karty drukarek"). Hidden modules simply collapse
@@ -2716,11 +2685,6 @@ private final class TemperatureBentoView: NSView {
                 bedCurrent: Double?, bedTarget: Double?,
                 chamberCurrent: Double?, chamberTarget: Double?,
                 printing: Bool, error: Bool, settings: AppSettings) {
-        row.arrangedSubviews.forEach {
-            row.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
-
         var zones: [(String, Double?, Double?, NSColor)] = []
         if dual {
             let left = nozzles.first { $0.position == .left } ?? nozzles.first
@@ -2746,30 +2710,60 @@ private final class TemperatureBentoView: NSView {
         // printer holds it during a print), cold/idle muted, firmware alarm red. In monochrome mode hue is
         // dropped but a leading glyph (↑ ● ↓ ○ ! —) keeps the state readable.
         let mono = settings.monochrome
-        for (index, zone) in zones.enumerated() {
+        let nozzleCount = dual ? 2 : 1
+        // What a zone *is*, as opposed to what it currently reads. Labels, icons and the L/R suffix
+        // change when the printer's hardware or the language does, which is to say almost never; the
+        // temperatures change twice a second. Tearing the tiles down and building them again on every
+        // packet, as this did, meant an SF Symbol lookup and a fresh constraint set per reading, and it
+        // dirtied the whole card's layout so the two measuring passes in refreshDashboard had to solve
+        // from scratch. Rebuild on identity, update in place on value.
+        let shape = zones.enumerated().map { index, zone in
+            let icon = index < nozzleCount ? "line.3.horizontal.decrease"
+                     : index == nozzleCount ? "square.3.layers.3d" : "cube"
+            let side = dual && index < 2 ? (index == 0 ? "L" : "R") : nil
+            return "\(zone.0)|\(icon)|\(side ?? "")"
+        } + (chamberCurrent == nil ? ["spacer"] : [])
+
+        if shape != zoneShape {
+            zoneShape = shape
+            zoneViews = []
+            row.arrangedSubviews.forEach {
+                row.removeArrangedSubview($0)
+                $0.removeFromSuperview()
+            }
+            for (index, zone) in zones.enumerated() {
+                let icon = index < nozzleCount ? "line.3.horizontal.decrease"
+                         : index == nozzleCount ? "square.3.layers.3d" : "cube"
+                let view = ThermalZoneView(label: zone.0,
+                                           icon: icon,
+                                           side: dual && index < 2 ? (index == 0 ? "L" : "R") : nil,
+                                           separated: index > 0)
+                zoneViews.append(view)
+                row.addArrangedSubview(view)
+            }
+            // Preserve the chamber's grid cell even when telemetry omits it. The spacer is invisible,
+            // but prevents the bed from sliding sideways as partial MQTT reports arrive.
+            if chamberCurrent == nil { row.addArrangedSubview(NSView()) }
+        }
+
+        for (index, zone) in zones.enumerated() where index < zoneViews.count {
             // The chamber has no target and never triggers a thermal alarm on its own; only the nozzle/bed
             // carry the printer's error state here.
             let zoneError = error && zone.2 != nil
             let state = GantryTheme.tempState(current: zone.1, target: zone.2, printing: printing, error: zoneError)
-            let nozzleCount = dual ? 2 : 1
-            let icon = index < nozzleCount ? "line.3.horizontal.decrease" : index == nozzleCount ? "square.3.layers.3d" : "cube"
-            row.addArrangedSubview(ThermalZoneView(label: zone.0,
-                                                   icon: icon,
-                                                   side: dual && index < 2 ? (index == 0 ? "L" : "R") : nil,
-                                                   current: Self.value(zone.1),
-                                                   target: showTargets
-                                                       ? (zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "")
-                                                       : "",
-                                                   tooltipTarget: zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "",
-                                                   tint: GantryTheme.tempColor(state, mono: mono),
-                                                   separated: index > 0,
-                                                   symbol: mono ? GantryTheme.tempSymbol(state) : nil,
-                                                   bold: GantryTheme.tempBold(state)))
+            zoneViews[index].apply(current: Self.value(zone.1),
+                                   target: showTargets
+                                       ? (zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "")
+                                       : "",
+                                   tooltipTarget: zone.2.map { $0 > 0 ? Self.target($0) : "" } ?? "",
+                                   tint: GantryTheme.tempColor(state, mono: mono),
+                                   symbol: mono ? GantryTheme.tempSymbol(state) : nil,
+                                   bold: GantryTheme.tempBold(state))
         }
-        // Preserve the chamber's grid cell even when telemetry omits it. The spacer is invisible,
-        // but prevents the bed from sliding sideways as partial MQTT reports arrive.
-        if chamberCurrent == nil { row.addArrangedSubview(NSView()) }
     }
+
+    private var zoneShape: [String] = []
+    private var zoneViews: [ThermalZoneView] = []
 
     private static func value(_ value: Double?) -> String {
         value.map { "\(Int($0.rounded()))°" } ?? "—"
@@ -2787,9 +2781,13 @@ private final class ThermalZoneView: NSView {
     private let separator = CALayer()
     private let ambient = CAGradientLayer()
 
-    init(label: String, icon: String, side: String?, current: String, target: String,
-         tooltipTarget: String? = nil, tint: NSColor, separated: Bool,
-         symbol: String? = nil, bold: Bool = false) {
+    private let currentField = NSTextField(labelWithString: "")
+    private let targetField = NSTextField(labelWithString: "")
+    private let zoneLabel: String
+    private var appliedBold: Bool?
+
+    init(label: String, icon: String, side: String?, separated: Bool) {
+        zoneLabel = label
         super.init(frame: .zero)
         wantsLayer = true
         // Neutral tile: the hue lives only on the temperature value below, so a wall of zones reads
@@ -2805,8 +2803,6 @@ private final class ThermalZoneView: NSView {
         layer?.addSublayer(accent)
         layer?.addSublayer(separator)
 
-        toolTip = label + ": " + current + " " + (tooltipTarget ?? target)
-        setAccessibilityLabel(toolTip)
         let iconView = NSImageView(image: NSImage(systemSymbolName: icon, accessibilityDescription: label) ?? NSImage())
         iconView.contentTintColor = GantryTheme.secondary
         iconView.symbolConfiguration = .init(pointSize: 12, weight: .regular)
@@ -2818,17 +2814,9 @@ private final class ThermalZoneView: NSView {
         labelField.textColor = .tertiaryLabelColor
         labelField.lineBreakMode = .byTruncatingTail
 
-        // In monochrome mode a leading glyph (↑ ● ↓ ○ ! —) carries the state that colour otherwise would.
-        let currentField = NSTextField(labelWithString: symbol.map { "\($0) \(current)" } ?? current)
-        currentField.font = .monospacedDigitSystemFont(ofSize: 14, weight: bold ? .bold : .semibold)
-        // The one spot of colour per zone: the live temperature carries its state colour so the tile
-        // itself can stay neutral.
-        currentField.textColor = tint
-        let targetField = NSTextField(labelWithString: target)
         // Quiet target: small and faint so the eye catches the big current value, the target just hints.
         targetField.font = .monospacedDigitSystemFont(ofSize: 9, weight: .regular)
         targetField.textColor = GantryTheme.secondary
-        targetField.isHidden = target.isEmpty
         currentField.maximumNumberOfLines = 1
         targetField.maximumNumberOfLines = 1
         let values = NSStackView(views: [currentField, targetField])
@@ -2854,6 +2842,29 @@ private final class ThermalZoneView: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// Everything that changes with a reading. Each assignment is guarded, because writing a text
+    /// field's string or font invalidates its intrinsic size and with it the whole card's layout, and
+    /// most packets leave most of these identical.
+    func apply(current: String, target: String, tooltipTarget: String?,
+               tint: NSColor, symbol: String?, bold: Bool) {
+        // In monochrome mode a leading glyph (↑ ● ↓ ○ ! —) carries the state that colour otherwise would.
+        let text = symbol.map { "\($0) \(current)" } ?? current
+        if currentField.stringValue != text { currentField.stringValue = text }
+        if appliedBold != bold {
+            appliedBold = bold
+            currentField.font = .monospacedDigitSystemFont(ofSize: 14, weight: bold ? .bold : .semibold)
+        }
+        // The one spot of colour per zone: the live temperature carries its state colour so the tile
+        // itself can stay neutral.
+        if currentField.textColor != tint { currentField.textColor = tint }
+        if targetField.stringValue != target { targetField.stringValue = target }
+        if targetField.isHidden != target.isEmpty { targetField.isHidden = target.isEmpty }
+        let tip = zoneLabel + ": " + current + " " + (tooltipTarget ?? target)
+        guard toolTip != tip else { return }
+        toolTip = tip
+        setAccessibilityLabel(tip)
+    }
 
     override func layout() {
         super.layout()
@@ -2987,7 +2998,19 @@ private final class LabeledMetricView: NSView {
 @MainActor
 final class FilamentSwatchView: NSView {
     private let fillLayer = CAShapeLayer()
-    private let fraction: CGFloat
+    private var fraction: CGFloat
+
+    /// Level and colour change while a printer prints, and that must not cost a new view: the dock
+    /// used to be rebuilt for it, which visibly blinked every filament chip on every card.
+    func apply(color: NSColor, fraction: CGFloat) {
+        let clamped = max(0, min(1, fraction))
+        let sameColor = fillLayer.fillColor.map { NSColor(cgColor: $0) == color } ?? false
+        guard abs(clamped - self.fraction) > 0.0001 || !sameColor else { return }
+        self.fraction = clamped
+        layer?.backgroundColor = color.withAlphaComponent(0.20).cgColor
+        fillLayer.fillColor = color.cgColor
+        needsLayout = true
+    }
 
     init(color: NSColor, fraction: CGFloat) {
         self.fraction = max(0, min(1, fraction))
@@ -3060,10 +3083,30 @@ private final class EmptyFilamentSwatchView: NSView {
 final class FilamentSlotView: NSView {
     private let onTap: ((NSView) -> Void)?
 
-    init(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool = false,
-         location: SpoolLocation? = nil, onTap: ((NSView) -> Void)? = nil, isSingle: Bool = false) {
-        self.onTap = onTap
-        super.init(frame: .zero)
+    /// Everything a slot draws, derived once so the initial build and the in-place update can never
+    /// disagree about what the slot currently shows.
+    struct Resolved {
+        let present: Bool
+        let effectivePct: Int?
+        let materialText: String
+        let color: NSColor
+        let gramsValue: Double?
+        let reservesGramsRow: Bool
+        let showGrams: Bool
+        let showsChip: Bool
+        let showsLowWarning: Bool
+        let isActive: Bool
+        let label: String
+
+        /// What the view hierarchy depends on. Anything not in here is a value that can be written
+        /// into the views that already exist.
+        var shape: String {
+            "\(label)|\(present)|\(showsChip)|\(reservesGramsRow)|\(showsLowWarning)"
+        }
+    }
+
+    static func resolve(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool,
+                        location: SpoolLocation?) -> Resolved {
         // A manually-assigned physical spool wins over the (often unknown) AMS reading: its % and colour
         // come from Spoolbase, so a gauge-less EXT/AMS slot still shows a real level and grams.
         let assignedSpool = location.flatMap { SpoolbaseShared.spools.spool(at: $0) }
@@ -3081,18 +3124,102 @@ final class FilamentSlotView: NSView {
             color = NSColor.secondaryLabelColor.withAlphaComponent(0.18)
         }
         if AppSettings.shared.monochrome { color = color.mutedTowardGrey() }
-        // Flexible width so the slots stretch to fill their module (distribution .fillEqually).
-        setContentHuggingPriority(.defaultLow, for: .horizontal)
-
         let gramsValue = assignedSpool.map { $0.remainingWeightGrams } ?? slot.remainingWeightGrams
         let reservesGramsRow = AppSettings.shared.cardShowSpoolGrams
-        let showGrams = reservesGramsRow && present && (gramsValue ?? 0) > 0
+        // External spools report remain=0 as "unknown" (Bambu doesn't gauge them), so a low-filament
+        // dot there is a false alarm. A chipless AMS spool is the same: remain reads 0 but is not real,
+        // so only warn when the level is trustworthy — an RFID tag (weight) or an assigned Spoolbase
+        // spool (issue #27).
+        let trustedLevel = slot.remainingWeightGrams != nil || assignedSpool != nil
+        return Resolved(present: present, effectivePct: effectivePct, materialText: materialText,
+                        color: color, gramsValue: gramsValue, reservesGramsRow: reservesGramsRow,
+                        showGrams: reservesGramsRow && present && (gramsValue ?? 0) > 0,
+                        showsChip: showRemaining && present && effectivePct != nil,
+                        showsLowWarning: present && !isExternal && trustedLevel
+                            && (effectivePct ?? 100) <= 15,
+                        isActive: slot.isActive, label: slot.label)
+    }
+
+    private var builtShape = ""
+    private weak var swatchRef: NSView?
+    private weak var chipLabel: NSTextField?
+    private weak var materialRef: NSTextField?
+    private weak var gramsRef: NSTextField?
+
+    /// Writes new readings into the views that are already there. Returns false when the slot's
+    /// shape changed (a spool appeared, the low-filament badge is now due), which is the only case
+    /// that still needs a rebuild. Every telemetry tick used to take that path.
+    func apply(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool,
+               location: SpoolLocation?) -> Bool {
+        let r = Self.resolve(slot: slot, isExternal: isExternal, showRemaining: showRemaining,
+                             location: location)
+        guard r.shape == builtShape else { return false }
+        (swatchRef as? FilamentSwatchView)?.apply(color: r.color,
+                                                  fraction: CGFloat(r.effectivePct ?? 0) / 100)
+        if let swatch = swatchRef, !(swatch is FilamentSwatchView), r.present {
+            swatch.layer?.backgroundColor = r.color.cgColor
+        }
+        if let swatch = swatchRef {
+            swatch.layer?.borderColor = r.isActive
+                ? NSColor.white.withAlphaComponent(0.8).cgColor : GantryTheme.line.cgColor
+            swatch.layer?.borderWidth = r.isActive ? 1.5 : 1
+        }
+        if let chip = chipLabel, let pct = r.effectivePct {
+            chip.attributedStringValue = Self.chipString(pct: pct, color: r.color)
+        }
+        if let material = materialRef {
+            let text = r.present ? r.materialText : "—"
+            if material.stringValue != text { material.stringValue = text }
+            material.textColor = r.present ? GantryTheme.metric : GantryTheme.muted
+            material.toolTip = "\(r.label) • \(r.materialText) • \(r.effectivePct.map { "\($0)%" } ?? "—")"
+        }
+        if let grams = gramsRef {
+            let text = r.showGrams ? "\(Int(r.gramsValue ?? 0)) g" : "0 g"
+            if grams.stringValue != text { grams.stringValue = text }
+            grams.alphaValue = r.showGrams ? 1 : 0
+            grams.setAccessibilityElement(r.showGrams)
+        }
+        return true
+    }
+
+    /// The in-chip percentage, in contrast ink so it stays legible on any filament colour.
+    static func chipString(pct: Int, color: NSColor) -> NSAttributedString {
+        let overSolid = CGFloat(pct) / 100 >= 0.5
+        let inkIsDark = overSolid && color.contrastingTextColor == .black
+        let ink: NSColor = inkIsDark ? .black : NSColor.white.withAlphaComponent(0.95)
+        let shadow = NSShadow()
+        shadow.shadowColor = (inkIsDark ? NSColor.white : NSColor.black).withAlphaComponent(0.4)
+        shadow.shadowBlurRadius = 1.5
+        shadow.shadowOffset = .zero
+        return NSAttributedString(string: "\(pct)%", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .bold),
+            .foregroundColor: ink,
+            .shadow: shadow
+        ])
+    }
+
+    init(slot: FilamentSlot, isExternal: Bool, showRemaining: Bool = false,
+         location: SpoolLocation? = nil, onTap: ((NSView) -> Void)? = nil, isSingle: Bool = false) {
+        self.onTap = onTap
+        super.init(frame: .zero)
+        let resolved = Self.resolve(slot: slot, isExternal: isExternal, showRemaining: showRemaining,
+                                    location: location)
+        builtShape = resolved.shape
+        let present = resolved.present
+        let effectivePct = resolved.effectivePct
+        let materialText = resolved.materialText
+        let color = resolved.color
+        let gramsValue = resolved.gramsValue
+        let reservesGramsRow = resolved.reservesGramsRow
+        let showGrams = resolved.showGrams
+        // Flexible width so the slots stretch to fill their module (distribution .fillEqually).
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         // Compact vertical slot: a colour chip on top (filling its cell), then the values UNDER it — the
         // percent inside the chip, the material + grams as a quiet caption below. This keeps the slot as
         // narrow as its column so four AMS slots + EXT still fit a card.
         let swatch: NSView
-        if showRemaining, present, let pct = effectivePct {
+        if resolved.showsChip, let pct = effectivePct {
             swatch = FilamentSwatchView(color: color, fraction: CGFloat(pct) / 100)
         } else if present {
             swatch = NSView()
@@ -3109,6 +3236,7 @@ final class FilamentSlotView: NSView {
             swatch.layer?.borderColor = GantryTheme.line.cgColor
             swatch.layer?.borderWidth = 1
         }
+        swatchRef = swatch
         swatch.translatesAutoresizingMaskIntoConstraints = false
         swatch.heightAnchor.constraint(equalToConstant: 18).isActive = true
         if !isSingle {
@@ -3118,21 +3246,11 @@ final class FilamentSlotView: NSView {
         }
 
         // Remaining % lives inside the chip, in contrast ink so it's legible on any filament colour.
-        if showRemaining, present, let pct = effectivePct {
-            let overSolid = CGFloat(pct) / 100 >= 0.5
-            let inkIsDark = overSolid && color.contrastingTextColor == .black
-            let ink: NSColor = inkIsDark ? .black : NSColor.white.withAlphaComponent(0.95)
-            let shadow = NSShadow()
-            shadow.shadowColor = (inkIsDark ? NSColor.white : NSColor.black).withAlphaComponent(0.4)
-            shadow.shadowBlurRadius = 1.5
-            shadow.shadowOffset = .zero
+        if resolved.showsChip, let pct = effectivePct {
             let inChip = NSTextField(labelWithString: "")
-            inChip.attributedStringValue = NSAttributedString(string: "\(pct)%", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .bold),
-                .foregroundColor: ink,
-                .shadow: shadow
-            ])
+            inChip.attributedStringValue = Self.chipString(pct: pct, color: color)
             inChip.alignment = .center
+            chipLabel = inChip
             inChip.translatesAutoresizingMaskIntoConstraints = false
             swatch.addSubview(inChip)
             NSLayoutConstraint.activate([
@@ -3153,6 +3271,7 @@ final class FilamentSlotView: NSView {
         material.textColor = present ? GantryTheme.metric : GantryTheme.muted
         material.lineBreakMode = .byTruncatingTail
         material.toolTip = "\(slot.label) • \(materialText) • \(effectivePct.map { "\($0)%" } ?? "—")"
+        materialRef = material
         let meta = NSView()
         meta.translatesAutoresizingMaskIntoConstraints = false
         meta.heightAnchor.constraint(equalToConstant: 11).isActive = true
@@ -3180,6 +3299,7 @@ final class FilamentSlotView: NSView {
             grams.alignment = .center
             grams.alphaValue = showGrams ? 1 : 0
             grams.setAccessibilityElement(showGrams)
+            gramsRef = grams
             slotViews.append(grams)
         }
         let stack = NSStackView(views: slotViews)
@@ -3206,12 +3326,7 @@ final class FilamentSlotView: NSView {
             NSLayoutConstraint.activate([target, floor, ceiling])
         }
 
-        // External spools report remain=0 as "unknown" (Bambu doesn't gauge them), so a low-filament
-        // dot there is a false alarm. A chipless AMS spool is the same: remain reads 0 but is not real,
-        // so only warn when the level is trustworthy — an RFID tag (weight) or an assigned Spoolbase
-        // spool (issue #27).
-        let trustedLevel = slot.remainingWeightGrams != nil || assignedSpool != nil
-        if present, !isExternal, trustedLevel, (effectivePct ?? 100) <= 15 {
+        if resolved.showsLowWarning {
             // The badge sits on the chip's top-right, never over the % / grams. In colour mode it's a red
             // dot; in monochrome it becomes an outlined "!" so the warning never relies on colour alone.
             let warning = NSView()
@@ -3261,6 +3376,38 @@ final class FilamentSlotView: NSView {
 /// its slots, so an AMS, AMS HT, CFS or EXT reads as one distinct unit.
 @MainActor
 final class FilamentGroupView: NSView {
+    private var builtShape = ""
+    private var slotRefs: [FilamentSlotView] = []
+    private var builtSerial = ""
+    private var builtIndex = 0
+    private var builtShowsRemaining = false
+    private var builtAssignable = false
+
+    /// The module's own hierarchy: its header row and how many slots it holds. The environment
+    /// readings are in here too, because the header builds a cluster per available measurement and
+    /// updating those in place would mean holding on to two more labels for a value that moves at
+    /// most once every few seconds.
+    static func shapeKey(_ group: FilamentGroup) -> String {
+        "\(group.displayName)|\(group.isExternal)|\(group.declaredCapacity)|\(group.slots.count)"
+            + "|\(group.temperatureCelsius.map { Int($0.rounded()) } ?? -1)"
+            + "|\(group.humidityPercent ?? -1)"
+    }
+
+    /// Pushes new readings into the slots that are already on screen. False means something changed
+    /// that the existing views cannot represent, and the caller rebuilds.
+    func apply(group: FilamentGroup, settings: AppSettings) -> Bool {
+        guard Self.shapeKey(group) == builtShape, slotRefs.count == group.slots.count else { return false }
+        let feeder: SpoolLocation.Feeder = group.isExternal ? .ext : .ams
+        for (slotIndex, slot) in group.slots.enumerated() {
+            let location = SpoolLocation(printerSerial: builtSerial.isEmpty ? nil : builtSerial,
+                                         feeder: feeder, amsIndex: builtIndex, slot: slotIndex)
+            guard slotRefs[slotIndex].apply(slot: slot, isExternal: group.isExternal,
+                                            showRemaining: builtShowsRemaining,
+                                            location: builtAssignable ? location : nil) else { return false }
+        }
+        return true
+    }
+
     init(group: FilamentGroup, settings: AppSettings, showRemaining: Bool = false,
          printerSerial: String = "", groupIndex: Int = 0,
          onSlotTapped: ((SpoolLocation, String, String?, String?, NSView) -> Void)? = nil) {
@@ -3324,6 +3471,12 @@ final class FilamentGroupView: NSView {
         // swatch then takes a fixed fraction of that width (see FilamentSlotView), so a lone slot is a
         // wide rectangle and two side-by-side single groups (HT + EXT) match — and never jump, because
         // the width is a definite proportion rather than an ambiguous fill.
+        builtShape = Self.shapeKey(group)
+        slotRefs = slotViews
+        builtSerial = printerSerial
+        builtIndex = groupIndex
+        builtShowsRemaining = showRemaining
+        builtAssignable = !printerSerial.isEmpty && settings.spoolbaseEnabled
         let slots = NSStackView(views: slotViews)
         slots.orientation = .horizontal
         slots.alignment = .top
@@ -3401,10 +3554,35 @@ final class FilamentDockView: NSView {
     }
     required init?(coder: NSCoder) { nil }
 
+    private var groupRefs: [FilamentGroupView] = []
+    private var builtSettingsKey = ""
+
+    /// The settings that decide what a slot is made of: whether it reserves a grams row, whether it
+    /// has a Spoolbase identity to look up and click, and whether the low-filament badge is drawn as
+    /// a dot or an outlined "!". A slot cannot notice these changing on its own, so they are checked
+    /// here and force a rebuild.
+    static func settingsKey(_ settings: AppSettings) -> String {
+        "\(settings.cardShowSpoolGrams)|\(settings.cardShowFilaments)"
+            + "|\(settings.spoolbaseEnabled)|\(settings.monochrome)"
+    }
+
+    /// Writes new readings into the modules already on screen, without touching the hierarchy.
+    /// False means a rebuild is needed after all.
+    func apply(_ groups: [FilamentGroup], settings: AppSettings) -> Bool {
+        guard groupRefs.count == groups.count,
+              builtSettingsKey == Self.settingsKey(settings) else { return false }
+        for (view, group) in zip(groupRefs, groups) {
+            guard view.apply(group: group, settings: settings) else { return false }
+        }
+        return true
+    }
+
     func setGroups(_ groups: [FilamentGroup], settings: AppSettings, showRemaining: Bool = false,
                    printerSerial: String = "",
                    onSlotTapped: ((SpoolLocation, String, String?, String?, NSView) -> Void)? = nil) {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        groupRefs = []
+        builtSettingsKey = Self.settingsKey(settings)
         var index = 0
         while index < groups.count {
             let rowGroups = Array(groups[index ..< min(index + 2, groups.count)])
@@ -3415,6 +3593,7 @@ final class FilamentDockView: NSView {
                                   printerSerial: printerSerial, groupIndex: rowStartIndex + offset,
                                   onSlotTapped: onSlotTapped)
             }
+            groupRefs.append(contentsOf: views)
             let row = NSStackView(views: views)
             row.orientation = .horizontal
             row.alignment = .top

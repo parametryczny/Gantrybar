@@ -42,43 +42,11 @@ internal sealed class SpoolAssignPanel
         _colorHex = colorHex; _onClose = onClose;
         _root = new Border
         {
-            MaxHeight = 440,
             Background = GTheme.Brush(GTheme.Card),
             CornerRadius = new CornerRadius(14),
             BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
         };
-        // Width is driven by the content (longest filament name / roll line), not the window, so the panel
-        // is only as wide as it needs to be.
-        _root.Width = PreferredWidth();
-    }
-
-    /// The panel's natural width: the widest row content plus the row chrome (swatch, paddings) and the
-    /// panel margins, clamped so a very long name just truncates instead of ballooning.
-    private double PreferredWidth()
-    {
-        var fam = new FontFamily("Segoe UI Variable, Segoe UI");
-        var tf12 = new Typeface(fam, FontStyles.Normal, FontWeights.Medium, FontStretches.Normal);
-        var tf10 = new Typeface(fam, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-        double W(string s, double size, Typeface tf) =>
-            new FormattedText(s ?? "", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, tf, size, Brushes.White, 1.0).Width;
-        double content = 150;
-        foreach (var d in _filaments.Filaments)
-        {
-            var title = $"{d.Brand} {d.Name}".Trim();
-            content = Math.Max(content, W(string.IsNullOrEmpty(title) ? d.Type : title, 12, tf12));
-            content = Math.Max(content, W($"{d.Type} · {(string.IsNullOrEmpty(d.ColorName) ? "#" + d.ColorHex : d.ColorName)}", 10, tf10));
-        }
-        foreach (var s in _spools.Spools)
-        {
-            var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
-            var title = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
-            content = Math.Max(content, W(string.IsNullOrEmpty(title) ? s.Id : title, 12, tf12));
-            content = Math.Max(content, W($"{s.Id} · {(int)s.RemainingWeightGrams} g · {PlaceLabel(s.Location)}", 10, tf10));
-        }
-        // swatch(14)+margin(9) + row padding(20) + panel margins(32) + scrollbar lane(12).
-        double chrome = 23 + 20 + 32 + 12;
-        return Math.Min(460, Math.Max(280, Math.Ceiling(content) + chrome));
     }
 
     private static string T(string english) => AppSettings.T(english);
@@ -105,9 +73,14 @@ internal sealed class SpoolAssignPanel
         catch { return null; }
     }
 
-    private void Set(StackPanel content)
+    /// <summary>Width of a one-column screen (weigh, pick a filament, starting amount), kept narrow in a
+    /// wide window so a weigh form does not stretch its fields across it.</summary>
+    private const double SingleColumnWidth = 440;
+    /// <summary>Gap between the main screen's two columns.</summary>
+    private const double ColumnGap = 20;
+
+    private static ScrollViewer Scroll(StackPanel content)
     {
-        content.Margin = new Thickness(16);
         var sv = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -116,24 +89,52 @@ internal sealed class SpoolAssignPanel
         };
         // A slim, dark, rounded scrollbar that matches the panel instead of the chunky system default.
         if (SlimScrollBar != null) sv.Resources[typeof(ScrollBar)] = SlimScrollBar;
-        _root.Child = sv;
+        return sv;
+    }
+
+    private void Set(StackPanel content)
+    {
+        content.Margin = new Thickness(16);
+        content.MaxWidth = SingleColumnWidth;
+        content.HorizontalAlignment = HorizontalAlignment.Center;
+        _root.Child = Scroll(content);
+    }
+
+    /// <summary>The main screen: two equal columns, each scrolling its own list.</summary>
+    private void SetColumns(StackPanel left, StackPanel right)
+    {
+        var grid = new Grid { Margin = new Thickness(16) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColumnGap) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var leftScroll = Scroll(left);
+        var rightScroll = Scroll(right);
+        Grid.SetColumn(rightScroll, 2);
+        grid.Children.Add(leftScroll);
+        grid.Children.Add(rightScroll);
+        _root.Child = grid;
     }
 
     // MARK: screens
 
     private void ShowMain()
     {
-        var stack = Column();
-        stack.Children.Add(Header(_title, string.Format(T("AMS: {0}"), _material ?? T("unknown")), null));
+        // Two columns, not one long strip. Stacked in one column the slot, its roll, every spare roll,
+        // the create button and the whole catalog made a window more than twice as tall as it was
+        // wide. The left column is about what is in this slot, the right one about a new roll.
+        var left = Column();
+        var right = Column();
+        // The slot's name is in the window header; the body only adds what the printer reports for it.
+        left.Children.Add(Muted(string.Format(T("AMS: {0}"), _material ?? T("unknown"))));
 
         // 1. Assigned roll + per-roll actions. Weight and history live on the roll, not the slot, so
         // unassigning only moves it to storage (its grams are kept).
-        stack.Children.Add(SectionHeader(T("ASSIGNED SPOOL")));
+        left.Children.Add(SectionHeader(T("ASSIGNED SPOOL")));
         var assigned = _spools.SpoolAt(_loc);
         if (assigned is not null)
         {
             var adef = _filaments.Filaments.FirstOrDefault(f => f.Id == assigned.FilamentDefinitionId);
-            stack.Children.Add(Row(adef != null ? ParseHex(adef.ColorHex) : (Color?)null,
+            left.Children.Add(Row(adef != null ? ParseHex(adef.ColorHex) : (Color?)null,
                 adef != null ? $"{adef.Brand} {adef.Name}".Trim() : assigned.Id,
                 $"{assigned.Id} · {(int)assigned.RemainingWeightGrams} g · {assigned.Percent}%",
                 null, false, () => { }));
@@ -141,25 +142,25 @@ internal sealed class SpoolAssignPanel
             actions.Children.Add(Pill(T("Weigh"), false, () => ShowCorrectWeight(assigned)));
             actions.Children.Add(Pill(T("Reset"), false, () => ConfirmReset(assigned)));
             actions.Children.Add(Pill(T("Unassign"), false, () => { _spools.Assign(assigned.Id, SpoolLocation.Storage()); ShowMain(); }));
-            stack.Children.Add(actions);
+            left.Children.Add(actions);
         }
-        else stack.Children.Add(Muted(T("None")));
+        else left.Children.Add(Muted(T("None")));
 
         // 2. Existing physical rolls to move here (storage + other printers), matching filament first.
         // Clicking one only moves it: its remembered grams are never re-asked or reset (spec §3-4).
-        stack.Children.Add(SectionHeader(T("AVAILABLE ROLLS")));
+        left.Children.Add(SectionHeader(T("AVAILABLE ROLLS")));
         var assignedId = assigned?.Id;
         var available = _spools.Spools
             .Where(s => s.Status != SpoolStatus.Archived && !s.Location.SameSlot(_loc) && s.Id != assignedId)
             .OrderByDescending(MatchesSpool).ThenByDescending(s => s.Location.IsStorage).ThenBy(s => s.Id).ToList();
         if (available.Count == 0)
-            stack.Children.Add(Muted(T("No spare rolls. Create one below.")));
+            left.Children.Add(Muted(T("No spare rolls. Create one below.")));
         foreach (var s in available)
         {
             var def = _filaments.Filaments.FirstOrDefault(f => f.Id == s.FilamentDefinitionId);
             var name = def != null ? $"{def.Brand} {def.Name}".Trim() : s.Id;
             var spool = s;
-            stack.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
+            left.Children.Add(Row(def != null ? ParseHex(def.ColorHex) : (Color?)null,
                 string.IsNullOrEmpty(name) ? s.Id : name,
                 $"{s.Id} · {(int)s.RemainingWeightGrams} g · {PlaceLabel(s.Location)}",
                 null, MatchesSpool(s), () => AssignSpool(spool),
@@ -168,23 +169,23 @@ internal sealed class SpoolAssignPanel
 
         // 3. Create a new roll: guided button + the whole catalog grouped by type. Picking a filament
         // asks for the starting grams (spec §2).
-        stack.Children.Add(Pill(T("+ Create new roll"), false, ShowPickFilament));
-        stack.Children.Add(SectionHeader(T("FILAMENTS (NEW ROLL)")));
+        right.Children.Add(Pill(T("+ Create new roll"), false, ShowPickFilament));
+        right.Children.Add(SectionHeader(T("FILAMENTS (NEW ROLL)")));
         var defs = _filaments.Filaments
             .OrderBy(d => d.Type).ThenByDescending(MatchesDef).ThenBy(d => $"{d.Brand}{d.Name}").ToList();
         if (defs.Count == 0)
-            stack.Children.Add(Muted(T("Empty. Add filaments in the Spoolbase window.")));
+            right.Children.Add(Muted(T("Empty. Add filaments in the Spoolbase window.")));
         string? lastType = null;
         foreach (var d in defs)
         {
-            if (d.Type != lastType) { stack.Children.Add(TypeLabel(d.Type)); lastType = d.Type; }
+            if (d.Type != lastType) { right.Children.Add(TypeLabel(d.Type)); lastType = d.Type; }
             var def = d;
             var name = $"{d.Brand} {d.Name}".Trim();
             var colour = string.IsNullOrEmpty(d.ColorName) ? "#" + d.ColorHex : d.ColorName;
-            stack.Children.Add(Row(ParseHex(d.ColorHex), string.IsNullOrEmpty(name) ? d.Type : name,
+            right.Children.Add(Row(ParseHex(d.ColorHex), string.IsNullOrEmpty(name) ? d.Type : name,
                 $"{d.Type} · {colour}", null, MatchesDef(d), () => ShowPickGrams(def)));
         }
-        Set(stack);
+        SetColumns(left, right);
     }
 
     /// <summary>Weigh screen (spec §5): a fresh net reading, or gross + the empty-spool tare (subtracted

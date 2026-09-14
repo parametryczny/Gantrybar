@@ -15,6 +15,26 @@ final class PrinterStore: ObservableObject {
     @Published var globalMessage: String?
     @Published private(set) var startupProgress = StartupConnectionProgress(serials: [])
 
+    /// A control command the printer refused, kept per printer so the detail view can say why instead
+    /// of the setpoint only sliding back. The area is the card whose control sent it.
+    struct CommandRejection: Equatable {
+        enum Area { case temperature, fans }
+        let reason: String
+        let area: Area
+        let date: Date
+    }
+    @Published private(set) var commandRejections: [String: CommandRejection] = [:]
+    private var lastControlArea: [String: CommandRejection.Area] = [:]
+    /// Printers that refused a command with "mqtt message verify failed", for firmware that does not
+    /// report its feature mask.
+    @Published private(set) var signingRejected: Set<String> = []
+
+    /// Whether a Bambu printer takes control commands only when signed by Bambu Connect. The feature
+    /// mask decides when the printer reports one; otherwise a refusal already seen does.
+    func requiresSignedCommands(serial: String) -> Bool {
+        telemetry[serial]?.commandSigningRequired ?? signingRejected.contains(serial)
+    }
+
     /// Rolling temperature history per printer, drawn by the detail window's graph. Deliberately not
     /// @Published — the detail view already redraws on the store's telemetry change, so publishing it
     /// separately would only add churn to every observer.
@@ -140,10 +160,12 @@ final class PrinterStore: ObservableObject {
     }
 
     func setNozzleTemperature(serial: String, celsius: Int) {
+        lastControlArea[serial] = .temperature
         sendPrinterGcode(serial: serial, line: "M104 S\(max(0, min(300, celsius)))")
     }
 
     func setBedTemperature(serial: String, celsius: Int) {
+        lastControlArea[serial] = .temperature
         sendPrinterGcode(serial: serial, line: "M140 S\(max(0, min(120, celsius)))")
     }
 
@@ -152,6 +174,7 @@ final class PrinterStore: ObservableObject {
     func setFan(serial: String, index: Int, percent: Int) {
         let value = Int((Double(max(0, min(100, percent))) * 2.55).rounded())
         guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return }
+        lastControlArea[serial] = .fans
         if kind == .klipper {
             guard index == 1 else { return }
             sendGcode(serial: serial, script: "M106 S\(value)")
@@ -160,8 +183,19 @@ final class PrinterStore: ObservableObject {
         }
     }
 
+    /// A speed percentage, for Klipper. Bambu ignores M220 in a G-code line, which is why a percentage
+    /// sent to one always came back as 100%; it takes a speed mode instead, see setPrintSpeedLevel.
     func setPrintSpeed(serial: String, percent: Int) {
+        lastControlArea[serial] = .fans
         sendPrinterGcode(serial: serial, line: "M220 S\(max(10, min(166, percent)))")
+    }
+
+    /// Bambu speed mode: 1 Silent, 2 Standard, 3 Sport, 4 Ludicrous (the spd_lvl it reports back).
+    func setPrintSpeedLevel(serial: String, level: Int) {
+        guard printers.first(where: { $0.serial == serial })?.kind == .bambu else { return }
+        lastControlArea[serial] = .fans
+        sendCommand(serial: serial,
+                    json: #"{"print":{"sequence_id":"2004","command":"print_speed","param":"\#(max(1, min(4, level)))"}}"#)
     }
 
     func loadPrintObjectLayout(serial: String) async -> PrintObjectLoadResult {
@@ -832,6 +866,15 @@ final class PrinterStore: ObservableObject {
             }
             printersWithTelemetry.insert(serial)
             evaluateAutomations(serial: serial, previous: previous, current: value)
+        case .commandReply(let reply):
+            if reply.accepted {
+                commandRejections[serial] = nil
+                signingRejected.remove(serial)
+            } else {
+                if reply.reason?.localizedCaseInsensitiveContains("verify failed") == true { signingRejected.insert(serial) }
+                commandRejections[serial] = CommandRejection(reason: reply.reason ?? reply.command,
+                                                             area: lastControlArea[serial] ?? .fans, date: Date())
+            }
         case .disconnected(let reason):
             var offline = telemetry[serial] ?? PrinterTelemetry()
             offline.state = .offline

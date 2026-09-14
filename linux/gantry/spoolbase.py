@@ -24,6 +24,7 @@ except (ImportError, ValueError):
     Gst = None  # type: ignore[assignment]
 
 from . import i18n
+from .panelwindow import panel_header
 from .filamentstore import Filament, FilamentStore, TYPES, load_catalog, normalized_hex, save_catalog
 
 
@@ -91,8 +92,6 @@ class SpoolbaseWindow(Gtk.Window):
         self.store.on_change = self._render
         self.connect("destroy", lambda *_: setattr(self.store, "on_change", None)
                      if self.store.on_change == self._render else None)
-        self._suppress_hide = False
-        self._just_shown = False
         self._query = ""
         self._selected_type: str | None = None
         self._selected_brand: str | None = None
@@ -103,25 +102,16 @@ class SpoolbaseWindow(Gtk.Window):
         rgba = self.get_screen().get_rgba_visual()
         if rgba is not None:
             self.set_visual(rgba)
+        # One presentation in both modes: a decorated window centred on the screen. It used to be an
+        # undecorated popup pinned to the top-right corner whenever Gantry lived in the tray, which
+        # hid itself on focus-out. A stock list you work in for minutes at a time is not a menu.
         self.tray_mode = getattr(app.window, "tray_mode", False)
-        if self.tray_mode:
-            self.set_default_size(500, 600)
-            self.set_decorated(False)
-            self.set_skip_taskbar_hint(True)
-            self.set_skip_pager_hint(True)
-            self.set_resizable(False)
-            self.set_keep_above(True)
-            try:
-                self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-            except Exception:
-                pass
-            self.get_style_context().add_class("popover-window")
-            self.connect("focus-out-event", self._on_focus_out)
-        else:
-            self.set_title("Spoolbase")
-            self.set_default_size(500, 640)
-            self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_title("Spoolbase")
+        self.set_default_size(500, 640)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_transient_for(app.window)
         self.connect("delete-event", self._hide)
+        app.window.hold_fleet_panel(self)
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.get_style_context().add_class("sb-root")
@@ -131,11 +121,8 @@ class SpoolbaseWindow(Gtk.Window):
         header.get_style_context().add_class("sb-header")
         identity = Gtk.Box(spacing=9)
         titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        title = Gtk.Label(label="Spoolbase", xalign=0)
-        title.get_style_context().add_class("sb-title")
         self.summary = Gtk.Label(xalign=0)
         self.summary.get_style_context().add_class("sb-summary")
-        titles.pack_start(title, False, False, 0)
         titles.pack_start(self.summary, False, False, 0)
         identity.pack_start(FilamentIcon(), False, False, 0)
         identity.pack_start(titles, False, False, 0)
@@ -143,7 +130,8 @@ class SpoolbaseWindow(Gtk.Window):
         add.set_tooltip_text("Dodaj filament" if self._pl else "Add filament")
         add.connect("clicked", lambda _b: self._open_catalog())
         header.pack_start(identity, True, True, 0)
-        header.pack_start(add, False, False, 0)
+        # The name and the add button live in the shared window header now.
+        panel_header(self, "Spoolbase", (add,))
         root.pack_start(header, False, False, 0)
 
         self.search = Gtk.SearchEntry()
@@ -406,7 +394,6 @@ class SpoolbaseWindow(Gtk.Window):
         menu.popup_at_pointer(event)
 
     def _confirm_delete(self, item: Filament) -> None:
-        self._suppress_hide = True
         dialog = Gtk.MessageDialog(
             transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
             buttons=Gtk.ButtonsType.OK_CANCEL,
@@ -414,62 +401,28 @@ class SpoolbaseWindow(Gtk.Window):
         dialog.format_secondary_text(f"{item.brand} • {item.name} • {item.colorName}")
         response = dialog.run()
         dialog.destroy()
-        self._suppress_hide = False
         if response == Gtk.ResponseType.OK:
             self.store.delete(item.id)
 
     def _open_catalog(self) -> None:
-        self._suppress_hide = True
-        try:
-            dialog = CatalogDialog(self, self.store)
-            dialog.run()
-            dialog.destroy()
-        finally:
-            self._suppress_hide = False
+        dialog = CatalogDialog(self, self.store)
+        dialog.run()
+        dialog.destroy()
 
     def _open_editor(self, item: Filament | None, prefilled_code: str | None = None) -> None:
-        self._suppress_hide = True
-        try:
-            dialog = EditorDialog(self, self.store, item, prefilled_code)
-            dialog.run()
-            dialog.destroy()
-        finally:
-            self._suppress_hide = False
+        dialog = EditorDialog(self, self.store, item, prefilled_code)
+        dialog.run()
+        dialog.destroy()
 
     # ---- show / hide ----------------------------------------------------------------------
 
     def present_panel(self) -> None:
         self.show_all()
-        if self.tray_mode:
-            self._position_top_right()
         self.present()
-        self._just_shown = True
-        from gi.repository import GLib  # local import; GLib is loaded via app.py's pinned gi
-        GLib.timeout_add(300, self._clear_just_shown)
-
-    def _clear_just_shown(self) -> bool:
-        self._just_shown = False
-        return False
-
-    def _position_top_right(self) -> None:
-        display = Gdk.Display.get_default()
-        if display is None:
-            return
-        monitor = display.get_primary_monitor() or display.get_monitor(0)
-        if monitor is None:
-            return
-        area = monitor.get_workarea()
-        width, _height = self.get_size()
-        self.move(area.x + area.width - width - 8, area.y + 8)
 
     def _hide(self, *_args: object) -> bool:
         self.hide()
         return True
-
-    def _on_focus_out(self, *_args: object) -> bool:
-        if not self._just_shown and not self._suppress_hide:
-            self.hide()
-        return False
 
 
 class BarcodeScannerDialog(Gtk.Dialog):

@@ -21,6 +21,22 @@ public sealed class PrinterStore
     public Dictionary<string, List<TemperatureSample>> TemperatureHistory { get; } = new();
     private const int MaxTemperatureSamples = 240;
     public Dictionary<string, string?> ConnectionMessages { get; } = new();
+    /// <summary>A control command the printer refused, kept per printer so the detail view can say why
+    /// instead of the setpoint only sliding back. The area is the card whose control sent it.</summary>
+    public enum ControlArea { Temperature, Fans }
+    public sealed record CommandRejection(string Reason, ControlArea Area, DateTime At);
+    public Dictionary<string, CommandRejection> CommandRejections { get; } = new();
+    private readonly Dictionary<string, ControlArea> _lastControlArea = new();
+    /// <summary>Printers that refused a command with "mqtt message verify failed", for firmware that
+    /// does not report its feature mask.</summary>
+    public HashSet<string> SigningRejected { get; } = new();
+
+    /// <summary>Whether a Bambu printer takes control commands only when signed by Bambu Connect. The
+    /// feature mask decides when the printer reports one; otherwise a refusal already seen does.</summary>
+    public bool RequiresSignedCommands(string serial) =>
+        Telemetry.TryGetValue(serial, out var current) && current.CommandSigningRequired is { } required
+            ? required
+            : SigningRejected.Contains(serial);
     /// <summary>Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool
     /// auto-detached because an NFC roll was inserted into its slot).</summary>
     public Dictionary<string, List<string>> SpoolNotices { get; } = new();
@@ -568,6 +584,23 @@ public sealed class PrinterStore
                 EvaluateAutomations(serial, previous, value);
                 break;
 
+            case MqttEventType.CommandReply:
+                if (evt.Reply is { } commandReply)
+                {
+                    if (commandReply.Accepted)
+                    {
+                        CommandRejections.Remove(serial);
+                        SigningRejected.Remove(serial);
+                    }
+                    else
+                    {
+                        if (commandReply.Reason?.Contains("verify failed", StringComparison.OrdinalIgnoreCase) == true) SigningRejected.Add(serial);
+                        CommandRejections[serial] = new CommandRejection(commandReply.Reason ?? commandReply.Command,
+                            _lastControlArea.TryGetValue(serial, out var controlArea) ? controlArea : ControlArea.Fans, DateTime.UtcNow);
+                    }
+                }
+                break;
+
             case MqttEventType.Disconnected:
                 var offline = Telemetry.TryGetValue(serial, out var o) ? o : new PrinterTelemetry();
                 offline.State = PrinterState.Offline;
@@ -671,6 +704,55 @@ public sealed class PrinterStore
     public void SendGcode(string serial, string script)
     {
         if (_clients.TryGetValue(serial, out var c) && c is MoonrakerClient m) m.SendGcode(script);
+    }
+
+    /// One G-code line to a printer that takes them: Klipper over Moonraker, Bambu as an MQTT
+    /// gcode_line. Other brands have no route for it and are left alone, as on macOS.
+    private void SendPrinterGcode(string serial, string line)
+    {
+        var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
+        if (kind == PrinterKind.Klipper) SendGcode(serial, line);
+        else if (kind == PrinterKind.Bambu)
+            SendCommand(serial, JsonSerializer.Serialize(new { print = new { sequence_id = "2006", command = "gcode_line", param = line + "\n" } }));
+    }
+
+    public void SetNozzleTemperature(string serial, int celsius)
+    {
+        _lastControlArea[serial] = ControlArea.Temperature;
+        SendPrinterGcode(serial, $"M104 S{Math.Clamp(celsius, 0, 300)}");
+    }
+
+    public void SetBedTemperature(string serial, int celsius)
+    {
+        _lastControlArea[serial] = ControlArea.Temperature;
+        SendPrinterGcode(serial, $"M140 S{Math.Clamp(celsius, 0, 120)}");
+    }
+
+    /// Bambu fan indices: P1 part, P2 auxiliary, P3 chamber. Klipper exposes the standard part fan
+    /// through M106; model-specific auxiliary and chamber macros stay unavailable.
+    public void SetFan(string serial, int index, int percent)
+    {
+        int value = (int)Math.Round(Math.Clamp(percent, 0, 100) * 2.55);
+        var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
+        _lastControlArea[serial] = ControlArea.Fans;
+        if (kind == PrinterKind.Klipper) { if (index == 1) SendGcode(serial, $"M106 S{value}"); }
+        else if (kind == PrinterKind.Bambu) SendPrinterGcode(serial, $"M106 P{index} S{value}");
+    }
+
+    /// A speed percentage, for Klipper. Bambu ignores M220 in a G-code line, which is why a percentage
+    /// sent to one always came back as 100%; it takes a speed mode instead, see SetPrintSpeedLevel.
+    public void SetPrintSpeed(string serial, int percent)
+    {
+        _lastControlArea[serial] = ControlArea.Fans;
+        SendPrinterGcode(serial, $"M220 S{Math.Clamp(percent, 10, 166)}");
+    }
+
+    /// Bambu speed mode: 1 Silent, 2 Standard, 3 Sport, 4 Ludicrous (the spd_lvl it reports back).
+    public void SetPrintSpeedLevel(string serial, int level)
+    {
+        if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind != PrinterKind.Bambu) return;
+        _lastControlArea[serial] = ControlArea.Fans;
+        SendCommand(serial, JsonSerializer.Serialize(new { print = new { sequence_id = "2004", command = "print_speed", param = Math.Clamp(level, 1, 4).ToString(System.Globalization.CultureInfo.InvariantCulture) } }));
     }
 
     public async Task<(PrintObjectLayout? Layout, string? Error)> LoadPrintObjectLayoutAsync(string serial)

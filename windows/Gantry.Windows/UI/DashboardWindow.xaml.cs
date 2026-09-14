@@ -38,13 +38,19 @@ public partial class DashboardWindow : Window
         CompactButton.Click += (_, _) => ToggleCompact();
         ColumnsButton.Click += (_, _) => { AppSettings.DashboardColumns = AppSettings.DashboardColumns == 2 ? 1 : 2; Rebuild(); };
         _store.Updated += OnStoreUpdated;
+        // Catch-up hook. IsVisibleChanged rather than ShowPopover, because the panel also becomes
+        // visible from the tray menu, from the dock and from a window-mode restore.
+        IsVisibleChanged += (_, _) => { if (IsVisible && _dashboardStale) { _dashboardStale = false; Rebuild(); } };
         PrinterInsights.Changed += OnInsightsChanged;
         Closed += (_, _) => { _store.Updated -= OnStoreUpdated; PrinterInsights.Changed -= OnInsightsChanged; StopTransparencyRefresh(); };
         // A spool assignment should reflect on the cards immediately.
         SpoolbaseShared.Spools.Changed += OnSpoolsChanged;
         Closed += (_, _) => SpoolbaseShared.Spools.Changed -= OnSpoolsChanged;
         // Popover behaviour: dismiss when the user clicks away, like the macOS menu-bar panel —
-        // but stay open while one of our own dialogs (add printer) sits on top.
+        // but stay open while any window of ours sits on top of it. Now that every panel is its own
+        // window, this OwnedWindows walk is the whole hold, and every panel must set Owner to get
+        // it. Being a walk rather than a flag it is inherently counted: two panels open, closing one
+        // still finds the other, which is the bug the macOS and Linux counters had to fix by hand.
         Deactivated += (_, _) =>
         {
             if (WindowMode || _boundedLayer is not null) return;
@@ -91,13 +97,46 @@ public partial class DashboardWindow : Window
     private void OnSpoolsChanged() => Dispatcher.Invoke(Rebuild);
     private void OnInsightsChanged() => Dispatcher.Invoke(Rebuild);
 
-    /// <summary>Bounded in-window assignment and maintenance panels, shared with window mode.</summary>
+    // Both were dimmed overlays on the cards. Own windows now, centred on the screen: the roll list
+    // needs more height than the fleet panel has, and the cards behind stay lit and live.
+    private PanelWindow? _spoolAssignWindow;
+    private PanelWindow? _maintenanceWindow;
+
     internal void ShowSpoolAssign(SpoolLocation location, string title, string? material, string? colorHex)
-        => ShowPanel(SpoolAssignPanel.Build(location, title, material, colorHex, ClosePanel), 470, 650);
+    {
+        CloseSpoolAssign();
+        // Wide rather than tall: the panel lays out in two columns, so it does not stand on the screen
+        // as a narrow strip.
+        _spoolAssignWindow = PanelWindow.Present(this,
+            SpoolAssignPanel.Build(location, title, material, colorHex, CloseSpoolAssign),
+            title, 760, 600, cleanup: CloseSpoolAssign);
+    }
+
+    /// <summary>The field is cleared before the window is closed, not after: closing it runs the
+    /// cleanup, which lands back here, and an already-empty field is what stops the recursion.</summary>
+    private void CloseSpoolAssign()
+    {
+        var window = _spoolAssignWindow;
+        _spoolAssignWindow = null;
+        window?.Close();
+    }
 
     internal void ShowMaintenance(SavedPrinter printer, PrinterTelemetry telemetry)
-        => ShowPanel(MaintenancePanel.Build(printer, telemetry, ClosePanel,
-            () => Dispatcher.BeginInvoke(new Action(Rebuild))), 470, 570);
+    {
+        CloseMaintenance();
+        var panel = MaintenancePanel.Create(printer, telemetry, CloseMaintenance,
+            () => Dispatcher.BeginInvoke(new Action(Rebuild)));
+        _maintenanceWindow = PanelWindow.Present(this, panel.Root,
+            string.Format(AppSettings.T("Maintenance · {0}"), printer.Name), 470, 620,
+            scrolls: true, cleanup: CloseMaintenance, accessories: panel.HeaderAccessories());
+    }
+
+    private void CloseMaintenance()
+    {
+        var window = _maintenanceWindow;
+        _maintenanceWindow = null;
+        window?.Close();
+    }
 
     internal void ShowSkipObjects(string serial)
         => ShowPanel(new SkipObjectsPanel(_store, serial, ClosePanel), 500, 680);
@@ -483,7 +522,18 @@ public partial class DashboardWindow : Window
     // a language switch rather than reusing the old-language instances.
     public void RefreshLanguage() { _views.Clear(); _renderedSerials = new(); Rebuild(); }
 
-    private void OnStoreUpdated(object? sender, EventArgs e) => Dispatcher.Invoke(Rebuild);
+    /// <summary>Set when telemetry arrives at a hidden panel; cleared by the catch-up in ShowPopover.</summary>
+    private bool _dashboardStale;
+
+    // Rebuilding the cards, refitting the height and re-laying out the panel only matters when
+    // somebody can see it. With the flyout hidden this was the whole cost of a telemetry packet,
+    // several times a second, for nothing. Notifications, Telegram, the tray text and the edge strip
+    // are untouched: they are what the app is for while the panel is closed.
+    private void OnStoreUpdated(object? sender, EventArgs e) => Dispatcher.Invoke(() =>
+    {
+        if (!IsVisible) { _dashboardStale = true; return; }
+        Rebuild();
+    });
 
     private void OpenAddWindow()
     {

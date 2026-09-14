@@ -1,66 +1,49 @@
 import AppKit
 
-/// Hosts the embedded Spoolbase filament-stock UI inside Gantry — one app, no separate process.
-/// Follows Gantry's presentation mode: embedded in its window or anchored to the menu-bar icon.
+/// Hosts the Spoolbase filament-stock UI inside Gantry — one app, no separate process.
 /// Its data lives in the same ~/Library/Application Support/Spoolbase store
 /// the standalone app used, so existing stock carries over.
+///
+/// It used to follow Gantry's presentation mode: an overlay inside the floating window, or its own
+/// popover hanging off the menu-bar icon. Both were the wrong shape for a stock list you work in for
+/// minutes at a time, so it is a window now, like every other panel.
 @MainActor
 final class SpoolbaseController {
     private let store = SpoolbaseShared.filaments
-    private let popover = NSPopover()
-    private var built = false
     private var content: MinimalFilamentPopoverViewController?
-    private var embeddedPanel: NSView?
+    private var panel: PanelWindowController?
 
-    func show(in host: NSView) {
-        build()
-        popover.performClose(nil)
-        dismissEmbedded()
-        guard let content else { return }
-        popover.contentViewController = nil
-        embeddedPanel = EmbeddedPanelView.show(content.view, in: host,
-            size: NSSize(width: 500, height: 640), fillsViewport: true) { [weak self] in self?.dismissEmbedded() }
-    }
-
-    func dismissEmbedded() {
-        content?.dismissEmbeddedQuickStock()
-        embeddedPanel?.removeFromSuperview()
-        embeddedPanel = nil
-    }
-
-    /// Toggles the Spoolbase popover under the tray icon.
-    func toggle(from button: NSStatusBarButton) {
-        if popover.isShown {
-            popover.performClose(nil)
+    func show() {
+        if let panel, panel.window?.isVisible == true {
+            panel.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
             return
         }
         build()
-        dismissEmbedded()
-        popover.contentViewController = content
-        popover.appearance = AppSettings.shared.appearance
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
+        guard let content else { return }
+        panel = PanelWindowController.present(content.view,
+            name: "Spoolbase",
+            size: NSSize(width: 500, height: 640),
+            accessories: content.headerAccessories(),
+            onDismiss: { [weak self] in self?.dismiss() })
+    }
+
+    func dismiss() {
+        content?.dismissEmbeddedQuickStock()
+        let panel = self.panel
+        self.panel = nil
+        panel?.dismiss()
     }
 
     private func build() {
-        guard !built else { return }
-        built = true
-        popover.behavior = .transient
-        popover.animates = false
-        popover.contentSize = NSSize(width: 500, height: 640)
+        guard content == nil else { return }
         content = MinimalFilamentPopoverViewController(
             store: store,
-            onClose: { [weak self] in
-                self?.dismissEmbedded()
-                self?.popover.performClose(nil)
-            },
-            // Keep the popover open while one of Spoolbase's own sub-windows (catalog / editor /
-            // limits) is on screen, then return to dismiss-on-click-away.
-            onAuxiliaryState: { [weak self] isOpen in
-                self?.popover.behavior = isOpen ? .applicationDefined : .transient
-            }
+            onClose: { [weak self] in self?.dismiss() },
+            // Spoolbase's own sub-windows (catalog / editor / limits) are ordinary windows over an
+            // ordinary window now, so nothing has to be held open while one of them is up.
+            onAuxiliaryState: { _ in }
         )
-        popover.contentViewController = content
-        _ = popover.contentViewController?.view   // warm the view up front
+        _ = content?.view   // warm the view up front
     }
 }

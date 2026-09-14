@@ -1,17 +1,22 @@
 <Window x:Class="Gantry.UI.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Gantry" Width="640" Height="720" MinWidth="600" MinHeight="520"
-        WindowStartupLocation="CenterScreen"
-        WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="True"
-        AllowsTransparency="False" Background="Transparent"
+        Title="Gantry" Width="736" MinWidth="700" MinHeight="240"
+        WindowStartupLocation="CenterScreen" SizeToContent="Height"
+        WindowStyle="SingleBorderWindow" ResizeMode="CanResize" ShowInTaskbar="True"
+        Background="{DynamicResource SettingsPanelBrush}"
         Foreground="{DynamicResource SettingsTextBrush}" FontFamily="Segoe UI Variable, Segoe UI">
+    <!-- A preferences window, so it is the system's window: real title bar (which is what makes the
+         immersive dark mode and rounded-corner DWM attributes in ApplyModernChrome do anything at
+         all), real check boxes, real combo boxes. Panes are picked from a sidebar and each one is a
+         two-column grid: captions trailing on the left, controls leading on the right, one shared
+         vertical axis down the whole window. Same structure and metrics as the macOS window. -->
     <Window.Resources>
         <!-- Values are replaced from GTheme whenever the user switches appearance. -->
         <SolidColorBrush x:Key="SettingsTextBrush" Color="#FFF2F3F1"/>
         <SolidColorBrush x:Key="SettingsSecondaryBrush" Color="#FFA7AAA6"/>
         <SolidColorBrush x:Key="SettingsMutedBrush" Color="#FF6D716E"/>
-        <SolidColorBrush x:Key="SettingsPanelBrush" Color="#E6151719"/>
+        <SolidColorBrush x:Key="SettingsPanelBrush" Color="#FF151719"/>
         <SolidColorBrush x:Key="SettingsCardBrush" Color="#CC151719"/>
         <SolidColorBrush x:Key="SettingsLineBrush" Color="#17FFFFFF"/>
         <SolidColorBrush x:Key="SettingsFieldBrush" Color="#FF2C2C2E"/>
@@ -24,18 +29,19 @@
         <SolidColorBrush x:Key="SettingsAccentBrush" Color="#FFD4D7D3"/>
         <SolidColorBrush x:Key="SettingsAccentInkBrush" Color="#FF151719"/>
 
-        <!-- Soft, readable buttons instead of the classic WPF chrome. -->
+        <!-- Buttons keep the app's soft look; the shape is a button, not a pill masquerading as one. -->
         <Style TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
             <Setter Property="Background" Value="{DynamicResource SettingsSoftBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="8"
+                        <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="6"
                                 Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -46,60 +52,6 @@
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="{DynamicResource SettingsSoftPressedBrush}"/>
                             </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Every boolean setting is a full-width row: the label keeps the left column, the switch the
-             right one, exactly like macOS. Because the label still travels as the CheckBox's Content,
-             the existing code-behind assignments keep working untouched. -->
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="Padding" Value="14,11"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <Border x:Name="rowbg" Background="Transparent" Padding="{TemplateBinding Padding}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <!-- String content becomes a TextBlock, so the wrap has to be set
-                                     through a style: TextWrapping is not attachable to a presenter. -->
-                                <ContentPresenter VerticalAlignment="Center">
-                                    <ContentPresenter.Resources>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="TextWrapping" Value="Wrap"/>
-                                        </Style>
-                                    </ContentPresenter.Resources>
-                                </ContentPresenter>
-                                <Border x:Name="track" Grid.Column="1" Width="38" Height="22" CornerRadius="11"
-                                        Margin="12,0,0,0" VerticalAlignment="Center"
-                                        Background="{DynamicResource SettingsCheckIdleBrush}"
-                                        BorderBrush="{DynamicResource SettingsCheckBorderBrush}" BorderThickness="1">
-                                    <Ellipse x:Name="thumb" Width="16" Height="16" HorizontalAlignment="Left"
-                                             Margin="2,0,0,0" Fill="{DynamicResource SettingsCheckHoverBrush}"/>
-                                </Border>
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="track" Property="Background" Value="{DynamicResource SettingsAccentBrush}"/>
-                                <Setter TargetName="track" Property="BorderBrush" Value="{DynamicResource SettingsAccentBrush}"/>
-                                <Setter TargetName="thumb" Property="HorizontalAlignment" Value="Right"/>
-                                <Setter TargetName="thumb" Property="Margin" Value="0,0,2,0"/>
-                                <Setter TargetName="thumb" Property="Fill" Value="{DynamicResource SettingsAccentInkBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="rowbg" Property="Background" Value="{DynamicResource SettingsSoftBrush}"/>
-                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
                             </Trigger>
@@ -109,298 +61,344 @@
             </Setter>
         </Style>
 
-        <!-- Tab pills. The selected one fills its cell so the corner radius reads as a pill, not a capsule. -->
-        <Style x:Key="TabPill" TargetType="RadioButton">
+        <!-- A boolean setting is a check box under a caption, not a full-width switch row. The
+             template is gone on purpose: a real CheckBox is the control Windows already has. -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,0,5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="5,3"/>
+            <Setter Property="Background" Value="{DynamicResource SettingsFieldBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource SettingsTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SettingsLineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+        </Style>
+
+        <!-- Caption column: right-aligned, fixed width, so every pane shares one vertical axis. -->
+        <Style x:Key="PaneCaption" TargetType="TextBlock">
+            <Setter Property="Width" Value="164"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+        </Style>
+        <Style x:Key="PaneHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
+            <Setter Property="Margin" Value="0,10,0,2"/>
+        </Style>
+        <Style x:Key="PaneNote" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsMutedBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="MaxWidth" Value="336"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <Style x:Key="PaneRule" TargetType="Border">
+            <Setter Property="Height" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource SettingsLineBrush}"/>
+            <Setter Property="Margin" Value="0,10,0,0"/>
+        </Style>
+        <Style x:Key="PaneValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="MaxWidth" Value="336"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Sidebar rows: the Windows 11 Settings idiom, one row per pane. -->
+        <Style x:Key="PaneRow" TargetType="ListBoxItem">
             <Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
             <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="12,7"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="pill" CornerRadius="7" Background="Transparent" SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="row" Background="Transparent" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}" Margin="6,1,6,1" SnapsToDevicePixels="True">
+                            <ContentPresenter VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="pill" Property="Background" Value="{DynamicResource SettingsSoftHoverBrush}"/>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="row" Property="Background" Value="{DynamicResource SettingsSoftBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="row" Property="Background" Value="{DynamicResource SettingsSoftHoverBrush}"/>
                                 <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-
-        <Style x:Key="GroupHeading" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="10.5"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{DynamicResource SettingsMutedBrush}"/>
-            <Setter Property="Margin" Value="2,18,0,7"/>
-        </Style>
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource SettingsCardBrush}"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource SettingsLineBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-        <Style x:Key="RowSeparator" TargetType="Border">
-            <Setter Property="Height" Value="1"/>
-            <Setter Property="Background" Value="{DynamicResource SettingsLineBrush}"/>
-        </Style>
-        <Style x:Key="RowLabel" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-        <Style x:Key="RowGrid" TargetType="Grid">
-            <Setter Property="Margin" Value="14,10"/>
-        </Style>
     </Window.Resources>
 
-    <Border CornerRadius="12" Background="{DynamicResource SettingsPanelBrush}" SnapsToDevicePixels="True">
-        <Grid Margin="0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-            <StackPanel Margin="22,20,22,0">
-                <TextBlock x:Name="Heading" FontSize="19" FontWeight="Bold"/>
-                <TextBlock x:Name="HeaderSubtitle" FontSize="11" Foreground="{DynamicResource SettingsMutedBrush}" Margin="0,1,0,0"/>
-            </StackPanel>
+        <ListBox x:Name="PaneList" Width="160" BorderThickness="0" Background="Transparent"
+                 ItemContainerStyle="{StaticResource PaneRow}" Padding="0,8,0,0"
+                 HorizontalContentAlignment="Stretch" Focusable="True">
+            <ListBoxItem x:Name="PaneItemGeneral" IsSelected="True"/>
+            <ListBoxItem x:Name="PaneItemAppearance"/>
+            <ListBoxItem x:Name="PaneItemNotifications"/>
+            <ListBoxItem x:Name="PaneItemWindows"/>
+            <ListBoxItem x:Name="PaneItemIntegrations"/>
+            <ListBoxItem x:Name="PaneItemAdvanced"/>
+            
+        </ListBox>
+        <Border Grid.Column="1" Width="1" Background="{DynamicResource SettingsLineBrush}"/>
 
-            <Border Grid.Row="1" Margin="22,14,22,0" CornerRadius="9" Padding="3" Height="40"
-                    Background="{DynamicResource SettingsSoftBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <!-- Collapsed to zero width in LITE, which has no Advanced page. -->
-                        <ColumnDefinition x:Name="TabAdvancedColumn" Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <RadioButton x:Name="TabGeneral" Style="{StaticResource TabPill}" GroupName="SettingsTabs" IsChecked="True"/>
-                    <RadioButton x:Name="TabAppearance" Grid.Column="1" Style="{StaticResource TabPill}" GroupName="SettingsTabs" Margin="2,0"/>
-                    <RadioButton x:Name="TabAdvanced" Grid.Column="2" Style="{StaticResource TabPill}" GroupName="SettingsTabs"/>
-                </Grid>
-            </Border>
+        <Grid Grid.Column="2">
+            <!-- OGÓLNE -->
+            <ScrollViewer x:Name="PageGeneral" VerticalScrollBarVisibility="Auto" Padding="20">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="LanguageLabel" Style="{StaticResource PaneCaption}"/>
+                        <Button Grid.Column="1" x:Name="LanguageButton" MinWidth="120" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="1" x:Name="GeneralHeading" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,9,0,0">
+                            <CheckBox x:Name="StartupCheckBox"/>
+                            <CheckBox x:Name="SpoolbaseCheckBox"/>
+                        </StackPanel>
+                    </Grid>
 
-            <Grid Grid.Row="2" Margin="0,12,0,0">
-                <!-- OGÓLNE -->
-                <ScrollViewer x:Name="PageGeneral" VerticalScrollBarVisibility="Auto" Padding="22,0,22,20">
-                    <StackPanel>
-                        <TextBlock x:Name="GeneralHeading" Style="{StaticResource GroupHeading}" Margin="2,0,0,7"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <Grid Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="LanguageLabel" Style="{StaticResource RowLabel}"/>
-                                    <Button Grid.Column="1" x:Name="LanguageButton" MinWidth="96"/>
-                                </Grid>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="StartupCheckBox"/>
-                                <Border x:Name="SpoolbaseSeparator" Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="SpoolbaseCheckBox"/>
-                            </StackPanel>
-                        </Border>
+                    <Border x:Name="UpdatesRule" Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="UpdatesHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid x:Name="UpdatesCard">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="UpdateCaption" Style="{StaticResource PaneCaption}"/>
+                        <Button Grid.Column="1" x:Name="CheckUpdatesButton" MinWidth="150" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="UpdateStatus" Style="{StaticResource PaneNote}" Margin="10,6,0,0"/>
+                        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="AutoUpdateCheckBox" Margin="10,4,0,0"/>
+                    </Grid>
 
-                        <TextBlock x:Name="NotificationsHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <CheckBox x:Name="PrintFinishedCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="FinishingSoonCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="PrinterErrorCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="PrintPausedCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="LowFilamentCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="HighHumidityCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="QuietHoursCheckBox"/>
-                                <StackPanel x:Name="QuietTimesRow" Orientation="Horizontal" Margin="14,0,14,12">
-                                    <TextBlock x:Name="QuietFromLabel" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,0,6,0"/>
-                                    <TextBox x:Name="QuietStartBox" Width="58" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1" TextAlignment="Center"/>
-                                    <TextBlock x:Name="QuietToLabel" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="10,0,6,0"/>
-                                    <TextBox x:Name="QuietEndBox" Width="58" FontSize="13" Padding="6,3" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1" TextAlignment="Center"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
+                    <Border Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="AboutHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="AboutCaption" Style="{StaticResource PaneCaption}"/>
+                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                            <TextBlock x:Name="AboutVersion" FontSize="13" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="AboutAuthor" FontSize="11" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,3,0,8"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,8">
+                            <Button x:Name="GitHubButton" Margin="0,0,8,0"/>
+                            <Button x:Name="XButton"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Margin="10,0,0,0">
+                            <Button x:Name="SupportButton"/>
+                            <TextBlock x:Name="SupportSubtitle" Style="{StaticResource PaneNote}" Margin="0,7,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
 
-                        <TextBlock x:Name="UpdatesHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border x:Name="UpdatesCard" Style="{StaticResource Card}">
-                            <StackPanel>
-                                <Grid Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="UpdateStatus" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap"/>
-                                    <Button Grid.Column="1" x:Name="CheckUpdatesButton" MinWidth="120" Margin="10,0,0,0"/>
-                                </Grid>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="AutoUpdateCheckBox"/>
-                            </StackPanel>
-                        </Border>
+            <!-- WYGLĄD -->
+            <ScrollViewer x:Name="PageAppearance" VerticalScrollBarVisibility="Auto" Padding="20" Visibility="Collapsed">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="ThemeLabel" Style="{StaticResource PaneCaption}"/>
+                        <Button Grid.Column="1" x:Name="ThemeButton" MinWidth="120" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="1" x:Name="TransparencyLabel" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <Button Grid.Row="1" Grid.Column="1" x:Name="TransparencyButton" MinWidth="120" Margin="10,9,0,0"/>
+                        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="MonochromeCheckBox" Margin="10,11,0,0"/>
+                    </Grid>
 
-                        <TextBlock x:Name="AboutHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel Margin="14,12">
-                                <TextBlock x:Name="AboutVersion" FontSize="13" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="AboutAuthor" FontSize="11" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,3,0,10"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                    <Button x:Name="GitHubButton" Margin="0,0,8,0"/>
-                                    <Button x:Name="XButton"/>
-                                </StackPanel>
-                                <Button x:Name="SupportButton" HorizontalAlignment="Left"/>
-                                <TextBlock x:Name="SupportSubtitle" FontSize="10.5" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="0,7,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
+                    <Border Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="CardsHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="CardSizeLabel" Style="{StaticResource PaneCaption}" Margin="0,5,0,0"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <Button x:Name="CardSizeMinusButton" Content="−" Width="32" Height="26" FontSize="15" Padding="0"/>
+                            <TextBlock x:Name="CardSizeValue" Width="54" TextAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
+                            <Button x:Name="CardSizePlusButton" Content="+" Width="32" Height="26" FontSize="15" Padding="0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" x:Name="CardContentCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,9,0,0">
+                            <CheckBox x:Name="CardFileNameCheckBox"/>
+                            <CheckBox x:Name="CardProgressCheckBox"/>
+                            <CheckBox x:Name="CardTempsCheckBox"/>
+                            <CheckBox x:Name="CardFilamentsCheckBox"/>
+                            <CheckBox x:Name="CardSpoolGramsCheckBox"/>
+                            <CheckBox x:Name="CardDetailsChipCheckBox"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
 
-                <!-- WYGLĄD -->
-                <ScrollViewer x:Name="PageAppearance" VerticalScrollBarVisibility="Auto" Padding="22,0,22,20" Visibility="Collapsed">
-                    <StackPanel>
-                        <TextBlock x:Name="AppearanceHeading" Style="{StaticResource GroupHeading}" Margin="2,0,0,7"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <Grid Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="ThemeLabel" Style="{StaticResource RowLabel}"/>
-                                    <Button Grid.Column="1" x:Name="ThemeButton" MinWidth="96"/>
-                                </Grid>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <Grid Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="TransparencyLabel" Style="{StaticResource RowLabel}"/>
-                                    <Button Grid.Column="1" x:Name="TransparencyButton" MinWidth="96"/>
-                                </Grid>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="MonochromeCheckBox"/>
-                                <Border x:Name="FloatingWindowSeparator" Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="FloatingWindowCheckBox"/>
-                                <CheckBox x:Name="AlwaysOnTopCheckBox"/>
-                            </StackPanel>
-                        </Border>
+            <!-- POWIADOMIENIA -->
+            <ScrollViewer x:Name="PageNotifications" VerticalScrollBarVisibility="Auto" Padding="20" Visibility="Collapsed">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock x:Name="NotificationsHeading" Style="{StaticResource PaneCaption}"/>
+                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                            <CheckBox x:Name="PrintFinishedCheckBox"/>
+                            <CheckBox x:Name="FinishingSoonCheckBox"/>
+                            <CheckBox x:Name="PrinterErrorCheckBox"/>
+                            <CheckBox x:Name="PrintPausedCheckBox"/>
+                            <CheckBox x:Name="LowFilamentCheckBox"/>
+                            <CheckBox x:Name="HighHumidityCheckBox"/>
+                        </StackPanel>
+                    </Grid>
 
-                        <TextBlock x:Name="CardsHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <Grid x:Name="CardSizeRow" Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="CardSizeLabel" Style="{StaticResource RowLabel}"/>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                        <Button x:Name="CardSizeMinusButton" Content="−" Width="34" Height="26" FontSize="15"/>
-                                        <TextBlock x:Name="CardSizeValue" Width="54" TextAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
-                                        <Button x:Name="CardSizePlusButton" Content="+" Width="34" Height="26" FontSize="15"/>
-                                    </StackPanel>
-                                </Grid>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="CardFileNameCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="CardProgressCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="CardTempsCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="CardFilamentsCheckBox"/>
-                                <Border x:Name="CardSpoolGramsSeparator" Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="CardSpoolGramsCheckBox"/>
-                                <Border x:Name="CardDetailsChipSeparator" Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="CardDetailsChipCheckBox"/>
-                            </StackPanel>
-                        </Border>
+                    <Border Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="QuietHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <CheckBox Grid.Column="1" x:Name="QuietHoursCheckBox" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="1" x:Name="QuietRangeCaption" Style="{StaticResource PaneCaption}" Margin="0,7,0,0"/>
+                        <StackPanel x:Name="QuietTimesRow" Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,4,0,0">
+                            <TextBlock x:Name="QuietFromLabel" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="0,0,6,0"/>
+                            <TextBox x:Name="QuietStartBox" Width="58" TextAlignment="Center"/>
+                            <TextBlock x:Name="QuietToLabel" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" Margin="10,0,6,0"/>
+                            <TextBox x:Name="QuietEndBox" Width="58" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
 
-                        <TextBlock x:Name="DockHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border x:Name="DockCard" Style="{StaticResource Card}">
-                            <StackPanel>
-                                <CheckBox x:Name="DockEnableCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <Grid Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="DockEdgeLabel" Style="{StaticResource RowLabel}"/>
-                                    <Button Grid.Column="1" x:Name="DockEdgeButton" MinWidth="96"/>
-                                </Grid>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <Grid Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="DockSizeLabel" Style="{StaticResource RowLabel}"/>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                        <Button x:Name="DockSizeMinusButton" Content="−" Width="34" Height="26" FontSize="15"/>
-                                        <TextBlock x:Name="DockSizeValue" Width="54" TextAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
-                                        <Button x:Name="DockSizePlusButton" Content="+" Width="34" Height="26" FontSize="15"/>
-                                    </StackPanel>
-                                </Grid>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="DockOnlyPrintingCheckBox"/>
-                            </StackPanel>
-                        </Border>
-                        <TextBlock x:Name="DockPrintersCaption" Style="{StaticResource GroupHeading}" Margin="2,14,0,7"/>
-                        <Border x:Name="DockPrintersCard" Style="{StaticResource Card}">
-                            <StackPanel x:Name="DockPrintersList"/>
-                        </Border>
-                        <TextBlock x:Name="DockHint" FontSize="11" Foreground="{DynamicResource SettingsMutedBrush}" TextWrapping="Wrap" Margin="2,10,0,0"/>
-                    </StackPanel>
-                </ScrollViewer>
+            <!-- OKNA I PASEK -->
+            <ScrollViewer x:Name="PageWindows" VerticalScrollBarVisibility="Auto" Padding="20" Visibility="Collapsed">
+                <StackPanel>
+                    <Grid x:Name="FloatingWindowRow">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock x:Name="FloatingWindowCaption" Style="{StaticResource PaneCaption}"/>
+                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                            <CheckBox x:Name="FloatingWindowCheckBox"/>
+                            <CheckBox x:Name="AlwaysOnTopCheckBox"/>
+                        </StackPanel>
+                    </Grid>
 
-                <!-- ZAAWANSOWANE -->
-                <ScrollViewer x:Name="PageAdvanced" VerticalScrollBarVisibility="Auto" Padding="22,0,22,20" Visibility="Collapsed">
-                    <StackPanel>
-                        <TextBlock x:Name="DeveloperHeading" Style="{StaticResource GroupHeading}" Margin="2,0,0,7"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <CheckBox x:Name="DeveloperCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <CheckBox x:Name="ScriptActionsCheckBox"/>
-                                <TextBlock x:Name="ScriptActionsHint" FontSize="10.5" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="14,0,14,11"/>
-                            </StackPanel>
-                        </Border>
+                    <Border x:Name="DockRule" Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="DockHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid x:Name="DockCard">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <CheckBox Grid.Column="1" x:Name="DockEnableCheckBox" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="1" x:Name="DockEdgeLabel" Style="{StaticResource PaneCaption}" Margin="0,7,0,0"/>
+                        <Button Grid.Row="1" Grid.Column="1" x:Name="DockEdgeButton" MinWidth="120" Margin="10,5,0,0"/>
+                        <TextBlock Grid.Row="2" x:Name="DockSizeLabel" Style="{StaticResource PaneCaption}" Margin="0,12,0,0"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="10,9,0,0">
+                            <Button x:Name="DockSizeMinusButton" Content="−" Width="32" Height="26" FontSize="15" Padding="0"/>
+                            <TextBlock x:Name="DockSizeValue" Width="54" TextAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
+                            <Button x:Name="DockSizePlusButton" Content="+" Width="32" Height="26" FontSize="15" Padding="0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="3" x:Name="DockBehaviourCaption" Style="{StaticResource PaneCaption}" Margin="0,13,0,0"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="10,11,0,0">
+                            <CheckBox x:Name="DockPinnedCheckBox"/>
+                            <CheckBox x:Name="DockCameraCheckBox" Margin="0,4,0,0"/>
+                            <TextBlock x:Name="DockCameraNote" Style="{StaticResource PaneNote}" Margin="22,2,0,4" TextWrapping="Wrap"/>
+                            <CheckBox x:Name="DockOnlyPrintingCheckBox" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="4" x:Name="DockPrintersCaption" Style="{StaticResource PaneCaption}"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" x:Name="DockPrintersList" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="5" x:Name="DockCamerasCaption" Style="{StaticResource PaneCaption}" Margin="0,10,0,0"/>
+                        <StackPanel Grid.Row="5" Grid.Column="1" x:Name="DockCamerasList" Margin="10,10,0,0"/>
+                    </Grid>
+                    <TextBlock x:Name="DockHint" Style="{StaticResource PaneNote}" Margin="174,6,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
 
-                        <TextBlock x:Name="TelegramHeading" Style="{StaticResource GroupHeading}" Text="TELEGRAM"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <CheckBox x:Name="TelegramEnableCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <Grid Style="{StaticResource RowGrid}">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="TelegramTokenLabel" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,0" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
-                                    <TextBox Grid.Column="1" x:Name="TelegramTokenBox" FontFamily="Consolas" FontSize="12" Padding="6,4" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
-                                </Grid>
-                                <Grid Style="{StaticResource RowGrid}" Margin="14,0,14,10">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="TelegramChatLabel" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,0" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
-                                    <TextBox Grid.Column="1" x:Name="TelegramChatBox" FontFamily="Consolas" FontSize="12" Padding="6,4" Background="{DynamicResource SettingsFieldBrush}" Foreground="{DynamicResource SettingsTextBrush}" CaretBrush="{DynamicResource SettingsTextBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"/>
-                                </Grid>
-                                <StackPanel Orientation="Horizontal" Margin="14,0,14,10">
-                                    <Button x:Name="TelegramTestButton" MinWidth="120"/>
-                                    <TextBlock x:Name="TelegramStatus" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}"/>
-                                </StackPanel>
-                                <TextBlock x:Name="TelegramHint" FontSize="11" Margin="14,0,14,12" TextWrapping="Wrap" Foreground="{DynamicResource SettingsMutedBrush}"/>
-                            </StackPanel>
-                        </Border>
+            <!-- INTEGRACJE -->
+            <ScrollViewer x:Name="PageIntegrations" VerticalScrollBarVisibility="Auto" Padding="20" Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock x:Name="TelegramHeading" Style="{StaticResource PaneHeading}" Margin="0,0,0,2" Text="Telegram"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <CheckBox Grid.Column="1" x:Name="TelegramEnableCheckBox" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="1" x:Name="TelegramTokenLabel" Style="{StaticResource PaneCaption}" Margin="0,8,0,0"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="TelegramTokenBox" Width="336" FontFamily="Consolas" FontSize="12" Margin="10,5,0,0"/>
+                        <TextBlock Grid.Row="2" x:Name="TelegramChatLabel" Style="{StaticResource PaneCaption}" Margin="0,12,0,0"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="TelegramChatBox" Width="336" FontFamily="Consolas" FontSize="12" Margin="10,9,0,0"/>
+                        <TextBlock Grid.Row="3" x:Name="TelegramTestCaption" Style="{StaticResource PaneCaption}" Margin="0,13,0,0"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="10,11,0,0">
+                            <Button x:Name="TelegramTestButton" MinWidth="150"/>
+                            <TextBlock x:Name="TelegramStatus" Style="{StaticResource PaneNote}" Margin="0,6,0,0"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="TelegramHint" Style="{StaticResource PaneNote}" Margin="10,2,0,0"/>
+                    </Grid>
 
-                        <TextBlock x:Name="WebHeading" Style="{StaticResource GroupHeading}"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <CheckBox x:Name="WebDashboardCheckBox"/>
-                                <Border Style="{StaticResource RowSeparator}"/>
-                                <TextBlock x:Name="WebAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="14,11,14,12"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </Grid>
+                    <Border Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="WebHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <CheckBox Grid.Column="1" x:Name="WebDashboardCheckBox" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="1" x:Name="WebAddressCaption" Style="{StaticResource PaneCaption}" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="WebAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="10,8,0,0"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="WebHint" Style="{StaticResource PaneNote}" Margin="10,7,0,0"/>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
 
-            <Border Grid.Row="3" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" Padding="22,11">
-                <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <TextBlock x:Name="FooterVersion" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource SettingsMutedBrush}"/>
-                    <Button Grid.Column="1" x:Name="CloseButton" MinWidth="104" IsDefault="True"/>
-                </Grid>
-            </Border>
+            <!-- ZAAWANSOWANE -->
+            <ScrollViewer x:Name="PageAdvanced" VerticalScrollBarVisibility="Auto" Padding="20" Visibility="Collapsed">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="DeveloperHeading" Style="{StaticResource PaneCaption}"/>
+                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                            <CheckBox x:Name="PrinterControlCheckBox"/>
+                            <TextBlock x:Name="PrinterControlHint" Style="{StaticResource PaneNote}" Margin="0,0,0,6"/>
+                            <CheckBox x:Name="DeveloperCheckBox"/>
+                            <CheckBox x:Name="ScriptActionsCheckBox"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ScriptActionsHint" Style="{StaticResource PaneNote}" Margin="10,2,0,0"/>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
-    </Border>
+    </Grid>
 </Window>

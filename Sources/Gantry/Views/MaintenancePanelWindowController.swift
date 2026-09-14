@@ -1,15 +1,9 @@
 import AppKit
 
-/// Dimmed in-window backdrop. Clicking outside the maintenance card closes it.
-private final class MaintenanceBackdropView: NSView {
-    var onClickOutside: (() -> Void)?
-    override func mouseDown(with event: NSEvent) { onClickOutside?() }
-}
-
-/// Per-printer maintenance card presented inside Gantry's existing popover/window.
+/// Per-printer maintenance card in a window of its own, centred on the screen.
 @MainActor
 final class MaintenancePanelViewController: NSViewController {
-    private static weak var activeBackdrop: NSView?
+    private static var activePanel: PanelWindowController?
     private static var activeController: MaintenancePanelViewController?
     private static var activeOnDismiss: (() -> Void)?
 
@@ -17,51 +11,31 @@ final class MaintenancePanelViewController: NSViewController {
     private var telemetry: PrinterTelemetry
     private var body = NSStackView()
 
-    static func show(printer: SavedPrinter, telemetry: PrinterTelemetry, in host: NSView,
+    static func show(printer: SavedPrinter, telemetry: PrinterTelemetry,
                      onDismiss: (() -> Void)? = nil) {
         dismiss()
         let controller = MaintenancePanelViewController(printer: printer, telemetry: telemetry)
-        if host.window?.windowController is FloatingDashboardWindowController {
-            activeController = controller
-            activeOnDismiss = onDismiss
-            let panel = controller.view
-            panel.layoutSubtreeIfNeeded()
-            activeBackdrop = EmbeddedPanelView.show(panel, in: host,
-                size: NSSize(width: 470, height: max(200, controller.body.fittingSize.height + 36)),
-                showsCloseButton: false, onDismiss: { Self.dismiss() })
-            return
-        }
-        let backdrop = MaintenanceBackdropView(frame: host.bounds)
-        backdrop.autoresizingMask = [.width, .height]
-        backdrop.wantsLayer = true
-        backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.30).cgColor
-        backdrop.onClickOutside = { MaintenancePanelViewController.dismiss() }
-
-        let panel = controller.view
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        backdrop.addSubview(panel)
-        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 470)
-        preferredWidth.priority = .defaultHigh
-        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 560)
-        preferredHeight.priority = .defaultHigh
-        NSLayoutConstraint.activate([
-            panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
-            panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
-            panel.widthAnchor.constraint(lessThanOrEqualTo: backdrop.widthAnchor, constant: -24),
-            panel.heightAnchor.constraint(lessThanOrEqualTo: backdrop.heightAnchor, constant: -24),
-            preferredWidth,
-            preferredHeight
-        ])
-        host.addSubview(backdrop)
-        activeBackdrop = backdrop
         activeController = controller
         activeOnDismiss = onDismiss
+        let panel = controller.view
+        panel.layoutSubtreeIfNeeded()
+        // Its own height, measured: the maintenance list is a stack with no scroll view of its own,
+        // so it is also the smallest the window may get. Anything less clips the last task instead
+        // of scrolling to it.
+        let size = NSSize(width: 470, height: max(200, controller.body.fittingSize.height + 36))
+        activePanel = PanelWindowController.present(panel,
+            name: AppSettings.shared.t("Maintenance · {0}", printer.name),
+            size: size, minSize: size, accessories: controller.headerAccessories(),
+            onDismiss: { Self.dismiss() })
     }
 
+    /// The statics are cleared before the window is closed, not after: closing it runs the dismissal
+    /// callback, which lands back here, and an already-empty static is what stops the recursion.
     static func dismiss() {
-        activeBackdrop?.removeFromSuperview()
-        activeBackdrop = nil
+        let panel = activePanel
+        activePanel = nil
         activeController = nil
+        panel?.dismiss()
         let completion = activeOnDismiss
         activeOnDismiss = nil
         completion?()
@@ -100,19 +74,6 @@ final class MaintenancePanelViewController: NSViewController {
         body.translatesAutoresizingMaskIntoConstraints = false
 
         let snapshot = PrinterInsightsStore.shared.snapshot(serial: printer.serial, polish: s.isPolish)
-        let title = label(s.t("Maintenance · {0}", printer.name), 18, .bold)
-        let instructions = button(s.t("Instructions")) { [weak self] in self?.showInstructions() }
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
-                             target: self, action: #selector(closePressed))
-        close.isBordered = false
-        close.contentTintColor = GantryTheme.secondary
-        close.toolTip = s.t("Close")
-        let header = NSStackView(views: [title, instructions, NSView(), close])
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = 8
-        body.addArrangedSubview(header)
-        header.widthAnchor.constraint(equalTo: body.widthAnchor).isActive = true
         let summary = label(s.t("{0} print h · nozzle {1}", String(format: "%.1f", snapshot.totalPrintHours),
                                    telemetry.nozzleDiameter.map { String(format: "%.1f mm", $0) } ?? "—"),
                             12, .regular, GantryTheme.secondary)
@@ -157,7 +118,11 @@ final class MaintenancePanelViewController: NSViewController {
         ])
     }
 
-    @objc private func closePressed() { Self.dismiss() }
+    /// For the trailing end of the shared window header. It lives there rather than in the body
+    /// because the body is torn down and rebuilt on every change, and the header is built once.
+    func headerAccessories() -> [NSView] {
+        [button(AppSettings.shared.t("Instructions")) { [weak self] in self?.showInstructions() }]
+    }
 
     private func alertMessages(settings s: AppSettings) -> [(title: String, code: String?)] {
         let actionableHMS = HMSResolver.shared.actionableCodes(

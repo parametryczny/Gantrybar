@@ -14,10 +14,10 @@ public static class Defaults
 {
     private static readonly object Gate = new();
     private static readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Gantry");
+        Path.Combine(AppDataRoot.Folder, "Gantry");
     // Pre-rebrand data location; migrated once so upgrades keep saved printers, pins and settings.
     private static readonly string LegacyDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BambuBar");
+        Path.Combine(AppDataRoot.Folder, "BambuBar");
     private static readonly string FilePath = Path.Combine(Dir, "defaults.json");
     private static Dictionary<string, JsonElement> _store = Load();
 
@@ -162,6 +162,14 @@ public static class AppSettings
     {
         get => Build.HasExtras && Defaults.GetBool("developer-mode");
         set => Defaults.SetBool("developer-mode", value);
+    }
+
+    /// Printer control: temperature, fan and speed setpoints in the detail view (Bambu and Klipper).
+    /// Off by default; the same key as macOS.
+    public static bool PrinterControlEnabled
+    {
+        get => Defaults.GetBool("printer-control-enabled");
+        set => Defaults.SetBool("printer-control-enabled", value);
     }
 
     /// <summary>Second surface: the fleet in a resizable desktop window instead of the tray flyout.
@@ -355,6 +363,29 @@ public static class AppSettings
         get => new((Defaults.GetString("edge-dock-hidden") ?? "")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries));
         set => Defaults.SetString("edge-dock-hidden", string.Join("\n", value.OrderBy(x => x)));
+    }
+
+    /// Keep the strip unfolded without the pointer (issue #34). It can also be pinned and released
+    /// from the strip itself. Key shared verbatim with macOS/Linux.
+    public static bool EdgeDockPinned
+    {
+        get => Defaults.GetBool("edge-dock-pinned", false);
+        set => Defaults.SetBool("edge-dock-pinned", value);
+    }
+
+    /// A live picture under a printer's row in the strip (issue #34).
+    public static bool EdgeDockCamera
+    {
+        get => Defaults.GetBool("edge-dock-camera", false);
+        set => Defaults.SetBool("edge-dock-camera", value);
+    }
+
+    /// Printers ticked for a picture. Empty means "follow the print that is running".
+    public static HashSet<string> EdgeDockCameraSerials
+    {
+        get => new((Defaults.GetString("edge-dock-camera-serials") ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        set => Defaults.SetString("edge-dock-camera-serials", string.Join("\n", value.OrderBy(x => x)));
     }
 
     // Telegram push + bot. Keys shared verbatim with macOS/Linux (see docs/telegram.md).

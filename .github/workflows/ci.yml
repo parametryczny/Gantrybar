@@ -19,6 +19,9 @@ jobs:
         run: python3 scripts/check_ui_parity.py
       - name: Check translation catalog
         run: python3 scripts/i18n_check.py --strict
+      # Catches a dropped x:Name here rather than on the Windows runner, where it is a CS0103.
+      - name: Check WPF markup against its code-behind
+        run: python3 scripts/check_xaml_names.py --base "${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
       - name: Build
         run: swift build --disable-sandbox
       - name: Run protocol self-test

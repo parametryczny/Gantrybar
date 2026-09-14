@@ -96,7 +96,7 @@ public static class FilamentCatalog
     private static readonly JsonSerializerOptions Options = new() { PropertyNameCaseInsensitive = true };
 
     private static string EditableDir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Spoolbase");
+        Path.Combine(AppDataRoot.Folder, "Spoolbase");
     private static string EditablePath => Path.Combine(EditableDir, "catalog.json");
 
     public static List<CatalogFilament> Load()
@@ -154,7 +154,7 @@ public sealed class FilamentStore
 
     public FilamentStore()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Spoolbase");
+        var dir = Path.Combine(AppDataRoot.Folder, "Spoolbase");
         _path = Path.Combine(dir, "inventory-v2.json");
         try
         {

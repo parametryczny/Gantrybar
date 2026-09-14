@@ -19,8 +19,6 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
     private var lowStockOnly = false
     private var filterPanel: NSVisualEffectView?
     private var quickStockPopover: NSPopover?
-    private var embeddedQuickStock: NSView?
-    private var embeddedQuickStockController: QuickStockViewController?
     private var editorController: FilamentEditorWindowController?
     private var catalogController: CatalogPickerWindowController?
     private var auxiliaryCloseObserver: NSObjectProtocol?
@@ -45,28 +43,16 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         background.state = .active
         view = background
 
+        // The name lives in the shared window header now ("GANTRY · Spoolbase"), and so does the add
+        // button. What stays here is what only this list knows: its icon and the stock summary.
         let icon = NSImageView(image: FilamentIcon.image(size: 28))
-        let title = NSTextField(labelWithString: "Spoolbase")
-        title.font = .systemFont(ofSize: 18, weight: .semibold)
         summaryLabel.textColor = .secondaryLabelColor
-        summaryLabel.font = .systemFont(ofSize: 10.5)
-        let titles = NSStackView(views: [title, summaryLabel])
-        titles.orientation = .vertical
-        titles.alignment = .leading
-        titles.spacing = 0
-        let identity = NSStackView(views: [icon, titles])
+        summaryLabel.font = .systemFont(ofSize: 12)
+        let identity = NSStackView(views: [icon, summaryLabel])
         identity.orientation = .horizontal
         identity.alignment = .centerY
         identity.spacing = 9
-        let add = NSButton(
-            image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Dodaj filament")!,
-            target: self,
-            action: #selector(addPressed)
-        )
-        add.bezelStyle = .circular
-        add.controlSize = .regular
-        add.toolTip = "Dodaj filament"
-        let header = NSStackView(views: [identity, NSView(), add])
+        let header = NSStackView(views: [identity, NSView()])
         header.orientation = .horizontal
         header.alignment = .centerY
 
@@ -171,6 +157,16 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             emptyLabel.centerYAnchor.constraint(equalTo: scroll.centerYAnchor)
         ])
         reload()
+    }
+
+    /// For the trailing end of the shared window header.
+    func headerAccessories() -> [NSView] {
+        let add = NSButton(image: NSImage(systemSymbolName: "plus",
+                                          accessibilityDescription: AppSettings.shared.t("Add filament"))!,
+                           target: self, action: #selector(addPressed))
+        add.bezelStyle = .circular
+        add.toolTip = AppSettings.shared.t("Add filament")
+        return [add]
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -440,13 +436,9 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         dismissEmbeddedQuickStock()
         quickStockPopover?.performClose(nil)
         let controller = QuickStockViewController(filament: filament)
-        if let host = view.window?.contentView,
-           view.window?.windowController is FloatingDashboardWindowController {
-            embeddedQuickStockController = controller
-            embeddedQuickStock = EmbeddedPanelView.show(controller.view, in: host,
-                size: NSSize(width: 190, height: 104)) { [weak self] in self?.dismissEmbeddedQuickStock() }
-            return
-        }
+        // Anchored to the row it adjusts. This used to fall back to a dimmed overlay in the middle of
+        // the window whenever Spoolbase was embedded in the floating dashboard; Spoolbase has its own
+        // window now, and a 190-point stepper belongs next to its row in any of them.
         let popover = NSPopover()
         popover.contentViewController = controller
         popover.behavior = .transient
@@ -465,14 +457,10 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         if delta != 0 { store.adjust(id: controller.filamentID, spools: delta) }
     }
 
+    /// Closes an open quick-stock stepper, committing whatever the user dialled in. Called when the
+    /// Spoolbase window itself goes away, so the adjustment is not lost with it.
     func dismissEmbeddedQuickStock() {
-        guard let controller = embeddedQuickStockController else { return }
-        view.window?.makeFirstResponder(nil)
-        embeddedQuickStock?.removeFromSuperview()
-        embeddedQuickStock = nil
-        embeddedQuickStockController = nil
-        let delta = controller.currentValue - controller.initialValue
-        if delta != 0 { store.adjust(id: controller.filamentID, spools: delta) }
+        quickStockPopover?.performClose(nil)
     }
 
     @objc private func addPressed() {

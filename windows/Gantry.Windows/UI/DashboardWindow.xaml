@@ -68,9 +68,11 @@
                                 <ScaleTransform ScaleX="1.06" ScaleY="1"/>
                             </TextBlock.LayoutTransform>
                         </TextBlock>
-                        <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0"/>
+                        <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#FF9A9A9E" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
-                    <WrapPanel x:Name="HeaderTools" Grid.Column="1" MaxWidth="300" VerticalAlignment="Center">
+                    <!-- One row, never wrapped. A WrapPanel capped at 300 px folded nine 36 px buttons into two
+                         lines, so the last one hung alone under the rest. The summary gives way instead. -->
+                    <StackPanel x:Name="HeaderTools" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="WindowModeButton" Style="{StaticResource FlatIconButton}" Width="28" Height="28" Margin="4,0" FontSize="13"/>
                         <Button x:Name="PinButton" Style="{StaticResource FlatIconButton}" Content="📌" Width="28" Height="28" Margin="4,0"/>
                         <Button x:Name="SettingsButton" Style="{StaticResource FlatIconButton}" Content="⚙" Width="28" Height="28" Margin="4,0"/>
@@ -80,7 +82,7 @@
                         <Button x:Name="ClearButton" Style="{StaticResource FlatIconButton}" Content="✕" Width="28" Height="28" Margin="4,0" FontSize="12" ToolTip="Wyczyść zakończone / Clear finished"/>
                         <Button x:Name="ScanButton" Style="{StaticResource FlatIconButton}" Content="⟳" Width="28" Height="28" Margin="4,0" FontSize="13" ToolTip="Połącz ponownie / Reconnect"/>
                         <Button x:Name="AddButton" Style="{StaticResource FlatIconButton}" Content="+" Width="28" Height="28" Margin="4,0" FontSize="15" ToolTip="Add printer"/>
-                    </WrapPanel>
+                    </StackPanel>
                 </Grid>
                 </Border>
                 <TextBlock x:Name="FooterText" DockPanel.Dock="Bottom" HorizontalAlignment="Center"

@@ -51,7 +51,8 @@ DEFAULTS: dict[str, Any] = {
     "notify_finishing_soon_minutes": 10,
     "notify_humidity": True,
     "notify_offline": False,
-    "quiet_hours_enabled": True,
+    # Off by default, as on macOS and Windows.
+    "quiet_hours_enabled": False,
     "quiet_hours_start": "22:00",
     "quiet_hours_end": "07:00",
     "spoolbase_enabled": True,

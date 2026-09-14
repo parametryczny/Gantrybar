@@ -8,6 +8,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
     enum Event: Sendable {
         case connected
         case telemetry(PrinterTelemetry)
+        case commandReply(BambuCommandReply)
         case disconnected(String?)
         case localNetworkDenied
     }
@@ -169,6 +170,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
                 startPingTimer()
             case 3: // PUBLISH
                 guard let payload = MQTTCodec.publishPayload(header: packet.type, body: packet.body) else { continue }
+                if let reply = BambuCommandReply.parse(payload) { onEvent(.commandReply(reply)) }
                 guard
                       let updated = BambuStatusParser.telemetry(from: payload, previous: telemetry) else { continue }
                 telemetry = updated

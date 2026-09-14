@@ -1,20 +1,13 @@
 import AppKit
 
-/// Dimmed in-window backdrop. Clicking outside the stats card closes it.
-private final class FleetStatsBackdropView: NSView {
-    var onClickOutside: (() -> Void)?
-    override func mouseDown(with event: NSEvent) { onClickOutside?() }
-}
-
-/// Fleet-wide totals, presented inside Gantry's existing popover/window like the maintenance and
-/// diagnostics panels.
+/// Fleet-wide totals in a window of their own, centred on the screen.
 ///
 /// `PrinterInsights` already records history, print hours and filament use per printer; nothing put
 /// those together, so there was no way to answer "how much did I print this month". This aggregates
 /// the same records over a chosen period and can write the summary out as plain text.
 @MainActor
 final class FleetStatsViewController: NSViewController {
-    private static weak var activeBackdrop: NSView?
+    private static var activePanel: PanelWindowController?
     private static var activeController: FleetStatsViewController?
 
     private let store: PrinterStore
@@ -22,46 +15,23 @@ final class FleetStatsViewController: NSViewController {
     private var periodDays = 30
     private var renderedText = ""
 
-    static func show(store: PrinterStore, in host: NSView) {
+    static func show(store: PrinterStore) {
         dismiss()
         let controller = FleetStatsViewController(store: store)
-        if host.window?.windowController is FloatingDashboardWindowController {
-            activeController = controller
-            activeBackdrop = EmbeddedPanelView.show(controller.view, in: host,
-                size: NSSize(width: 470, height: 560), fillsViewport: true, showsCloseButton: false,
-                onDismiss: { Self.dismiss() })
-            return
-        }
-        let backdrop = FleetStatsBackdropView(frame: host.bounds)
-        backdrop.autoresizingMask = [.width, .height]
-        backdrop.wantsLayer = true
-        backdrop.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.30).cgColor
-        backdrop.onClickOutside = { FleetStatsViewController.dismiss() }
-
-        let panel = controller.view
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        backdrop.addSubview(panel)
-        let preferredWidth = panel.widthAnchor.constraint(equalToConstant: 470)
-        preferredWidth.priority = .defaultHigh
-        let preferredHeight = panel.heightAnchor.constraint(equalToConstant: 560)
-        preferredHeight.priority = .defaultHigh
-        NSLayoutConstraint.activate([
-            panel.centerXAnchor.constraint(equalTo: backdrop.centerXAnchor),
-            panel.centerYAnchor.constraint(equalTo: backdrop.centerYAnchor),
-            panel.widthAnchor.constraint(lessThanOrEqualTo: backdrop.widthAnchor, constant: -24),
-            panel.heightAnchor.constraint(lessThanOrEqualTo: backdrop.heightAnchor, constant: -24),
-            preferredWidth,
-            preferredHeight
-        ])
-        host.addSubview(backdrop)
-        activeBackdrop = backdrop
         activeController = controller
+        activePanel = PanelWindowController.present(controller.view,
+            name: AppSettings.shared.t("Fleet statistics"),
+            size: NSSize(width: 470, height: 560),
+            onDismiss: { Self.dismiss() })
     }
 
+    /// The static is cleared before the window is closed, not after: closing it runs the dismissal
+    /// callback, which lands back here, and an already-empty static is what stops the recursion.
     static func dismiss() {
-        activeBackdrop?.removeFromSuperview()
-        activeBackdrop = nil
+        let panel = activePanel
+        activePanel = nil
         activeController = nil
+        panel?.dismiss()
     }
 
     init(store: PrinterStore) {
@@ -87,14 +57,6 @@ final class FleetStatsViewController: NSViewController {
         let s = AppSettings.shared
         view.appearance = s.appearance
 
-        let title = label(s.t("Fleet statistics"), 18, .bold, GantryTheme.text)
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: s.t("Close"))!,
-                             target: self, action: #selector(closePressed))
-        close.isBordered = false
-        close.contentTintColor = GantryTheme.secondary
-        let header = NSStackView(views: [title, NSView(), close])
-        header.orientation = .horizontal; header.alignment = .centerY; header.spacing = 8
-
         let period = NSSegmentedControl(labels: [s.t("7 days"), s.t("30 days"),
                                                  s.t("Year"), s.t("All")],
                                         trackingMode: .selectOne, target: self, action: #selector(periodChanged(_:)))
@@ -105,7 +67,7 @@ final class FleetStatsViewController: NSViewController {
 
         body.orientation = .vertical; body.alignment = .leading; body.spacing = 9
 
-        let outer = NSStackView(views: [header, controls, body])
+        let outer = NSStackView(views: [controls, body])
         outer.orientation = .vertical; outer.alignment = .leading; outer.spacing = 12
         outer.translatesAutoresizingMaskIntoConstraints = false
 
@@ -130,14 +92,11 @@ final class FleetStatsViewController: NSViewController {
             outer.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -18),
             outer.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
             outer.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18),
-            header.widthAnchor.constraint(equalTo: outer.widthAnchor),
             controls.widthAnchor.constraint(equalTo: outer.widthAnchor),
             body.widthAnchor.constraint(equalTo: outer.widthAnchor)
         ])
         render()
     }
-
-    @objc private func closePressed() { Self.dismiss() }
 
     @objc private func periodChanged(_ sender: NSSegmentedControl) {
         periodDays = [7, 30, 365, Int.max][max(0, min(3, sender.selectedSegment))]

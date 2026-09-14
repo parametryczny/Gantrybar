@@ -62,6 +62,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         popover.appearance = AppSettings.shared.appearance
         popover.delegate = self
 
+        // Detached panels are opened from deep inside the cards, which know nothing about the menu
+        // bar. These two hooks are how they reach the one object that knows whether the fleet is
+        // currently a popover or a window.
+        PanelWindowController.onHoldChanged = { [weak self] held in self?.holdFleetPanel(held) }
+        PanelWindowController.companionWindow = { [weak self] in self?.fleetPanelWindow() }
+
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(togglePopover)
@@ -77,8 +83,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async {
+                // Switching to the floating window retires the popover. Spoolbase used to be torn
+                // down here too, because it was an overlay on whichever surface was going away; it
+                // has its own window now and survives the switch.
                 if AppSettings.shared.floatingWindowEnabled { self?.closePopover() }
-                else { self?.spoolbase.dismissEmbedded() }
                 self?.popover.appearance = AppSettings.shared.appearance
                 self?.popover.contentViewController?.view.appearance = AppSettings.shared.appearance
                 self?.applyPanelStyle()
@@ -152,13 +160,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func showSpoolbase() {
         guard AppSettings.shared.spoolbaseEnabled else { return }
-        if AppSettings.shared.floatingWindowEnabled {
-            closePopover()
-            floatingDashboard?.restoreFromDock()
-            if let host = floatingDashboard?.window?.contentView { spoolbase.show(in: host) }
-        } else if let button = anchorButton {
-            spoolbase.toggle(from: button)
-        }
+        spoolbase.show()
     }
     @objc func appMenuSearchPrinters(_ sender: Any?) { store.scan() }
     @objc func appMenuAddPrinter(_ sender: Any?) { showAddPrinter() }
@@ -482,58 +484,47 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func showSettings() {
         if settingsWindow == nil {
             let controller = SettingsWindowController(store: store)
-            controller.onClose = { [weak self] in
-                // A transient popover normally closes as soon as the settings window becomes key.
-                // Restore that native behaviour only after settings are gone, so the cards stay on
-                // screen while their scale is being adjusted.
-                self?.popover.behavior = .transient
-            }
+            // Settings take the same reference-counted hold on the fleet panel as a detached panel,
+            // so closing settings while a panel is still open cannot hand the popover back to AppKit
+            // and let it vanish from under it.
+            controller.onClose = { PanelWindowController.releaseFleetPanel() }
             settingsWindow = controller
         }
 
         // The panel stays where it is, next to the menu bar, and settings open centred on the screen
         // instead of on top of it. Only the window level is borrowed, so the panel cannot cover them.
-        let companion: NSWindow?
-        if AppSettings.shared.floatingWindowEnabled {
-            floatingDashboard?.restoreFromDock()
-            companion = floatingDashboard?.window
-        } else {
-            if !popover.isShown { showPopoverFromMenu() }
-            popover.behavior = .applicationDefined
-            companion = popover.contentViewController?.view.window
-        }
-        settingsWindow?.presentCentered(levelMatching: companion)
+        if AppSettings.shared.floatingWindowEnabled { floatingDashboard?.restoreFromDock() }
+        // Re-opening an already-open settings window must not take a second hold, since only one
+        // close, and so one release, will ever follow.
+        if settingsWindow?.window?.isVisible != true { PanelWindowController.retainFleetPanel() }
+        settingsWindow?.presentCentered(levelMatching: fleetPanelWindow())
     }
 
-    /// Resolve the presentation mode at execution time, including actions from the Dock or menu.
-    private func withDashboardHost(_ present: @escaping (NSView) -> Void) {
-        if AppSettings.shared.floatingWindowEnabled {
-            closePopover()
-            floatingDashboard?.restoreFromDock()
-            if let host = floatingDashboard?.window?.contentView { present(host) }
-        } else {
-            if !popover.isShown { showPopoverFromMenu() }
-            DispatchQueue.main.async { [weak self] in
-                guard let host = self?.popover.contentViewController?.view else { return }
-                present(host)
-            }
-        }
+    /// While anything is open over the fleet panel it stops behaving like a menu. AppKit closes a
+    /// transient popover the moment another window of the app becomes key, and the global click
+    /// monitor closes it on the next click outside; either one would take the fleet away the instant
+    /// a panel appeared.
+    private func holdFleetPanel(_ held: Bool) {
+        popover.behavior = held ? .applicationDefined : .transient
+        if held { removeOutsideClickMonitor() }
+        else if popover.isShown { installOutsideClickMonitor() }
+    }
+
+    /// The window a panel borrows its level from, resolved at the moment it opens so an action from
+    /// the Dock or the app menu gets the presentation that is actually live.
+    private func fleetPanelWindow() -> NSWindow? {
+        if AppSettings.shared.floatingWindowEnabled { return floatingDashboard?.window }
+        return popover.contentViewController?.view.window
     }
 
     @objc private func showFleetStats() {
-        withDashboardHost { [weak self] host in
-            guard let self else { return }
-            DiagnosticCenterViewController.dismiss()
-            FleetStatsViewController.show(store: self.store, in: host)
-        }
+        DiagnosticCenterViewController.dismiss()
+        FleetStatsViewController.show(store: store)
     }
 
     @objc private func showDiagnostics() {
-        withDashboardHost { [weak self] host in
-            guard let self else { return }
-            FleetStatsViewController.dismiss()
-            DiagnosticCenterViewController.show(store: self.store, in: host)
-        }
+        FleetStatsViewController.dismiss()
+        DiagnosticCenterViewController.show(store: store)
     }
 
     @objc private func quitApplication() {
@@ -643,7 +634,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             self.popover.contentSize = size
         }
         detailViewController = detail
-        swapPopoverContent(to: detail, size: NSSize(width: 600, height: 720))
+        // The same width the detail view lays itself out at; a wider popover is 120 points of empty
+        // strip down its right-hand side.
+        swapPopoverContent(to: detail,
+                           size: NSSize(width: PrinterDetailViewController.popoverContentWidth,
+                                        height: 720))
     }
 
     /// Opens (or re-focuses) the per-printer automations editor window.

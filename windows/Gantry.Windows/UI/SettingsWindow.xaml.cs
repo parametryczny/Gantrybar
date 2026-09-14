@@ -24,6 +24,10 @@ public partial class SettingsWindow : Window
         _store = store;
         InitializeComponent();
         SourceInitialized += (_, _) => ApplyModernChrome();
+        // SizeToContent="Height" in the XAML is what makes the window fit the pane on screen: the
+        // top edge stays put and the bottom moves. This only stops a very tall pane on a short
+        // screen from growing past the desktop — it then scrolls inside its own pane instead.
+        Loaded += (_, _) => MaxHeight = SystemParameters.WorkArea.Height - 80;
         ApplyThemeVisuals();
         ApplyLanguage();
         LoadSettings();
@@ -43,9 +47,8 @@ public partial class SettingsWindow : Window
             OnWindowModeChanged?.Invoke();
         };
 
-        TabGeneral.Checked += (_, _) => ShowPage(PageGeneral);
-        TabAppearance.Checked += (_, _) => ShowPage(PageAppearance);
-        TabAdvanced.Checked += (_, _) => ShowPage(PageAdvanced);
+        PaneList.SelectionChanged += (_, _) => ShowPane(PaneList.SelectedIndex);
+        ShowPane(0);
 
         LanguageButton.Click += (_, _) =>
         {
@@ -77,6 +80,20 @@ public partial class SettingsWindow : Window
             AppSettings.EdgeDockOnlyPrinting = DockOnlyPrintingCheckBox.IsChecked == true;
             OnEdgeDockChanged?.Invoke();
         };
+        DockPinnedCheckBox.Click += (_, _) =>
+        {
+            AppSettings.EdgeDockPinned = DockPinnedCheckBox.IsChecked == true;
+            OnEdgeDockChanged?.Invoke();
+        };
+        DockCameraCheckBox.Click += (_, _) =>
+        {
+            AppSettings.EdgeDockCamera = DockCameraCheckBox.IsChecked == true;
+            ApplyDockEnabledState();
+            OnEdgeDockChanged?.Invoke();
+        };
+        // The strip pins and releases itself too; keep this box honest while the window is open.
+        EdgeDockWindow.PinnedChanged += SyncDockPinned;
+        Closed += (_, _) => EdgeDockWindow.PinnedChanged -= SyncDockPinned;
         ThemeButton.Click += (_, _) =>
         {
             AppSettings.Theme = AppSettings.Theme == "dark" ? "light" : "dark";
@@ -93,6 +110,7 @@ public partial class SettingsWindow : Window
         };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
         SpoolbaseCheckBox.Click += (_, _) => AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;
+        PrinterControlCheckBox.Click += (_, _) => AppSettings.PrinterControlEnabled = PrinterControlCheckBox.IsChecked == true;
         DeveloperCheckBox.Click += (_, _) => AppSettings.DeveloperMode = DeveloperCheckBox.IsChecked == true;
         ScriptActionsCheckBox.Click += (_, _) => AppSettings.AllowScriptActions = ScriptActionsCheckBox.IsChecked == true;
         AutoUpdateCheckBox.Click += (_, _) => AppSettings.AutoUpdate = AutoUpdateCheckBox.IsChecked == true;
@@ -128,34 +146,49 @@ public partial class SettingsWindow : Window
             if (AppSettings.WebDashboardEnabled) App.WebServerShared?.Start(); else App.WebServerShared?.Stop();
             RefreshWeb();
         };
-        CloseButton.Click += (_, _) => Close();
     }
 
-    /// <summary>Hides everything the LITE edition does not ship: the Advanced tab (developer mode,
-    /// Telegram, web dashboard), Spoolbase, the floating window, the edge dock and the two card rows
-    /// that belong to Spoolbase and the detail view. The handlers stay wired — the controls are simply
-    /// unreachable — so the full build is untouched by this method.</summary>
+    /// <summary>Hides everything the LITE edition does not ship: the Integrations and Advanced panes
+    /// (developer mode, Telegram, web dashboard), Spoolbase, updates, the floating window, the edge
+    /// dock and the two card rows that belong to Spoolbase and the detail view. The handlers stay
+    /// wired and the controls are still LOADED — they read the stored value and would write back
+    /// exactly what they read — so a full Gantry sharing this machine is never edited behind the
+    /// user's back. They are simply unreachable.</summary>
     private void ApplyEditionVisibility()
     {
         if (Build.HasExtras) return;
-        TabAdvanced.Visibility = Visibility.Collapsed;
-        TabAdvancedColumn.Width = new System.Windows.GridLength(0);
-        SpoolbaseCheckBox.Visibility = SpoolbaseSeparator.Visibility = Visibility.Collapsed;
-        UpdatesHeading.Visibility = UpdatesCard.Visibility = Visibility.Collapsed;
-        FloatingWindowCheckBox.Visibility = AlwaysOnTopCheckBox.Visibility =
-            FloatingWindowSeparator.Visibility = Visibility.Collapsed;
-        CardSpoolGramsCheckBox.Visibility = CardSpoolGramsSeparator.Visibility = Visibility.Collapsed;
-        CardDetailsChipCheckBox.Visibility = CardDetailsChipSeparator.Visibility = Visibility.Collapsed;
-        DockHeading.Visibility = DockCard.Visibility = DockPrintersCaption.Visibility =
-            DockPrintersCard.Visibility = DockHint.Visibility = Visibility.Collapsed;
+        PaneItemIntegrations.Visibility = PaneItemAdvanced.Visibility = Visibility.Collapsed;
+        SpoolbaseCheckBox.Visibility = Visibility.Collapsed;
+        UpdatesHeading.Visibility = UpdatesCard.Visibility = UpdatesRule.Visibility = Visibility.Collapsed;
+        FloatingWindowRow.Visibility = Visibility.Collapsed;
+        CardSpoolGramsCheckBox.Visibility = Visibility.Collapsed;
+        CardDetailsChipCheckBox.Visibility = Visibility.Collapsed;
+        DockHeading.Visibility = DockCard.Visibility = DockRule.Visibility =
+            DockHint.Visibility = Visibility.Collapsed;
     }
 
-    private void ShowPage(System.Windows.Controls.ScrollViewer page)
+    // Panes in the contract's order, the same six the macOS window shows.
+    private System.Windows.Controls.ScrollViewer[] Panes => new[]
     {
-        PageGeneral.Visibility = ReferenceEquals(page, PageGeneral) ? Visibility.Visible : Visibility.Collapsed;
-        PageAppearance.Visibility = ReferenceEquals(page, PageAppearance) ? Visibility.Visible : Visibility.Collapsed;
-        PageAdvanced.Visibility = ReferenceEquals(page, PageAdvanced) ? Visibility.Visible : Visibility.Collapsed;
+        PageGeneral, PageAppearance, PageNotifications, PageWindows, PageIntegrations, PageAdvanced,
+    };
+
+    private static readonly string[] PaneTitleKeys =
+    {
+        "General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Advanced",
+    };
+
+    private void ShowPane(int index)
+    {
+        var panes = Panes;
+        if (index < 0 || index >= panes.Length) index = 0;
+        for (int i = 0; i < panes.Length; i++)
+            panes[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+        // The window title names the active pane, so the taskbar and Alt+Tab read correctly too.
+        Title = $"{Build.AppName} — {AppSettings.T(PaneTitleKeys[index])}";
     }
+
+    private void SyncDockPinned() => Dispatcher.Invoke(() => DockPinnedCheckBox.IsChecked = AppSettings.EdgeDockPinned);
 
     private static string EdgeName() => AppSettings.EdgeDockEdge == "left"
         ? AppSettings.T("Left") : AppSettings.T("Right");
@@ -169,6 +202,14 @@ public partial class SettingsWindow : Window
         DockSizePlusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent < 150;
         DockSizeValue.Opacity = on ? 1 : 0.45;
         DockOnlyPrintingCheckBox.IsEnabled = on;
+        DockPinnedCheckBox.IsEnabled = on;
+        DockCameraCheckBox.IsEnabled = on;
+        // A picture only makes sense while the strip is on and the camera switch is too.
+        bool cameras = on && AppSettings.EdgeDockCamera;
+        DockCamerasList.IsEnabled = cameras;
+        DockCamerasList.Opacity = cameras ? 1 : 0.45;
+        DockCamerasCaption.Opacity = cameras ? 1 : 0.45;
+        DockCameraNote.Opacity = on ? 1 : 0.45;
         DockPrintersList.IsEnabled = on;
         DockPrintersList.Opacity = on ? 1 : 0.45;
         DockEdgeButton.Opacity = on ? 1 : 0.45;
@@ -191,11 +232,13 @@ public partial class SettingsWindow : Window
         OnCardScaleChanged?.Invoke();
     }
 
-    /// One switch row per printer. The serial rides in the control's Tag because the list is rebuilt
-    /// whenever the window refreshes, so a captured index would go stale.
+    /// One check box per printer, a plain column under its caption — no card, no rules between the
+    /// rows. The serial rides in the control's Tag because the list is rebuilt whenever the window
+    /// refreshes, so a captured index would go stale.
     private void RebuildDockPrinters()
     {
         DockPrintersList.Children.Clear();
+        DockCamerasList.Children.Clear();
         var printers = _store?.Printers ?? new List<Gantry.Models.SavedPrinter>();
         if (printers.Count == 0)
         {
@@ -204,21 +247,12 @@ public partial class SettingsWindow : Window
                 Text = AppSettings.T("No printers"),
                 Foreground = GTheme.Brush(GTheme.Muted),
                 FontSize = 12,
-                Margin = new Thickness(14, 11, 14, 12),
             });
             return;
         }
         var hidden = AppSettings.EdgeDockHiddenPrinters;
-        for (int index = 0; index < printers.Count; index++)
+        foreach (var printer in printers)
         {
-            var printer = printers[index];
-            if (index > 0)
-            {
-                DockPrintersList.Children.Add(new System.Windows.Controls.Border
-                {
-                    Height = 1, Background = (Brush)FindResource("SettingsLineBrush"),
-                });
-            }
             var row = new System.Windows.Controls.CheckBox
             {
                 Content = printer.Name,
@@ -234,12 +268,33 @@ public partial class SettingsWindow : Window
                 OnEdgeDockChanged?.Invoke();
             };
             DockPrintersList.Children.Add(row);
+
+            // A brand with no stream Gantry can decode is simply not offered the choice, rather than
+            // being listed with a box that can never do anything. Same rule as macOS.
+            if (!DockCameraFeed.SupportsCamera(printer.Kind)) continue;
+            var camera = new System.Windows.Controls.CheckBox
+            {
+                Content = printer.Name,
+                Tag = printer.Serial,
+                IsChecked = AppSettings.EdgeDockCameraSerials.Contains(printer.Serial),
+            };
+            camera.Click += (sender, _) =>
+            {
+                if (sender is not System.Windows.Controls.CheckBox box || box.Tag is not string serial) return;
+                var set = AppSettings.EdgeDockCameraSerials;
+                if (box.IsChecked == true) set.Add(serial); else set.Remove(serial);
+                AppSettings.EdgeDockCameraSerials = set;
+                OnEdgeDockChanged?.Invoke();
+            };
+            DockCamerasList.Children.Add(camera);
         }
     }
 
     private void RefreshWeb()
     {
-        WebHeading.Text = AppSettings.T("WEB DASHBOARD");
+        WebHeading.Text = AppSettings.T("Web dashboard");
+        WebAddressCaption.Text = AppSettings.T("Address");
+        WebHint.Text = AppSettings.T("Open on a phone on the same Wi-Fi. View only, no control.");
         WebDashboardCheckBox.Content = AppSettings.T("Preview server (local network)");
         WebDashboardCheckBox.IsChecked = AppSettings.WebDashboardEnabled;
         var ip = GantryWebServer.LocalIPv4();
@@ -268,11 +323,16 @@ public partial class SettingsWindow : Window
 
     private void ApplyLanguage()
     {
-        Title = AppSettings.T("Gantry Settings");
-        Heading.Text = AppSettings.T("Settings");
+        // Sidebar rows, in the contract's order.
+        PaneItemGeneral.Content = AppSettings.T("General");
+        PaneItemAppearance.Content = AppSettings.T("Appearance");
+        PaneItemNotifications.Content = AppSettings.T("Notifications");
+        PaneItemWindows.Content = AppSettings.T("Windows and strip");
+        PaneItemIntegrations.Content = AppSettings.T("Integrations");
+        PaneItemAdvanced.Content = AppSettings.T("Advanced");
+        Title = $"{Build.AppName} — {AppSettings.T(PaneTitleKeys[PaneList.SelectedIndex < 0 ? 0 : PaneList.SelectedIndex])}";
 
-        AppearanceHeading.Text = AppSettings.T("APPEARANCE");
-        GeneralHeading.Text = AppSettings.T("GENERAL");
+        GeneralHeading.Text = AppSettings.T("Options");
         LanguageLabel.Text = AppSettings.T("Language");
         LanguageButton.Content = Translations.Available()
             .FirstOrDefault(entry => entry.Code == AppSettings.Language)?.Name ?? AppSettings.Language;
@@ -282,12 +342,15 @@ public partial class SettingsWindow : Window
         TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         StartupCheckBox.Content = AppSettings.T("Start with Windows");
         SpoolbaseCheckBox.Content = AppSettings.T("Spoolbase — filament stock");
+        PrinterControlCheckBox.Content = AppSettings.T("Printer control");
+        PrinterControlHint.Text = AppSettings.T("Enables temperature, fan and speed controls in Details. Off by default.");
         DeveloperCheckBox.Content = AppSettings.T("Developer mode (control + automations)");
         ScriptActionsCheckBox.Content = AppSettings.T("Allow automations to run scripts and custom commands");
         ScriptActionsHint.Text = AppSettings.T("Off by default for safety: stops a planted rule from silently running code. Each rule still asks for confirmation the first time it fires.");
         AutoUpdateCheckBox.Content = AppSettings.T("Download and install updates automatically");
 
-        CardsHeading.Text = AppSettings.T("PRINTER CARDS");
+        CardsHeading.Text = AppSettings.T("Printer cards");
+        CardContentCaption.Text = AppSettings.T("Show on the card");
         CardSizeLabel.Text = AppSettings.T("Card size");
         CardSizeValue.Text = $"{AppSettings.CardScalePercent}%";
         CardSizeMinusButton.IsEnabled = AppSettings.CardScalePercent > 75;
@@ -301,7 +364,9 @@ public partial class SettingsWindow : Window
         CardDetailsChipCheckBox.ToolTip = AppSettings.T("Shortcut to the detail view; the ⋯ menu always has it");
         MonochromeCheckBox.Content = AppSettings.T("Monochrome colours");
 
-        NotificationsHeading.Text = AppSettings.T("NOTIFICATIONS");
+        NotificationsHeading.Text = AppSettings.T("Notify me");
+        QuietHeading.Text = AppSettings.T("Quiet hours");
+        QuietRangeCaption.Text = AppSettings.T("Hours");
         PrintFinishedCheckBox.Content = AppSettings.T("Print finished");
         FinishingSoonCheckBox.Content = string.Format(
             AppSettings.T("Finishing in {0} minutes"), AppSettings.FinishingSoonMinutes);
@@ -313,10 +378,11 @@ public partial class SettingsWindow : Window
         QuietFromLabel.Text = AppSettings.T("from");
         QuietToLabel.Text = AppSettings.T("to");
 
-        TelegramHeading.Text = "TELEGRAM";
+        TelegramHeading.Text = "Telegram";
         TelegramEnableCheckBox.Content = AppSettings.T("Send notifications to Telegram");
-        TelegramTokenLabel.Text = AppSettings.T("Bot token:");
-        TelegramChatLabel.Text = "Chat ID:";
+        TelegramTokenLabel.Text = AppSettings.T("Bot token");
+        TelegramChatLabel.Text = "Chat ID";
+        TelegramTestCaption.Text = AppSettings.T("Test");
         TelegramTestButton.Content = AppSettings.T("Send test");
         TelegramHint.Text = AppSettings.T("Create a bot via @BotFather (token), message it, and get your chat_id from @userinfobot. Sends the same events as above + chat commands (/help).");
         TelegramEnableCheckBox.IsChecked = AppSettings.TelegramEnabled;
@@ -326,11 +392,13 @@ public partial class SettingsWindow : Window
         TelegramChatBox.IsEnabled = AppSettings.TelegramEnabled;
         TelegramTestButton.IsEnabled = AppSettings.TelegramEnabled;
 
-        UpdatesHeading.Text = AppSettings.T("UPDATES");
+        UpdatesHeading.Text = AppSettings.T("Updates");
+        UpdateCaption.Text = AppSettings.T("Updates");
         UpdateStatus.Text = string.Format(AppSettings.T("Version {0}"), UpdateChecker.CurrentVersion);
         CheckUpdatesButton.Content = AppSettings.T("Check for updates");
 
-        AboutHeading.Text = AppSettings.T("ABOUT");
+        AboutHeading.Text = AppSettings.T("About Gantry");
+        AboutCaption.Text = AppSettings.T("Version");
         AboutVersion.Text = $"{Build.AppName} · {AppSettings.T("version")} {UpdateChecker.CurrentVersion} · DPAPI";
         AboutAuthor.Text = "@_parametryczny";
         GitHubButton.Content = "GitHub";
@@ -338,14 +406,11 @@ public partial class SettingsWindow : Window
         SupportButton.Content = AppSettings.T("☕  Support the project");
         SupportSubtitle.Text = AppSettings.T("A virtual coffee gives me a caffeine kick to keep improving Gantry. 🚀");
 
-        TabGeneral.Content = AppSettings.T("General");
-        TabAppearance.Content = AppSettings.T("Appearance");
-        TabAdvanced.Content = AppSettings.T("Advanced");
-        HeaderSubtitle.Text = $"{Build.AppName} · @_parametryczny";
-        FooterVersion.Text = string.Format(AppSettings.T("Version {0} · DPAPI"), UpdateChecker.CurrentVersion);
-        DeveloperHeading.Text = AppSettings.T("DEVELOPER");
+        DeveloperHeading.Text = AppSettings.T("Features");
+        FloatingWindowCaption.Text = AppSettings.T("Floating window");
+        DockBehaviourCaption.Text = AppSettings.T("Behaviour");
 
-        DockHeading.Text = AppSettings.T("EDGE DOCK");
+        DockHeading.Text = AppSettings.T("Edge dock");
         DockEnableCheckBox.Content = AppSettings.T("Show the strip on top");
         DockEnableCheckBox.IsChecked = AppSettings.EdgeDockEnabled;
         DockEdgeLabel.Text = AppSettings.T("Edge");
@@ -354,12 +419,16 @@ public partial class SettingsWindow : Window
         DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
         DockOnlyPrintingCheckBox.Content = AppSettings.T("Only printing");
         DockOnlyPrintingCheckBox.IsChecked = AppSettings.EdgeDockOnlyPrinting;
-        DockPrintersCaption.Text = AppSettings.T("WHICH PRINTERS");
+        DockPinnedCheckBox.Content = AppSettings.T("Keep the strip open");
+        DockPinnedCheckBox.IsChecked = AppSettings.EdgeDockPinned;
+        DockCameraCheckBox.Content = AppSettings.T("Camera under the strip");
+        DockCameraCheckBox.IsChecked = AppSettings.EdgeDockCamera;
+        DockCameraNote.Text = AppSettings.T("With nothing picked it follows the printer that is printing. Pick printers below and each picture sits under its own row.");
+        DockCamerasCaption.Text = AppSettings.T("Camera for");
+        DockPrintersCaption.Text = AppSettings.T("Printers");
         DockHint.Text = AppSettings.T("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.");
         RebuildDockPrinters();
         ApplyDockEnabledState();
-
-        CloseButton.Content = AppSettings.T("Done");
     }
 
     /// <summary>
@@ -372,7 +441,9 @@ public partial class SettingsWindow : Window
         Resources["SettingsTextBrush"] = GTheme.Brush(GTheme.Text);
         Resources["SettingsSecondaryBrush"] = GTheme.Brush(GTheme.Secondary);
         Resources["SettingsMutedBrush"] = GTheme.Brush(GTheme.Muted);
-        Resources["SettingsPanelBrush"] = GTheme.Brush(GTheme.With(GTheme.Card, 0.94));
+        // Opaque: the window now has a real frame and no AllowsTransparency, so a translucent
+        // background would composite against black instead of the desktop.
+        Resources["SettingsPanelBrush"] = GTheme.Brush(GTheme.Card);
         Resources["SettingsCardBrush"] = GTheme.Brush(GTheme.With(GTheme.Card, 0.82));
         Resources["SettingsLineBrush"] = GTheme.Brush(GTheme.Line);
         Resources["SettingsFieldBrush"] = GTheme.Brush(GTheme.With(GTheme.Card, 0.96));
@@ -400,6 +471,7 @@ public partial class SettingsWindow : Window
     {
         StartupCheckBox.IsChecked = LaunchAtLogin.IsEnabled;
         SpoolbaseCheckBox.IsChecked = AppSettings.SpoolbaseEnabled;
+        PrinterControlCheckBox.IsChecked = AppSettings.PrinterControlEnabled;
         DeveloperCheckBox.IsChecked = AppSettings.DeveloperMode;
         ScriptActionsCheckBox.IsChecked = AppSettings.AllowScriptActions;
         AutoUpdateCheckBox.IsChecked = AppSettings.AutoUpdate;

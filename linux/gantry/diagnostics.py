@@ -15,6 +15,7 @@ from typing import Any
 from gi.repository import GLib, Gtk  # type: ignore
 
 from . import i18n
+from .panelwindow import panel_header
 from .core import PrinterState
 
 # Hard ceiling per printer, so one unreachable host cannot stall the whole run.
@@ -26,6 +27,8 @@ class DiagnosticsDialog(Gtk.Dialog):
         pl = app.language == "pl"
         super().__init__(title=i18n.t("Diagnostic Center"),
                          transient_for=app.window, modal=False)
+        panel_header(self, i18n.t("Diagnostic Center"))
+        self.set_position(Gtk.WindowPosition.CENTER)
         self.app, self.pl = app, pl
         self._alive = True
         self.set_default_size(500, 520)

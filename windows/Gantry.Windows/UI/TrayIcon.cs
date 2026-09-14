@@ -284,13 +284,17 @@ public sealed class TrayIcon : IDisposable
 
     private void ToggleSpoolbase()
     {
-        if (AppSettings.FloatingWindowEnabled) { ShowAuxiliary(new SpoolbaseWindow()); return; }
-        if (_spoolbase is null)
+        var spoolbase = _spoolbase;
+        if (spoolbase is null)
         {
-            _spoolbase = new SpoolbaseWindow();
-            _spoolbase.Closed += (_, _) => _spoolbase = null;
+            spoolbase = new SpoolbaseWindow();
+            _spoolbase = spoolbase;
+            spoolbase.Closed += (_, _) => _spoolbase = null;
+            ShowAuxiliary(spoolbase);
+            return;
         }
-        _spoolbase.TogglePopover();
+        if (spoolbase.IsVisible) { spoolbase.Hide(); return; }
+        ShowAuxiliary(spoolbase);
     }
 
     private void ShowSettings()
@@ -310,18 +314,25 @@ public sealed class TrayIcon : IDisposable
             _settings.OnCardScaleChanged = () => _dashboard?.RefreshTheme();
             _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); _dashboard?.RefreshTheme(); };
         }
-        _settings.Show();
-        _settings.Activate();
+        // Through the same path as every other panel, so the fleet panel does not hide the moment
+        // settings takes focus. Nothing owned settings before.
+        ShowAuxiliary(_settings);
         _settings.WindowState = System.Windows.WindowState.Normal;
     }
 
+    /// <summary>Diagnostics, fleet statistics and Spoolbase: a window of its own, centred on the
+    /// screen, in both presentations. In window mode they used to be taken apart and re-hosted as a
+    /// dimmed overlay inside the fleet panel, which capped them at its size and greyed out the cards
+    /// behind them. Owned by the fleet panel so it draws below them and, because its Deactivated
+    /// handler walks OwnedWindows, does not hide from under them either — which it did before, since
+    /// nothing set an owner on this path.</summary>
     private void ShowAuxiliary(System.Windows.Window controller)
     {
-        if (AppSettings.FloatingWindowEnabled)
-        {
-            ShowDashboard(); EnsureDashboard().EmbedWindow(controller);
-        }
-        else controller.Show();
+        controller.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
+        var dashboard = EnsureDashboard();
+        if (dashboard.IsLoaded) controller.Owner = dashboard;
+        controller.Show();
+        controller.Activate();
     }
 
     private async void ShowUpdateChecker()

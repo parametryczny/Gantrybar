@@ -412,18 +412,14 @@ class DetailPanel(Gtk.Box):
         self.printer_name = self.printer.name if self.printer else serial
         self._camera_started = False
 
+        # The row above the cards carries navigation only. The state belongs next to the printer it
+        # describes, so it lives in the status card below — not at the far end of a toolbar.
         header = Gtk.Box(spacing=7)
         back = Gtk.Button(label=i18n.t("‹ Back"))
         back.set_relief(Gtk.ReliefStyle.NONE); back.get_style_context().add_class("cardmenu")
         back.connect("clicked", lambda *_: on_back())
-        self.state_dot = Gtk.Label(label="")
-        self.state_dot.set_size_request(10, 10)
-        self.state_label = Gtk.Label(xalign=1)
-        self.state_label.get_style_context().add_class("status")
         header.pack_start(back, False, False, 0)
         header.pack_start(Gtk.Label(label=""), True, True, 0)
-        header.pack_start(self.state_dot, False, False, 0)
-        header.pack_start(self.state_label, False, False, 0)
         self.pack_start(header, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
@@ -435,11 +431,23 @@ class DetailPanel(Gtk.Box):
 
         # Status card: large printer name / percent, file + layer, phase stepper and ETA.
         status, status_body = self._card("status", None)
-        top = Gtk.Box(spacing=8)
+        # [name] [dot] [state] ......... [percent]. The name is the only part allowed to shrink: when
+        # the window is narrow it ellipsises, and the state stays readable instead of being pushed out.
+        top = Gtk.Box(spacing=7)
         self.name = Gtk.Label(label=self.printer_name, xalign=0, ellipsize=2)
         self.name.get_style_context().add_class("title")
+        self.state_dot = Gtk.Label(label="")
+        self.state_dot.set_size_request(10, 10)
+        self.state_label = Gtk.Label(xalign=0)
+        self.state_label.get_style_context().add_class("status")
         self.percent = Gtk.Label(label="0%", xalign=1); self.percent.get_style_context().add_class("percent")
-        top.pack_start(self.name, True, True, 0); top.pack_end(self.percent, False, False, 0)
+        top.pack_start(self.name, False, False, 0)
+        top.pack_start(self.state_dot, False, False, 0)
+        top.pack_start(self.state_label, False, False, 0)
+        # An explicit spacer, not pack_end: it takes the slack so the state sits next to the name
+        # rather than drifting towards the percentage, and it is the widget that gives way first.
+        top.pack_start(Gtk.Label(label=""), True, True, 0)
+        top.pack_start(self.percent, False, False, 0)
         file_row = Gtk.Box(spacing=8)
         self.job = Gtk.Label(xalign=0, ellipsize=2); self.job.get_style_context().add_class("detail-value")
         self.layer = Gtk.Label(xalign=1); self.layer.get_style_context().add_class("metric")
@@ -633,12 +641,21 @@ class DetailPanel(Gtk.Box):
         colors = {PrinterState.PRINTING: "#0a84ff", PrinterState.IDLE: "#30d158",
                   PrinterState.FINISHED: "#30d158", PrinterState.PAUSED: "#ff9f0a",
                   PrinterState.ERROR: "#ff453a", PrinterState.OFFLINE: "#8e8e93"}
+        # Style providers are attached, not assigned: adding one per telemetry packet piled them up
+        # on the dot and the label for the life of the panel, so the colour is only ever restyled
+        # when the state actually changes, and the previous providers are taken off first.
         color = colors[tel.state]
-        provider = Gtk.CssProvider(); provider.load_from_data(f"label {{ color: {color}; }}".encode())
-        self.state_dot.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-        dot_provider = Gtk.CssProvider(); dot_provider.load_from_data(f"label {{ background: {color}; border-radius: 5px; }}".encode())
-        self.state_dot.get_style_context().add_provider(dot_provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-        self.state_label.set_text(state); self.state_label.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        if color != getattr(self, "_state_color", None):
+            for widget, provider in getattr(self, "_state_providers", ()):
+                widget.get_style_context().remove_provider(provider)
+            ink = Gtk.CssProvider(); ink.load_from_data(f"label {{ color: {color}; }}".encode())
+            dot = Gtk.CssProvider()
+            dot.load_from_data(f"label {{ background: {color}; border-radius: 5px; }}".encode())
+            for widget, provider in ((self.state_dot, ink), (self.state_dot, dot), (self.state_label, ink)):
+                widget.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+            self._state_providers = ((self.state_dot, ink), (self.state_dot, dot), (self.state_label, ink))
+            self._state_color = color
+        self.state_label.set_text(state)
         self.percent.set_text(f"{tel.progress}%"); self.phase.update(tel.progress, tel.state)
         self.job.set_text(tel.job_name or "")
         self.layer.set_text(i18n.t("Layer {0} / {1}").format(tel.current_layer, tel.total_layers)

@@ -14,8 +14,7 @@ public partial class App : Application
     /// <summary>Set at startup so the Settings window can start/stop the LAN web server live.</summary>
     internal static GantryWebServer? WebServerShared { get; private set; }
 
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Gantry", "error.log");
+    private static string LogPath => Path.Combine(AppDataRoot.Folder, "Gantry", "error.log");
 
     /// <summary>Appends an exception to %AppData%\Gantry\error.log so intermittent crashes can be
     /// diagnosed without a debugger. Best-effort; never throws.</summary>
@@ -31,6 +30,10 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Before anything reads a setting: the preview harness must never open the user's own stores.
+        // It used to save its sample printers over the real list and seed the real Spoolbase.
+        if (e.Args.Contains("--render", StringComparer.OrdinalIgnoreCase))
+            AppDataRoot.UseTemporaryFolder(Path.Combine(Path.GetTempPath(), $"gantry-render-{Guid.NewGuid():N}"));
         base.OnStartup(e);
 
         // Keep the tray app alive on recoverable UI-thread errors, and record everything for

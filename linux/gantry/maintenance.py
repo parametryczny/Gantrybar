@@ -28,22 +28,18 @@ class MaintenancePanel(Gtk.Frame):
         self.add(self.body)
         self.rebuild()
 
+    def header_accessories(self) -> tuple[Gtk.Widget, ...]:
+        """For the trailing end of the shared window header. It lives there rather than in the body
+        because the body is torn down and rebuilt on every change, and the header is built once."""
+        instructions = Gtk.Button(label=i18n.t("Instructions"))
+        instructions.connect("clicked", self._instructions)
+        return (instructions,)
+
     def rebuild(self) -> None:
         for child in self.body.get_children():
             self.body.remove(child)
         snap = self.app.insights.snapshot(self.printer.serial, self.pl)
 
-        header = Gtk.Box(spacing=8)
-        title = Gtk.Label(label=(f"Konserwacja · {self.printer.name}" if self.pl
-                                 else f"Maintenance · {self.printer.name}"), xalign=0)
-        title.get_style_context().add_class("maintenance-title")
-        instructions = Gtk.Button(label=i18n.t("Instructions"))
-        instructions.connect("clicked", self._instructions)
-        close = Gtk.Button(label="×"); close.set_relief(Gtk.ReliefStyle.NONE)
-        close.set_tooltip_text(i18n.t("Close"))
-        close.connect("clicked", lambda *_: self.close())
-        header.pack_start(title, True, True, 0); header.pack_start(instructions, False, False, 0); header.pack_start(close, False, False, 0)
-        self.body.pack_start(header, False, False, 0)
         nozzle = f"{self.telemetry.nozzle_diameter:.1f} mm" if self.telemetry.nozzle_diameter else "—"
         summary = self._label(f"{snap['total_hours']:.1f} " +
                               (i18n.t("print h · nozzle {0}").format(nozzle)))
