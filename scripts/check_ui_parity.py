@@ -51,6 +51,7 @@ settings_window = CONTRACT["settingsWindow"]
 settings_metrics = settings_window["metrics"]
 floating = CONTRACT["floatingWindow"]
 panel_window = CONTRACT["panelWindow"]
+edge_dock = CONTRACT["edgeDock"]
 slot_assignment = panel_window["slotAssignment"]
 
 # macOS is the visual reference, but it is checked too so a macOS change must update the contract.
@@ -479,6 +480,74 @@ forbid("windows/Gantry.Windows/UI/DashboardWindow.xaml", r'<WrapPanel x:Name="He
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml", r'<StackPanel x:Name="HeaderTools" Grid\.Column="1" Orientation="Horizontal"',
         "the Windows fleet header tools are not a single row")
 
+
+# ---- Edge dock on all three platforms (contract edgeDock) --------------------------------------------
+def _number(value: float) -> str:
+    """A contract number as each platform may spell it: 5, 5.0 and 1.5 all match their own value."""
+    whole = float(value).is_integer()
+    return rf"{int(value)}(?:\.0)?" if whole else re.escape(repr(float(value)))
+
+# One pin shape everywhere: the same points, in order, in all three sources.
+PIN_POINTS_PATTERN = r",\s*".join(rf"\(\s*{_number(x)},\s*{_number(y)}\s*\)" for x, y in edge_dock["pinControl"]["points"])
+for pin_source in ("Sources/Gantry/Views/EdgeDockWindowController.swift",
+                   "windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+                   "linux/gantry/edgedock.py"):
+    require(pin_source, PIN_POINTS_PATTERN, "the edge-dock pin is not the contract's shape")
+released = _number(edge_dock["pinControl"]["releasedAngle"])
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", rf"pinReleasedAngle: CGFloat = {released}\b",
+        "the macOS released pin angle differs from the contract")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", rf"PinReleasedAngle = {released};",
+        "the Windows released pin angle differs from the contract")
+require("linux/gantry/edgedock.py", rf"PIN_RELEASED_ANGLE = {released}\b",
+        "the GNU/Linux released pin angle differs from the contract")
+# Drawn, not borrowed: an emoji or a platform symbol is a different pin on every system.
+forbid("windows/Gantry.Windows/UI/EdgeDockWindow.cs", "📌", "the Windows edge dock draws the pin as an emoji again")
+forbid("Sources/Gantry/Views/EdgeDockWindowController.swift", r'"pin\.fill"', "the macOS edge dock draws the pin as an SF Symbol again")
+# The pin both pins and releases, and its band is there whenever the strip is open.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", r"edgeDockPinned\.toggle\(\)",
+        "the macOS strip can only release itself, not pin itself")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r"isExpanded \? \(Self\.pinRow \+ Self\.pinGap\) \* scale : 0",
+        "the macOS pin band is not there whenever the strip is open")
+require("linux/gantry/edgedock.py", r'pinned = not self\.pinned\s*\n\s*self\.app\.config\.data\["edge-dock-pinned"\] = pinned',
+        "the GNU/Linux strip cannot be pinned or released from the strip itself")
+require("linux/gantry/edgedock.py", r"body = PAD_Y \* 2 \+ PIN_ROW \+ PIN_GAP \+ self\._rows_height\(width\)",
+        "the GNU/Linux pin band is not there whenever the strip is open")
+require("linux/gantry/edgedock.py", r"return self\.hovering or self\.pinned",
+        "a pinned GNU/Linux strip still folds when the pointer leaves")
+# Pictures: same width band, same brands, same stream rules.
+cams = edge_dock["cameras"]
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        rf"cameraMinStripWidth: CGFloat = {_number(cams['minStripWidth'])}\b[\s\S]{{0,40}}?cameraMaxStripWidth: CGFloat = {_number(cams['maxStripWidth'])}\b",
+        "macOS edge-dock picture width band differs from the contract")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        rf"CameraMinStripWidth = {_number(cams['minStripWidth'])}, CameraMaxStripWidth = {_number(cams['maxStripWidth'])};",
+        "Windows edge-dock picture width band differs from the contract")
+require("linux/gantry/edgedock.py",
+        rf"CAMERA_MIN_STRIP_WIDTH = {_number(cams['minStripWidth'])}\s*\nCAMERA_MAX_STRIP_WIDTH = {_number(cams['maxStripWidth'])}",
+        "GNU/Linux edge-dock picture width band differs from the contract")
+require("linux/gantry/camera.py",
+        r"CAMERA_KINDS = frozenset\(\{PrinterKind\.BAMBU, PrinterKind\.KLIPPER, PrinterKind\.ELEGOO_CC1,\s*PrinterKind\.ELEGOO_CC2, PrinterKind\.ANYCUBIC_KOBRA_S1\}\)",
+        "GNU/Linux camera brands differ from macOS and Windows")
+require("linux/gantry/camera.py", r"sink = self\.frame_sink\s*\n\s*if sink is not None:",
+        "the GNU/Linux camera cannot hand frames to the edge dock")
+require("linux/gantry/edgedock.py", r"view\.frame_sink = lambda pixbuf",
+        "the GNU/Linux edge dock shows no live pictures")
+require("linux/gantry/edgedock.py", r"if wanted == set\(self\.camera_views\):\s*\n\s*return",
+        "the GNU/Linux edge dock restarts streams on refreshes that did not change which printers stream")
+require("linux/gantry/edgedock.py", r"def hide\(self\) -> None:[\s\S]{0,300}?self\._detach_cameras\(\)",
+        "a hidden GNU/Linux edge dock keeps its camera streams running")
+for key in edge_dock["settingsKeys"]:
+    require("linux/gantry/settings.py", rf'"{key}"', f"GNU/Linux settings do not write the shared {key} setting")
+# Geometry fixed along the way: the ring beside the physical edge, the silhouette mirrored only for the
+# left edge, and folding after a grace period instead of on the leave event the resize itself causes.
+require("linux/gantry/edgedock.py", r"ring_x = EXPANDED_PAD_X \+ RING / 2 if left else width - EXPANDED_PAD_X - RING / 2",
+        "the GNU/Linux ring is not beside the physical screen edge")
+require("linux/gantry/edgedock.py", r"if left:\s*\n\s*# The silhouette is drawn flush against the right edge",
+        "the GNU/Linux silhouette is mirrored for the wrong edge")
+require("linux/gantry/edgedock.py", r"GLib\.timeout_add\(COLLAPSE_DELAY_MS, self\._collapse_if_left\)",
+        "the GNU/Linux strip folds on the leave event its own resize emits")
+
 # Floating dashboard: fixed card geometry and whole-tile window snapping on every platform.
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf"width:\s*{floating['initialSize']['width']},\s*height:\s*{floating['initialSize']['height']}",
@@ -572,7 +641,7 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"dockPinnedCheck[\s\S]*?dockCameraCheck",
         "macOS settings are missing the edge-dock pin and camera switches")
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
-        r"pinButtonRect\(\)[\s\S]*?onUnpin\?\(\)",
+        r"pinButtonRect\(\)[\s\S]*?onTogglePin\?\(\)",
         "macOS pinned edge dock cannot be released from the strip itself")
 
 # Frosted glass and an animated unfold, macOS only for now. The grace timer is not decoration: an

@@ -37,6 +37,19 @@ except (ImportError, ValueError):
     Gst = None  # type: ignore[assignment]
 
 
+#: Brands whose stream Gantry can decode. Anything else would only ever show a black rectangle, so it is
+#: never offered a picture. The same list as macOS CameraFeedController and Windows DockCameraFeed.
+CAMERA_KINDS = frozenset({PrinterKind.BAMBU, PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1,
+                          PrinterKind.ELEGOO_CC2, PrinterKind.ANYCUBIC_KOBRA_S1})
+
+#: The edge dock draws a picture at most 300 px wide; a 1080p frame scaled on every draw is waste.
+SINK_FRAME_WIDTH = 640
+
+
+def supports_camera(kind: Any) -> bool:
+    return kind in CAMERA_KINDS
+
+
 class CameraView(Gtk.Box):
     # A feed that worked and then went quiet is restarted, with a growing delay so a camera that is
     # genuinely gone is not hammered. Matches the macOS CameraFeedController watchdog.
@@ -60,6 +73,9 @@ class CameraView(Gtk.Box):
         self._last_healthy_reset = time.monotonic()
         self._restart_delay = CameraView.MINIMUM_RESTART_DELAY
         self._watchdog_generation = 0
+        #: When set, decoded frames go here instead of into this view's own image. The edge dock uses
+        #: it to draw pictures inside its own silhouette with the same streams and watchdog.
+        self.frame_sink: Any | None = None
         pl = app.language == "pl"
 
         self.set_border_width(2)
@@ -349,6 +365,14 @@ class CameraView(Gtk.Box):
             except Exception:
                 return False
             if pixbuf is None:
+                return False
+            sink = self.frame_sink
+            if sink is not None:
+                width = pixbuf.get_width()
+                if width > SINK_FRAME_WIDTH:
+                    pixbuf = pixbuf.scale_simple(SINK_FRAME_WIDTH, int(pixbuf.get_height() * SINK_FRAME_WIDTH / width),
+                                                 GdkPixbuf.InterpType.BILINEAR)
+                sink(pixbuf)
                 return False
             alloc = self.image.get_allocation()
             target_w = max(320, alloc.width)

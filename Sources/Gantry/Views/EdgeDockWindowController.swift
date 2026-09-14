@@ -6,8 +6,8 @@ import CoreImage
 /// printer. Collapsed it is 22 points wide and carries only colour and fill; hovering expands it into
 /// a list with names, percentages and remaining time, and clicking a row opens that printer's details.
 ///
-/// Issue #34 added two things to that. Pinning keeps the list unfolded without the pointer, and a
-/// pinned strip can be released from the strip itself. Separately, any printer can be given a live
+/// Issue #34 added two things to that. Pinning keeps the list unfolded without the pointer, and the
+/// pin on the strip itself both pins and releases it. Separately, any printer can be given a live
 /// picture that hangs directly under its own row, so a print is watched at a glance instead of
 /// through a window that has to stay open. The two are independent: a picture works on a strip that
 /// still folds, it is simply hidden until the strip opens.
@@ -68,10 +68,11 @@ final class EdgeDockWindowController {
 
         dockView.onSelect = onSelect
         dockView.onLayoutChange = { [weak self] animated in self?.reposition(animated: animated) }
-        // Releasing the strip belongs on the strip: reaching Settings to undo something you can see
-        // is the long way round. Writing the setting is enough to drive the rest, because the
-        // settings subscription below brings us straight back into refresh().
-        dockView.onUnpin = { AppSettings.shared.edgeDockPinned = false }
+        // Pinning and releasing belong on the strip: reaching Settings for something you can see is
+        // the long way round. It used to be release-only, and pinning meant a trip to Settings.
+        // Writing the setting is enough to drive the rest, because the settings subscription below
+        // brings us straight back into refresh().
+        dockView.onTogglePin = { AppSettings.shared.edgeDockPinned.toggle() }
 
         // The store publishes on every telemetry packet; throttling keeps the strip from redrawing
         // several times a second for a bar that moves once a minute.
@@ -276,7 +277,7 @@ private final class EdgeDockView: NSView {
     var onSelect: ((String) -> Void)?
     /// `true` asks the host to animate the size change rather than snap to it.
     var onLayoutChange: ((Bool) -> Void)?
-    var onUnpin: (() -> Void)?
+    var onTogglePin: (() -> Void)?
     /// The frosted backdrop this strip clips to its own silhouette.
     weak var backdrop: NSVisualEffectView?
 
@@ -327,11 +328,19 @@ private final class EdgeDockView: NSView {
     private static let notch: CGFloat = 11
     private static let expandedTextGap: CGFloat = 8
     private static let expandedPadX: CGFloat = 11
-    /// Band above the rows holding the release control. Present only while pinned, so the hover
-    /// silhouette keeps exactly the height it always had.
+    /// Band above the rows holding the pin. Present whenever the strip is open, pinned or not, because
+    /// it is also where a hovering user pins it; a folded strip keeps exactly the height it had.
     private static let pinRow: CGFloat = 14
     private static let pinGap: CGFloat = 4
     private static let pinGlyph: CGFloat = 10
+    /// The pin, in a 16x16 design box, upright with the needle down: a flat head, a shaft, a flared
+    /// collar and the needle. The same points on Windows and Linux (contract edgeDock.pinControl).
+    static let pinPoints: [(CGFloat, CGFloat)] = [
+        (5, 1.5), (11, 1.5), (11, 3), (9.8, 3), (9.8, 7), (12.5, 9.5), (8.7, 9.5),
+        (8, 15), (7.3, 9.5), (3.5, 9.5), (6.2, 7), (6.2, 3), (5, 3)
+    ]
+    /// Released, the pin leans over; pinned, it stands straight in.
+    static let pinReleasedAngle: CGFloat = 45
     /// One number for both halves of the gesture: the window's own resize and the fade of the rows
     /// inside it. They have to agree, or the text would settle before the strip stops moving.
     static let unfoldDuration: TimeInterval = 0.42
@@ -399,14 +408,13 @@ private final class EdgeDockView: NSView {
     /// fleet, the pictures or the size setting do, so it is computed then and not 120 times a second.
     private var expandedWidthCache: CGFloat?
     private var shadowCache: (scale: CGFloat, shadow: NSShadow)?
-    private var pinGlyphCache: (scale: CGFloat, glyph: NSImage)?
+    private var pinHovered = false
 
     /// The silhouette cache is deliberately not cleared here: its key already carries everything the
     /// shape depends on, so it invalidates itself and a language change never re-rasterises a mask.
     fileprivate func invalidateMeasurements() {
         expandedWidthCache = nil
         shadowCache = nil
-        pinGlyphCache = nil
     }
 
     private func expandedWidth() -> CGFloat {
@@ -468,15 +476,15 @@ private final class EdgeDockView: NSView {
         bounds.height - (Self.notch + Self.padY) * scale - pinBandHeight
     }
 
-    /// Height the release control and its gap add to the body, or zero when the strip is not pinned.
+    /// Height the pin and its gap add to the body: always while open, never while folded.
     private var pinBandHeight: CGFloat {
-        pinned ? (Self.pinRow + Self.pinGap) * scale : 0
+        isExpanded ? (Self.pinRow + Self.pinGap) * scale : 0
     }
 
-    /// The release control: a faint disc with a pin on it, sitting in the ring column so it can never
-    /// collide with a printer name, whatever the name's length.
+    /// The pin control: a disc with the pin on it, sitting in the ring column so it can never collide
+    /// with a printer name, whatever the name's length.
     private func pinButtonRect() -> NSRect? {
-        guard pinned, isExpanded else { return nil }
+        guard isExpanded else { return nil }
         let side = Self.pinRow * scale
         let centerX = edge == .right
             ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
@@ -485,29 +493,43 @@ private final class EdgeDockView: NSView {
         return NSRect(x: centerX - side / 2, y: centerY - side / 2, width: side, height: side)
     }
 
+    /// Released: a faint disc and a hollow pin leaning over. Pinned: a brighter disc and a solid pin
+    /// standing straight in. Hover lifts the disc either way. Drawn as a path, not an SF Symbol, so it
+    /// is the same shape as on Windows and Linux and costs nothing to redraw on every unfold frame.
     private func drawPinButton() {
         guard let rect = pinButtonRect() else { return }
         let fade = max(0, min(1, unfoldProgress))
-        NSColor.white.withAlphaComponent(0.1 * fade).setFill()
+        let discAlpha = (pinned ? 0.18 : 0.06) + (pinHovered ? 0.08 : 0)
+        NSColor.white.withAlphaComponent(discAlpha * fade).setFill()
         NSBezierPath(ovalIn: rect).fill()
-        // Rendering an SF Symbol means looking it up and rasterising it, which is far too much work to
-        // repeat on every frame of the unfold. The colour is baked in at full strength and the fade is
-        // applied to the draw instead, so one glyph per size serves the whole gesture.
-        guard let glyph = pinGlyph() else { return }
-        let size = glyph.size
-        glyph.draw(in: NSRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
-                              width: size.width, height: size.height),
-                   from: .zero, operation: .sourceOver, fraction: fade)
+        let glyph = Self.pinPath(center: NSPoint(x: rect.midX, y: rect.midY), size: Self.pinGlyph * scale,
+                                 angleDegrees: pinned ? 0 : Self.pinReleasedAngle)
+        if pinned {
+            GantryTheme.text.withAlphaComponent(fade).setFill()
+            glyph.fill()
+        } else {
+            glyph.lineWidth = 1.3 * Self.pinGlyph * scale / 16
+            glyph.lineJoinStyle = .round
+            GantryTheme.secondary.withAlphaComponent(fade).setStroke()
+            glyph.stroke()
+        }
     }
 
-    private func pinGlyph() -> NSImage? {
-        if let pinGlyphCache, abs(pinGlyphCache.scale - scale) < 0.001 { return pinGlyphCache.glyph }
-        let configuration = NSImage.SymbolConfiguration(pointSize: Self.pinGlyph * scale, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [GantryTheme.secondary]))
-        guard let glyph = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: nil)?
-            .withSymbolConfiguration(configuration) else { return nil }
-        pinGlyphCache = (scale, glyph)
-        return glyph
+    /// The pin's points placed at `center`, `size` wide, rotated clockwise as seen on screen. The design
+    /// box is y-down like Windows and cairo, so y is flipped here and only here.
+    static func pinPath(center: NSPoint, size: CGFloat, angleDegrees: CGFloat) -> NSBezierPath {
+        let scale = size / 16
+        let theta = angleDegrees * .pi / 180
+        let cosine = cos(theta), sine = sin(theta)
+        let path = NSBezierPath()
+        for (index, point) in pinPoints.enumerated() {
+            let dx = point.0 - 8, dy = point.1 - 8
+            let placed = NSPoint(x: center.x + (dx * cosine - dy * sine) * scale,
+                                 y: center.y - (dx * sine + dy * cosine) * scale)
+            if index == 0 { path.move(to: placed) } else { path.line(to: placed) }
+        }
+        path.close()
+        return path
     }
 
     private func cameraWidth(stripWidth: CGFloat) -> CGFloat {
@@ -572,6 +594,10 @@ private final class EdgeDockView: NSView {
         super.layout()
         clipBackdropToSilhouette()
         rowsView.frame = bounds
+        removeAllToolTips()
+        if let pin = pinButtonRect() {
+            addToolTip(pin, owner: AppSettings.shared.t("Keep the strip open") as NSString, userData: nil)
+        }
         guard !cameraViews.isEmpty else { return }
         guard isExpanded else {
             cameraViews.values.forEach { $0.isHidden = true }
@@ -812,7 +838,7 @@ private final class EdgeDockView: NSView {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
         // `.activeAlways` matters: the strip must react while another app is frontmost.
-        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways],
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
                                   owner: self, userInfo: nil)
         addTrackingArea(area)
         trackingArea = area
@@ -833,7 +859,19 @@ private final class EdgeDockView: NSView {
     /// a leave event even though the user has not moved: acting on that immediately would fold the
     /// strip, which puts the edge back under the cursor, which opens it again. This is the same loop
     /// the Windows port hit in issue #32, where it showed up as flicker.
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let over = pinButtonRect()?.contains(point) ?? false
+        guard over != pinHovered else { return }
+        pinHovered = over
+        needsDisplay = true
+    }
+
     override func mouseExited(with event: NSEvent) {
+        if pinHovered {
+            pinHovered = false
+            needsDisplay = true
+        }
         guard isHovering else { return }
         collapseTimer?.invalidate()
         collapseTimer = Timer.scheduledTimer(withTimeInterval: Self.collapseDelay, repeats: false) { [weak self] _ in
@@ -855,9 +893,9 @@ private final class EdgeDockView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        // The release control wins over the row beneath it.
+        // The pin wins over the row beneath it.
         if let pin = pinButtonRect(), pin.contains(point) {
-            onUnpin?()
+            onTogglePin?()
             return
         }
         guard let index = rowIndex(at: point), index < entries.count else { return }

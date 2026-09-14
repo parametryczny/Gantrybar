@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "date": "2026-09-14",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
@@ -616,5 +616,102 @@
       "singleColumnScreens": "weigh, pick a filament, starting amount: one column, centred, at most singleColumnWidth wide",
       "linux": "the Gtk.Dialog content area holds the same two columns: the assigned roll on the left, the roll picker on the right"
     }
+  },
+  "edgeDock": {
+    "note": "The always-on-top strip at a screen edge. One behaviour on all three platforms: a pin on the strip both pins and releases it, and any printer can have a live picture under its own row (issue #34).",
+    "pinControl": {
+      "designBox": 16,
+      "points": [
+        [
+          5,
+          1.5
+        ],
+        [
+          11,
+          1.5
+        ],
+        [
+          11,
+          3
+        ],
+        [
+          9.8,
+          3
+        ],
+        [
+          9.8,
+          7
+        ],
+        [
+          12.5,
+          9.5
+        ],
+        [
+          8.7,
+          9.5
+        ],
+        [
+          8,
+          15
+        ],
+        [
+          7.3,
+          9.5
+        ],
+        [
+          3.5,
+          9.5
+        ],
+        [
+          6.2,
+          7
+        ],
+        [
+          6.2,
+          3
+        ],
+        [
+          5,
+          3
+        ]
+      ],
+      "shape": "a pushpin upright with the needle down: flat head, shaft, flared collar, needle",
+      "released": "hollow outline in the secondary colour, stroke 1.3/16 of the glyph, leaning over by releasedAngle",
+      "pinned": "filled in the text colour, standing straight (0 degrees)",
+      "releasedAngle": 45,
+      "rotation": "clockwise as seen on screen; design box is y-down, macOS flips y when placing points",
+      "discAlpha": {
+        "released": 0.06,
+        "pinned": 0.18,
+        "hoverAdds": 0.08
+      },
+      "placement": "in the ring column, in a band above the first row, present whenever the strip is open",
+      "action": "click toggles edge-dock-pinned; hover lifts the disc (and shows a hand cursor on Windows); tooltip Keep the strip open",
+      "rendering": "a vector path on every platform, never an emoji or a platform symbol, so it is the same shape everywhere"
+    },
+    "cameras": {
+      "aspect": "16:9, cropped to fill, rounded corners",
+      "gap": 8,
+      "radius": 8,
+      "minStripWidth": 236,
+      "maxStripWidth": 300,
+      "kinds": [
+        "bambu",
+        "klipper",
+        "elegooCC1",
+        "elegooCC2",
+        "anycubicKobraS1"
+      ],
+      "choice": "printers ticked in Settings; with none ticked, the printing (then paused) printer, or the only candidate",
+      "streams": "restarted only when the set of printers changes; kept running while folded; stopped when the strip hides",
+      "placeholder": "a dark plate until the first frame",
+      "hitTest": "a click on a picture does not open details"
+    },
+    "settingsKeys": [
+      "edge-dock-pinned",
+      "edge-dock-camera",
+      "edge-dock-camera-serials"
+    ],
+    "ringPlacement": "the ring stays beside the physical screen edge while the text unfolds inward"
   }
 }

@@ -387,6 +387,18 @@ class SettingsDialog(Gtk.Dialog):
         self.dock_scale = self._scale_row(i18n.t("Edge dock size"), "edge-dock-scale-percent", 100, 150)
         self.dock_only_printing = self._check(i18n.t("Only printing"),
                                               bool(self.app.config.data.get("edge-dock-only-printing", False)))
+        self.dock_pinned = self._check(i18n.t("Keep the strip open"),
+                                       bool(self.app.config.data.get("edge-dock-pinned", False)))
+        self.dock_camera = self._check(i18n.t("Camera under the strip"),
+                                       bool(self.app.config.data.get("edge-dock-camera", False)))
+        self.dock_camera.set_tooltip_text(i18n.t("With nothing picked it follows the printer that is printing. Pick printers below and each picture sits under its own row."))
+        # Only brands whose stream Gantry can decode are offered a picture, as on macOS and Windows.
+        from .camera import supports_camera
+        with_camera = set(str(self.app.config.data.get("edge-dock-camera-serials", "")).split("\n")) - {""}
+        self.dock_cameras: dict[str, Gtk.CheckButton] = {}
+        for printer in list(getattr(self.app, "printers", [])):
+            if supports_camera(printer.kind):
+                self.dock_cameras[printer.serial] = self._check(printer.name, printer.serial in with_camera)
         # Stored as an exclusion list, so a newly added printer shows up by itself.
         hidden = set(str(self.app.config.data.get("edge-dock-hidden", "")).split("\n")) - {""}
         self.dock_printers: dict[str, Gtk.CheckButton] = {}
@@ -399,9 +411,11 @@ class SettingsDialog(Gtk.Dialog):
         pane.aligned(self.dock_enabled)
         pane.field(i18n.t("Edge"), self.dock_edge)
         pane.field(i18n.t("Edge dock size"), self.dock_scale[0], baseline=False)
-        pane.group(i18n.t("Behaviour"), [self.dock_only_printing])
+        pane.group(i18n.t("Behaviour"), [self.dock_pinned, self.dock_camera, self.dock_only_printing])
         if self.dock_printers:
             pane.group(i18n.t("Show on the card"), list(self.dock_printers.values()))
+        if self.dock_cameras:
+            pane.group(i18n.t("Camera for"), list(self.dock_cameras.values()))
         else:
             empty = Gtk.Label(label=i18n.t("No printers"), xalign=0)
             empty.get_style_context().add_class("settings-hint")
@@ -642,6 +656,10 @@ class SettingsDialog(Gtk.Dialog):
         self.app.config.data["card_scale_percent"] = max(75, min(150, round(int(self.app.config.data.get("card_scale_percent", 100)) / 5) * 5))
         hidden = sorted(serial for serial, widget in self.dock_printers.items() if not widget.get_active())
         self.app.config.data["edge-dock-hidden"] = "\n".join(hidden)
+        self.app.config.data["edge-dock-pinned"] = self.dock_pinned.get_active()
+        self.app.config.data["edge-dock-camera"] = self.dock_camera.get_active()
+        self.app.config.data["edge-dock-camera-serials"] = "\n".join(
+            sorted(serial for serial, widget in self.dock_cameras.items() if widget.get_active()))
         self.app.config.data["telegram-enabled"] = self.telegram_enabled.get_active()
         self.app.config.data["telegram-bot-token"] = self.telegram_token.get_text().strip()
         self.app.config.data["telegram-chat-id"] = self.telegram_chat.get_text().strip()

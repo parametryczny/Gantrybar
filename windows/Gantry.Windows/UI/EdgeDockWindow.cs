@@ -51,7 +51,17 @@ public sealed class EdgeDockWindow : Window
     private const double RowHeight = 26, RowGap = 3, PadY = 10, Notch = 13;
     private const double ExpandedPadX = 13, ExpandedTextGap = 9;
     /// Band above the rows holding the pin control, shown whenever the strip is open.
-    private const double PinRow = 18, PinGap = 4;
+    private const double PinRow = 18, PinGap = 4, PinGlyph = 12;
+    /// The pin, in a 16x16 design box, upright with the needle down: a flat head, a shaft, a flared
+    /// collar and the needle. The same points on macOS and Linux (contract edgeDock.pinControl).
+    private static readonly (double X, double Y)[] PinPoints =
+    {
+        (5, 1.5), (11, 1.5), (11, 3), (9.8, 3), (9.8, 7), (12.5, 9.5), (8.7, 9.5),
+        (8, 15), (7.3, 9.5), (3.5, 9.5), (6.2, 7), (6.2, 3), (5, 3),
+    };
+    /// Released, the pin leans over; pinned, it stands straight in.
+    private const double PinReleasedAngle = 45;
+    private bool _pinHovered;
     private const double CameraGap = 8, CameraRadius = 8;
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private const double CameraMinStripWidth = 236, CameraMaxStripWidth = 300;
@@ -115,7 +125,21 @@ public sealed class EdgeDockWindow : Window
         };
         // Repositioning the transparent window can emit a transient leave event. Verify it only
         // after the new hit region has settled instead of immediately collapsing and reopening.
-        MouseLeave += (_, _) => { _collapseTimer.Stop(); _collapseTimer.Start(); };
+        MouseLeave += (_, _) =>
+        {
+            if (_pinHovered) { _pinHovered = false; Cursor = null; Rebuild(); }
+            _collapseTimer.Stop();
+            _collapseTimer.Start();
+        };
+        // Hover over the pin lifts its disc and shows a hand, so it reads as a control and not a label.
+        MouseMove += (_, e) =>
+        {
+            bool over = _pinHit is { } pin && pin.Contains(e.GetPosition(_canvas));
+            if (over == _pinHovered) return;
+            _pinHovered = over;
+            Cursor = over ? Cursors.Hand : null;
+            Rebuild();
+        };
         MouseLeftButtonDown += OnClick;
         Closed += (_, _) => { _collapseTimer.Stop(); DetachCameras(); };
 
@@ -434,31 +458,60 @@ public sealed class EdgeDockWindow : Window
         }
     }
 
-    /// Pin and release, on the strip itself. A faint disc when released, a brighter one when pinned.
+    /// Pin and release, on the strip itself. Released: a faint disc and a hollow pin leaning over.
+    /// Pinned: a brighter disc and a solid pin standing straight in. Hover lifts the disc either way.
+    /// A vector path rather than the pushpin emoji, which Windows draws in its own colours and size.
     private void DrawPinButton(Point center)
     {
         double scale = UiScale;
         bool pinned = AppSettings.EdgeDockPinned;
         double side = PinRow * scale;
+        byte discAlpha = (byte)Math.Round(255 * ((pinned ? 0.18 : 0.06) + (_pinHovered ? 0.08 : 0)));
         var disc = new Ellipse
         {
             Width = side, Height = side,
-            Fill = new SolidColorBrush(Color.FromArgb(pinned ? (byte)0x38 : (byte)0x14, 0xFF, 0xFF, 0xFF)),
+            Fill = new SolidColorBrush(Color.FromArgb(discAlpha, 0xFF, 0xFF, 0xFF)),
             ToolTip = AppSettings.T("Keep the strip open"),
         };
         Canvas.SetLeft(disc, center.X - side / 2);
         Canvas.SetTop(disc, center.Y - side / 2);
         _canvas.Children.Add(disc);
-        var glyph = new TextBlock
+
+        double size = PinGlyph * scale;
+        var glyph = new Path
         {
-            Text = "📌", FontSize = 9.5 * scale, Opacity = pinned ? 1 : 0.45, IsHitTestVisible = false,
+            Data = PinGeometry(center, size, pinned ? 0 : PinReleasedAngle),
+            IsHitTestVisible = false,
+            StrokeLineJoin = PenLineJoin.Round,
         };
-        glyph.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Canvas.SetLeft(glyph, center.X - glyph.DesiredSize.Width / 2);
-        Canvas.SetTop(glyph, center.Y - glyph.DesiredSize.Height / 2);
+        if (pinned) glyph.Fill = GTheme.Brush(GTheme.Text);
+        else
+        {
+            glyph.Stroke = GTheme.Brush(GTheme.Secondary);
+            glyph.StrokeThickness = 1.3 * size / 16;
+        }
         _canvas.Children.Add(glyph);
         double slack = 3 * scale;
         _pinHit = new Rect(center.X - side / 2 - slack, center.Y - side / 2 - slack, side + 2 * slack, side + 2 * slack);
+    }
+
+    /// <summary>The pin's points placed at <paramref name="center"/>, <paramref name="size"/> wide,
+    /// rotated clockwise. WPF is y-down like the design box, so no flip is needed.</summary>
+    private static Geometry PinGeometry(Point center, double size, double angleDegrees)
+    {
+        double scale = size / 16, theta = angleDegrees * Math.PI / 180;
+        double cos = Math.Cos(theta), sin = Math.Sin(theta);
+        Point Place((double X, double Y) p)
+        {
+            double dx = p.X - 8, dy = p.Y - 8;
+            return new Point(center.X + (dx * cos - dy * sin) * scale, center.Y + (dx * sin + dy * cos) * scale);
+        }
+        var figure = new PathFigure { StartPoint = Place(PinPoints[0]), IsClosed = true, IsFilled = true };
+        for (int i = 1; i < PinPoints.Length; i++) figure.Segments.Add(new LineSegment(Place(PinPoints[i]), true));
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        geometry.Freeze();
+        return geometry;
     }
 
     /// One progress ring: a dim track plus an arc that starts at twelve o'clock and runs clockwise.
