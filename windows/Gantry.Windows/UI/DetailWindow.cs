@@ -942,7 +942,12 @@ public sealed class DetailView : UserControl
     private void SetNotice(TextBlock notice, PrinterStore.CommandRejection? refusal, PrinterStore.ControlArea area)
     {
         bool shown = _controlEnabled && refusal is not null && refusal.Area == area;
-        notice.Text = shown ? string.Format(AppSettings.T("The printer rejected the command: {0}"), refusal!.Reason) : "";
+        // Bambu firmware with authorization control answers "mqtt message verify failed" to any command
+        // not signed by Bambu Connect. Gantry does not sign, so the notice says what the printer needs.
+        notice.Text = !shown ? ""
+            : refusal!.Reason.Contains("verify failed", StringComparison.OrdinalIgnoreCase)
+                ? AppSettings.T("The printer only accepts commands signed by Bambu Connect. To control it from Gantry, turn on LAN Only mode and then Developer Mode on the printer.")
+                : string.Format(AppSettings.T("The printer rejected the command: {0}"), refusal.Reason);
         notice.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
     }
 

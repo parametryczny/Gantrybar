@@ -58,6 +58,7 @@ final class PrinterDetailViewController: NSViewController {
     private let chamberFanControl = ControlStepperView(range: 0...100, step: 10, showsTargetCaption: false, suffix: "%")
     private let speedControl = ControlStepperView(range: 10...166, step: 10, showsTargetCaption: false, suffix: "%")
     private let speedLevelControl = ControlStepperView(range: 1...4, step: 1, showsTargetCaption: false, suffix: "")
+    private let fanInfoRow = NSStackView()
     private let temperatureNotice = NSTextField(wrappingLabelWithString: "")
     private let fanNotice = NSTextField(wrappingLabelWithString: "")
     private lazy var partFanTile = ControlTileView(title: AppSettings.shared.t("Part"), symbol: "wind", stepper: partFanControl)
@@ -555,7 +556,8 @@ final class PrinterDetailViewController: NSViewController {
         speedLabel.font = .systemFont(ofSize: 12, weight: .medium)
         diameterLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         diameterLabel.textColor = .secondaryLabelColor
-        let infoRow = NSStackView(views: [speedLabel, NSView(), diameterLabel])
+        let infoRow = fanInfoRow
+        infoRow.setViews([speedLabel, NSView(), diameterLabel], in: .leading)
         infoRow.orientation = .horizontal
         infoRow.alignment = .centerY
         fanControls.orientation = .vertical
@@ -836,7 +838,7 @@ final class PrinterDetailViewController: NSViewController {
         let rejection = store.commandRejections[serial].flatMap { Date().timeIntervalSince($0.date) < 120 ? $0 : nil }
         for (notice, area) in [(temperatureNotice, PrinterStore.CommandRejection.Area.temperature), (fanNotice, .fans)] {
             let shown = controlEnabled && rejection?.area == area
-            notice.stringValue = shown ? settings.t("The printer rejected the command: {0}", rejection?.reason ?? "") : ""
+            notice.stringValue = shown ? Self.rejectionText(rejection?.reason ?? "", settings: settings) : ""
             notice.isHidden = !shown
         }
         if let d = t.nozzleDiameter {
@@ -845,6 +847,8 @@ final class PrinterDetailViewController: NSViewController {
         } else {
             diameterLabel.isHidden = true
         }
+        // An empty row still took its line and two gaps, which left a hole above the notice.
+        fanInfoRow.isHidden = speedLabel.isHidden && diameterLabel.isHidden
 
         renderAMS(t.filamentGroups)
         refreshInsights(settings: settings)
@@ -949,6 +953,15 @@ final class PrinterDetailViewController: NSViewController {
         case .error: "Error"
         case .offline: "Offline"
         }
+    }
+
+    /// Bambu firmware with authorization control answers "mqtt message verify failed" to any command
+    /// not signed by Bambu Connect. Gantry does not sign, so the notice says what the printer needs.
+    private static func rejectionText(_ reason: String, settings: AppSettings) -> String {
+        if reason.localizedCaseInsensitiveContains("verify failed") {
+            return settings.t("The printer only accepts commands signed by Bambu Connect. To control it from Gantry, turn on LAN Only mode and then Developer Mode on the printer.")
+        }
+        return settings.t("The printer rejected the command: {0}", reason)
     }
 
     private func speedName(_ level: Int) -> String {

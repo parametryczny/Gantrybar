@@ -734,6 +734,7 @@
   "The printer did not provide the active print file name.": "Drukarka nie podała nazwy aktywnego pliku wydruku.",
   "The printer did not respond in time.": "Drukarka nie odpowiedziała w wymaganym czasie.",
   "The printer needs attention.": "Drukarka oczekuje na działanie.",
+  "The printer only accepts commands signed by Bambu Connect. To control it from Gantry, turn on LAN Only mode and then Developer Mode on the printer.": "Drukarka przyjmuje tylko polecenia podpisane przez Bambu Connect. Aby sterować nią z Gantry, włącz na drukarce tryb Tylko LAN, a potem Tryb deweloperski.",
   "The printer rejected the access code": "Drukarka odrzuciła kod dostępu",
   "The printer rejected the access code.": "Drukarka odrzuciła kod dostępu.",
   "The printer rejected the command: {0}": "Drukarka odrzuciła polecenie: {0}",
