@@ -23,7 +23,7 @@ PERIODS = (7, 30, 365, 0)   # 0 = all time
 class FleetStatsDialog(Gtk.Dialog):
     def __init__(self, app: Any) -> None:
         super().__init__(title=i18n.t("Fleet statistics"),
-                         transient_for=app.window, modal=True)
+                         transient_for=app.window, modal=False)
         panel_header(self, i18n.t("Fleet statistics"))
         self.set_position(Gtk.WindowPosition.CENTER)
         self.app = app

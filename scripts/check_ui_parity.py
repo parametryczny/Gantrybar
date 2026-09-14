@@ -341,8 +341,13 @@ forbid("linux/gantry/spoolbase.py", r"_position_top_right",
        "GNU/Linux Spoolbase is pinned to the corner again instead of centred")
 for holder in ("open_diagnostics", "open_fleet_stats"):
     require("linux/gantry/app.py",
-            rf"def {holder}\(self\)[\s\S]{{0,400}}?hold_fleet_panel\(dialog\)",
+            rf"def {holder}\(self\)[\s\S]{{0,900}}?hold_fleet_panel\(dialog\)",
             f"GNU/Linux {holder} does not hold the fleet panel open")
+# Statistics are a panel like the others (audit A22): a modal run() locked the fleet and closed on export.
+forbid("linux/gantry/app.py", r"def open_fleet_stats\(self\)[\s\S]{0,900}?dialog\.run\(\)",
+       "GNU/Linux statistics run as a modal loop again")
+require("linux/gantry/fleetstats.py", r"transient_for=app\.window, modal=False",
+        "GNU/Linux statistics dialog is modal again")
 
 # Windows: the same detachment. The hold is the dashboard's own Deactivated handler, which walks
 # OwnedWindows and refuses to hide while any of them is visible — so it is only a hold if every

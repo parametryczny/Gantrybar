@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import threading
 import time
@@ -55,10 +56,12 @@ STAGES = {
 
 
 def quiet_hours_active(config: Config, now: datetime | None = None) -> bool:
-    if not config.data.get("quiet_hours_enabled", True): return False
+    if not config.data.get("quiet_hours_enabled", False): return False
     current = (now or datetime.now()).strftime("%H:%M")
     start = str(config.data.get("quiet_hours_start", "22:00"))
     end = str(config.data.get("quiet_hours_end", "07:00"))
+    # Same start and end is an empty range, as on macOS and Windows, not a whole day of silence.
+    if start == end: return False
     return start <= current < end if start < end else current >= start or current < end
 
 class PrinterDialog(Gtk.Dialog):
@@ -668,6 +671,12 @@ class Gantry:
             done.set()
             return False
 
+        # Already on the GTK loop (the engine runs from on_event, the Run button from a click): queuing
+        # the dialog and then waiting would block the very loop that has to show it for the whole
+        # timeout, and the answer would arrive after the action had already been refused.
+        if threading.current_thread() is threading.main_thread():
+            ask()
+            return result.get("ok", False)
         GLib.idle_add(ask)
         done.wait(120)
         return result.get("ok", False)
@@ -720,10 +729,17 @@ class Gantry:
 
     def open_fleet_stats(self) -> None:
         from .fleetstats import FleetStatsDialog
+        # A panel like the others, not a modal loop: it used to lock the fleet while open, and run()
+        # also returned on the export button's response, which closed the statistics along with it.
+        existing = getattr(self, "fleet_stats_dialog", None)
+        if existing is not None:
+            existing.present(); return
         dialog = FleetStatsDialog(self)
+        self.fleet_stats_dialog = dialog
+        dialog.connect("destroy", lambda *_: setattr(self, "fleet_stats_dialog", None))
         self.window.hold_fleet_panel(dialog)
-        dialog.run()
-        dialog.destroy()
+        dialog.show()
+        dialog.present()
 
     def open_details(self, serial: str) -> None:
         from .details import DetailPanel
@@ -1046,8 +1062,20 @@ class Gantry:
         dock = getattr(self, "edge_dock", None)
         if dock is not None:
             dock.refresh()
-        if quiet_hours_active(self.config): return False
         printer_name = next((p.name for p in self.printers if p.serial == serial), "Gantry")
+        # Bookkeeping first, whatever the clock says: quiet hours silence alerts, not the record of a
+        # print. The return below used to skip both, so a job finishing at night never came off its
+        # roll, and the next packet already reads FINISHED, so nothing caught up later.
+        if current.state != previous.state:
+            if current.state == PrinterState.FINISHED:
+                from . import telegram
+                telegram.record_history(self, serial, printer_name, current.job_name or "")
+            # Nothing is subtracted while Spoolbase is off, and nothing is remembered as subtracted
+            # either: switching it back on resumes from the grams the rolls had when it went off.
+            if event == "telemetry" and self._spoolbase_active():
+                from .consumption import on_finish
+                on_finish(self, serial, previous, current)
+        if quiet_hours_active(self.config): return False
         # Heads-up before the end. Armed once per print: it re-arms as soon as the remaining time is
         # back above the threshold (a new job) or the printer stops printing, so one job cannot nag.
         warned = getattr(self, "_finishing_soon_warned", None)
@@ -1067,9 +1095,6 @@ class Gantry:
         else:
             warned.discard(serial)
         if current.state != previous.state:
-            if current.state == PrinterState.FINISHED:
-                from . import telegram
-                telegram.record_history(self, serial, printer_name, current.job_name or "")
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key):
@@ -1082,11 +1107,6 @@ class Gantry:
                 self.notify(printer_name, body)
                 from . import telegram
                 telegram.notify(self, printer_name, body, "")
-            # Nothing is subtracted while Spoolbase is off, and nothing is remembered as subtracted
-            # either: switching it back on resumes from the grams the rolls had when it went off.
-            if event == "telemetry" and self._spoolbase_active():
-                from .consumption import on_finish
-                on_finish(self, serial, previous, current)
         previous_remaining = {slot.slot_id: slot.remaining for slot in previous.ams_slots}
         # Only warn for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain (issue #27).
         low = next((slot for slot in current.ams_slots if slot.remaining_weight_g is not None
