@@ -8,11 +8,14 @@ in ``$XDG_DATA_HOME/Spoolbase/`` next to the filament catalogue.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from .atomicfile import read_text_with_backup, write_text_atomic
 
 _DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))) / "Spoolbase"
 
@@ -289,16 +292,21 @@ class PhysicalSpoolStore:
         _save(self._usage_path, self.usage)
 
 
-def _load(path: Path) -> list[dict[str, Any]]:
+def _is_json_list(text: str) -> bool:
     try:
-        return json.loads(path.read_text())
-    except Exception:
-        return []
+        return isinstance(json.loads(text), list)
+    except ValueError:
+        return False
+
+
+def _load(path: Path) -> list[dict[str, Any]]:
+    # Falls back to the last good copy when a crash mid-write left the file empty or cut short.
+    text = read_text_with_backup(path, _is_json_list)
+    return json.loads(text) if text is not None else []
 
 
 def _save(path: Path, value: list[dict[str, Any]]) -> None:
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(value, indent=2, sort_keys=True))
-    except Exception:
-        pass
+        write_text_atomic(path, json.dumps(value, indent=2, sort_keys=True), keep_backup_if=_is_json_list)
+    except (OSError, TypeError, ValueError) as error:
+        logging.getLogger("gantry.spoolbase").warning("Could not save %s: %s", path, error)

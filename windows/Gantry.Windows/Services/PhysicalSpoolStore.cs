@@ -214,17 +214,27 @@ public sealed class PhysicalSpoolStore
 
     private static T? Load<T>(string path)
     {
-        try { return File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options) : default; }
-        catch { return default; }
+        T? value = default;
+        // Falls back to the last good copy when a crash mid-write left the file empty or cut short.
+        AtomicFile.ReadAllText(path, text => (value = Deserialize<T>(text)) is not null);
+        return value;
+    }
+
+    private static T? Deserialize<T>(string text)
+    {
+        try { return JsonSerializer.Deserialize<T>(text, Options); }
+        catch (JsonException) { return default; }
     }
 
     private static void Save<T>(string path, T value)
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(value, Options));
+            AtomicFile.WriteAllText(path, JsonSerializer.Serialize(value, Options), text => Deserialize<T>(text) is not null);
         }
-        catch { /* best effort */ }
+        catch (Exception e)
+        {
+            App.LogError($"Saving {Path.GetFileName(path)}", e);
+        }
     }
 }

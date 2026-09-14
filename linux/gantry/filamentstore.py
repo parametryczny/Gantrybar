@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from .atomicfile import read_text_with_backup, write_text_atomic
 
 TYPES = ["PLA", "PETG", "ABS", "ASA", "TPU", "PA", "PC", "ESD", "PVA", "Support"]
 
@@ -70,11 +71,18 @@ class Filament:
         return asdict(self)
 
 
+def _is_json_list(text: str) -> bool:
+    try:
+        return isinstance(json.loads(text), list)
+    except ValueError:
+        return False
+
+
 def load_catalog() -> list[dict[str, Any]]:
     for path in (_CATALOG_EDIT, _CATALOG_BUNDLED):
         try:
             if path.exists():
-                items = json.loads(path.read_text())
+                items = json.loads(read_text_with_backup(path, _is_json_list) or "null")
                 if isinstance(items, list):
                     return items
         except (OSError, ValueError):
@@ -85,7 +93,7 @@ def load_catalog() -> list[dict[str, Any]]:
 def save_catalog(catalog: list[dict[str, Any]]) -> None:
     try:
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        _CATALOG_EDIT.write_text(json.dumps(catalog, indent=2, sort_keys=True))
+        write_text_atomic(_CATALOG_EDIT, json.dumps(catalog, indent=2, sort_keys=True), keep_backup_if=_is_json_list)
     except OSError:
         pass
 
@@ -100,7 +108,7 @@ class FilamentStore:
         try:
             if self._inventory_path.exists():
                 self.filaments = [Filament.from_dict(item)
-                                  for item in json.loads(self._inventory_path.read_text())]
+                                  for item in json.loads(read_text_with_backup(self._inventory_path, _is_json_list) or "[]")]
             else:
                 self._save()
         except (OSError, ValueError):
@@ -145,7 +153,7 @@ class FilamentStore:
     def _save(self) -> None:
         try:
             self._inventory_path.parent.mkdir(parents=True, exist_ok=True)
-            self._inventory_path.write_text(json.dumps(
+            write_text_atomic(self._inventory_path, json.dumps(
                 [asdict(filament) for filament in self.filaments], indent=2, sort_keys=True))
         except OSError:
             pass

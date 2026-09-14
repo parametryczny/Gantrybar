@@ -14,5 +14,7 @@
     <Compile Include="../Gantry.Windows/Services/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../Gantry.Windows/Services/UpdateAssetSelector.cs" Link="UpdateAssetSelector.cs" />
     <Compile Include="../Gantry.Windows/Services/SpoolAccounting.cs" Link="SpoolAccounting.cs" />
+    <Compile Include="../Gantry.Windows/Services/AtomicFile.cs" Link="AtomicFile.cs" />
+    <Compile Include="../Gantry.Windows/Services/ScriptRunner.cs" Link="ScriptRunner.cs" />
   </ItemGroup>
 </Project>

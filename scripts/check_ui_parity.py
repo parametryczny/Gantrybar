@@ -1026,6 +1026,26 @@ for data_file in ("windows/Gantry.Windows/Services/Storage.cs", "windows/Gantry.
                   "windows/Gantry.Windows/Services/FilamentInventory.cs"):
     forbid(data_file, r"SpecialFolder\.ApplicationData", "a Windows store bypasses AppDataRoot")
 
+# Data files are written in one step with a last good copy, never straight into place.
+for data_file, in_place in (("windows/Gantry.Windows/Services/Storage.cs", r"File\.Create\(FilePath\)"),
+                            ("windows/Gantry.Windows/Services/PhysicalSpoolStore.cs", r"(?<!Atomic)File\.WriteAllText\("),
+                            ("windows/Gantry.Windows/Services/FilamentInventory.cs", r"(?<!Atomic)File\.WriteAllText\("),
+                            ("linux/gantry/physicalspool.py", r"\.write_text\("),
+                            ("linux/gantry/filamentstore.py", r"\.write_text\(")):
+    forbid(data_file, in_place, "a data file is written in place again, so a crash can leave it empty")
+# A replaced script's exit clears only its own entry.
+require("Sources/Gantry/Services/AutomationStore.swift", r"ObjectIdentifier\(current\) == identity",
+        "macOS: a replaced script's exit can unregister the run that replaced it")
+require("windows/Gantry.Windows/Services/ScriptRunner.cs", r"ReferenceEquals\(current, process\)",
+        "Windows: a replaced script's exit can unregister the run that replaced it")
+# Windows FTPS: a whole transfer has a deadline and always closes.
+require("windows/Gantry.Windows/Services/BambuFileClient.cs",
+        r"TransferTimeout = TimeSpan\.FromSeconds\(60\)[\s\S]*?finally\s*\{\s*Close\(\);\s*gate\.Release\(\);",
+        "Windows FTPS transfers have no deadline or can leave the connection open")
+# macOS 3MF cache: expired files leave on every touch and the total is capped.
+require("Sources/Gantry/Services/BambuFileClient.swift", r"struct FTPFileCache[\s\S]*?purgeExpired[\s\S]*?byteLimit",
+        "macOS 3MF cache keeps expired files or has no size cap")
+
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)
     for error in ERRORS:

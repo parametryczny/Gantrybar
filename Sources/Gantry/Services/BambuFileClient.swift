@@ -8,7 +8,7 @@ private actor BambuFTPBroker {
     static let shared = BambuFTPBroker()
     private var heldHosts = Set<String>()
     private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
-    private var cache: [String: (data: Data, date: Date)] = [:]
+    private var cache = FTPFileCache()
 
     func acquire(host: String) async {
         guard heldHosts.contains(host) else { heldHosts.insert(host); return }
@@ -25,15 +25,49 @@ private actor BambuFTPBroker {
         }
     }
 
-    func cached(_ key: String) -> Data? {
-        guard let value = cache[key], Date().timeIntervalSince(value.date) < 300 else {
-            cache[key] = nil
-            return nil
-        }
-        return value.data
+    func cached(_ key: String) -> Data? { cache.value(for: key) }
+
+    func store(_ data: Data, for key: String) { cache.store(data, for: key) }
+}
+
+/// Downloaded 3MFs kept for a few minutes, so spool accounting and the object selector asking for the
+/// same file do not transfer it twice. Expired files used to leave only when that same file was asked
+/// for again, so every other print stayed in memory for as long as the app ran. Now anything expired
+/// goes whenever the cache is touched, and the total is capped, oldest out first.
+struct FTPFileCache {
+    static let freshness: TimeInterval = 300
+    static let defaultByteLimit = 64 * 1024 * 1024
+
+    private var entries: [String: (data: Data, date: Date)] = [:]
+    private let byteLimit: Int
+
+    init(byteLimit: Int = FTPFileCache.defaultByteLimit) {
+        self.byteLimit = byteLimit
     }
 
-    func store(_ data: Data, for key: String) { cache[key] = (data, Date()) }
+    var count: Int { entries.count }
+    var totalBytes: Int { entries.values.reduce(0) { $0 + $1.data.count } }
+
+    mutating func value(for key: String, now: Date = Date()) -> Data? {
+        purgeExpired(now: now)
+        return entries[key]?.data
+    }
+
+    mutating func store(_ data: Data, for key: String, now: Date = Date()) {
+        purgeExpired(now: now)
+        guard data.count <= byteLimit else { return }
+        entries[key] = (data, now)
+        var total = totalBytes
+        while total > byteLimit,
+              let oldest = entries.filter({ $0.key != key }).min(by: { $0.value.date < $1.value.date }) {
+            total -= oldest.value.data.count
+            entries[oldest.key] = nil
+        }
+    }
+
+    private mutating func purgeExpired(now: Date) {
+        entries = entries.filter { now.timeIntervalSince($0.value.date) < Self.freshness }
+    }
 }
 
 /// Downloads the currently-printed `.gcode.3mf` from a Bambu printer over the printer's local FTPS
@@ -65,7 +99,9 @@ actor BambuFileClient {
     /// it directly and under the usual Bambu roots. Returns the raw 3mf bytes.
     func fetch(fileName: String) async throws -> Data {
         let base = (fileName as NSString).lastPathComponent
-        let cacheKey = host + "|" + base
+        // The whole reported path, not its last component: two folders holding a file of the same name
+        // are two different prints.
+        let cacheKey = host + "|" + fileName
         if let cached = await BambuFTPBroker.shared.cached(cacheKey) { return cached }
 
         await BambuFTPBroker.shared.acquire(host: host)
