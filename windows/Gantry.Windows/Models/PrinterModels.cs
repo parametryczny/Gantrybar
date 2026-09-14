@@ -64,6 +64,9 @@ public sealed class PrinterTelemetry
     public int? ChamberFanPercent { get; set; }
     public int? SpeedLevel { get; set; }     // Bambu spd_lvl: 1 Silent, 2 Standard, 3 Sport, 4 Ludicrous
     public int? SpeedPercent { get; set; }   // Bambu spd_mag or Moonraker speed_factor
+    // Bambu only: true when the printer takes control commands signed by Bambu Connect alone (LAN Only
+    // with Developer Mode is off). Null when the firmware does not report its feature mask.
+    public bool? CommandSigningRequired { get; set; }
     public double? NozzleDiameter { get; set; }
     public int? CurrentStage { get; set; }
     public string? JobName { get; set; }
@@ -108,6 +111,7 @@ public sealed class PrinterTelemetry
             ChamberFanPercent = ChamberFanPercent,
             SpeedLevel = SpeedLevel,
             SpeedPercent = SpeedPercent,
+            CommandSigningRequired = CommandSigningRequired,
             NozzleDiameter = NozzleDiameter,
             CurrentStage = CurrentStage,
             JobName = JobName,

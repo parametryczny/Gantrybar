@@ -25,6 +25,15 @@ final class PrinterStore: ObservableObject {
     }
     @Published private(set) var commandRejections: [String: CommandRejection] = [:]
     private var lastControlArea: [String: CommandRejection.Area] = [:]
+    /// Printers that refused a command with "mqtt message verify failed", for firmware that does not
+    /// report its feature mask.
+    @Published private(set) var signingRejected: Set<String> = []
+
+    /// Whether a Bambu printer takes control commands only when signed by Bambu Connect. The feature
+    /// mask decides when the printer reports one; otherwise a refusal already seen does.
+    func requiresSignedCommands(serial: String) -> Bool {
+        telemetry[serial]?.commandSigningRequired ?? signingRejected.contains(serial)
+    }
 
     /// Rolling temperature history per printer, drawn by the detail window's graph. Deliberately not
     /// @Published — the detail view already redraws on the store's telemetry change, so publishing it
@@ -860,7 +869,9 @@ final class PrinterStore: ObservableObject {
         case .commandReply(let reply):
             if reply.accepted {
                 commandRejections[serial] = nil
+                signingRejected.remove(serial)
             } else {
+                if reply.reason?.localizedCaseInsensitiveContains("verify failed") == true { signingRejected.insert(serial) }
                 commandRejections[serial] = CommandRejection(reason: reply.reason ?? reply.command,
                                                              area: lastControlArea[serial] ?? .fans, date: Date())
             }

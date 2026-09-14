@@ -55,6 +55,9 @@ struct PrinterTelemetry: Equatable, Sendable {
     var chamberFanPercent: Int?
     var speedLevel: Int?        // Bambu spd_lvl: 1 Silent, 2 Standard, 3 Sport, 4 Ludicrous
     var speedPercent: Int?      // Bambu spd_mag
+    /// Bambu only: true when the printer takes control commands signed by Bambu Connect alone (LAN
+    /// Only with Developer Mode is off). Nil when the firmware does not report its feature mask.
+    var commandSigningRequired: Bool?
     var nozzleDiameter: Double?
     var currentStage: Int?
     var jobName: String?

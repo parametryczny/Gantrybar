@@ -66,6 +66,11 @@ enum BambuStatusParser {
         if let value = fanPercent(report["big_fan2_speed"]) { result.chamberFanPercent = value }
         if let value = integer(report["spd_lvl"]) { result.speedLevel = value }
         if let value = integer(report["spd_mag"]) { result.speedPercent = value }
+        // "fun" is a hex feature mask. Bit 0x20000000 set means the printer only takes commands signed
+        // by Bambu Connect; LAN Only with Developer Mode clears it (as read by ha-bambulab).
+        if let fun = report["fun"] as? String, let mask = UInt64(fun, radix: 16) {
+            result.commandSigningRequired = mask & 0x2000_0000 != 0
+        }
         if let value = number(report["nozzle_diameter"]), value > 0 { result.nozzleDiameter = value }
         if let stage = report["stage"] as? [String: Any], let value = integer(stage["_id"]) {
             result.currentStage = value

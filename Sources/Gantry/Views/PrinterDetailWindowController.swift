@@ -795,7 +795,10 @@ final class PrinterDetailViewController: NSViewController {
 
         graph.samples = store.temperatureHistory[serial] ?? []
         let kind = printer?.kind
-        let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper)
+        // A Bambu printer that only takes commands signed by Bambu Connect would refuse every capsule,
+        // so it keeps the read-only view and gets one notice saying what to switch on.
+        let signingBlocked = kind == .bambu && store.requiresSignedCommands(serial: serial)
+        let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper) && !signingBlocked
         for chip in [nozzleChip, bedChip, chamberChip] { chip.largeReading = controlEnabled }
         nozzleChip.showsControl = controlEnabled
         bedChip.showsControl = controlEnabled
@@ -840,6 +843,10 @@ final class PrinterDetailViewController: NSViewController {
             let shown = controlEnabled && rejection?.area == area
             notice.stringValue = shown ? Self.rejectionText(rejection?.reason ?? "", settings: settings) : ""
             notice.isHidden = !shown
+        }
+        if settings.printerControlEnabled && signingBlocked {
+            temperatureNotice.stringValue = settings.t("Controls are off: the printer only accepts commands signed by Bambu Connect. Turn on LAN Only mode and then Developer Mode on the printer to control it from Gantry.")
+            temperatureNotice.isHidden = false
         }
         if let d = t.nozzleDiameter {
             diameterLabel.stringValue = String(format: "⌀ %.1f mm", d)

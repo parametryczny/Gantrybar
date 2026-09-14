@@ -22,6 +22,13 @@ import Foundation
                 == BambuCommandReply(command: "gcode_line", accepted: false, reason: "FAIL"))
     }
 
+    @Test func featureMaskTellsWhetherSignedCommandsAreRequired() {
+        // The two masks ha-bambulab documents: Developer Mode off, then on.
+        #expect(BambuStatusParser.telemetry(from: Data(#"{"print":{"gcode_state":"IDLE","fun":"3EC1AFFF9CFF"}}"#.utf8))?.commandSigningRequired == true)
+        #expect(BambuStatusParser.telemetry(from: Data(#"{"print":{"gcode_state":"IDLE","fun":"3EC18FFF9CFF"}}"#.utf8))?.commandSigningRequired == false)
+        #expect(BambuStatusParser.telemetry(from: Data(#"{"print":{"gcode_state":"IDLE","mc_percent":5}}"#.utf8))?.commandSigningRequired == nil)
+    }
+
     @Test func ignoresTelemetryAndOtherCommands() {
         #expect(reply(#"{"print":{"gcode_state":"RUNNING","mc_percent":42,"spd_lvl":2}}"#) == nil)
         #expect(reply(#"{"print":{"command":"pause","result":"success"}}"#) == nil)

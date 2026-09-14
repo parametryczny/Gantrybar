@@ -987,6 +987,14 @@ require("Sources/Gantry/Services/MQTTClient.swift", r"BambuCommandReply\.parse\(
         "macOS does not read the printer's replies to control commands")
 require("windows/Gantry.Windows/Services/MqttClient.cs", r"BambuCommandReply\.Parse\(payload\)",
         "Windows does not read the printer's replies to control commands")
+signing = detail_controls["commandSigning"]
+signing_bit = int(signing["bit"], 16)
+require("Sources/Gantry/Services/BambuStatusParser.swift", rf'report\["fun"\][\s\S]*?mask & 0x{signing_bit:_X}'.replace("0x2_0000000", "0x2000_0000"),
+        "macOS does not read Bambu's command-signing bit")
+require("windows/Gantry.Windows/Services/StatusParser.cs", rf'"fun"[\s\S]*?mask & 0x{signing_bit:X}UL',
+        "Windows does not read Bambu's command-signing bit")
+require(mac_detail, r"&& !signingBlocked", "macOS shows Bambu controls a signing printer would refuse")
+require(win_detail, r"&& !_signingBlocked", "Windows shows Bambu controls a signing printer would refuse")
 forbid(mac_detail, r"CompactControlSlider", "macOS brought back the loose plus/minus row under the tiles")
 forbid(win_detail, r"TempChip\(", "Windows rebuilds temperature chips, which would drop a capsule mid-change")
 require("windows/Gantry.Windows/Services/Storage.cs", rf'"{detail_controls["setting"]}"', "Windows is missing the printer-control setting")

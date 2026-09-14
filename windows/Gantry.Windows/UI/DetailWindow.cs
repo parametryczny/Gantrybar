@@ -31,7 +31,7 @@ public sealed class DetailView : UserControl
     // Temperature tiles are kept, not rebuilt: a setpoint capsule inside one has to survive telemetry.
     private readonly TempTile _nozzleTile, _bedTile, _chamberTile;
     // Printer control, opt-in in Advanced settings (Bambu and Klipper, like macOS).
-    private readonly bool _controlEnabled;
+    private readonly bool _controlEnabled, _signingBlocked;
     private readonly ControlStepper? _nozzleStepper, _bedStepper, _partFanStepper, _auxFanStepper, _chamberFanStepper, _speedStepper, _speedLevelStepper;
     // A refused command shows as the printer's reason on the card that sent it.
     private readonly TextBlock _temperatureNotice = Notice(), _fanNotice = Notice();
@@ -147,7 +147,10 @@ public sealed class DetailView : UserControl
         _graph.SizeChanged += (_, _) => DrawGraph();
         // The setpoint lives inside the tile it changes. The three tiles share one row height, so the
         // chamber, which has no setpoint, keeps its reading on the nozzle's and bed's line.
-        _controlEnabled = AppSettings.PrinterControlEnabled && _kind is PrinterKind.Bambu or PrinterKind.Klipper;
+        // A Bambu printer that only takes commands signed by Bambu Connect would refuse every capsule, so
+        // it keeps the read-only view and gets one notice saying what to switch on.
+        _signingBlocked = _kind == PrinterKind.Bambu && store.RequiresSignedCommands(serial);
+        _controlEnabled = AppSettings.PrinterControlEnabled && (_kind is PrinterKind.Bambu or PrinterKind.Klipper) && !_signingBlocked;
         if (_controlEnabled)
         {
             _nozzleStepper = new ControlStepper(0, 300, 5, true, "°");
@@ -508,6 +511,11 @@ public sealed class DetailView : UserControl
         var refusal = _store.CommandRejections.TryGetValue(_serial, out var found) && (DateTime.UtcNow - found.At).TotalSeconds < 120 ? found : null;
         SetNotice(_temperatureNotice, refusal, PrinterStore.ControlArea.Temperature);
         SetNotice(_fanNotice, refusal, PrinterStore.ControlArea.Fans);
+        if (AppSettings.PrinterControlEnabled && _signingBlocked)
+        {
+            _temperatureNotice.Text = AppSettings.T("Controls are off: the printer only accepts commands signed by Bambu Connect. Turn on LAN Only mode and then Developer Mode on the printer to control it from Gantry.");
+            _temperatureNotice.Visibility = Visibility.Visible;
+        }
         _speed.Text = speedText ?? "";
         _speed.Visibility = speedText is null ? Visibility.Collapsed : Visibility.Visible;
         _diameter.Text = t.NozzleDiameter is { } d ? $"⌀ {d.ToString("0.0", CultureInfo.InvariantCulture)} mm" : "";

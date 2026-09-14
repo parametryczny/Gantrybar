@@ -27,6 +27,16 @@ public sealed class PrinterStore
     public sealed record CommandRejection(string Reason, ControlArea Area, DateTime At);
     public Dictionary<string, CommandRejection> CommandRejections { get; } = new();
     private readonly Dictionary<string, ControlArea> _lastControlArea = new();
+    /// <summary>Printers that refused a command with "mqtt message verify failed", for firmware that
+    /// does not report its feature mask.</summary>
+    public HashSet<string> SigningRejected { get; } = new();
+
+    /// <summary>Whether a Bambu printer takes control commands only when signed by Bambu Connect. The
+    /// feature mask decides when the printer reports one; otherwise a refusal already seen does.</summary>
+    public bool RequiresSignedCommands(string serial) =>
+        Telemetry.TryGetValue(serial, out var current) && current.CommandSigningRequired is { } required
+            ? required
+            : SigningRejected.Contains(serial);
     /// <summary>Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool
     /// auto-detached because an NFC roll was inserted into its slot).</summary>
     public Dictionary<string, List<string>> SpoolNotices { get; } = new();
@@ -577,9 +587,17 @@ public sealed class PrinterStore
             case MqttEventType.CommandReply:
                 if (evt.Reply is { } commandReply)
                 {
-                    if (commandReply.Accepted) CommandRejections.Remove(serial);
-                    else CommandRejections[serial] = new CommandRejection(commandReply.Reason ?? commandReply.Command,
-                        _lastControlArea.TryGetValue(serial, out var controlArea) ? controlArea : ControlArea.Fans, DateTime.UtcNow);
+                    if (commandReply.Accepted)
+                    {
+                        CommandRejections.Remove(serial);
+                        SigningRejected.Remove(serial);
+                    }
+                    else
+                    {
+                        if (commandReply.Reason?.Contains("verify failed", StringComparison.OrdinalIgnoreCase) == true) SigningRejected.Add(serial);
+                        CommandRejections[serial] = new CommandRejection(commandReply.Reason ?? commandReply.Command,
+                            _lastControlArea.TryGetValue(serial, out var controlArea) ? controlArea : ControlArea.Fans, DateTime.UtcNow);
+                    }
                 }
                 break;
 

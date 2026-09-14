@@ -172,6 +172,7 @@
   "Connection works.": "Połączenie działa.",
   "Control": "Sterowanie",
   "Control & automations": "Sterowanie i automatyzacje",
+  "Controls are off: the printer only accepts commands signed by Bambu Connect. Turn on LAN Only mode and then Developer Mode on the printer to control it from Gantry.": "Sterowanie wyłączone: drukarka przyjmuje tylko polecenia podpisane przez Bambu Connect. Aby sterować nią z Gantry, włącz na drukarce tryb Tylko LAN, a potem Tryb deweloperski.",
   "Cooling bed": "Chłodzenie stołu",
   "Cooling chamber": "Chłodzenie komory",
   "Cooling nozzle": "Chłodzenie dyszy",

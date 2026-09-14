@@ -736,6 +736,13 @@
     },
     "fanEchoTolerance": 7,
     "commandReplies": "replies to gcode_line and print_speed are read; a refusal shows the printer's reason on the card whose control sent it, for 120 s",
+    "commandSigning": {
+      "field": "print.fun",
+      "bit": "0x20000000",
+      "meaning": "set: the printer only takes commands signed by Bambu Connect; cleared by LAN Only mode with Developer Mode",
+      "fallback": "without the field, a reply of mqtt message verify failed marks the printer the same way",
+      "behaviour": "Bambu controls stay read-only and the temperature card says what to switch on"
+    },
     "values": "snapped to the step grid; a heater target of 0 reads as off; the command goes out once the value settles and a pending one is sent when the view closes",
     "temperatureTiles": "the capsule sits inside the nozzle and bed tiles and carries the target; the tile reads the live temperature; all three readings share one size and line",
     "fanTiles": "two to a row; Klipper shows part fan and speed only; the read-only gauges are hidden while the tiles show",
