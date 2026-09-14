@@ -80,7 +80,11 @@ internal static class RenderHarness
     private static void RenderDetail(string path)
     {
         var wasEnabled = AppSettings.PrinterControlEnabled;
+        var wasHidden = AppSettings.DetailHiddenModules;
         AppSettings.PrinterControlEnabled = true;
+        // The runner's screen caps a window at about 750 px, so the cards above the controls are hidden
+        // to bring the temperature and fan cards into the picture.
+        AppSettings.DetailHiddenModules = "recent,maintenance,stats,camera,ams";
         try
         {
             var store = new PrinterStore(a => a());
@@ -106,6 +110,7 @@ internal static class RenderHarness
         finally
         {
             AppSettings.PrinterControlEnabled = wasEnabled;
+            AppSettings.DetailHiddenModules = wasHidden;
         }
     }
 
