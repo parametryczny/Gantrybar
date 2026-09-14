@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from gi.repository import Gtk  # type: ignore  # noqa: E402
+from gi.repository import GLib, Gtk  # type: ignore  # noqa: E402
 
 from . import i18n
-from .automation import (ACTIONS, AutomationStore, TRIGGERS, action_summary, new_rule,
+from .automation import (ACTIONS, AutomationStore, TRIGGERS, action_summary, new_rule, state_label,
                          trigger_summary)
 from .core import PrinterState
 
@@ -56,6 +56,26 @@ class AutomationsWindow(Gtk.Window):
         self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         scroll.add(self.list)
         self._render()
+        # A script starting or ending, from a rule or from here, redraws the Run and Stop buttons.
+        engine = getattr(app, "automations", None)
+        if engine is not None:
+            listener = lambda: GLib.idle_add(self._render_if_open)
+            engine.listeners.append(listener)
+            self.connect("destroy", lambda *_: engine.listeners.remove(listener) if listener in engine.listeners else None)
+
+    def _render_if_open(self) -> bool:
+        if self.get_visible():
+            self._render()
+        return False
+
+    def _run_or_stop(self, rule: dict[str, Any]) -> None:
+        engine = self.app.automations
+        rule_id = str(rule.get("id"))
+        if rule.get("action", {}).get("type") == "script" and engine.is_script_running(rule_id):
+            engine.stop_script(rule_id)
+        else:
+            engine.run(self.serial, rule)
+        self._render()
 
     def _pl(self) -> bool:
         return self.app.language == "pl"
@@ -97,8 +117,10 @@ class AutomationsWindow(Gtk.Window):
         texts.pack_start(sub, False, False, 0)
         box.pack_start(texts, True, True, 0)
 
-        run = Gtk.Button(label=(i18n.t("Run")))
-        run.connect("clicked", lambda _b: self.app.automations.run(self.serial, rule))
+        running = (rule.get("action", {}).get("type") == "script"
+                   and self.app.automations.is_script_running(str(rule.get("id"))))
+        run = Gtk.Button(label=i18n.t("Stop") if running else i18n.t("Run"))
+        run.connect("clicked", lambda _b: self._run_or_stop(rule))
         box.pack_start(run, False, False, 0)
         edit = Gtk.Button(label=(i18n.t("Edit")))
         edit.connect("clicked", lambda _b: self._edit(rule))
@@ -152,7 +174,7 @@ class AutomationsWindow(Gtk.Window):
 
         state_combo = Gtk.ComboBoxText()
         for state in _STATE_CHOICES:
-            state_combo.append(state, state)
+            state_combo.append(state, state_label(state))
         state_combo.set_active_id(rule.get("trigger", {}).get("value") if rule.get("trigger", {}).get("type") == "on_state" else PrinterState.FINISHED.value)
         labeled(i18n.t("State"), state_combo)
 
@@ -162,9 +184,14 @@ class AutomationsWindow(Gtk.Window):
         action_combo.set_active_id(rule.get("action", {}).get("type", "light_off"))
         labeled(i18n.t("Action"), action_combo)
 
-        text_entry = Gtk.Entry()
-        text_entry.set_text(rule.get("action", {}).get("text", ""))
-        text_entry.set_placeholder_text(i18n.t("text / command / script"))
+        # Several lines, monospaced: a script or a raw command rarely fits on one line.
+        text_view = Gtk.TextView(monospace=True, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        text_view.get_buffer().set_text(rule.get("action", {}).get("text", ""))
+        text_view.set_tooltip_text(i18n.t("text / command / script"))
+        text_entry = Gtk.ScrolledWindow()
+        text_entry.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        text_entry.set_min_content_height(110)
+        text_entry.add(text_view)
         labeled(i18n.t("Text"), text_entry)
 
         def sync_visibility(*_a: Any) -> None:
@@ -190,7 +217,7 @@ class AutomationsWindow(Gtk.Window):
                 value = state_combo.get_active_id()
             rule["name"] = name_entry.get_text().strip() or (i18n.t("Rule"))
             rule["trigger"] = {"type": tk, "value": value}
-            rule["action"] = {"type": action_combo.get_active_id() or "light_off", "text": text_entry.get_text()}
+            rule["action"] = {"type": action_combo.get_active_id() or "light_off", "text": text_view.get_buffer().get_text(*text_view.get_buffer().get_bounds(), True)}
             self.store.upsert(self.serial, rule)
             self._render()
         dialog.destroy()

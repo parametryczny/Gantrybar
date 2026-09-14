@@ -66,7 +66,7 @@ public static class FilamentConsumption
             for (int si = 0; si < groups[gi].Slots.Count; si++)
             {
                 var slot = groups[gi].Slots[si];
-                slots.Add(new SlotRef(gi, si, groups[gi].IsExternal, slot.IsActive, slot.IsPresent, slot.ColorHex));
+                slots.Add(new SlotRef(gi, si, groups[gi].IsExternal, slot.IsActive, slot.IsPresent, slot.ColorHex, slot.Material));
             }
         return slots;
     }
@@ -106,7 +106,7 @@ public static class FilamentConsumption
             {
                 var data = await new BambuFileClient(host, code).FetchAsync(file);
                 var filaments = ThreeMFReader.Filaments(data)
-                    .Select(f => (Id: f.Id.ToString(), UsedGrams: f.UsedGrams, ColorHex: f.ColorHex ?? ""))
+                    .Select(f => (Id: f.Id.ToString(), UsedGrams: f.UsedGrams, ColorHex: f.ColorHex ?? "", Type: f.Type ?? ""))
                     .ToList();
                 System.Windows.Application.Current?.Dispatcher.Invoke(() =>
                 {

@@ -625,6 +625,84 @@ class Gantry:
         sender = getattr(connection, "send_gcode", None)
         return bool(sender(script)) if callable(sender) else False
 
+    # --- printer control (opt-in; Bambu and Klipper, as on macOS and Windows) ------------------------
+    def send_printer_gcode(self, serial: str, line: str) -> bool:
+        """One G-code line to a printer that takes them: Klipper over Moonraker, Bambu as an MQTT
+        gcode_line. Other brands have no route for it and are left alone."""
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is None:
+            return False
+        if printer.kind == PrinterKind.KLIPPER:
+            return self.send_gcode(serial, line)
+        if printer.kind == PrinterKind.BAMBU:
+            from .control import gcode_line_payload
+            return self.send_command(serial, gcode_line_payload(line))
+        return False
+
+    def _note_control(self, serial: str, area: str) -> None:
+        self.__dict__.setdefault("last_control_area", {})[serial] = area
+
+    def set_nozzle_temperature(self, serial: str, celsius: int) -> bool:
+        self._note_control(serial, "temperature")
+        return self.send_printer_gcode(serial, f"M104 S{max(0, min(300, int(celsius)))}")
+
+    def set_bed_temperature(self, serial: str, celsius: int) -> bool:
+        self._note_control(serial, "temperature")
+        return self.send_printer_gcode(serial, f"M140 S{max(0, min(120, int(celsius)))}")
+
+    def set_fan(self, serial: str, index: int, percent: int) -> bool:
+        """Bambu fan indices: P1 part, P2 auxiliary, P3 chamber. Klipper exposes the part fan through M106."""
+        self._note_control(serial, "fans")
+        value = round(max(0, min(100, int(percent))) * 2.55)
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is None:
+            return False
+        if printer.kind == PrinterKind.KLIPPER:
+            return index == 1 and self.send_gcode(serial, f"M106 S{value}")
+        if printer.kind == PrinterKind.BAMBU:
+            return self.send_printer_gcode(serial, f"M106 P{index} S{value}")
+        return False
+
+    def set_print_speed(self, serial: str, percent: int) -> bool:
+        """A speed percentage, for Klipper. Bambu takes a speed mode instead, see set_print_speed_level."""
+        self._note_control(serial, "fans")
+        return self.send_printer_gcode(serial, f"M220 S{max(10, min(166, int(percent)))}")
+
+    def set_print_speed_level(self, serial: str, level: int) -> bool:
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is None or printer.kind != PrinterKind.BAMBU:
+            return False
+        self._note_control(serial, "fans")
+        from .control import speed_level_payload
+        return self.send_command(serial, speed_level_payload(level))
+
+    def requires_signed_commands(self, serial: str) -> bool:
+        """Whether a Bambu printer takes control commands only when signed by Bambu Connect. Its feature mask
+        decides when the printer reports one; otherwise a refusal already seen does."""
+        flag = getattr(self.telemetry.get(serial), "command_signing_required", None)
+        return flag if flag is not None else serial in self.__dict__.get("signing_rejected", set())
+
+    def command_rejection(self, serial: str) -> dict | None:
+        from .control import REJECTION_SECONDS
+        rejection = self.__dict__.get("command_rejections", {}).get(serial)
+        return rejection if rejection and time.monotonic() - rejection["at"] < REJECTION_SECONDS else None
+
+    def _record_command_reply(self, serial: str, reply: dict) -> None:
+        rejections = self.__dict__.setdefault("command_rejections", {})
+        signing = self.__dict__.setdefault("signing_rejected", set())
+        if reply.get("accepted"):
+            rejections.pop(serial, None)
+            signing.discard(serial)
+        else:
+            reason = str(reply.get("reason") or reply.get("command") or "")
+            if "verify failed" in reason.lower():
+                signing.add(serial)
+            rejections[serial] = {"reason": reason, "at": time.monotonic(),
+                                  "area": self.__dict__.get("last_control_area", {}).get(serial, "fans")}
+        panel = getattr(self, "detail_window", None)
+        if panel is not None and getattr(panel, "serial", None) == serial:
+            panel.update(self.telemetry.get(serial, Telemetry()))
+
     def set_chamber_light(self, serial: str, on: bool) -> None:
         printer = next((p for p in self.printers if p.serial == serial), None)
         from .overrides import overrides_for
@@ -1050,6 +1128,9 @@ class Gantry:
         self.connections[printer.serial] = connection; connection.start()
 
     def on_event(self, serial: str, event: str, value: object | None) -> bool:
+        if event == "command_reply" and isinstance(value, dict):
+            self._record_command_reply(serial, value)
+            return False
         # Kiosk and headless integration harnesses share the transport handler, not the desktop host.
         if not hasattr(self, "startup"):
             from .startup import StartupState

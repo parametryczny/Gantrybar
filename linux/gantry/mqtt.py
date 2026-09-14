@@ -145,6 +145,7 @@ class MqttConnection:
                     delay = min(delay * 1.7, 30.0)
 
     def _connect_and_read(self) -> None:
+        from .control import parse_command_reply
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
@@ -183,6 +184,10 @@ class MqttConnection:
                     payload = publish_payload(header, body)
                     if payload is None:
                         continue
+                    # The printer's answer to a control command, so a refusal shows as its reason.
+                    reply = parse_command_reply(payload)
+                    if reply is not None:
+                        self.on_event("command_reply", reply)
                     updated = parse_telemetry(payload, self.telemetry)
                     if updated:
                         self.telemetry = updated

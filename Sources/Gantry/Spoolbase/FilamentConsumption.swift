@@ -151,19 +151,27 @@ enum FilamentConsumption {
         func hex6(_ value: String?) -> String {
             String((value ?? "").replacingOccurrences(of: "#", with: "").uppercased().prefix(6))
         }
-        func location(colorHex: String) -> SpoolLocation? {
-            let wanted = hex6(colorHex)
+        // The slot a filament was printed from, by colour. Two slots of one colour are told apart by
+        // material; still more than one means the job cannot say which roll it used, so nothing is
+        // charged rather than the first match (two black rolls used to be charged as one).
+        func location(for filament: SlicedFilament) -> SpoolLocation? {
+            let wanted = hex6(filament.colorHex)
             guard !wanted.isEmpty else { return nil }
+            var matches: [(location: SpoolLocation, material: String)] = []
             for (groupIndex, group) in groups.enumerated() {
                 for (slotIndex, slot) in group.slots.enumerated() where hex6(slot.colorHex) == wanted {
-                    return slotLocation(serial: serial, groups: groups, group: groupIndex, slot: slotIndex)
+                    matches.append((slotLocation(serial: serial, groups: groups, group: groupIndex, slot: slotIndex),
+                                    (slot.material ?? "").uppercased()))
                 }
             }
-            return nil
+            if matches.count > 1, !filament.type.isEmpty {
+                matches = matches.filter { $0.material == filament.type.uppercased() }
+            }
+            return matches.count == 1 ? matches[0].location : nil
         }
         var charges: [SpoolCharge] = []
         for filament in filaments where filament.usedGrams > 0 {
-            let target = location(colorHex: filament.colorHex)
+            let target = location(for: filament)
                 ?? (filaments.count == 1
                     ? loadedSlot(serial: serial, groups: groups, hasSpool: { assigned[$0] != nil })?.location : nil)
             guard let target, let spoolID = assigned[target] else { continue }

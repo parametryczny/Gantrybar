@@ -16,5 +16,6 @@
     <Compile Include="../Gantry.Windows/Services/SpoolAccounting.cs" Link="SpoolAccounting.cs" />
     <Compile Include="../Gantry.Windows/Services/AtomicFile.cs" Link="AtomicFile.cs" />
     <Compile Include="../Gantry.Windows/Services/ScriptRunner.cs" Link="ScriptRunner.cs" />
+    <Compile Include="../Gantry.Windows/Services/BambuPaths.cs" Link="BambuPaths.cs" />
   </ItemGroup>
 </Project>

@@ -71,7 +71,7 @@ public sealed class BambuFileClient
         await SendAsync("TYPE I"); await ReadResponseAsync();
 
         var baseName = Path.GetFileName(fileName);
-        string[] candidates = { fileName, "/" + baseName, baseName, "/cache/" + baseName, "/model/" + baseName };
+        var candidates = BambuPaths.CandidatePaths(fileName);
         string lastError = "no candidate path worked";
         foreach (var path in candidates)
         {

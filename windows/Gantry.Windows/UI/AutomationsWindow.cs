@@ -1,13 +1,15 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Gantry.Models;
 using Gantry.Services;
 
 namespace Gantry.UI;
 
 /// Per-printer automations editor: rules of trigger → action, including custom commands and scripts.
-/// Mirrors the macOS AutomationsWindow. Saves on the "Zapisz" button.
+/// Mirrors the macOS AutomationsWindow, including saving every change as it is made. A Save button lost
+/// edits when the window was closed without it, and Run used the rule on screen rather than the saved one.
 public sealed class AutomationsWindow : Window
 {
     private readonly PrinterStore _store;
@@ -15,6 +17,8 @@ public sealed class AutomationsWindow : Window
     private readonly bool _pl;
     private readonly StackPanel _list = new();
     private readonly List<Row> _rows = new();
+    // Typing saves once it pauses, not on every key.
+    private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
 
     private static readonly (string pl, string en)[] TriggerNames =
         { ("Ręczny", "Manual"), ("Po warstwie", "At layer"), ("Po %", "At %"), ("Gdy stan", "On state") };
@@ -41,20 +45,21 @@ public sealed class AutomationsWindow : Window
 
         var root = new DockPanel { Margin = new Thickness(16) };
 
+        _saveTimer.Tick += (_, _) => FlushSave();
+        Closing += (_, _) => FlushSave();
+
         var addButton = new Button { Content = AppSettings.T("＋ Add automation"), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 6, 12, 6) };
-        addButton.Click += (_, _) => { AddRow(new PrinterAutomation { Name = AppSettings.T("New automation"), TriggerKind = "layer", TriggerValue = 1, ActionKind = "lightOff" }); };
-        var saveButton = new Button { Content = AppSettings.T("Save"), HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(14, 6, 14, 6) };
-        saveButton.Click += (_, _) => Save();
+        addButton.Click += (_, _) =>
+        {
+            AddRow(new PrinterAutomation { Name = AppSettings.T("New automation"), TriggerKind = "layer", TriggerValue = 1, ActionKind = "lightOff" });
+            FlushSave();
+        };
 
         var header = new StackPanel();
         header.Children.Add(new TextBlock { Text = AppSettings.T("Automations"), FontSize = 15, FontWeight = FontWeights.Bold, Foreground = White() });
-        header.Children.Add(new TextBlock { Text = AppSettings.T("Trigger → action. Conditional rules fire once per print. Scripts run with your privileges."), FontSize = 11, Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 8) });
-        var topButtons = new Grid();
-        topButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        topButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        topButtons.Children.Add(addButton);
-        Grid.SetColumn(saveButton, 1); topButtons.Children.Add(saveButton);
-        header.Children.Add(topButtons);
+        header.Children.Add(new TextBlock { Text = AppSettings.T("Trigger → action. Conditional rules fire once per print. Scripts run with your privileges."), FontSize = 11, Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 2) });
+        header.Children.Add(new TextBlock { Text = AppSettings.T("Changes are saved automatically."), FontSize = 11, Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
+        header.Children.Add(addButton);
         DockPanel.SetDock(header, Dock.Top);
         root.Children.Add(header);
 
@@ -102,7 +107,7 @@ public sealed class AutomationsWindow : Window
         var runButton = new Button { Content = AppSettings.T("Run"), Padding = new Thickness(10, 3, 10, 3) };
         runButton.Click += (_, _) => RunRow(row);
         var deleteButton = new Button { Content = "🗑", Padding = new Thickness(8, 3, 8, 3) };
-        deleteButton.Click += (_, _) => { _list.Children.Remove(row.Root); _rows.Remove(row); Save(); };
+        deleteButton.Click += (_, _) => { _list.Children.Remove(row.Root); _rows.Remove(row); FlushSave(); };
         var topRow = new StackPanel { Orientation = Orientation.Horizontal };
         topRow.Children.Add(row.Enabled);
         topRow.Children.Add(new TextBlock { Text = " ", Width = 6 });
@@ -147,6 +152,13 @@ public sealed class AutomationsWindow : Window
         row.State.SelectionChanged += (_, _) => RefreshSummary();
         row.Action.SelectionChanged += (_, _) => RefreshSummary();
         UpdateSummary(row);
+        row.Enabled.Click += (_, _) => ScheduleSave();
+        row.Name.TextChanged += (_, _) => ScheduleSave();
+        row.Trigger.SelectionChanged += (_, _) => ScheduleSave();
+        row.TriggerValue.TextChanged += (_, _) => ScheduleSave();
+        row.State.SelectionChanged += (_, _) => ScheduleSave();
+        row.Action.SelectionChanged += (_, _) => ScheduleSave();
+        row.ActionText.TextChanged += (_, _) => ScheduleSave();
 
         row.Root = new Border { Background = GTheme.Brush(GTheme.Surface), BorderBrush = GTheme.Brush(GTheme.Line), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 12), Child = stack };
         GTheme.ApplyWindowTheme(this);
@@ -171,6 +183,8 @@ public sealed class AutomationsWindow : Window
 
     private void RunRow(Row row)
     {
+        // Run the rule as saved, so what was tested is what fires later.
+        FlushSave();
         var auto = row.ToModel();
         if (auto.IsScript && !ScriptRunner.IsRunning(auto.Id))
         {
@@ -184,8 +198,15 @@ public sealed class AutomationsWindow : Window
         else _store.RunAutomation(auto, _serial);
     }
 
-    private void Save()
+    private void ScheduleSave()
     {
+        _saveTimer.Stop();
+        _saveTimer.Start();
+    }
+
+    private void FlushSave()
+    {
+        _saveTimer.Stop();
         AutomationStore.Set(_serial, _rows.Select(r => r.ToModel()).ToList());
     }
 

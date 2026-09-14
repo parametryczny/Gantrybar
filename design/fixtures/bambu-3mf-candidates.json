@@ -1,0 +1,102 @@
+[
+  {
+    "file": "cube.gcode.3mf",
+    "paths": [
+      "cube.gcode.3mf",
+      "/cube.gcode.3mf",
+      "/cache/cube.gcode.3mf",
+      "cache/cube.gcode.3mf",
+      "/model/cube.gcode.3mf",
+      "model/cube.gcode.3mf",
+      "/data/cube.gcode.3mf",
+      "data/cube.gcode.3mf"
+    ]
+  },
+  {
+    "file": "/cache/Benchy%20v2.gcode.3mf",
+    "paths": [
+      "cache/Benchy v2.gcode.3mf",
+      "/cache/Benchy v2.gcode.3mf",
+      "/model/Benchy v2.gcode.3mf",
+      "model/Benchy v2.gcode.3mf",
+      "/data/Benchy v2.gcode.3mf",
+      "data/Benchy v2.gcode.3mf",
+      "Benchy v2.gcode.3mf",
+      "/Benchy v2.gcode.3mf",
+      "cache/Benchy_v2.gcode.3mf",
+      "/cache/Benchy_v2.gcode.3mf",
+      "/model/Benchy_v2.gcode.3mf",
+      "model/Benchy_v2.gcode.3mf",
+      "/data/Benchy_v2.gcode.3mf",
+      "data/Benchy_v2.gcode.3mf",
+      "Benchy_v2.gcode.3mf",
+      "/Benchy_v2.gcode.3mf"
+    ]
+  },
+  {
+    "file": "Rack Plate",
+    "paths": [
+      "Rack Plate",
+      "/Rack Plate",
+      "/cache/Rack Plate",
+      "cache/Rack Plate",
+      "/model/Rack Plate",
+      "model/Rack Plate",
+      "/data/Rack Plate",
+      "data/Rack Plate",
+      "Rack Plate.gcode.3mf",
+      "/Rack Plate.gcode.3mf",
+      "/cache/Rack Plate.gcode.3mf",
+      "cache/Rack Plate.gcode.3mf",
+      "/model/Rack Plate.gcode.3mf",
+      "model/Rack Plate.gcode.3mf",
+      "/data/Rack Plate.gcode.3mf",
+      "data/Rack Plate.gcode.3mf",
+      "Rack Plate.3mf",
+      "/Rack Plate.3mf",
+      "/cache/Rack Plate.3mf",
+      "cache/Rack Plate.3mf",
+      "/model/Rack Plate.3mf",
+      "model/Rack Plate.3mf",
+      "/data/Rack Plate.3mf",
+      "data/Rack Plate.3mf",
+      "Rack_Plate",
+      "/Rack_Plate",
+      "/cache/Rack_Plate",
+      "cache/Rack_Plate",
+      "/model/Rack_Plate",
+      "model/Rack_Plate",
+      "/data/Rack_Plate",
+      "data/Rack_Plate",
+      "Rack_Plate.gcode.3mf",
+      "/Rack_Plate.gcode.3mf",
+      "/cache/Rack_Plate.gcode.3mf",
+      "cache/Rack_Plate.gcode.3mf",
+      "/model/Rack_Plate.gcode.3mf",
+      "model/Rack_Plate.gcode.3mf",
+      "/data/Rack_Plate.gcode.3mf",
+      "data/Rack_Plate.gcode.3mf",
+      "Rack_Plate.3mf",
+      "/Rack_Plate.3mf",
+      "/cache/Rack_Plate.3mf",
+      "cache/Rack_Plate.3mf",
+      "/model/Rack_Plate.3mf",
+      "model/Rack_Plate.3mf",
+      "/data/Rack_Plate.3mf",
+      "data/Rack_Plate.3mf"
+    ]
+  },
+  {
+    "file": "model/clip.3mf",
+    "paths": [
+      "model/clip.3mf",
+      "/model/clip.3mf",
+      "/cache/clip.3mf",
+      "cache/clip.3mf",
+      "/data/clip.3mf",
+      "data/clip.3mf",
+      "clip.3mf",
+      "/clip.3mf"
+    ]
+  }
+]

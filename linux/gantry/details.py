@@ -499,10 +499,49 @@ class DetailPanel(Gtk.Box):
         self.graph = TempGraph(app, serial); self.graph.set_size_request(-1, 104)
         self.temps = Gtk.Box(spacing=8, homogeneous=True)
         temps_body.pack_start(self.graph, False, False, 0); temps_body.pack_start(self.temps, False, False, 0)
+        # Printer control (opt-in in Settings; Bambu and Klipper, as on macOS and Windows): a setpoint
+        # capsule under the nozzle and bed readings.
+        from .control import FAN_ECHO_TOLERANCE, StepperModel
+        from .controlwidget import ControlStepper
+        self.nozzle_control = ControlStepper(StepperModel(0, 300, 5), True, "°",
+                                             lambda value: app.set_nozzle_temperature(serial, value))
+        self.bed_control = ControlStepper(StepperModel(0, 120, 5), True, "°",
+                                          lambda value: app.set_bed_temperature(serial, value))
+        self.temp_controls = Gtk.Box(spacing=8, homogeneous=True)
+        self.temp_controls.set_no_show_all(True)
+        self._temp_control_columns: tuple | None = None
+        self.temps_notice = self._notice()
+        temps_body.pack_start(self.temp_controls, False, False, 0); temps_body.pack_start(self.temps_notice, False, False, 0)
 
         fans, fans_body = self._card("fans", self._title("fans"))
         self.hardware = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         fans_body.pack_start(self.hardware, False, False, 0)
+        # With controls on, the fans and the speed become tiles, two to a row, in place of the read-only
+        # gauges. Klipper drives only the part fan; Bambu takes a speed mode, Klipper a percentage.
+        bambu = self.printer is not None and self.printer.kind == PrinterKind.BAMBU
+        self.fan_steppers = {"part": ControlStepper(StepperModel(0, 100, 10, echo_tolerance=FAN_ECHO_TOLERANCE), False, "%",
+                                                    lambda value: app.set_fan(serial, 1, value))}
+        tiles = [(i18n.t("Part"), self.fan_steppers["part"])]
+        if bambu:
+            self.fan_steppers["aux"] = ControlStepper(StepperModel(0, 100, 10, echo_tolerance=FAN_ECHO_TOLERANCE), False, "%",
+                                                      lambda value: app.set_fan(serial, 2, value))
+            self.fan_steppers["chamber"] = ControlStepper(StepperModel(0, 100, 10, echo_tolerance=FAN_ECHO_TOLERANCE), False, "%",
+                                                          lambda value: app.set_fan(serial, 3, value))
+            tiles += [(i18n.t("Aux"), self.fan_steppers["aux"]), (i18n.t("Chamber"), self.fan_steppers["chamber"])]
+            self.speed_stepper = ControlStepper(StepperModel(1, 4, 1), False, "",
+                                                lambda value: app.set_print_speed_level(serial, value),
+                                                format_value=lambda value: i18n.t(_SPEED_NAMES.get(value, "Standard")))
+        else:
+            self.speed_stepper = ControlStepper(StepperModel(10, 166, 10), False, "%",
+                                                lambda value: app.set_print_speed(serial, value))
+        self.speed_by_level = bambu
+        tiles.append((i18n.t("Speed"), self.speed_stepper))
+        self.fan_controls = Gtk.Grid(column_spacing=8, row_spacing=8, column_homogeneous=True)
+        self.fan_controls.set_no_show_all(True)
+        for index, (tile_title, stepper) in enumerate(tiles):
+            self.fan_controls.attach(self._control_tile(tile_title, stepper), index % 2, index // 2, 1, 1)
+        self.fans_notice = self._notice()
+        fans_body.pack_start(self.fan_controls, False, False, 0); fans_body.pack_start(self.fans_notice, False, False, 0)
 
         control, control_body = self._card("control", self._title("control"))
         controls = Gtk.Box(spacing=6, homogeneous=True)
@@ -666,7 +705,9 @@ class DetailPanel(Gtk.Box):
                          if tel.remaining_minutes >= 60 else f"{tel.remaining_minutes}m")
             self.remaining.set_text(f"{remaining} · {finish}")
         else: self.remaining.set_text("")
-        self._fill_temperatures(tel, pl); self._fill_hardware(tel, pl); self._fill_filaments(tel)
+        enabled, blocked = self._control_state()
+        columns = self._fill_temperatures(tel, pl, enabled); self._fill_hardware(tel, pl, enabled); self._fill_filaments(tel)
+        self._update_controls(tel, enabled, blocked, columns)
         self._fill_insights(pl)
         self.graph.queue_draw(); self.show_all()
 
@@ -717,7 +758,74 @@ class DetailPanel(Gtk.Box):
         label.get_style_context().add_class("metric")
         return label
 
-    def _fill_temperatures(self, tel: Telemetry, pl: bool) -> None:
+    def _control_state(self) -> tuple[bool, bool]:
+        """(controls shown, controls wanted but blocked). A Bambu printer that only takes commands signed
+        by Bambu Connect would refuse every capsule, so it keeps the read-only view and one notice."""
+        kind = self.printer.kind if self.printer is not None else None
+        wanted = bool(self.app.config.data.get("printer_control_enabled", False)) and kind in {PrinterKind.BAMBU, PrinterKind.KLIPPER}
+        blocked = wanted and kind == PrinterKind.BAMBU and self.app.requires_signed_commands(self.serial)
+        return wanted and not blocked, blocked
+
+    def _update_controls(self, tel: Telemetry, enabled: bool, blocked: bool, columns: list[str]) -> None:
+        from .control import rejection_message, signing_notice
+        if enabled:
+            signature = tuple(columns)
+            if signature != self._temp_control_columns:
+                self._temp_control_columns = signature
+                for child in self.temp_controls.get_children():
+                    self.temp_controls.remove(child)
+                for index, name in enumerate(columns):
+                    widget = self.nozzle_control if index == 0 else self.bed_control if name == i18n.t("Bed") else Gtk.Label(label="")
+                    self.temp_controls.pack_start(widget, True, True, 0)
+            nozzle_target = tel.nozzles[0].target if tel.nozzles else tel.nozzle_target
+            # A heater that is off reports target 0; that is its setpoint, not the current reading.
+            self.nozzle_control.show_reported(round(nozzle_target or 0))
+            self.bed_control.show_reported(round(tel.bed_target or 0))
+            for key, value in (("part", tel.part_fan), ("aux", tel.aux_fan), ("chamber", tel.chamber_fan)):
+                if key in self.fan_steppers:
+                    self.fan_steppers[key].show_reported(value or 0)
+            self.speed_stepper.show_reported((tel.speed_level or 2) if self.speed_by_level else (tel.speed_percent or 100))
+            # show_all() does nothing on a widget marked no-show-all, and the mark is what keeps the panel's
+            # own show_all() from revealing these while controls are off: show the container, then its content.
+            for container in (self.temp_controls, self.fan_controls):
+                container.show()
+                for child in container.get_children():
+                    child.show_all()
+        else:
+            self.temp_controls.hide(); self.fan_controls.hide()
+        temps_text = fans_text = ""
+        if blocked:
+            temps_text = signing_notice()
+        elif enabled and (rejection := self.app.command_rejection(self.serial)) is not None:
+            text = rejection_message(rejection["reason"])
+            if rejection["area"] == "temperature":
+                temps_text = text
+            else:
+                fans_text = text
+        for label, text in ((self.temps_notice, temps_text), (self.fans_notice, fans_text)):
+            label.set_text(text)
+            label.set_visible(bool(text))
+
+    @staticmethod
+    def _notice() -> Gtk.Label:
+        label = Gtk.Label(xalign=0, wrap=True)
+        label.get_style_context().add_class("control-notice")
+        label.set_no_show_all(True)
+        return label
+
+    @staticmethod
+    def _control_tile(title: str, stepper: Gtk.Widget) -> Gtk.Widget:
+        tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        tile.get_style_context().add_class("control-tile")
+        label = Gtk.Label(label=title.upper(), xalign=0)
+        label.get_style_context().add_class("detail-title")
+        tile.pack_start(label, False, False, 0)
+        tile.pack_start(stepper, False, False, 0)
+        return tile
+
+    def _fill_temperatures(self, tel: Telemetry, pl: bool, controls: bool = False) -> list[str]:
+        """The readings row. Returns its column names, so the setpoint capsules can sit under nozzle and bed.
+        With controls on, a capsule carries the target, so nozzle and bed show the live temperature alone."""
         self._clear(self.temps)
         nozzles = tel.nozzles; dual = any(n.position == "right" for n in nozzles)
         values: list[tuple[str, float | None, float | None]] = []
@@ -731,16 +839,21 @@ class DetailPanel(Gtk.Box):
                            nozzle.target if nozzle else tel.nozzle_target))
         values.append((i18n.t("Bed"), tel.bed, tel.bed_target))
         if tel.chamber is not None: values.append((i18n.t("Chamber"), tel.chamber, None))
-        for name, current, target in values:
-            self.temps.pack_start(self._metric(name, self._temp(current, target)), True, True, 0)
+        for index, (name, current, target) in enumerate(values):
+            controlled = controls and (index == 0 or name == i18n.t("Bed"))
+            text = ("—" if current is None else f"{current:.0f}°") if controlled else self._temp(current, target)
+            self.temps.pack_start(self._metric(name, text), True, True, 0)
+        return [name for name, _current, _target in values]
 
-    def _fill_hardware(self, tel: Telemetry, pl: bool) -> None:
+    def _fill_hardware(self, tel: Telemetry, pl: bool, controls: bool = False) -> None:
         self._clear(self.hardware); fan = lambda value: "—" if value is None else f"{value}%"
-        fan_row = Gtk.Box(spacing=8, homogeneous=True)
-        for name, value in (("Part", fan(tel.part_fan)), ("Aux", fan(tel.aux_fan)), ("Chamber", fan(tel.chamber_fan))):
-            fan_row.pack_start(self._metric(name, value), True, True, 0)
-        self.hardware.pack_start(fan_row, False, False, 0)
-        if tel.speed_level or tel.speed_percent is not None:
+        # With controls on, the tiles carry fans and speed; the read-only gauges would only repeat them.
+        if not controls:
+            fan_row = Gtk.Box(spacing=8, homogeneous=True)
+            for name, value in (("Part", fan(tel.part_fan)), ("Aux", fan(tel.aux_fan)), ("Chamber", fan(tel.chamber_fan))):
+                fan_row.pack_start(self._metric(name, value), True, True, 0)
+            self.hardware.pack_start(fan_row, False, False, 0)
+        if not controls and (tel.speed_level or tel.speed_percent is not None):
             speed = i18n.t(_SPEED_NAMES[tel.speed_level]) if tel.speed_level in _SPEED_NAMES else "—"
             if tel.speed_percent is not None: speed += f" · {tel.speed_percent}%"
             self.hardware.pack_start(self._metric(i18n.t("Speed"), speed), False, False, 0)

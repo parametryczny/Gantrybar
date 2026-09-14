@@ -187,6 +187,14 @@ eventbox.sb-tile:hover { background: alpha(#ffffff, 0.055); }
 .detail-card { background: alpha(%(card)s, 0.78); border: 1px solid alpha(#ffffff, 0.09); border-radius: 16px; padding: 10px; }
 .detail-title { color: %(muted)s; font-size: 10px; font-weight: 600; }
 .detail-value { color: %(text)s; font-size: 12px; font-weight: 600; }
+.control-capsule { background: alpha(#000000, 0.24); border: 1px solid alpha(#ffffff, 0.09); border-radius: 8px; min-height: 28px; }
+.control-capsule label { color: %(text)s; font-size: 12px; }
+button.control-step { min-width: 26px; min-height: 26px; padding: 0; border: none; border-radius: 0; background: transparent; box-shadow: none; color: %(text)s; font-weight: 700; }
+button.control-step:hover { background: alpha(#ffffff, 0.08); }
+button.control-step:active { background: alpha(#ffffff, 0.16); }
+button.control-step:disabled { color: alpha(%(muted)s, 0.55); }
+.control-tile { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; padding: 6px; }
+.control-notice { color: #ff9f0a; font-size: 11px; font-weight: 500; }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 3px; background: %(segment_off)s; }
 progressbar progress { border-radius: 2px; background: %(metric)s; }

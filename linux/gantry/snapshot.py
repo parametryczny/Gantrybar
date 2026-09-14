@@ -10,6 +10,7 @@ to call from the bot's worker thread. Best-effort with a timeout; returns None r
 """
 from __future__ import annotations
 
+import threading
 import time
 import urllib.request
 from typing import Any
@@ -17,7 +18,7 @@ from typing import Any
 import gi
 
 from .core import PrinterKind
-from .jpegstream import split_jpegs
+from .jpegstream import bambu_jpeg_frames, split_jpegs
 from .overrides import overrides_for
 
 try:
@@ -39,7 +40,8 @@ def capture(app: Any, serial: str, timeout: float = 12) -> bytes | None:
             code = app.secrets.get(serial) or ""
             if not code:
                 return None
-            return _grab_bambu(host, code, serial, timeout)
+            # The P1 and A1 have no RTSPS endpoint; their camera sends JPEG frames on port 6000.
+            return _grab_bambu(host, code, serial, timeout) or _grab_bambu_jpeg(host, code, timeout)
         if printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
             return _grab_anycubic(host, serial, timeout)
         url = _mjpeg_url(app, printer, host)
@@ -97,6 +99,21 @@ def _grab_bambu(host: str, access_code: str, serial: str, timeout: float) -> byt
         return None
     source.connect("pad-added", lambda _s, pad: _link_to(pad, depay))
     return _pull_first(pipeline, sink, timeout)
+
+
+def _grab_bambu_jpeg(host: str, access_code: str, timeout: float) -> bytes | None:
+    frames: list[bytes] = []
+    stop = threading.Event()
+
+    def keep(frame: bytes) -> None:
+        frames.append(frame)
+        stop.set()
+
+    try:
+        bambu_jpeg_frames(host, access_code, stop, keep, timeout=timeout)
+    except OSError:
+        return None
+    return frames[0] if frames else None
 
 
 def _grab_anycubic(host: str, serial: str, timeout: float) -> bytes | None:
