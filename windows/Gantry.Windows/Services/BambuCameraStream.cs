@@ -381,6 +381,8 @@ public sealed class BambuCameraStream
                                   "-an", "-f", "mjpeg", "-q:v", "6", "pipe:1" })
             psi.ArgumentList.Add(a);
         var proc = Process.Start(psi)!;
+        // Ends with Gantry however Gantry ends, so an update or a crash leaves no decoder behind.
+        ChildProcessJob.Attach(proc);
         _decoder = proc;
         _ = Task.Run(async () => { try { while (await proc.StandardError.ReadLineAsync() is not null) { } } catch { } });
         _ = Task.Run(() => ReadDecoderMjpeg(proc));

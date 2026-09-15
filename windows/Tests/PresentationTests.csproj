@@ -23,5 +23,6 @@
     <Compile Include="../Gantry.Windows/Models/PrinterModels.cs" Link="PrinterModels.cs" />
     <Compile Include="../Gantry.Windows/Services/ElegooVideo.cs" Link="ElegooVideo.cs" />
     <Compile Include="../Gantry.Windows/Services/EdgeDockPlacement.cs" Link="EdgeDockPlacement.cs" />
+    <Compile Include="../Gantry.Windows/Services/ChildProcessJob.cs" Link="ChildProcessJob.cs" />
   </ItemGroup>
 </Project>

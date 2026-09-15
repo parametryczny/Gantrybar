@@ -23,6 +23,7 @@ public sealed class AnycubicFlvStream
                 processStart.ArgumentList.Add(argument);
             var process = new Process { StartInfo = processStart };
             _process = process; if (!process.Start()) throw new IOException("ffmpeg");
+            ChildProcessJob.Attach(process);   // ends with Gantry however Gantry ends
             _ = process.StandardError.ReadToEndAsync(); var stream = process.StandardOutput.BaseStream;
             var buffer = new List<byte>(512_000); var chunk = new byte[16_384];
             while (!_stopped)
