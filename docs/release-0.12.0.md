@@ -79,6 +79,8 @@ Karta drukarki ma skalę od 75 do 150 procent, a pasek krawędziowy od 100 do 15
 
 Okno floty mierzy przy tym prawdziwą wysokość kart, więc przewijanie pojawia się dopiero przy krawędzi ekranu, a nie przy każdym powiększeniu. Ten sam pomiar zdjął z panelu szczegółów sztywną wysokość 720 punktów, przez którą przewijał się bez powodu.
 
+**Szersze karty.** Karta ma teraz 325 punktów zamiast 285, a panel z dwiema kolumnami 643 zamiast 563. Przy długiej nazwie, pigułce połączenia i kilku przyciskach statusu nagłówek wypychał przyciski poza kartę. Teraz przyciski zawsze się mieszczą, pigułka chowa się pierwsza, a długa nazwa drukarki i nazwa pliku przewijają się do końca po najechaniu kursorem, zamiast łamać się na dwa wiersze. Na Windows skala powiększa kartę proporcjonalnie, bo panel rośnie razem z nią.
+
 ## Panele i ustawienia
 
 Diagnostyka, statystyki floty, konserwacja, przypisanie rolki i Spoolbase były nakładkami wewnątrz panelu, który je otwierał. W dymku przy pasku menu nie mogły być od niego większe, przygaszały karty i potrafiły rzucić całym oknem. Teraz każdy ma **własne okno na środku ekranu** z nagłówkiem GANTRY · nazwa panelu, a Escape je zamyka. Dymek zostaje otwarty pod spodem.
