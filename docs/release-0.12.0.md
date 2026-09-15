@@ -102,6 +102,7 @@ Spoolbase odejmuje gramy po wydruku. Przegląd znalazł kilka dróg, którymi ob
 ## Niezawodność
 
 - **Zapisy w jednym kroku**: ustawienia, rolki i magazyn filamentów na Windows i GNU/Linuksie zapisują się przez plik tymczasowy i podmianę, z kopią ostatniej dobrej wersji. Przerwany zapis nie zostawia pustego pliku, a błędy trafiają do logu zamiast znikać.
+- **Dekodery ffmpeg na Windows kończą się razem z Gantry**: każdy podgląd kamery Bambu po RTSP i Anycubic ma własny proces ffmpeg, dlatego instalator pokazuje ich kilka na liście aplikacji do zamknięcia. Gdy Gantry zamknął instalator, Menedżer zadań albo awaria, te procesy zostawały w pamięci. Teraz system kończy je razem z aplikacją.
 - **Pobieranie z drukarki przez FTPS na Windows** ma limit 60 sekund, zawsze zamyka połączenie i robi jeden transfer naraz na drukarkę.
 - **Windows i GNU/Linux szukają pliku 3MF na tych samych ścieżkach co macOS**, więc zadanie zgłoszone bez rozszerzenia też jest znajdowane.
 - **Pamięć podręczna plików 3MF na macOS** ma limit 64 MB i usuwa przeterminowane pliki.

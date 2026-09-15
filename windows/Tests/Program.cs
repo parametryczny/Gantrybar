@@ -269,3 +269,26 @@ Console.WriteLine("Windows Elegoo camera OK — Cmd 386 reply, shared stream slo
         throw new Exception("The monitor list lost an unplugged display or the main display");
 }
 Console.WriteLine("Windows edge dock placement OK — display lookup, rows, inner edges, saved frames, monitor list");
+
+// Helper processes end with Gantry: a process in the job dies when the job's last handle closes, which is
+// what Windows does to Gantry's handle when Gantry ends from outside (an installer, Task Manager, a crash).
+if (OperatingSystem.IsWindows())
+{
+    using var job = ChildProcessJob.Create() ?? throw new Exception("The kill-on-close job object could not be created");
+    var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ping.exe", "-n 60 127.0.0.1")
+    {
+        UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+    }) ?? throw new Exception("The test child process did not start");
+    try
+    {
+        if (!ChildProcessJob.Assign(job, child)) throw new Exception("The child process was not put into the job");
+        if (child.WaitForExit(500)) throw new Exception("The child process ended before the job was closed");
+        job.Dispose();
+        if (!child.WaitForExit(5000)) throw new Exception("Closing the job did not end the child process");
+    }
+    finally
+    {
+        if (!child.HasExited) child.Kill(true);
+    }
+    Console.WriteLine("Windows helper processes OK — a closed job ends the ffmpeg-style child it holds");
+}
