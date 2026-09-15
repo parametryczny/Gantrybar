@@ -4,7 +4,7 @@
 
 Ten dokument opisuje **dokładne** wartości i reguły, które wersja macOS ma **teraz** (po sesji zagęszczania i neutralizacji koloru). Windows (WPF/C#) i Linux (GTK/Python) mają odtworzyć to 1:1. Gdzie ten dokument różni się od starszego `gantry-design-tokens.json` (v0.2.0), **obowiązuje ten dokument** — tamten opisuje wcześniejszy zamysł, ten opisuje stan wdrożony.
 
-Wizualna referencja: `design/gantry-bento-demo.html`, `design/gantry-details-demo.html`.
+Wizualna referencja: wdrożona aplikacja macOS.
 
 ---
 

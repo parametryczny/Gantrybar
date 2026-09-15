@@ -1,10 +1,9 @@
 # Gantry — szczegóły drukarki
 
-Ten dokument opisuje produkcyjny układ widoku `Szczegóły drukarki`. Źródłem geometrii jest wspólny kontrakt, a plik HTML służy jako wzorzec wizualny.
+Ten dokument opisuje produkcyjny układ widoku `Szczegóły drukarki`. Źródłem geometrii jest wspólny kontrakt.
 
 ## Pliki referencyjne
 
-- [Demo szczegółów HTML](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/gantry-details-demo.html>)
 - [Kontrakt layoutu JSON](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/gantry-layout.defaults.json>)
 - [Tokeny wizualne JSON](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/gantry-design-tokens.json>)
 - [Główny opis systemu](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/GANTRY-DESIGN-SYSTEM.md>)

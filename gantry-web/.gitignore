@@ -1,4 +1,0 @@
-data/*
-!data/.gitkeep
-.env
-*.zip
