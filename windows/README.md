@@ -6,8 +6,6 @@ A system-tray port of Gantry for Windows, built with .NET 8 (WPF + WinForms tray
 It mirrors the macOS app: local-network discovery, MQTT-over-TLS monitoring for Bambu Lab and
 Anycubic Kobra S1, certificate pinning, AMS/ACE/HMS details and notifications — no printer cloud account required.
 
-![Gantry Windows 11 beta dashboard and system tray menu](../docs/renders/gantry-windows-11-beta.jpg)
-
 ---
 
 ## English

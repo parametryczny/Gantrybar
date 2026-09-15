@@ -1,7 +1,7 @@
 import AppKit
 
 /// Central visual tokens for Gantry on macOS — the "look" half of the design system
-/// (design/gantry-design-tokens.json + gantry-details-demo.html). Layout rules live elsewhere;
+/// (design/gantry-design-tokens.json). Layout rules live elsewhere;
 /// this is only colors, radii and a few shared metrics so every view pulls the same values.
 enum GantryTheme {
 

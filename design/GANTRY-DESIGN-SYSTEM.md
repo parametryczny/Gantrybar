@@ -1,6 +1,6 @@
 # Gantry Design System — kontrakt layoutu
 
-Ten dokument zbiera aktualny kierunek interfejsu Gantry oraz opisuje, jak przejść od demonstracyjnych plików HTML do jednego, przewidywalnego layoutu na macOS, Windows i Linux.
+Ten dokument zbiera aktualny kierunek interfejsu Gantry oraz opisuje jeden, przewidywalny layout na macOS, Windows i Linux.
 
 ## Najważniejsza zasada
 
@@ -17,48 +17,7 @@ Każda platforma może używać natywnych komponentów, ale musi interpretować 
 
 ## Pliki
 
-### Prototypy HTML
-
-#### [gantry-single-tile.html](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/gantry-single-tile.html>)
-
-Referencyjny dashboard z pięcioma drukarkami.
-
-Pokazuje:
-
-- układ dwóch zwykłych kafli obok siebie;
-- szeroki kafel X2D;
-- warianty AMS, AMS HT i EXT;
-- podwójną dyszę P/L;
-- temperatury w stylu `thermalZones`;
-- segmentowy pasek postępu;
-- eksperymentalną narożną poświatę statusu na kaflu X1;
-- trzy gęstości: małą, średnią i dużą;
-- regułę szerokiego kafla dla drukarek wymagających większej przestrzeni.
-
-#### [gantry-details-demo.html](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/gantry-details-demo.html>)
-
-Referencyjny widok szczegółów drukarki przy szerokości 640 px.
-
-Pokazuje:
-
-- pełnoszeroki status wydruku;
-- pełnoszeroką kamerę;
-- układ 2×2 dla pozostałych sekcji;
-- dynamiczne pakowanie masonry bez pustych przestrzeni;
-- Filamenty / AMS bezpośrednio pod kamerą;
-- wykres temperatur i te same strefy temperatur co na dashboardzie;
-- wentylatory, prędkość, sterowanie oraz automatyzacje;
-- przycisk `Dostosuj` na dole widoku.
-
-Szczegółowy kontrakt tego ekranu i mapowanie na kod znajduje się w [GANTRY-PRINTER-DETAILS.md](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/GANTRY-PRINTER-DETAILS.md>).
-
-#### [gantry-bento-demo.html](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/gantry-bento-demo.html>)
-
-Wcześniejszy prototyp całej siatki. Może służyć jako materiał porównawczy, ale nie jest już wzorcem implementacyjnym.
-
-#### [gantry-styleboard.html](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/gantry-styleboard.html>)
-
-Wcześniejszy styleboard eksperymentalny. Nie należy traktować go jako źródła wartości produkcyjnych.
+Szczegółowy kontrakt widoku szczegółów drukarki i mapowanie na kod znajduje się w [GANTRY-PRINTER-DETAILS.md](</Users/kamilgrzegorczyk/Documents/bambu lab monitor/design/GANTRY-PRINTER-DETAILS.md>).
 
 ### Kontrakt i konfiguracja
 
@@ -239,8 +198,6 @@ Liczba kolumn: Automatyczna / maks. 1 / maks. 2 / maks. 3
 Domyślna wartość to `Automatyczna`. Ustawienie jest limitem, a nie wymuszeniem: przykładowo przy wybranym `maks. 3` wąskie okno nadal przejdzie do jednej kolumny. W pliku użytkownika zapisujemy je jako `dashboard.columnLimit` z wartością `"auto"`, `1`, `2` albo `3`.
 
 Przyciski wymuszające konkretne warianty mogą istnieć w narzędziach developerskich lub testach wizualnych, ale nie są częścią produkcyjnego interfejsu.
-
-Referencyjny plik `gantry-single-tile.html` nie zawiera selektora liczby kolumn. Ma natomiast subtelne linie testowe na prawej i dolnej krawędzi oraz wspólny narożnik, ponieważ dokument HTML nie jest natywnym oknem aplikacji. Linie symulują zmianę rozmiaru okna; podwójne kliknięcie przywraca rozmiar automatyczny. Nie są elementem właściwego interfejsu Gantry.
 
 ### Dociąganie do siatki
 
