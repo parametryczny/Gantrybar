@@ -23,7 +23,7 @@ import AppKit
         t.filamentGroups = [FilamentGroup(id:"ams0",sourceType:.ams,displayName:"AMS",declaredCapacity:4,
             humidityPercent:32,temperatureCelsius:34,isExternal:false,
             slots:(0..<4).map { FilamentSlot(id:"\($0)",label:"A\($0+1)",material:"PLA",colorHex:"C5A8D7",remainingPercent:27,isActive:$0==0) })]
-        for w in [285,340,456,600] {
+        for w in [325,380,456,600] {
             width.constant = CGFloat(w)
             t.state = .printing
             card.update(printer:printer,telemetry:t,message:nil,settings:.shared)
@@ -47,14 +47,36 @@ import AppKit
             host.layoutSubtreeIfNeeded()
             precondition(abs(card.frame.height-h)<0.5,"AMS did not restore at \(w)")
         }
+        // The header from the bug report: a long name, the connection pill and a printer alert chip in the
+        // narrowest card. Every control on the right must stay inside the card; the name gives way instead.
+        let longPrinter = SavedPrinter(serial: "layout-check", name: "Warsztat Bambu Lab X1 Carbon 3058", model: "X1C", host: "")
+        width.constant = 325
+        var alerting = t
+        alerting.state = .printing
+        alerting.hmsCodes = ["0300_0D00_0001_000B"]
+        card.update(printer: longPrinter, telemetry: alerting, message: nil, settings: .shared)
+        for _ in 0..<3 { host.layoutSubtreeIfNeeded() }
+        let controls = descendants(card).filter { ($0 is NSButton || String(describing: type(of: $0)).contains("DragHandle")) && !$0.isHiddenOrHasHiddenAncestor }
+        precondition(!controls.isEmpty, "The card header has no visible controls")
+        for control in controls {
+            let rect = control.convert(control.bounds, to: card)
+            precondition(rect.maxX <= card.bounds.width + 0.5, "Header control cut off at 325: \(type(of: control)) ends at \(rect.maxX)")
+        }
+        if let output = ProcessInfo.processInfo.environment["GANTRY_CARD_CAPTURE"],
+           let rep = card.bitmapImageRepForCachingDisplay(in: card.bounds) {
+            card.cacheDisplay(in: card.bounds, to: rep)
+            try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: output))
+        }
+        print("PASS: a long name and a printer alert keep every header control inside a 325-point card")
+
         let printers = (0..<5).map { SavedPrinter(serial:"snap-\($0)",name:"P\($0)",model:"P1S",host:"") }
         let store = PrinterStore(renderPrinters: printers,
             renderTelemetry: Dictionary(uniqueKeysWithValues: printers.map { ($0.serial, PrinterTelemetry()) }))
         let dashboard = PrinterDashboardViewController(store:store,onAdd:{},onEdit:{_ in},onReconnect:{_ in},
             onShowDetails:{_ in},presentation:.floatingWindow,onPreferredContentSize:{_ in})
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:200,height:100)) == NSSize(width:305,height:100))
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:500,height:400)) == NSSize(width:598,height:400))
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:900,height:800)) == NSSize(width:891,height:800))
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:200,height:100)) == NSSize(width:345,height:100))
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:700,height:400)) == NSSize(width:678,height:400))
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:1000,height:800)) == NSSize(width:1011,height:800))
         // Long HMS descriptions and unbroken diagnostic codes wrap without widening the window.
         let longText = "Wygląda na to, że silnik osi Z utknął podczas ruchu. Sprawdź, czy na prowadnicach osi Z lub kołach paska napędowego osi Z nie znajdują się żadne ciała obce."
         for text in [longText, String(repeating: "03000D000001000B", count: 30)] {

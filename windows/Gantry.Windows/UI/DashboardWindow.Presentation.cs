@@ -23,7 +23,7 @@ public partial class DashboardWindow
     private bool _reflowPending;
     private bool _nativeUserResize;
     private const int WmEnterSizeMove = 0x0231, WmExitSizeMove = 0x0232;
-    private double CardColumnPitch => 293 * AppSettings.CardScalePercent / 100.0;
+    private double CardColumnPitch => 333 * AppSettings.CardScalePercent / 100.0;
     private int LayoutColumns => WindowMode
         ? Math.Max(1, (int)Math.Round(((ActualWidth > 0 ? ActualWidth : Width) - 24) / CardColumnPitch))
         : AppSettings.DashboardColumns;
@@ -124,7 +124,7 @@ public partial class DashboardWindow
         WindowModeButton.Content = enabled ? "❐" : "▭";
         WindowModeButton.ToolTip = AppSettings.T(enabled ? "Switch to popover" : "Switch to window");
         PinButton.Opacity = Topmost ? 1 : .5;
-        MinWidth = enabled ? 317 : 0; MinHeight = enabled ? 322 : 0;
+        MinWidth = enabled ? 357 : 0; MinHeight = enabled ? 322 : 0;
         if (changed && enabled)
         {
             int savedWidth = Defaults.GetInt("floating-window-width", -1);
@@ -142,7 +142,7 @@ public partial class DashboardWindow
             // Height is only a launch placeholder. Once the cards have their live AMS/error content,
             // FitHeightToContent replaces it with their measured natural height.
             int initialHeight = explicitSize ? savedHeight : 140 + automaticRows * 182;
-            Width = Math.Clamp(initialWidth, 317, Math.Max(317, SystemParameters.WorkArea.Width));
+            Width = Math.Clamp(initialWidth, 357, Math.Max(357, SystemParameters.WorkArea.Width));
             Height = Math.Clamp(initialHeight, 322, Math.Max(322, SystemParameters.WorkArea.Height));
             Left = Math.Clamp(Left, SystemParameters.WorkArea.Left, SystemParameters.WorkArea.Right - Width);
             Top = Math.Clamp(Top, SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - Height);

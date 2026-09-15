@@ -635,7 +635,9 @@ public partial class DashboardWindow : Window
             CardsPanel.RowDefinitions.Clear();
             if (compact)
             {
-                if (!WindowMode) Width = 512;
+                // Scaled with the cards, as on macOS and GNU/Linux. At a fixed width the card scale made
+                // the content bigger inside the same column, so it grew taller and was cut off at the side.
+                if (!WindowMode) Width = 512 * AppSettings.CardScalePercent / 100.0;
                 CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 for (int row = 0; row < dashboardPrinters.Count; row++)
                 {
@@ -651,7 +653,7 @@ public partial class DashboardWindow : Window
                 // macOS contract: multi-nozzle printers remain freely placeable one-cell cards.
                 // Only multi-AMS cards are wide; an odd final card stretches in popover mode only.
                 int cols = layoutColumns;
-                if (!WindowMode) Width = cols == 1 ? 380 : 563;
+                if (!WindowMode) Width = (cols == 1 ? 420 : 643) * AppSettings.CardScalePercent / 100.0;
                 for (int i = 0; i < cols; i++)
                     CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 int row = 0, column = 0;
@@ -783,7 +785,13 @@ public partial class DashboardWindow : Window
         public string Serial { get; }
         private readonly DashboardWindow _owner;
         private Point _dragStart;
-        private readonly TextBlock _name, _connection, _pillText, _job, _jobSeparator, _percent, _eta, _layers, _message;
+        private readonly TextBlock _connection, _pillText, _jobSeparator, _percent, _eta, _layers, _message;
+        /// <summary>Scroll to their end while hovered instead of being cut off.</summary>
+        private readonly MarqueeText _name, _job;
+        private readonly Grid _header, _titleHost;
+        private readonly Border _connectionPill;
+        /// <summary>Room the name keeps before the connection pill gives way.</summary>
+        private const double MinimumNameWidth = 48;
         private readonly Button _details;
         private readonly Button _printerAlert, _maintenance, _skipObjects;
         private readonly Border _noticeBanner;
@@ -808,7 +816,7 @@ public partial class DashboardWindow : Window
         private string? _currentErrorSignature;
         private bool _hasVisibleFilaments;
 
-        public PrinterCard(DashboardWindow owner, SavedPrinter printer, double width = 290)
+        public PrinterCard(DashboardWindow owner, SavedPrinter printer, double width = 330)
         {
             _owner = owner;
             Serial = printer.Serial;
@@ -817,25 +825,33 @@ public partial class DashboardWindow : Window
             var stack = new StackPanel();
             var jobStack = new StackPanel();
 
-            var header = new Grid();
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // left cluster
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // gap
+            // The title takes whatever the chips leave. The chips used to follow a flexible gap with the
+            // name in an auto-sized column, so a long name, the pill and three status chips ran past the
+            // card's edge and the chips on the right were cut off. Now the chips keep their size, the pill
+            // goes first and the name scrolls (FitHeader).
+            _header = new Grid();
+            var header = _header;
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // printer glyph
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // name + pill
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // details
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // printer alert
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // maintenance
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // skip objects
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // grip chip
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                    // more chip
+            header.SizeChanged += (_, _) => FitHeader();
 
-            // Left cluster (macOS layout): printer glyph + name + MQTT pill + a small line-chart icon
-            // for the details view - same order and grouping as the macOS card header.
+            // Same order and grouping as the macOS card header: glyph, name, MQTT pill, chart icon.
             var printerIcon = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, Foreground = GTheme.Brush(GTheme.Accent), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-            _name = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = 14, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 150 };
+            _name = new MarqueeText { HorizontalAlignment = HorizontalAlignment.Left };
+            _name.Label.FontWeight = FontWeights.SemiBold;
+            _name.Label.FontSize = 14;
             _connection = new TextBlock
             {
                 FontFamily = new FontFamily("Segoe UI"), FontSize = 10, FontWeight = FontWeights.Normal,
                 Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center
             };
-            var connectionPill = new Border
+            var connectionPill = _connectionPill = new Border
             {
                 Background = GTheme.Brush(GTheme.W(0.025)), CornerRadius = new CornerRadius(5),
                 Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(5, 0, 0, 0),
@@ -855,13 +871,18 @@ public partial class DashboardWindow : Window
                 ToolTip = AppSettings.T("Details")
             };
             _details.Click += (_, _) => _owner.ShowDetail(Serial);
-            var leftCluster = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            leftCluster.Children.Add(printerIcon);
-            leftCluster.Children.Add(_name);
-            leftCluster.Children.Add(connectionPill);
-            leftCluster.Children.Add(_details);
-            Grid.SetColumn(leftCluster, 0);
-            header.Children.Add(leftCluster);
+            Grid.SetColumn(printerIcon, 0);
+            header.Children.Add(printerIcon);
+            // Name and pill sit together; the name's MaxWidth, set by FitHeader, is what makes it scroll.
+            _titleHost = new Grid { VerticalAlignment = VerticalAlignment.Center };
+            _titleHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            _titleHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(_name, 0); _titleHost.Children.Add(_name);
+            Grid.SetColumn(connectionPill, 1); _titleHost.Children.Add(connectionPill);
+            Grid.SetColumn(_titleHost, 1);
+            header.Children.Add(_titleHost);
+            Grid.SetColumn(_details, 2);
+            header.Children.Add(_details);
 
             _printerAlert = StatusButton(AppSettings.T("Printer alert"));
             _maintenance = StatusButton(AppSettings.T("Maintenance"));
@@ -869,13 +890,13 @@ public partial class DashboardWindow : Window
             {
                 statusButton.Click += (_, _) => OpenMaintenance();
             }
-            Grid.SetColumn(_printerAlert, 2); header.Children.Add(_printerAlert);
-            Grid.SetColumn(_maintenance, 3); header.Children.Add(_maintenance);
+            Grid.SetColumn(_printerAlert, 3); header.Children.Add(_printerAlert);
+            Grid.SetColumn(_maintenance, 4); header.Children.Add(_maintenance);
             _skipObjects = StatusButton(AppSettings.T("Skip object"));
             _skipObjects.Content = "▱−";
             _skipObjects.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
             _skipObjects.Click += (_, _) => _owner.ShowSkipObjects(Serial);
-            Grid.SetColumn(_skipObjects, 4); header.Children.Add(_skipObjects);
+            Grid.SetColumn(_skipObjects, 5); header.Children.Add(_skipObjects);
 
             // Right cluster (macOS layout): drag grip + "..." menu, each in a faint rounded chip.
             var grip = new TextBlock { Text = "⠿", FontSize = 13, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.SizeAll };
@@ -895,12 +916,12 @@ public partial class DashboardWindow : Window
                     Math.Abs(p.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
                 _owner.BeginCardDrag(Root!, Serial);
             };
-            Grid.SetColumn(gripChip, 5);
+            Grid.SetColumn(gripChip, 6);
             header.Children.Add(gripChip);
             var more = new Button { Content = "⋯", FontSize = 13, Width = 24, Height = 20, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center, Background = GTheme.Brush(GTheme.W(0.025)), BorderThickness = new Thickness(0), Foreground = Muted() };
             var menu = owner.BuildCardMenu(printer.Serial);
             more.Click += (_, _) => owner.ToggleCardMenu(more, menu);
-            Grid.SetColumn(more, 6);
+            Grid.SetColumn(more, 7);
             header.Children.Add(more);
             jobStack.Children.Add(header);
 
@@ -916,7 +937,11 @@ public partial class DashboardWindow : Window
             _jobSeparator = new TextBlock { Text = " · ", FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_jobSeparator, 1); statusLine.Children.Add(_jobSeparator);
             // Full-width file name now that layers moved to the progress row — no more truncation race.
-            _job = new TextBlock { Foreground = GTheme.Brush(GTheme.Text), FontSize = 10, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            // The file name scrolls while hovered, as on macOS, instead of ending in an ellipsis.
+            _job = new MarqueeText();
+            _job.Label.Foreground = GTheme.Brush(GTheme.Text);
+            _job.Label.FontSize = 10;
+            _job.Label.FontWeight = FontWeights.SemiBold;
             Grid.SetColumn(_job, 2); statusLine.Children.Add(_job);
             _percent = new TextBlock { FontSize = 14, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
             Typography.SetNumeralAlignment(_percent, FontNumeralAlignment.Tabular);
@@ -1084,6 +1109,30 @@ public partial class DashboardWindow : Window
             _noticeBanner.Visibility = Visibility.Visible;
         }
 
+        /// <summary>The connection pill is the first thing to go when the header is short of room, and the
+        /// name gets whatever is left. Decided from desired sizes rather than from the arrangement this very
+        /// decision changes, so hiding the pill cannot make it come back.</summary>
+        private void FitHeader()
+        {
+            if (_header.ActualWidth <= 0) return;
+            var unlimited = new Size(double.PositiveInfinity, double.PositiveInfinity);
+            double fixedWidth = 0;
+            foreach (UIElement child in _header.Children)
+            {
+                if (ReferenceEquals(child, _titleHost) || child.Visibility == Visibility.Collapsed) continue;
+                child.Measure(unlimited);
+                fixedWidth += child.DesiredSize.Width;
+            }
+            _connectionPill.Measure(unlimited);
+            double pill = _connectionPill.DesiredSize.Width;
+            double room = _header.ActualWidth - fixedWidth;
+            bool pillFits = room - pill >= MinimumNameWidth;
+            var visibility = pillFits ? Visibility.Visible : Visibility.Collapsed;
+            if (_connectionPill.Visibility != visibility) _connectionPill.Visibility = visibility;
+            double nameWidth = Math.Max(0, room - (pillFits ? pill : 0));
+            if (Math.Abs(_name.MaxWidth - nameWidth) > 0.5) _name.MaxWidth = nameWidth;
+        }
+
         private static Button StatusButton(string tooltip) => new()
         {
             Content = "", FontSize = 10.5, FontWeight = FontWeights.Bold, Height = 20,
@@ -1103,6 +1152,9 @@ public partial class DashboardWindow : Window
         public void Update(SavedPrinter printer, PrinterTelemetry t, string? message, bool pl)
         {
             _name.Text = printer.Name;
+            _name.ToolTip = printer.Name;
+            // Status chips below come and go with the printer's state, so the header is fitted afterwards.
+            _owner.Dispatcher.BeginInvoke(new Action(FitHeader), System.Windows.Threading.DispatcherPriority.Loaded);
             // LITE carries neither chip: maintenance tracking is a full-edition feature, and the alert
             // "!" only pays off with the detail view behind it.
             var maintenanceSignal = Build.IsLite
