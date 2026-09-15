@@ -13,7 +13,7 @@
   #define MyOutputBase "Gantry-Setup-Windows-x64"
   #define MyRunValue "Gantry"
 #endif
-#define MyAppVersion "0.11.0"
+#define MyAppVersion "0.12.0"
 #define MyAppPublisher "Kamil Grzegorczyk"
 #define MyAppURL "https://github.com/parametryczny/gantrybar"
 
@@ -42,7 +42,7 @@ CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=0.11.0.0
+VersionInfoVersion=0.12.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Windows Beta Installer
 VersionInfoProductName={#MyAppName}
