@@ -191,11 +191,123 @@ def parse_cc1_message(message: str | bytes, previous: Telemetry | None = None) -
     return tel
 
 
+def parse_cc1_video_reply(message: str | bytes) -> tuple[str | None, int] | None:
+    """The printer's answer to Cmd 386 as (RequestID, Ack), or None for any other frame."""
+    try: root = json.loads(message)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError): return None
+    envelope = root.get("Data") if isinstance(root, dict) else None
+    if not isinstance(envelope, dict) or envelope.get("Cmd") != 386: return None
+    data = envelope.get("Data")
+    ack = data.get("Ack") if isinstance(data, dict) else None
+    if not isinstance(ack, int) or isinstance(ack, bool): return None
+    request_id = envelope.get("RequestID")
+    return (request_id if isinstance(request_id, str) else None), ack
+
+
+class ElegooVideoGate:
+    """The CC1 camera is not just a URL. Its MJPEG server on port 3031 only serves pictures after Cmd 386
+    {"Enable": 1}, the printer answers with an Ack (0 started, 1 too many viewers, 2 no camera, 3 unknown)
+    and it allows a single stream at a time. A stream enabled and never disabled keeps that slot taken, so
+    the Elegoo app, the slicer or Gantry's next viewer is refused until the printer restarts.
+
+    One gate per CC1 connection, shared by every viewer of that printer (details, edge dock, Telegram
+    snapshots). The first viewer enables the stream and waits for the Ack; later viewers ride on it; the
+    last one to leave disables it after a short grace, so a watchdog restart does not toggle the camera.
+    Every acquire() must be matched by exactly one release(). Mirrors macOS and Windows ElegooVideoGate."""
+
+    def __init__(self, send: Callable[[bool, str], object], reply_timeout: float = 6.0,
+                 resend_interval: float = 1.5, release_grace: float = 5.0) -> None:
+        self._send = send
+        self.reply_timeout, self.resend_interval, self.release_grace = reply_timeout, resend_interval, release_grace
+        self._lock = threading.Lock()
+        self._holders = 0
+        self._enabled = False
+        self._waiters: list[list[Any]] = []
+        self._request_ids: set[str] = set()
+        self._attempt = 0
+        self._release_generation = 0
+
+    def acquire(self) -> int | None:
+        """Counts the caller as a viewer and blocks until the Ack: None when the printer did not answer in
+        time (older firmware, a socket still connecting), which is not a refusal."""
+        waiter: list[Any] = [threading.Event(), None]
+        with self._lock:
+            self._holders += 1; self._release_generation += 1
+            if self._enabled: return 0
+            self._waiters.append(waiter)
+            starting = len(self._waiters) == 1
+            if starting: self._attempt += 1; self._request_ids.clear()
+            attempt = self._attempt
+        if starting:
+            threading.Thread(target=self._request, args=(attempt, time.monotonic() + self.reply_timeout),
+                             name="elegoo-video-request", daemon=True).start()
+        waiter[0].wait(self.reply_timeout + 2.0)
+        return waiter[1]
+
+    def release(self) -> None:
+        with self._lock:
+            self._holders = max(0, self._holders - 1)
+            if self._holders or not self._enabled: return
+            self._release_generation += 1; generation = self._release_generation
+        self._schedule_disable(generation)
+
+    def handle_reply(self, request_id: str | None, ack: int) -> None:
+        """Replies to requests this gate did not send (an Elegoo app on the same printer, an earlier
+        disable) are ignored; a reply without a RequestID is taken at its word."""
+        with self._lock:
+            if not self._waiters or (request_id is not None and request_id not in self._request_ids): return
+            attempt = self._attempt
+        self._finish(ack, attempt)
+
+    def reset(self) -> None:
+        """The connection dropped: whatever the printer had enabled may be gone with it."""
+        with self._lock: self._enabled = False
+
+    def _request(self, attempt: int, deadline: float) -> None:
+        while True:
+            with self._lock:
+                if attempt != self._attempt or not self._waiters: return
+                remaining = deadline - time.monotonic()
+                request_id = uuid.uuid4().hex
+                if remaining > 0: self._request_ids.add(request_id)
+            if remaining <= 0:
+                self._finish(None, attempt); return
+            # Sent again until answered: a command written while the socket is still connecting is dropped,
+            # and the printer tolerates a repeated enable.
+            self._send(True, request_id)
+            time.sleep(min(self.resend_interval, remaining))
+
+    def _finish(self, ack: int | None, attempt: int) -> None:
+        generation = None
+        with self._lock:
+            if attempt != self._attempt or not self._waiters: return
+            waiters, self._waiters = self._waiters, []
+            self._attempt += 1
+            if ack == 0: self._enabled = True
+            # Every viewer may have left while the Ack was on its way; the stream must not stay on for nobody.
+            if ack == 0 and self._holders == 0:
+                self._release_generation += 1; generation = self._release_generation
+        if generation is not None: self._schedule_disable(generation)
+        for waiter in waiters:
+            waiter[1] = ack; waiter[0].set()
+
+    def _schedule_disable(self, generation: int) -> None:
+        def disable() -> None:
+            with self._lock:
+                if generation != self._release_generation or self._holders or not self._enabled: return
+                self._enabled = False
+            self._send(False, uuid.uuid4().hex)
+        timer = threading.Timer(self.release_grace, disable); timer.daemon = True; timer.start()
+
+
 class ElegooCC1Connection:
     def __init__(self, printer: Printer, on_event: Callable[[str, object | None], None]) -> None:
         self.printer, self.on_event = printer, on_event
         self.telemetry = Telemetry()
         self._stop = threading.Event(); self._socket: Any | None = None
+        #: Cmd 386 handshake and the single stream slot, shared by every camera viewer of this printer.
+        self.video_gate = ElegooVideoGate(
+            lambda enable, request_id: self.send_method(386, {"Enable": 1 if enable else 0}, request_id))
 
     def start(self) -> None:
         self._stop.clear(); threading.Thread(target=self._run, name=f"elegoo-cc1-{self.printer.serial}", daemon=True).start()
@@ -206,9 +318,9 @@ class ElegooCC1Connection:
             if self._socket: self._socket.close()
         except Exception: pass
 
-    def send_method(self, command: int, data: dict[str, Any] | None = None) -> bool:
+    def send_method(self, command: int, data: dict[str, Any] | None = None, request_id: str | None = None) -> bool:
         if self._socket is None: return False
-        request_id = uuid.uuid4().hex
+        request_id = request_id or uuid.uuid4().hex
         payload = {"Id": self.printer.serial, "Data": {
             "Cmd": command, "Data": data or {}, "RequestID": request_id,
             "MainboardID": self.printer.serial, "TimeStamp": int(time.time() * 1000), "From": 1,
@@ -228,6 +340,7 @@ class ElegooCC1Connection:
             try:
                 import websocket  # type: ignore[import-not-found]
                 self._socket = websocket.create_connection(f"ws://{self.printer.host}:{self.printer.port}/websocket", timeout=5)
+                self.video_gate.reset()
                 self.on_event("connected", None); self.send_method(0); self.send_method(1); self.send_method(512, {"TimePeriod": 5000})
                 last_status = time.monotonic()
                 while not self._stop.is_set():
@@ -237,12 +350,14 @@ class ElegooCC1Connection:
                             self.send_method(0); last_status = time.monotonic()
                         continue
                     if not message: raise ConnectionError("connection-closed")
+                    reply = parse_cc1_video_reply(message)
+                    if reply is not None: self.video_gate.handle_reply(*reply)
                     updated = parse_cc1_message(message, self.telemetry)
                     if updated is not None:
                         self.telemetry = updated; self.on_event("telemetry", updated); last_status = time.monotonic()
             except Exception as error:
                 if not self._stop.is_set(): self.on_event("disconnected", str(error)); self._stop.wait(delay); delay = min(30, delay * 1.7)
-            finally: self._socket = None
+            finally: self._socket = None; self.video_gate.reset()
 
 
 class ElegooCC2Connection:

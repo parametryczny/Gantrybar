@@ -690,6 +690,10 @@ public sealed class PrinterStore
         else if (client is ElegooCc2Client cc2) cc2.SendMethod(method, parameters);
     }
 
+    /// <summary>Centauri Carbon only. Every other brand, the CC2 included, needs no handshake before its camera.</summary>
+    public ElegooVideoGate? VideoGateFor(string serial) =>
+        _clients.TryGetValue(serial, out var client) && client is ElegooCc1Client cc1 ? cc1.VideoGate : null;
+
     public void SendAnycubicPrint(string serial, string action) { if (_clients.GetValueOrDefault(serial) is AnycubicS1Client client) client.SendPrint(action); }
 
     private bool SendElegooRaw(string serial, string json)

@@ -25,6 +25,12 @@ final class CameraFeedController {
     private var klipperStream: KlipperCameraStream?
     private var elegooStream: ElegooCameraStream?
     private var anycubicStream: AnycubicCameraStream?
+    /// Held from the Cmd 386 request until `stop()`, so the printer's single stream is released with us.
+    private var elegooGate: ElegooVideoGate?
+    /// Bumped by `stop()`, so an Ack that arrives after the feed was stopped or restarted opens nothing.
+    private var feedGeneration = 0
+    private var decodeFailures = 0
+    private static let decodeFailuresBeforeNotice = 5
     private var timeout: DispatchWorkItem?
     private var receivedFrame = false
     /// When the last frame arrived, and the machinery that notices it stopped arriving.
@@ -70,6 +76,7 @@ final class CameraFeedController {
         guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
         isRunning = true
         receivedFrame = false
+        decodeFailures = 0
         switch printer.kind {
         case .bambu: startBambuCamera(printer)
         case .klipper: startKlipperCamera(printer)
@@ -127,6 +134,9 @@ final class CameraFeedController {
         klipperStream = nil
         elegooStream?.stop()
         elegooStream = nil
+        feedGeneration += 1
+        elegooGate?.release()
+        elegooGate = nil
         anycubicStream?.stop()
         anycubicStream = nil
     }
@@ -169,14 +179,34 @@ final class CameraFeedController {
     }
 
     private func startElegooCamera(_ printer: SavedPrinter) {
-        guard elegooStream == nil else { return }
+        guard elegooStream == nil, elegooGate == nil else { return }
         let isCC2 = printer.kind == .elegooCC2
-        store.sendElegooMethod(serial: serial, method: isCC2 ? 1042 : 386,
-                               params: isCC2 ? [:] : ["Enable": 1])
         let port = isCC2 ? 8080 : 3031
         let path = isCC2 ? "/?action=stream" : "/video"
         guard let url = URL(string: "http://\(cameraHost(for: printer)):\(port)\(path)") else { return }
         view.showStatus(AppSettings.shared.t("Connecting to camera…"))
+        guard !isCC2, let gate = store.elegooVideoGate(serial: serial) else {
+            if isCC2 { store.sendElegooMethod(serial: serial, method: 1042) }
+            openElegooStream(url)
+            return
+        }
+        // The CC1 serves nothing on 3031 until it has accepted Cmd 386, and it says why when it refuses.
+        elegooGate = gate
+        let generation = feedGeneration
+        gate.acquire { ack in
+            Task { @MainActor [weak self] in
+                guard let self, self.isRunning, generation == self.feedGeneration else { return }
+                if let refusal = ElegooVideoGate.refusalMessage(ack: ack) {
+                    self.timeout?.cancel()
+                    self.view.showStatus(refusal)
+                } else {
+                    self.openElegooStream(url)
+                }
+            }
+        }
+    }
+
+    private func openElegooStream(_ url: URL) {
         let stream = ElegooCameraStream(url: url,
             onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } },
             onState: { state in Task { @MainActor [weak self] in
@@ -205,7 +235,16 @@ final class CameraFeedController {
     private func handleImageFrame(_ data: Data) {
         noteFrame()
         timeout?.cancel()
-        if let image = NSImage(data: data) { view.show(image) }
+        if let image = NSImage(data: data) {
+            decodeFailures = 0
+            view.show(image)
+        } else {
+            // Frames that arrive but never decode used to leave "Connecting…" on screen for good.
+            decodeFailures += 1
+            if decodeFailures == Self.decodeFailuresBeforeNotice {
+                view.showStatus(AppSettings.shared.t("The camera sends pictures that cannot be decoded."))
+            }
+        }
     }
 
     /// A frame arrived, so the feed is alive. Sustained flow also earns back the short retry delay,

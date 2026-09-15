@@ -45,7 +45,17 @@ def capture(app: Any, serial: str, timeout: float = 12) -> bytes | None:
         if printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
             return _grab_anycubic(host, serial, timeout)
         url = _mjpeg_url(app, printer, host)
-        return _grab_mjpeg(url, timeout) if url else None
+        gate = getattr(app.connections.get(printer.serial), "video_gate", None) \
+            if printer.kind == PrinterKind.ELEGOO_CC1 else None
+        if gate is None:
+            return _grab_mjpeg(url, timeout) if url else None
+        # A snapshot is a viewer too: it shares the printer's single stream with an open live view and gives
+        # it back afterwards instead of leaving the camera enabled.
+        ack = gate.acquire()
+        try:
+            return _grab_mjpeg(url, timeout) if url and ack in (None, 0) else None
+        finally:
+            gate.release()
     except Exception:      # noqa: BLE001 - a snapshot must never take the bot down
         return None
 
@@ -163,11 +173,11 @@ def _grab_mjpeg(url: str, timeout: float) -> bytes | None:
 def _mjpeg_url(app: Any, printer: Any, host: str) -> str | None:
     """Same addresses the live view uses, including the Elegoo 'start the stream' nudge."""
     if printer.kind in {PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2}:
-        connection = app.connections.get(printer.serial)
-        sender = getattr(connection, "send_method", None)
         is_cc2 = printer.kind == PrinterKind.ELEGOO_CC2
-        if callable(sender):
-            sender(1042, {}) if is_cc2 else sender(386, {"Enable": 1})
+        sender = getattr(app.connections.get(printer.serial), "send_method", None)
+        # The CC1 is started through its ElegooVideoGate in capture(); the CC2 only needs a nudge.
+        if is_cc2 and callable(sender):
+            sender(1042, {})
         return f"http://{host}:8080/?action=stream" if is_cc2 else f"http://{host}:3031/video"
     if printer.kind == PrinterKind.KLIPPER:
         return f"http://{host}:{printer.port or 7125}/webcam/?action=stream"

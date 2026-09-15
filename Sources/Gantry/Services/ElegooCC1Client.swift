@@ -8,6 +8,10 @@ final class ElegooCC1Client: PrinterConnection, @unchecked Sendable {
     private var statusTimer: DispatchSourceTimer?
     private var telemetry = PrinterTelemetry()
     private var stopped = false
+    /// Cmd 386 handshake and the single stream slot, shared by every camera viewer of this printer.
+    private(set) lazy var videoGate = ElegooVideoGate { [weak self] enable, requestID in
+        self?.sendMethod(386, data: ["Enable": enable ? 1 : 0], requestID: requestID)
+    }
 
     init(printer: SavedPrinter, onEvent: @escaping @Sendable (MQTTClient.Event) -> Void) {
         self.printer = printer; self.onEvent = onEvent
@@ -20,14 +24,14 @@ final class ElegooCC1Client: PrinterConnection, @unchecked Sendable {
         self?.task?.cancel(with: .goingAway, reason: nil); self?.task = nil
     } }
 
-    func sendMethod(_ command: Int, data: [String: Any] = [:]) {
+    func sendMethod(_ command: Int, data: [String: Any] = [:], requestID: String? = nil) {
         guard let parameters = try? JSONSerialization.data(withJSONObject: data) else { return }
         queue.async { [weak self] in
             guard let self, let task else { return }
             let decoded = (try? JSONSerialization.jsonObject(with: parameters)) as? [String: Any] ?? [:]
             let request: [String: Any] = [
                 "Id": printer.serial,
-                "Data": ["Cmd": command, "Data": decoded, "RequestID": UUID().uuidString.replacingOccurrences(of: "-", with: ""),
+                "Data": ["Cmd": command, "Data": decoded, "RequestID": requestID ?? UUID().uuidString.replacingOccurrences(of: "-", with: ""),
                          "MainboardID": printer.serial, "TimeStamp": Int(Date().timeIntervalSince1970 * 1000), "From": 1],
                 "Topic": "sdcp/request/\(printer.serial)"
             ]
@@ -40,6 +44,7 @@ final class ElegooCC1Client: PrinterConnection, @unchecked Sendable {
         stopped = false
         guard let url = URL(string: "ws://\(printer.host):\(printer.port ?? 3030)/websocket") else { return }
         let task = URLSession.shared.webSocketTask(with: url); self.task = task; task.resume()
+        videoGate.reset()
         onEvent(.connected); sendMethod(0); sendMethod(1); sendMethod(512, data: ["TimePeriod": 5000]); startStatusTimer(); receive()
     }
 
@@ -58,10 +63,14 @@ final class ElegooCC1Client: PrinterConnection, @unchecked Sendable {
                 switch result {
                 case .failure(let error):
                     self.statusTimer?.cancel(); self.statusTimer = nil
+                    self.videoGate.reset()
                     if !self.stopped { self.onEvent(.disconnected(error.localizedDescription)) }
                 case .success(let message):
                     let data: Data
                     switch message { case .data(let value): data = value; case .string(let value): data = Data(value.utf8); @unknown default: data = Data() }
+                    if let reply = ElegooStatusParser.cc1VideoReply(data: data) {
+                        self.videoGate.handleReply(requestID: reply.requestID, ack: reply.ack)
+                    }
                     if let updated = ElegooStatusParser.cc1(data: data, previous: self.telemetry) {
                         self.telemetry = updated; self.onEvent(.telemetry(updated))
                     }

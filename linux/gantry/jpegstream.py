@@ -31,6 +31,40 @@ def split_jpegs(buffer: bytearray, emit: Callable[[bytes], None]) -> None:
         emit(frame)
 
 
+#: ITU T.81 Annex K.3 Huffman tables as one DHT segment. Motion JPEG cameras often leave them out and rely
+#: on the decoder knowing them; not every decoder does.
+STANDARD_HUFFMAN_TABLES = bytes.fromhex(
+    "ffc401a20000010501010101010100000000000000000102030405060708090a0b100002010303020403050504040000017d0102030004110512213141061351610722711432"
+    "8191a1082342b1c11552d1f02433627282090a161718191a25262728292a3435363738393a434445464748494a535455565758595a636465666768696a737475767778797a83"
+    "8485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8"
+    "f9fa0100030101010101010101010000000000000102030405060708090a0b110002010204040304070504040001027700010203110405213106124151076171132232810814"
+    "4291a1b1c109233352f0156272d10a162434e125f11718191a262728292a35363738393a434445464748494a535455565758595a636465666768696a737475767778797a8283"
+    "8485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae2e3e4e5e6e7e8e9eaf2f3f4f5f6f7f8f9fa")
+
+
+def ensure_huffman_tables(jpeg: bytes) -> bytes:
+    """A frame without Huffman tables gets the standard ones in front of its scan; anything else comes back
+    unchanged. The same repair as macOS JPEGHuffman and Windows JpegHuffman."""
+    if len(jpeg) <= 4 or jpeg[0] != 0xFF or jpeg[1] != 0xD8:
+        return jpeg
+    index = 2
+    while index + 3 < len(jpeg):
+        if jpeg[index] != 0xFF:
+            return jpeg
+        marker = jpeg[index + 1]
+        if marker == 0xFF:
+            index += 1
+        elif marker == 0xC4:
+            return jpeg
+        elif marker == 0xDA:
+            return jpeg[:index] + STANDARD_HUFFMAN_TABLES + jpeg[index:]
+        elif marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            index += 2
+        else:
+            index += 2 + (jpeg[index + 2] << 8 | jpeg[index + 3])
+    return jpeg
+
+
 # Compatibility for code/tests written before this helper was extracted from camera.py.
 _split_jpegs = split_jpegs
 

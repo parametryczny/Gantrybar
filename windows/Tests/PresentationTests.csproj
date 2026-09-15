@@ -21,5 +21,6 @@
     <Compile Include="../Gantry.Windows/Services/AppDataRoot.cs" Link="AppDataRoot.cs" />
     <Compile Include="../Gantry.Windows/Models/PhysicalSpool.cs" Link="PhysicalSpool.cs" />
     <Compile Include="../Gantry.Windows/Models/PrinterModels.cs" Link="PrinterModels.cs" />
+    <Compile Include="../Gantry.Windows/Services/ElegooVideo.cs" Link="ElegooVideo.cs" />
   </ItemGroup>
 </Project>
