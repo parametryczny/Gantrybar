@@ -560,6 +560,26 @@ require("linux/gantry/settings.py", r'pane\.field\(i18n\.t\("Position"\), self\.
 require("Sources/Gantry/Views/MenuBarController.swift", r"edgeDockMenu\(settings: settings\)", "the macOS menu has no edge-dock submenu")
 require("windows/Gantry.Windows/UI/TrayIcon.cs", r"BuildEdgeDockMenu\(\)", "the Windows tray has no edge-dock submenu")
 require("linux/gantry/app.py", r"self\._fill_dock_menu\(dock_menu\)", "the GNU/Linux tray has no edge-dock submenu")
+
+# ---- Card header: nothing cut off, nothing wrapped (contract header.nameLabel / manufacturerPill) ----------
+# The printer name and the file name scroll while hovered on every platform instead of ending cut off.
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift", r"private let nameLabel = MarqueeLabel\(\)",
+        "the macOS card name does not scroll like the file name")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", r"_name = new MarqueeText", "the Windows card name does not scroll")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", r"_job = new MarqueeText", "the Windows file name does not scroll")
+require("linux/gantry/dashboard.py", r'self\.name = MarqueeLabel\(printer\.name, "printer-name"\)', "the GNU/Linux card name does not scroll")
+require("linux/gantry/dashboard.py", r'self\.job = MarqueeLabel\("", "job"\)', "the GNU/Linux file name does not scroll")
+# The connection pill gives way before the chips on the right are pushed out of the card.
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift", r"minimumNameWidth: CGFloat = 48[\s\S]*?func fitConnectionPill",
+        "the macOS card header does not drop the connection pill when short of room")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", r"MinimumNameWidth = 48;[\s\S]*?private void FitHeader\(\)",
+        "the Windows card header does not drop the connection pill when short of room")
+# The popover grows with the card scale, so a scaled card keeps its proportions instead of growing taller.
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        rf"Width = \(cols == 1 \? {one} : {two}\) \* AppSettings\.CardScalePercent / 100\.0;",
+        "the Windows popover width differs from the contract or ignores the card scale")
+require("linux/gantry/layout.py", rf"return {one} if max\(1, min\(2, columns\)\) == 1 else {two}",
+        "the GNU/Linux panel widths differ from the contract")
 require("linux/gantry/edgedock.py", r"return self\.hovering or self\.pinned",
         "a pinned GNU/Linux strip still folds when the pointer leaves")
 # Pictures: same width band, same brands, same stream rules.
@@ -606,7 +626,7 @@ require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf'frameAutosaveName\s*=\s*"{re.escape(floating["frameAutosaveName"])}"',
         "floating window frame is not persisted")
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        r"func snappedFloatingContentSize[\s\S]*?columnPitch:\s*CGFloat\s*=\s*293[\s\S]*?height:\s*proposed\.height",
+        r"func snappedFloatingContentSize[\s\S]*?columnPitch:\s*CGFloat\s*=\s*333[\s\S]*?height:\s*proposed\.height",
         "macOS floating window width is not snapped to whole card columns")
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         r"windowDidEndLiveResize[\s\S]*?snapWindowToTiles[\s\S]*?fitHeightToCards",
@@ -748,13 +768,13 @@ require("linux/gantry/dashboard.py",
         r"\.fleet-header \{ background: %\(surface_on_backdrop\)s;",
         "Linux fleet header borrows its contrast from the desktop behind the panel")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
-        r"CardColumnPitch\s*=>\s*293 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
+        r"CardColumnPitch\s*=>\s*333 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
         "Windows floating window is not snapped to card columns with content-driven height")
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
         r"if \(WindowMode\) return false;.*full card tiles",
         "Windows still switches to compact rows while resizing the window")
 require("linux/gantry/presentation.py",
-        r"def _snapped_tile_size[\s\S]*?pitch = 293 \* scale[\s\S]*?columns \* pitch[\s\S]*?content_height_for_width",
+        r"def _snapped_tile_size[\s\S]*?pitch = 333 \* scale[\s\S]*?columns \* pitch[\s\S]*?content_height_for_width",
         "Linux floating window does not snap columns and fit the real card-row height")
 require("linux/gantry/app.py",
         r"if not getattr\(self\.window, \"tray_mode\", True\):[\s\S]*?return False.*full card tiles",
@@ -769,10 +789,11 @@ require("linux/gantry/layout.py", rf"return\s+{compact}\b", "compact width does 
 require("linux/gantry/dashboard.py", rf"CARD_GAP\s*=\s*{column_gap}\b", "column gap does not match macOS")
 require("linux/gantry/dashboard.py", rf"CARD_ROW_GAP\s*=\s*{row_gap}\b", "row gap does not match macOS")
 
-require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", rf"Width\s*=\s*{compact};",
-        "compact width does not match macOS")
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
-        rf"Width\s*=\s*cols\s*==\s*1\s*\?\s*{one}\s*:\s*{two};", "panel widths do not match macOS")
+        rf"Width\s*=\s*{compact}\s*\*\s*AppSettings\.CardScalePercent\s*/\s*100\.0;",
+        "compact width does not match macOS or ignores the card scale")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        rf"Width\s*=\s*\(cols\s*==\s*1\s*\?\s*{one}\s*:\s*{two}\)\s*\*\s*AppSettings\.CardScalePercent", "panel widths do not match macOS")
 require("windows/Gantry.Windows/UI/GantryTheme.cs", rf"FleetColumnGap\s*=\s*{column_gap};",
         "column gap does not match macOS")
 require("windows/Gantry.Windows/UI/GantryTheme.cs", rf"FleetRowGap\s*=\s*{row_gap};",

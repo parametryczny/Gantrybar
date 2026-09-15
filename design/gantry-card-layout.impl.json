@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.10.0",
+    "version": "1.11.0",
     "date": "2026-09-14",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
@@ -45,8 +45,8 @@
       "userDefaultsKey": "gantry.dashboard.columns"
     },
     "panelWidth": {
-      "oneColumn": 380,
-      "twoColumns": 563,
+      "oneColumn": 420,
+      "twoColumns": 643,
       "list": 512
     },
     "contentWidthInset": 24,
@@ -65,25 +65,25 @@
     "enabledByDefault": false,
     "alwaysOnTopDefault": true,
     "initialSize": {
-      "width": 470,
+      "width": 678,
       "height": 400
     },
     "minimumSize": {
-      "width": 305,
+      "width": 345,
       "height": 290
     },
     "tileResize": {
       "card": {
-        "width": 285,
+        "width": 325,
         "height": 174
       },
       "gap": 8,
       "contentSize": {
-        "width": "12 + columns * 293",
+        "width": "12 + columns * 333",
         "height": "fixedChrome + measuredCardGridHeight"
       },
       "windowsFrameSize": {
-        "width": "24 + columns * 293",
+        "width": "24 + columns * 333",
         "height": "nonClientChrome + measuredCardGridHeight"
       },
       "heightPolicy": "fitEveryCompleteRowAfterWidthSnap",
@@ -96,7 +96,7 @@
       "compactWhen": "popover only",
       "contentWidthInset": 20,
       "gap": 8,
-      "cardMinimumWidth": 285,
+      "cardMinimumWidth": 325,
       "compactRowMinimumWidth": 210,
       "columns": "max(1, floor((windowWidth - 20 + 8) / (minimumItemWidth + 8)))",
       "maximumColumns": null
@@ -164,13 +164,16 @@
     "nameLabel": {
       "size": 14,
       "weight": "semibold",
-      "color": "text"
+      "color": "text",
+      "marquee": true,
+      "fit": "takes the room the chips leave; clipped at rest and scrolled to its end while hovered, like the job label; never wraps"
     },
     "manufacturerPill": {
       "size": 10,
       "weight": "regular",
       "bg": "rgba(255,255,255,0.025)",
-      "radius": 5
+      "radius": 5,
+      "hiddenWhen": "the header cannot keep 48 of room for the name with the pill shown; status chips, drag handle and actions are never cut"
     },
     "detailsChip": {
       "size": 20,

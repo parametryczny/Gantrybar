@@ -26,8 +26,11 @@ from .desktop import installed_slicers, open_desktop_app
 from .presentation import DesktopPresentation
 
 
-PANEL_ONE_COLUMN = 380
-PANEL_TWO_COLUMNS = 563
+from .marquee import MarqueeLabel  # noqa: E402
+
+# 40 px wider cards than before: a long name, the connection pill and three status chips no longer fit.
+PANEL_ONE_COLUMN = 420
+PANEL_TWO_COLUMNS = 643
 PANEL_COMPACT = 512
 CARD_GAP = 10
 CARD_ROW_GAP = 8
@@ -90,6 +93,8 @@ button.printer-alert { color: #ff5a4e; font-size: 11px; font-weight: 800; }
 .status-dot { background: %(metric)s; border-radius: 3px; min-width: 6px; min-height: 6px; }
 .status { color: %(metric)s; font-size: 10px; font-weight: 600; }
 .job { color: %(text)s; font-size: 10px; font-weight: 600; }
+.marquee, .marquee viewport { background: transparent; border: none; }
+.marquee undershoot, .marquee overshoot { background: none; box-shadow: none; }
 .percent { color: %(metric)s; font-family: monospace; font-size: 14px; font-weight: 700; }
 .metric { color: %(secondary)s; font-family: monospace; font-size: 10px; font-weight: 600; }
 .section-rule { background: alpha(#ffffff, 0.09); min-height: 1px; }
@@ -380,8 +385,9 @@ class PrinterCard(Gtk.Frame):
         top = Gtk.Box(spacing=7)
         icon = Gtk.Image.new_from_icon_name("printer-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         icon.get_style_context().add_class("printer-icon")
-        self.name = Gtk.Label(label=printer.name, xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        self.name.get_style_context().add_class("printer-name")
+        # Scrolls to its end while hovered, like the file name, instead of ending in an ellipsis.
+        self.name = MarqueeLabel(printer.name, "printer-name")
+        self.name.set_tooltip_text(printer.name)
         connection = {PrinterKind.BAMBU: "MQTT", PrinterKind.KLIPPER: "KLIPPER",
                       PrinterKind.PRUSA: "PRUSALINK", PrinterKind.SNAPMAKER: "HTTP",
                       PrinterKind.ELEGOO_CC1: "SDCP", PrinterKind.ELEGOO_CC2: "MQTT LAN",
@@ -419,8 +425,7 @@ class PrinterCard(Gtk.Frame):
         self.status.get_style_context().add_class("status")
         sep = Gtk.Label(label="·")
         sep.get_style_context().add_class("metric")
-        self.job = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        self.job.get_style_context().add_class("job")
+        self.job = MarqueeLabel("", "job")
         self.status_row.pack_start(dot, False, False, 0)
         self.status_row.pack_start(self.status, False, False, 0)
         self.job_separator = sep

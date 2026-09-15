@@ -56,7 +56,7 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
         )
 
         let panel = FloatingDashboardPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 470, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: 678, height: 400),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -72,7 +72,7 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
-        panel.contentMinSize = NSSize(width: 305, height: 290)
+        panel.contentMinSize = NSSize(width: 345, height: 290)
         panel.contentViewController = dashboard
 
         super.init(window: panel)

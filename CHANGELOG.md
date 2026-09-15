@@ -12,7 +12,7 @@ Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są op
 
 Wydanie po raz pierwszy pozwala wpłynąć na trwający wydruk: sterowanie temperaturami, wentylatorami i prędkością z widoku szczegółów oraz pomijanie obiektów. Pasek krawędziowy dostaje kamery, pinezkę, wybór monitora i sześć miejsc na ekranie, panele pomocnicze trafiają do własnych okien, a ustawienia wyglądają jak systemowe. Druga połowa to przegląd niezawodności z audytu. Na Bambu Lab sterowanie działa tylko lokalnie, w trybie Tylko LAN z włączonym Trybem deweloperskim. Pełny opis: `docs/release-0.12.0.md`.
 
-Paczki: macOS (zip), Windows (instalator) i GNU/Linux (AppImage). Edycja LITE nie jest wydawana.
+Paczki: macOS (dmg oraz zip w wariantach Local i Keychain), Windows (instalator i wersja przenośna zip) i GNU/Linux (deb, rpm i AppImage). Edycja LITE nie jest wydawana.
 
 ### Dodane
 
@@ -20,6 +20,7 @@ Paczki: macOS (zip), Windows (instalator) i GNU/Linux (AppImage). Edycja LITE ni
 
 ### Poprawione
 
+- **karty drukarek nie ucinają przycisków**: karta jest szersza (325 zamiast 285 punktów, panel 643 zamiast 563 przy dwóch kolumnach i 420 zamiast 380 przy jednej). W nagłówku alert, konserwacja, pomijanie obiektów, uchwyt i menu zawsze mieszczą się w karcie; gdy brakuje miejsca, najpierw chowa się pigułka połączenia, a nazwa oddaje resztę. Długa nazwa drukarki i nazwa pliku nie łamią się na dwa wiersze, tylko przewijają do końca po najechaniu kursorem, na macOS, Windows i GNU/Linuksie. Na Windows panel rośnie razem ze skalą karty, więc powiększona karta zachowuje proporcje zamiast rosnąć w górę i tracić treść z boku.
 - **pasek krawędziowy przy kilku monitorach**: na macOS podążał za ekranem z aktywnym oknem i potrafił przeskakiwać między monitorami, na Windows brał krawędź z całego pulpitu, a wysokość z monitora głównego, więc przy monitorach różnej wysokości mógł wisieć krzywo, a na GNU/Linuksie zawsze stał na monitorze głównym.
 - **kamera Elegoo Centauri Carbon**: podgląd na żywo nie łączył się, choć zdjęcia z kamery działały. Gantry wysyłało polecenie włączenia strumienia i od razu otwierało port 3031, nie czekając na odpowiedź drukarki, a strumienia nigdy nie wyłączało, więc jedyne miejsce na podgląd zostawało zajęte do restartu drukarki. Teraz na macOS, Windows i GNU/Linuksie wszystkie podglądy jednej drukarki (szczegóły, pasek krawędziowy, zdjęcia z Telegrama) dzielą wspólną bramkę: pierwszy czeka na potwierdzenie, ostatni po kilku sekundach wyłącza strumień. Odmowa drukarki pokazuje powód (limit jednego podglądu, brak kamery), strumień bez obrazu jest ponawiany i ma limit czasu zamiast wiecznego „Łączenie z kamerą…”, klatki bez tablic Huffmana dostają standardowe tablice, a obraz, którego nie da się odczytać, jest zgłaszany zamiast po cichu pomijany. Na macOS podział strumienia na klatki nie przeszukuje już całego bufora dla każdego bajtu.
 

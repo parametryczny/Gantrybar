@@ -402,7 +402,7 @@ final class PrinterDashboardViewController: NSViewController {
         let height = max(120, size.height)
         let width = physicalWidth / cardScale
         let compact = false
-        let minimumItemWidth: CGFloat = 285
+        let minimumItemWidth: CGFloat = 325
         let columns = max(1, Int(floor((width - 20 + 8) / (minimumItemWidth + 8))))
         let contentWidth = width - 20
         updateFloatingChrome(width: physicalWidth, height: height)
@@ -426,7 +426,7 @@ final class PrinterDashboardViewController: NSViewController {
     func snappedFloatingContentSize(for proposed: NSSize) -> NSSize {
         guard presentation == .floatingWindow else { return proposed }
         let scale = cardScale
-        let columnPitch: CGFloat = 293 * scale       // card 285 + gap 8
+        let columnPitch: CGFloat = 333 * scale       // card 325 + gap 8
         let widthBase: CGFloat = 12 * scale          // 20 outer inset - trailing gap
         let proposedColumns = Int(((proposed.width - widthBase) / columnPitch).rounded())
         let columns = max(1, proposedColumns)
@@ -579,10 +579,12 @@ final class PrinterDashboardViewController: NSViewController {
             : supportsCompactMode && (compactModeChosen ? prefersCompactMode : store.printers.count > 8)
         // Geometry no longer depends on printer count: normal and multi-nozzle cards span one
         // column; only multi-AMS cards span two. The floating window itself snaps to this grid.
-        let minimumItemWidth: CGFloat = useCompactMode ? 210 : 285
+        // Cards are 40 points wider than they were: a header with a long name, the connection pill and
+        // three status chips pushed the chips out of a 285-point card at any scale.
+        let minimumItemWidth: CGFloat = useCompactMode ? 210 : 325
         let responsiveColumns = max(1, Int(floor((adaptivePanelWidth - 20 + 8) / (minimumItemWidth + 8))))
         let expandedColumnCount = floating ? responsiveColumns : (useCompactMode ? 1 : preferredColumns)
-        let basePanelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 380 : 563)
+        let basePanelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 420 : 643)
         let effectivePanelWidth: CGFloat = floating
             ? view.bounds.width
             : basePanelWidth * cardScale
@@ -1382,8 +1384,10 @@ final class PrinterCardView: NSView, NSDraggingSource {
     private let onShowMaintenance: () -> Void
     private let stateEmphasisLayer = CAGradientLayer()
     private let dropIndicatorLayer = CALayer()
-    private let nameLabel = NSTextField(labelWithString: "")
+    /// Scrolls to its end while hovered, like the file name, instead of cutting a long printer name off.
+    private let nameLabel = MarqueeLabel()
     private let manufacturerLabel = NSTextField(labelWithString: "")
+    private weak var headerStack: NSStackView?
     private let statusLabel = NSTextField(labelWithString: "")
     private let stateDot = NSImageView()
     /// The chart shortcut next to the name; hidden unless Settings turns it on.
@@ -1537,8 +1541,8 @@ final class PrinterCardView: NSView, NSDraggingSource {
         jobStateDot.widthAnchor.constraint(equalToConstant: 6).isActive = true
         jobStateDot.heightAnchor.constraint(equalToConstant: 6).isActive = true
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.lineBreakMode = .byTruncatingTail
-        nameLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        // Just below the chips: when room runs out the name gives way, never the chips on the right.
+        nameLabel.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(rawValue: 749), for: .horizontal)
         manufacturerLabel.font = .systemFont(ofSize: 10, weight: .regular)
         manufacturerLabel.textColor = .tertiaryLabelColor
         manufacturerLabel.wantsLayer = true
@@ -1642,6 +1646,7 @@ final class PrinterCardView: NSView, NSDraggingSource {
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 7
+        headerStack = header
 
         jobLabel.font = .systemFont(ofSize: 10, weight: .semibold)
         jobLabel.textColor = .labelColor
@@ -1932,6 +1937,22 @@ final class PrinterCardView: NSView, NSDraggingSource {
     override func layout() {
         super.layout()
         stateEmphasisLayer.frame = bounds
+        fitConnectionPill()
+    }
+
+    /// Room the name keeps before the connection pill gives way.
+    private static let minimumNameWidth: CGFloat = 48
+
+    /// The connection pill is the first thing to go when the header is short of room. Squeezed, it only
+    /// read "…", and the chips on the right were pushed out of the card. Decided from intrinsic widths,
+    /// not from the frames this very decision changes, so hiding it cannot make it come back.
+    private func fitConnectionPill() {
+        guard let header = headerStack, bounds.width > 0 else { return }
+        let available = bounds.width - 20   // the card's 10-point content inset on each side
+        let others = header.arrangedSubviews.filter { !$0.isHidden && $0 !== nameLabel.superview }
+        let fixed = others.reduce(0) { $0 + $1.fittingSize.width } + header.spacing * CGFloat(others.count)
+        let fits = fixed + Self.minimumNameWidth + 5 + manufacturerLabel.fittingSize.width <= available
+        if manufacturerLabel.isHidden == fits { manufacturerLabel.isHidden = !fits }
     }
 
     private var onMove: ((_ sourceSerial: String, _ targetSerial: String, _ insertAfter: Bool) -> Void)?
@@ -2019,6 +2040,7 @@ final class PrinterCardView: NSView, NSDraggingSource {
         skipObjectsButton.isHidden = !Build.hasExtras || !supportsObjectSkipping || isStartingUp
             || (telemetry.state != .printing && telemetry.state != .paused)
         nameLabel.stringValue = printer.name
+        nameLabel.toolTip = printer.name
         manufacturerLabel.stringValue = switch printer.kind {
         case .bambu: " MQTT "
         case .klipper: " KLIPPER "
@@ -2028,7 +2050,8 @@ final class PrinterCardView: NSView, NSDraggingSource {
         case .elegooCC2: " MQTT LAN "
         case .anycubicKobraS1: " MQTT LAN "
         }
-        manufacturerLabel.isHidden = false
+        // Chips on the right come and go with the printer's state; the pill follows on the next layout.
+        needsLayout = true
         let dataAge = telemetry.lastUpdated.map { max(0, Date().timeIntervalSince($0)) }
         let stale = dataAge.map { $0 > 90 } ?? false
         let baseStatus = message ?? settings.activityLabel(stage: telemetry.currentStage, state: telemetry.state)
@@ -2888,7 +2911,18 @@ private final class MarqueeLabel: NSView {
 
     var stringValue: String {
         get { text.stringValue }
-        set { text.stringValue = newValue; resetScroll() }
+        set {
+            guard newValue != text.stringValue else { return }
+            text.stringValue = newValue
+            resetScroll()
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    /// As wide as the text, so a short name hugs its pill; low hugging still lets the file name fill
+    /// its row, and compression is what makes a long one scroll.
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: ceil(text.fittingSize.width), height: NSView.noIntrinsicMetric)
     }
     var font: NSFont? {
         get { text.font }

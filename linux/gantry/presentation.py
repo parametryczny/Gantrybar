@@ -57,7 +57,7 @@ class DesktopPresentation:
             self.unmaximize()
         self.set_decorated(not self.tray_mode)
         self.set_resizable(not self.tray_mode)
-        self.set_size_request(-1, -1) if self.tray_mode else self.set_size_request(305, 290)
+        self.set_size_request(-1, -1) if self.tray_mode else self.set_size_request(345, 290)
         self.set_skip_taskbar_hint(self.tray_mode)
         self.set_skip_pager_hint(self.tray_mode)
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY if self.tray_mode else Gdk.WindowTypeHint.NORMAL)
@@ -71,7 +71,7 @@ class DesktopPresentation:
 
     def layout_columns(self):
         scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
-        pitch = 293 * scale
+        pitch = 333 * scale
         if self.tray_mode:
             return max(1, min(2, int(self.app.config.data.get("dashboard_columns", 2))))
         return max(1, round((self.get_size()[0] - 12) / pitch))
@@ -84,7 +84,7 @@ class DesktopPresentation:
         max_width = workarea.width if workarea else 1800
         max_height = workarea.height if workarea else 1200
         scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
-        pitch = 293 * scale
+        pitch = 333 * scale
         columns = max(1, min(int((max_width - 12) // pitch),
                              round((proposed_width - 12) / pitch)))
         snapped_width = int(12 + columns * pitch)
