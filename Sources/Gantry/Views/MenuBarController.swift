@@ -402,6 +402,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             self?.showSettings()
         })
 
+        if Build.hasExtras, settings.edgeDockEnabled {
+            let dockItem = NSMenuItem(title: settings.t("🖥  Edge dock"), action: nil, keyEquivalent: "")
+            dockItem.submenu = edgeDockMenu(settings: settings)
+            menu.addItem(dockItem)
+        }
+
         // Every icon in this menu is drawn by a custom row view; a plain NSMenuItem's native image
         // doesn't render here, and a view-based item won't open a submenu on hover. So the icon is an
         // emoji in the title — it always renders and keeps the row expandable.
@@ -424,6 +430,31 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         })
 
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY - 3), in: button)
+    }
+
+    /// The strip's display and place, switchable without opening Settings: one tick among the displays
+    /// and one among the six places. The same submenu in the Windows and GNU/Linux tray.
+    private func edgeDockMenu(settings: AppSettings) -> NSMenu {
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        let choices = EdgeDockPlacement.choices(displays: EdgeDockPlacement.connectedDisplays(),
+                                                savedID: settings.edgeDockDisplayID, savedName: settings.edgeDockDisplayName)
+        for choice in choices {
+            submenu.addItem(EdgeDockMenuAction.item(choice.title, checked: choice.selected) {
+                EdgeDockMenuAction.chooseDisplay(choice.id)
+            })
+        }
+        submenu.addItem(.separator())
+        for edge in [EdgeDockEdge.left, .right] {
+            for row in EdgeDockRow.allCases {
+                submenu.addItem(EdgeDockMenuAction.item(EdgeDockPlacement.positionTitle(edge: edge, row: row),
+                                                        checked: settings.edgeDockEdge == edge && settings.edgeDockRow == row) {
+                    AppSettings.shared.edgeDockEdge = edge
+                    AppSettings.shared.edgeDockRow = row
+                })
+            }
+        }
+        return submenu
     }
 
     /// Expandable colour legend explaining what each status colour on the cards means. Emoji dots keep

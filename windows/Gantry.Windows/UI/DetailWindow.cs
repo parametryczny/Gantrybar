@@ -52,6 +52,12 @@ public sealed class DetailView : UserControl
     private Border? _cameraBadge;           // shows the resolved mode + resolution (e.g. "RTSPS · 1920×1080")
     private BambuCameraStream? _bambuCam;   // Bambu: native RTSPS/RTSP/JPEG client, ffmpeg used only to decode H.264
     private ElegooMjpegStream? _elegooCam;
+    /// <summary>Held from the Cmd 386 request until StopCamera, so the printer's single stream is released with us.</summary>
+    private ElegooVideoGate? _elegooGate;
+    /// <summary>Bumped by StopCamera, so an Ack that arrives after the camera was stopped or restarted opens nothing.</summary>
+    private int _cameraGeneration;
+    private int _cameraDecodeFailures;
+    private const int DecodeFailuresBeforeNotice = 5;
     private AnycubicFlvStream? _anycubicCam;
     private string? _cameraMode;
     private static readonly HttpClient CamHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
@@ -666,11 +672,20 @@ public sealed class DetailView : UserControl
         else if (_kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
         {
             bool cc2 = _kind == PrinterKind.ElegooCc2;
-            _store.SendElegooMethod(_serial, cc2 ? 1042 : 386, cc2 ? new { } : new { Enable = 1 });
-            var cam = new ElegooMjpegStream(); cam.FrameReady += ShowJpegFrame;
-            cam.Failed += message => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Text = message; });
-            _elegooCam = cam; _cameraMode = cc2 ? "MJPEG · 8080" : "MJPEG · 3031"; UpdateBadge();
-            cam.Start($"http://{host}:{(cc2 ? 8080 : 3031)}/{(cc2 ? "?action=stream" : "video")}");
+            _cameraMode = cc2 ? "MJPEG · 8080" : "MJPEG · 3031"; UpdateBadge();
+            var url = $"http://{host}:{(cc2 ? 8080 : 3031)}/{(cc2 ? "?action=stream" : "video")}";
+            var gate = cc2 ? null : _store.VideoGateFor(_serial);
+            if (gate is null)
+            {
+                if (cc2) _store.SendElegooMethod(_serial, 1042, new { });
+                StartElegooStream(url);
+            }
+            else
+            {
+                // The CC1 serves nothing on 3031 until it has accepted Cmd 386, and it says why when it refuses.
+                _elegooGate = gate;
+                _ = StartElegooAfterReplyAsync(gate.Acquire(), url, _cameraGeneration);
+            }
         }
         else if (_kind == PrinterKind.AnycubicKobraS1)
         {
@@ -683,6 +698,31 @@ public sealed class DetailView : UserControl
             _ = StartKlipperCameraAsync(host);
         }
     }
+
+    private async Task StartElegooAfterReplyAsync(Task<int?> reply, string url, int generation)
+    {
+        var ack = await reply;
+        if (!_cameraStarted || generation != _cameraGeneration) return;
+        if (ElegooVideoRefusal(ack) is { } refusal) { if (_cameraStatus is not null) _cameraStatus.Text = refusal; return; }
+        StartElegooStream(url);
+    }
+
+    private void StartElegooStream(string url)
+    {
+        var cam = new ElegooMjpegStream(); cam.FrameReady += ShowJpegFrame;
+        cam.Failed += message => Dispatcher.Invoke(() => { if (_cameraStatus is not null) _cameraStatus.Text = message; });
+        _elegooCam = cam; cam.Start(url);
+    }
+
+    /// <summary>Cmd 386 Ack: 0 started, 1 too many viewers, 2 no camera, 3 unknown. No answer at all (older
+    /// firmware, a socket still connecting) is not a refusal, so the stream is tried anyway.</summary>
+    private static string? ElegooVideoRefusal(int? ack) => ack switch
+    {
+        null or 0 => null,
+        1 => AppSettings.T("The printer allows one camera viewer at a time. Close the camera in Elegoo Slicer or the Elegoo app, or restart the printer."),
+        2 => AppSettings.T("The printer reports that it has no camera."),
+        _ => string.Format(AppSettings.T("The printer could not start the camera (code {0})."), ack),
+    };
 
     private void UpdateBadge()
     {
@@ -705,6 +745,7 @@ public sealed class DetailView : UserControl
             bmp.StreamSource = ms;
             bmp.EndInit();
             bmp.Freeze();
+            _cameraDecodeFailures = 0;
             Dispatcher.Invoke(() =>
             {
                 if (_cameraImage is not null) _cameraImage.Source = bmp;
@@ -712,7 +753,19 @@ public sealed class DetailView : UserControl
                 UpdateBadge();
             });
         }
-        catch { }
+        catch (Exception error)
+        {
+            // Frames that arrive but never decode used to leave "Connecting to camera…" on screen for good,
+            // with nothing in the log to say why.
+            if (++_cameraDecodeFailures != DecodeFailuresBeforeNotice) return;
+            App.LogError("Camera frame decode", error);
+            Dispatcher.Invoke(() =>
+            {
+                if (_cameraStatus is null) return;
+                _cameraStatus.Text = AppSettings.T("The camera sends pictures that cannot be decoded.");
+                _cameraStatus.Visibility = Visibility.Visible;
+            });
+        }
     }
 
     private async Task StartKlipperCameraAsync(string host)
@@ -798,6 +851,10 @@ public sealed class DetailView : UserControl
         _bambuCam = null;
         try { _elegooCam?.Stop(); } catch { }
         _elegooCam = null;
+        _cameraGeneration++;
+        _cameraDecodeFailures = 0;
+        _elegooGate?.Release();
+        _elegooGate = null;
         try { _anycubicCam?.Stop(); } catch { }
         _anycubicCam = null;
     }

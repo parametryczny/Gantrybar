@@ -65,10 +65,34 @@ public partial class SettingsWindow : Window
             ApplyDockEnabledState();
             OnEdgeDockChanged?.Invoke();
         };
-        DockEdgeButton.Click += (_, _) =>
+        // Cycles through the displays, like the other choice buttons in this window; the label names the
+        // current one. From an unplugged display it goes back to the main one.
+        DockDisplayButton.Click += (_, _) =>
         {
-            AppSettings.EdgeDockEdge = AppSettings.EdgeDockEdge == "left" ? "right" : "left";
-            DockEdgeButton.Content = EdgeName();
+            var choices = EdgeDockPlacement.Choices(EdgeDockWindow.ConnectedDisplays(), AppSettings.EdgeDockDisplay,
+                AppSettings.EdgeDockDisplayName, AppSettings.T);
+            int index = choices.FindIndex(choice => choice.Selected);
+            EdgeDockWindow.ChooseDisplay(choices[(index + 1) % choices.Count].Id);
+            RefreshDockPlacement();
+            OnEdgeDockChanged?.Invoke();
+        };
+        DockPositionPicker.MouseLeftButtonDown += (_, e) =>
+        {
+            if (!AppSettings.EdgeDockEnabled) return;
+            var point = e.GetPosition(DockPositionPicker);
+            double best = 18;
+            (bool Left, string Row)? pick = null;
+            foreach (bool left in new[] { true, false })
+                foreach (var row in DockRows)
+                {
+                    var (x, y) = DockSquare(left, row);
+                    double distance = Math.Sqrt((x - point.X) * (x - point.X) + (y - point.Y) * (y - point.Y));
+                    if (distance <= best) { best = distance; pick = (left, row); }
+                }
+            if (pick is not { } chosen) return;
+            AppSettings.EdgeDockEdge = chosen.Left ? "left" : "right";
+            AppSettings.EdgeDockRow = chosen.Row;
+            RefreshDockPlacement();
             OnEdgeDockChanged?.Invoke();
         };
         DockSizeMinusButton.Click += (_, _) => ChangeDockScale(-5);
@@ -190,14 +214,65 @@ public partial class SettingsWindow : Window
 
     private void SyncDockPinned() => Dispatcher.Invoke(() => DockPinnedCheckBox.IsChecked = AppSettings.EdgeDockPinned);
 
-    private static string EdgeName() => AppSettings.EdgeDockEdge == "left"
-        ? AppSettings.T("Left") : AppSettings.T("Right");
+    private static readonly string[] DockRows = { "top", "middle", "bottom" };
+
+    /// <summary>Centre of one square in the position picker: three down each side of a small screen.</summary>
+    private (double X, double Y) DockSquare(bool left, string row)
+    {
+        double fraction = row == "top" ? EdgeDockPlacement.RowMargin : row == "bottom" ? 1 - EdgeDockPlacement.RowMargin : 0.5;
+        return (left ? 14 : DockPositionPicker.Width - 14, DockPositionPicker.Height * fraction);
+    }
+
+    /// <summary>The display button's label and the picker, drawn the way macOS and GNU/Linux draw it: the
+    /// screen, the strip flush with its side, and six squares with the chosen one larger.</summary>
+    private void RefreshDockPlacement()
+    {
+        var choices = EdgeDockPlacement.Choices(EdgeDockWindow.ConnectedDisplays(), AppSettings.EdgeDockDisplay,
+            AppSettings.EdgeDockDisplayName, AppSettings.T);
+        DockDisplayButton.Content = choices.FirstOrDefault(choice => choice.Selected).Title ?? choices[0].Title;
+
+        var canvas = DockPositionPicker;
+        canvas.Children.Clear();
+        // Mid grey reads on both themes; the chosen square takes the system accent.
+        var grey = Color.FromRgb(0x8A, 0x8F, 0x98);
+        SolidColorBrush Grey(double alpha) => new(Color.FromArgb((byte)(alpha * 255), grey.R, grey.G, grey.B));
+        canvas.Children.Add(new System.Windows.Controls.Border
+        {
+            Width = canvas.Width, Height = canvas.Height, CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1), BorderBrush = Grey(0.45), Background = Grey(0.08),
+        });
+        bool left = AppSettings.EdgeDockEdge == "left";
+        string row = AppSettings.EdgeDockRow;
+        var (_, selectedY) = DockSquare(left, row);
+        double stripTop = row == "top" ? selectedY - 4 : row == "bottom" ? selectedY + 4 - 24 : selectedY - 12;
+        var strip = new System.Windows.Controls.Border { Width = 5, Height = 24, CornerRadius = new CornerRadius(2.5), Background = Grey(0.7) };
+        System.Windows.Controls.Canvas.SetLeft(strip, left ? 2 : canvas.Width - 7);
+        System.Windows.Controls.Canvas.SetTop(strip, stripTop);
+        canvas.Children.Add(strip);
+        foreach (bool side in new[] { true, false })
+            foreach (var place in DockRows)
+            {
+                bool chosen = side == left && place == row;
+                double size = chosen ? 12 : 9;
+                var (x, y) = DockSquare(side, place);
+                var square = new System.Windows.Controls.Border
+                {
+                    Width = size, Height = size, CornerRadius = new CornerRadius(2.5),
+                    Background = chosen ? SystemColors.HighlightBrush : Grey(0.5),
+                };
+                System.Windows.Controls.Canvas.SetLeft(square, x - size / 2);
+                System.Windows.Controls.Canvas.SetTop(square, y - size / 2);
+                canvas.Children.Add(square);
+            }
+        canvas.ToolTip = EdgeDockPlacement.PositionTitle(left, row, AppSettings.T);
+    }
 
     /// Dims the whole dock section, not just the switches, so an off strip reads as inactive.
     private void ApplyDockEnabledState()
     {
         bool on = AppSettings.EdgeDockEnabled;
-        DockEdgeButton.IsEnabled = on;
+        DockDisplayButton.IsEnabled = on;
+        DockPositionPicker.IsEnabled = on;
         DockSizeMinusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent > 100;
         DockSizePlusButton.IsEnabled = on && AppSettings.EdgeDockScalePercent < 150;
         DockSizeValue.Opacity = on ? 1 : 0.45;
@@ -212,7 +287,7 @@ public partial class SettingsWindow : Window
         DockCameraNote.Opacity = on ? 1 : 0.45;
         DockPrintersList.IsEnabled = on;
         DockPrintersList.Opacity = on ? 1 : 0.45;
-        DockEdgeButton.Opacity = on ? 1 : 0.45;
+        DockDisplayButton.Opacity = DockPositionPicker.Opacity = on ? 1 : 0.45;
     }
 
     private void ChangeDockScale(int delta)
@@ -413,8 +488,9 @@ public partial class SettingsWindow : Window
         DockHeading.Text = AppSettings.T("Edge dock");
         DockEnableCheckBox.Content = AppSettings.T("Show the strip on top");
         DockEnableCheckBox.IsChecked = AppSettings.EdgeDockEnabled;
-        DockEdgeLabel.Text = AppSettings.T("Edge");
-        DockEdgeButton.Content = EdgeName();
+        DockDisplayLabel.Text = AppSettings.T("Monitor");
+        DockPositionLabel.Text = AppSettings.T("Position");
+        RefreshDockPlacement();
         DockSizeLabel.Text = AppSettings.T("Edge dock size");
         DockSizeValue.Text = $"{AppSettings.EdgeDockScalePercent}%";
         DockOnlyPrintingCheckBox.Content = AppSettings.T("Only printing");

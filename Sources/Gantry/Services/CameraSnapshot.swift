@@ -21,9 +21,18 @@ enum CameraSnapshot {
             return await captureMJPEG(url: url, apiKey: store.accessCode(for: printer.serial), timeout: timeout)
         case .elegooCC1, .elegooCC2:
             let isCC2 = printer.kind == .elegooCC2
-            store.sendElegooMethod(serial: printer.serial, method: isCC2 ? 1042 : 386,
-                                   params: isCC2 ? [:] : ["Enable": 1])
             let url = isCC2 ? "http://\(host):8080/?action=stream" : "http://\(host):3031/video"
+            guard !isCC2, let gate = store.elegooVideoGate(serial: printer.serial) else {
+                if isCC2 { store.sendElegooMethod(serial: printer.serial, method: 1042) }
+                return await captureMJPEG(url: url, apiKey: nil, timeout: timeout)
+            }
+            // A snapshot is a viewer too: it shares the printer's single stream with an open live view and
+            // gives it back afterwards instead of leaving the camera enabled.
+            let ack = await withCheckedContinuation { (cont: CheckedContinuation<Int?, Never>) in
+                gate.acquire { cont.resume(returning: $0) }
+            }
+            defer { gate.release() }
+            guard ElegooVideoGate.refusalMessage(ack: ack) == nil else { return nil }
             return await captureMJPEG(url: url, apiKey: nil, timeout: timeout)
         case .anycubicKobraS1:
             return await captureAnycubic(host: host, timeout: timeout)

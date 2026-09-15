@@ -21,6 +21,9 @@ internal sealed class DockCameraFeed
     private readonly string _serial;
     private BambuCameraStream? _bambu;
     private ElegooMjpegStream? _elegoo;
+    /// <summary>Held from the Cmd 386 request until Stop, so the printer's single stream is released with us.</summary>
+    private ElegooVideoGate? _elegooGate;
+    private int _generation;
     private AnycubicFlvStream? _anycubic;
     private DispatcherTimer? _snapshotTimer;
     private string? _snapshotUrl;
@@ -68,11 +71,19 @@ internal sealed class DockCameraFeed
         else if (printer.Kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2)
         {
             bool cc2 = printer.Kind == PrinterKind.ElegooCc2;
-            _store.SendElegooMethod(_serial, cc2 ? 1042 : 386, cc2 ? new { } : new { Enable = 1 });
-            var cam = new ElegooMjpegStream();
-            cam.FrameReady += Publish;
-            _elegoo = cam;
-            cam.Start($"http://{host}:{(cc2 ? 8080 : 3031)}/{(cc2 ? "?action=stream" : "video")}");
+            var url = $"http://{host}:{(cc2 ? 8080 : 3031)}/{(cc2 ? "?action=stream" : "video")}";
+            var gate = cc2 ? null : _store.VideoGateFor(_serial);
+            if (gate is null)
+            {
+                if (cc2) _store.SendElegooMethod(_serial, 1042, new { });
+                StartElegoo(url);
+            }
+            else
+            {
+                // The CC1 serves nothing on 3031 until it has accepted Cmd 386; a refusal leaves the strip dark.
+                _elegooGate = gate;
+                _ = StartElegooAfterReplyAsync(gate.Acquire(), url, _generation);
+            }
         }
         else if (printer.Kind == PrinterKind.AnycubicKobraS1)
         {
@@ -99,8 +110,26 @@ internal sealed class DockCameraFeed
         _bambu = null;
         try { _elegoo?.Stop(); } catch { }
         _elegoo = null;
+        _generation++;
+        _elegooGate?.Release();
+        _elegooGate = null;
         try { _anycubic?.Stop(); } catch { }
         _anycubic = null;
+    }
+
+    private async Task StartElegooAfterReplyAsync(Task<int?> reply, string url, int generation)
+    {
+        var ack = await reply;
+        if (!_running || generation != _generation || ack is not (null or 0)) return;
+        StartElegoo(url);
+    }
+
+    private void StartElegoo(string url)
+    {
+        var cam = new ElegooMjpegStream();
+        cam.FrameReady += Publish;
+        _elegoo = cam;
+        cam.Start(url);
     }
 
     private void Publish(byte[] jpeg)

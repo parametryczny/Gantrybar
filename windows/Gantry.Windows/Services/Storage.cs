@@ -358,6 +358,33 @@ public static class AppSettings
         set => Defaults.SetString("edge-dock-edge", value == "left" ? "left" : "right");
     }
 
+    /// "top", "middle" or "bottom" along the chosen edge; anything else is the middle.
+    public static string EdgeDockRow
+    {
+        get { var s = Defaults.GetString("edge-dock-row"); return s is "top" or "bottom" ? s : "middle"; }
+        set => Defaults.SetString("edge-dock-row", value is "top" or "bottom" ? value : "middle");
+    }
+
+    /// The display the strip lives on, empty for the main display. Its frame and name are kept with it so
+    /// the display is found again under a new device name and named while it is unplugged.
+    public static string EdgeDockDisplay
+    {
+        get => Defaults.GetString("edge-dock-display") ?? "";
+        set => Defaults.SetString("edge-dock-display", value);
+    }
+
+    public static string EdgeDockDisplayFrame
+    {
+        get => Defaults.GetString("edge-dock-display-frame") ?? "";
+        set => Defaults.SetString("edge-dock-display-frame", value);
+    }
+
+    public static string EdgeDockDisplayName
+    {
+        get => Defaults.GetString("edge-dock-display-name") ?? "";
+        set => Defaults.SetString("edge-dock-display-name", value);
+    }
+
     /// <summary>Manual edge-dock scale for large/high-density displays. Five-percent steps keep
     /// the strip crisp and keep all three platform implementations on the same scale grid.</summary>
     public static int EdgeDockScalePercent

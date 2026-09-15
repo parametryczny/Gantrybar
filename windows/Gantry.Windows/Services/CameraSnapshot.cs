@@ -32,18 +32,27 @@ public static class CameraSnapshot
             case PrinterKind.ElegooCc2:
             {
                 bool cc2 = printer.Kind == PrinterKind.ElegooCc2;
-                store.SendElegooMethod(printer.Serial, cc2 ? 1042 : 386, cc2 ? new { } : new { Enable = 1 });
                 var url = cc2 ? $"http://{host}:8080/?action=stream" : $"http://{host}:3031/video";
-                var tcs = new TaskCompletionSource<byte[]?>();
-                var cam = new ElegooMjpegStream();
-                void OnFrame(byte[] jpeg) => tcs.TrySetResult(jpeg);
-                cam.FrameReady += OnFrame;
-                cam.Failed += _ => tcs.TrySetResult(null);
-                cam.Start(url);
-                var result = await WithTimeout(tcs.Task, timeoutMs);
-                cam.FrameReady -= OnFrame;
-                cam.Stop();
-                return result;
+                // A snapshot is a viewer too: it shares the printer's single stream with an open live view
+                // and gives it back afterwards instead of leaving the camera enabled.
+                var gate = cc2 ? null : store.VideoGateFor(printer.Serial);
+                if (cc2) store.SendElegooMethod(printer.Serial, 1042, new { });
+                var reply = gate?.Acquire();
+                try
+                {
+                    if (reply is not null && await reply is int ack && ack != 0) return null;
+                    var tcs = new TaskCompletionSource<byte[]?>();
+                    var cam = new ElegooMjpegStream();
+                    void OnFrame(byte[] jpeg) => tcs.TrySetResult(jpeg);
+                    cam.FrameReady += OnFrame;
+                    cam.Failed += _ => tcs.TrySetResult(null);
+                    cam.Start(url);
+                    var result = await WithTimeout(tcs.Task, timeoutMs);
+                    cam.FrameReady -= OnFrame;
+                    cam.Stop();
+                    return result;
+                }
+                finally { gate?.Release(); }
             }
             case PrinterKind.AnycubicKobraS1:
             {

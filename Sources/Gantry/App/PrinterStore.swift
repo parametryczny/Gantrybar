@@ -131,6 +131,9 @@ final class PrinterStore: ObservableObject {
         else if let client = clients[serial] as? ElegooCC2Client { client.sendMethod(method, params: params) }
     }
 
+    /// Centauri Carbon only. Every other brand, the CC2 included, needs no handshake before its camera.
+    func elegooVideoGate(serial: String) -> ElegooVideoGate? { (clients[serial] as? ElegooCC1Client)?.videoGate }
+
     @discardableResult
     private func sendElegooRaw(serial: String, json: String) -> Bool {
         guard let data = json.data(using: .utf8),

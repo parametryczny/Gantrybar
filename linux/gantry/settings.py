@@ -10,18 +10,24 @@ pane is showing rather than carrying a fixed size.
 Settings apply as controls change (see _connect_live_updates), so the header bar's button only closes.
 """
 
+import math
 import threading
 import subprocess
 from datetime import datetime
 from typing import Any
 
-from gi.repository import GLib, Gtk  # type: ignore
+from gi.repository import Gdk, GLib, Gtk  # type: ignore
 
 from . import __version__
 from . import edition
 from . import i18n
+from .dockplacement import ROW_MARGIN, ROWS, position_title
 from .storage import autostart_enabled, set_autostart
 
+
+#: The edge-dock position picker, the same size as on macOS and Windows.
+POSITION_PICKER_WIDTH = 124
+POSITION_PICKER_HEIGHT = 78
 
 NOTICE_LABELS = {"finished_notice": "Print finished", "error_notice": "Printer errors", "paused_notice": "Print paused", "low_notice": "Low filament", "finishing_soon_notice": "Print finishing in 10 minutes", "humidity_notice": "High AMS humidity", "offline_notice": "Connection lost"}
 
@@ -379,11 +385,28 @@ class SettingsDialog(Gtk.Dialog):
 
         self.dock_enabled = self._check(i18n.t("Show the strip on top"),
                                         bool(self.app.config.data.get("edge-dock-enabled", False)))
-        self.dock_edge = Gtk.ComboBoxText()
-        self.dock_edge.append("left", i18n.t("Left"))
-        self.dock_edge.append("right", i18n.t("Right"))
-        edge = str(self.app.config.data.get("edge-dock-edge", "right"))
-        self.dock_edge.set_active_id("left" if edge == "left" else "right")
+        from .dockplacement import choices as display_choices
+        from .edgedock import connected_displays
+        self.dock_display = Gtk.ComboBoxText()
+        # Ids in the order of the rows: two identical monitors share a title, and GTK ids must be unique.
+        self._dock_display_ids: list[str] = []
+        for index, (ident, title, selected) in enumerate(display_choices(
+                connected_displays(), str(self.app.config.data.get("edge-dock-display", "")),
+                str(self.app.config.data.get("edge-dock-display-name", "")))):
+            self.dock_display.append_text(title)
+            self._dock_display_ids.append(ident)
+            if selected:
+                self.dock_display.set_active(index)
+        self._dock_left = str(self.app.config.data.get("edge-dock-edge", "right")) == "left"
+        row = str(self.app.config.data.get("edge-dock-row", "middle"))
+        self._dock_row = row if row in ROWS else "middle"
+        self.dock_position = Gtk.DrawingArea()
+        self.dock_position.set_size_request(POSITION_PICKER_WIDTH, POSITION_PICKER_HEIGHT)
+        self.dock_position.set_halign(Gtk.Align.START)
+        self.dock_position.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.dock_position.connect("draw", self._draw_dock_position)
+        self.dock_position.connect("button-press-event", self._pick_dock_position)
+        self.dock_position.set_tooltip_text(position_title(self._dock_left, self._dock_row))
         self.dock_scale = self._scale_row(i18n.t("Edge dock size"), "edge-dock-scale-percent", 100, 150)
         self.dock_only_printing = self._check(i18n.t("Only printing"),
                                               bool(self.app.config.data.get("edge-dock-only-printing", False)))
@@ -409,7 +432,8 @@ class SettingsDialog(Gtk.Dialog):
             return
         pane.section(i18n.t("Edge dock"))
         pane.aligned(self.dock_enabled)
-        pane.field(i18n.t("Edge"), self.dock_edge)
+        pane.field(i18n.t("Monitor"), self.dock_display)
+        pane.field(i18n.t("Position"), self.dock_position, baseline=False)
         pane.field(i18n.t("Edge dock size"), self.dock_scale[0], baseline=False)
         pane.group(i18n.t("Behaviour"), [self.dock_pinned, self.dock_camera, self.dock_only_printing])
         if self.dock_printers:
@@ -473,6 +497,60 @@ class SettingsDialog(Gtk.Dialog):
         pane.note(i18n.t("Off by default for safety. Every rule still asks for confirmation the first time it runs."))
 
     # ------------------------------------------------------------- helpers
+
+    def _dock_square(self, left: bool, row: str) -> tuple[float, float]:
+        """Centre of one square in the position picker: three down each side of a small screen."""
+        fraction = ROW_MARGIN if row == "top" else 1 - ROW_MARGIN if row == "bottom" else 0.5
+        return (14.0 if left else POSITION_PICKER_WIDTH - 14.0), POSITION_PICKER_HEIGHT * fraction
+
+    def _draw_dock_position(self, widget: Gtk.Widget, cr: Any) -> bool:
+        """The screen, the strip flush with its side and six squares with the chosen one larger, drawn as on
+        macOS and Windows, in the theme's own text colour."""
+        ink = widget.get_style_context().get_color(widget.get_state_flags())
+        width, height = float(POSITION_PICKER_WIDTH), float(POSITION_PICKER_HEIGHT)
+
+        def rounded(x: float, y: float, w: float, h: float, r: float) -> None:
+            cr.new_sub_path()
+            cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+            cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+            cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+            cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+            cr.close_path()
+
+        def paint(alpha: float) -> None:
+            cr.set_source_rgba(ink.red, ink.green, ink.blue, alpha)
+
+        rounded(0.5, 0.5, width - 1, height - 1, 6)
+        paint(0.06); cr.fill_preserve()
+        paint(0.35); cr.set_line_width(1); cr.stroke()
+        _x, selected_y = self._dock_square(self._dock_left, self._dock_row)
+        strip_top = {"top": selected_y - 4, "bottom": selected_y + 4 - 24}.get(self._dock_row, selected_y - 12)
+        rounded(2 if self._dock_left else width - 7, strip_top, 5, 24, 2.5)
+        paint(0.55); cr.fill()
+        for left in (True, False):
+            for row in ROWS:
+                chosen = left == self._dock_left and row == self._dock_row
+                size = 12.0 if chosen else 9.0
+                x, y = self._dock_square(left, row)
+                rounded(x - size / 2, y - size / 2, size, size, 2.5)
+                paint(1.0 if chosen else 0.3); cr.fill()
+        return False
+
+    def _pick_dock_position(self, _widget: Gtk.Widget, event: Any) -> bool:
+        best, pick = 18.0, None
+        for left in (True, False):
+            for row in ROWS:
+                x, y = self._dock_square(left, row)
+                distance = math.hypot(x - event.x, y - event.y)
+                if distance <= best:
+                    best, pick = distance, (left, row)
+        if pick is None or pick == (self._dock_left, self._dock_row):
+            return True
+        self._dock_left, self._dock_row = pick
+        self.dock_position.set_tooltip_text(position_title(*pick))
+        self.dock_position.queue_draw()
+        self._live_changed()
+        return True
 
     def _preview_transparency(self, combo: Gtk.ComboBoxText) -> None:
         self.app.preview_panel_transparency(combo.get_active_id() or "low")
@@ -605,7 +683,7 @@ class SettingsDialog(Gtk.Dialog):
 
     def _connect_live_updates(self) -> None:
         """macOS applies settings as controls change; GTK now follows the same Done-only flow."""
-        for combo in (self.language, self.theme, self.transparency, self.dock_edge, self.update_format):
+        for combo in (self.language, self.theme, self.transparency, self.dock_display, self.update_format):
             combo.connect("changed", self._live_changed)
         checks = [self.autostart, self.spoolbase, self.developer, self.allow_scripts,
                   self.spool_grams, self.monochrome, self.quiet, self.auto_update,
@@ -654,7 +732,12 @@ class SettingsDialog(Gtk.Dialog):
         )
         self.app.config.data["web_dashboard_enabled"] = self.web_enabled.get_active()
         self.app.config.data["edge-dock-enabled"] = self.dock_enabled.get_active()
-        self.app.config.data["edge-dock-edge"] = self.dock_edge.get_active_id() or "right"
+        self.app.config.data["edge-dock-edge"] = "left" if self._dock_left else "right"
+        self.app.config.data["edge-dock-row"] = self._dock_row
+        display_index = self.dock_display.get_active()
+        if 0 <= display_index < len(self._dock_display_ids):
+            from .edgedock import choose_display
+            choose_display(self.app.config.data, self._dock_display_ids[display_index])
         self.app.config.data["edge-dock-only-printing"] = self.dock_only_printing.get_active()
         self.app.config.data["edge-dock-scale-percent"] = max(100, min(150, round(int(self.app.config.data.get("edge-dock-scale-percent", 100)) / 5) * 5))
         self.app.config.data["card_scale_percent"] = max(75, min(150, round(int(self.app.config.data.get("card_scale_percent", 100)) / 5) * 5))
@@ -683,7 +766,10 @@ class SettingsDialog(Gtk.Dialog):
                                                               "card_show_spool_grams",
                                                               "card_show_details_chip", "monochrome",
                                                               "spoolbase_enabled"))
-        menu_changed = language_changed or before.get("spoolbase_enabled") != self.app.config.data.get("spoolbase_enabled")
+        # The tray offers the strip's submenu only while the strip is on, and ticks its display and place.
+        menu_changed = language_changed or any(before.get(key) != self.app.config.data.get(key) for key in
+                                               ("spoolbase_enabled", "edge-dock-enabled", "edge-dock-edge",
+                                                "edge-dock-row", "edge-dock-display"))
         if language_changed:
             self.app.language = str(self.app.config.data.get("language", "pl"))
         if appearance_changed:

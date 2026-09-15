@@ -518,6 +518,48 @@ require("linux/gantry/edgedock.py", r'pinned = not self\.pinned\s*\n\s*self\.app
         "the GNU/Linux strip cannot be pinned or released from the strip itself")
 require("linux/gantry/edgedock.py", r"body = PAD_Y \* 2 \+ PIN_ROW \+ PIN_GAP \+ self\._rows_height\(width\)",
         "the GNU/Linux pin band is not there whenever the strip is open")
+
+# ---- Edge dock placement: chosen display, six places, inner-edge dwell (contract edgeDock.placement) ----
+placement = edge_dock["placement"]
+PLACEMENT_SOURCES = {
+    "macOS": "Sources/Gantry/Views/EdgeDockPlacement.swift",
+    "Windows": "windows/Gantry.Windows/Services/EdgeDockPlacement.cs",
+    "GNU/Linux": "linux/gantry/dockplacement.py",
+}
+PLACEMENT_CONSTANTS = [
+    ("row margin", rf"static let rowMargin: CGFloat = {_number(placement['rowMargin'])}\b",
+     rf"public const double RowMargin = {_number(placement['rowMargin'])};", rf"ROW_MARGIN = {_number(placement['rowMargin'])}\b"),
+    ("display tolerance", rf"static let displayTolerance: CGFloat = {_number(placement['displayTolerance'])}\b",
+     rf"public const double DisplayTolerance = {_number(placement['displayTolerance'])};",
+     rf"DISPLAY_TOLERANCE = {_number(placement['displayTolerance'])}\b"),
+    ("inner-edge dwell", rf"static let innerEdgeDwell: TimeInterval = {_number(placement['innerEdgeDwellMs'] / 1000)}\b",
+     rf"public const int InnerEdgeDwellMs = {placement['innerEdgeDwellMs']};", rf"INNER_EDGE_DWELL_MS = {placement['innerEdgeDwellMs']}\b"),
+    ("display change debounce", rf"static let displayChangeDebounceMilliseconds = {placement['displayChangeDebounceMs']}\b",
+     rf"public const int DisplayChangeDebounceMs = {placement['displayChangeDebounceMs']};",
+     rf"DISPLAY_CHANGE_DEBOUNCE_MS = {placement['displayChangeDebounceMs']}\b"),
+]
+for name, *patterns in PLACEMENT_CONSTANTS:
+    for (platform, placement_source), pattern in zip(PLACEMENT_SOURCES.items(), patterns):
+        require(placement_source, pattern, f"the {platform} edge-dock {name} differs from the contract")
+for key in placement["settingsKeys"]:
+    for settings_source in ("Sources/Gantry/App/AppSettings.swift", "windows/Gantry.Windows/Services/Storage.cs",
+                            "linux/gantry/edgedock.py"):
+        require(settings_source, rf'"{key}"', f"{settings_source} does not share the {key} setting")
+# The strip follows the chosen display, not whatever the system calls main at the moment.
+forbid("Sources/Gantry/Views/EdgeDockWindowController.swift", r"NSScreen\.main",
+       "the macOS edge dock follows the key window's screen again instead of the chosen display")
+forbid("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"SystemParameters\.VirtualScreen",
+       "the Windows edge dock sits on the virtual desktop's outer edge again instead of the chosen display")
+forbid("linux/gantry/edgedock.py", r"get_primary_monitor\(\)",
+       "the GNU/Linux edge dock is pinned to the primary monitor again instead of the chosen display")
+# The six-square picker and the menu submenu exist on every platform.
+require("Sources/Gantry/Views/SettingsWindowController.swift", r"grid\.field\(dockPositionCaption, dockPositionPicker",
+        "macOS settings have no edge-dock position picker")
+require("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'x:Name="DockPositionPicker"', "Windows settings have no edge-dock position picker")
+require("linux/gantry/settings.py", r'pane\.field\(i18n\.t\("Position"\), self\.dock_position', "GNU/Linux settings have no edge-dock position picker")
+require("Sources/Gantry/Views/MenuBarController.swift", r"edgeDockMenu\(settings: settings\)", "the macOS menu has no edge-dock submenu")
+require("windows/Gantry.Windows/UI/TrayIcon.cs", r"BuildEdgeDockMenu\(\)", "the Windows tray has no edge-dock submenu")
+require("linux/gantry/app.py", r"self\._fill_dock_menu\(dock_menu\)", "the GNU/Linux tray has no edge-dock submenu")
 require("linux/gantry/edgedock.py", r"return self\.hovering or self\.pinned",
         "a pinned GNU/Linux strip still folds when the pointer leaves")
 # Pictures: same width band, same brands, same stream rules.

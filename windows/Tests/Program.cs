@@ -150,3 +150,122 @@ Console.WriteLine("Windows 3MF paths OK: the shared fixture");
     finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
 }
 Console.WriteLine("Windows physical store OK — atomic rollback, replay, warning persistence, skipped sessions");
+
+// Centauri Carbon camera: the Cmd 386 handshake, one shared stream slot, and frames without Huffman tables.
+{
+    var reply = ElegooVideoGate.ParseReply(System.Text.Encoding.UTF8.GetBytes(
+        "{\"Data\":{\"Cmd\":386,\"Data\":{\"Ack\":1,\"VideoUrl\":\"\"},\"RequestID\":\"abc\"},\"Topic\":\"sdcp/response/M\"}"));
+    if (reply is null || reply.Value.RequestId != "abc" || reply.Value.Ack != 1) throw new Exception("Cmd 386 reply was not read");
+    if (ElegooVideoGate.ParseReply(System.Text.Encoding.UTF8.GetBytes("{\"Data\":{\"Cmd\":403,\"Data\":{\"Ack\":0}}}")) is not null
+        || ElegooVideoGate.ParseReply(System.Text.Encoding.UTF8.GetBytes("not json")) is not null)
+        throw new Exception("A frame other than the Cmd 386 reply was read as one");
+
+    var sent = new System.Collections.Concurrent.ConcurrentQueue<(bool Enable, string Id)>();
+    async Task<(bool Enable, string Id)[]> WaitForSends(int count)
+    {
+        var until = DateTime.UtcNow.AddSeconds(2);
+        while (sent.Count < count && DateTime.UtcNow < until) await Task.Delay(10);
+        return sent.ToArray();
+    }
+    void Record(bool enable, string id) => sent.Enqueue((enable, id));
+
+    var gate = new ElegooVideoGate(Record, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(100));
+    var first = gate.Acquire();
+    var wire = await WaitForSends(1);
+    if (wire.Length != 1 || !wire[0].Enable) throw new Exception("The first viewer did not enable the stream");
+    gate.HandleReply("somebody-else", 1);
+    gate.HandleReply(wire[0].Id, 0);
+    if (await first != 0 || await gate.Acquire() != 0 || sent.Count != 1)
+        throw new Exception("A second viewer did not share the enabled stream");
+    gate.Release();
+    await Task.Delay(300);
+    if (sent.Count != 1) throw new Exception("The stream was disabled while a viewer still watched");
+    gate.Release();
+    wire = await WaitForSends(2);
+    if (wire.Length != 2 || wire[1].Enable) throw new Exception("The last viewer did not disable the stream");
+
+    var silent = new ElegooVideoGate(Record, TimeSpan.FromMilliseconds(350), TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(50));
+    int before = sent.Count;
+    if (await silent.Acquire() is not null || sent.Count - before < 3)
+        throw new Exception("A silent printer was not retried and reported as no answer");
+    silent.Release();
+
+    var late = new ElegooVideoGate(Record, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50));
+    before = sent.Count;
+    _ = late.Acquire();
+    wire = await WaitForSends(before + 1);
+    late.Release();
+    late.HandleReply(wire[^1].Id, 0);
+    wire = await WaitForSends(before + 2);
+    if (wire.Length != before + 2 || wire[^1].Enable) throw new Exception("An Ack after every viewer left kept the stream on");
+
+    var tables = JpegHuffman.StandardTables;
+    int offset = 4, classes = 0;
+    while (offset < tables.Length) { int values = 0; for (int i = 1; i <= 16; i++) values += tables[offset + i]; offset += 17 + values; classes++; }
+    if (tables.Length != 420 || tables[1] != 0xC4 || offset != tables.Length || classes != 4)
+        throw new Exception("The standard Huffman tables are malformed");
+    byte[] bare = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x04, 0x01, 0x02,
+        0xFF, 0xDA, 0x00, 0x04, 0x03, 0x04, 0x11, 0x22, 0xFF, 0xD9 };
+    var repaired = JpegHuffman.EnsureTables(bare);
+    if (repaired.Length != bare.Length + 420 || repaired[15] != 0xC4 || repaired[14 + 420 + 1] != 0xDA)
+        throw new Exception("Huffman tables were not put in front of the scan");
+    if (!ReferenceEquals(JpegHuffman.EnsureTables(repaired), repaired)) throw new Exception("A frame with tables was changed");
+}
+Console.WriteLine("Windows Elegoo camera OK — Cmd 386 reply, shared stream slot, release grace, Huffman repair");
+
+// Edge dock on simulated desktops: which display it lands on and where. The same cases as macOS
+// EdgeDockPlacementTests and linux/tests/test_dock_placement.py, in y-down pixels.
+{
+    EdgeDockDisplay Display(string id, double x, double y, double width, double height, bool primary = false) =>
+        new(id, id, (int)width, (int)height, new DockRect(x, y, width, height), new DockRect(x, y, width, height - 40), primary);
+    string Same(string text) => text;
+
+    var main = Display("main", 0, 0, 1920, 1080, primary: true);
+    var side = Display("side", 1920, 0, 2560, 1440);
+    if (EdgeDockPlacement.Resolve(new[] { side, main }, "", null) is not { Matched: false } none || none.Display.Id != "main")
+        throw new Exception("No choice did not mean the main display");
+    if (EdgeDockPlacement.Resolve(Array.Empty<EdgeDockDisplay>(), "", null) is not null)
+        throw new Exception("An empty desktop resolved to a display");
+    var saved = new DockRect(1920, 0, 2560, 1440);
+    if (EdgeDockPlacement.Resolve(new[] { main, side }, "side", saved)?.Display.Id != "side")
+        throw new Exception("The saved display was not found by its id");
+    var renamed = Display(@"\\.\DISPLAY7", 1924, 0, 2560, 1440);
+    if (EdgeDockPlacement.Resolve(new[] { main, renamed }, "side", saved) is not { Matched: true } byFrame || byFrame.Display != renamed)
+        throw new Exception("A renamed display was not found by its frame");
+    if (EdgeDockPlacement.Resolve(new[] { main, Display("side", 1920, 0, 3840, 2160) }, "side", saved)?.Display.Id != "side")
+        throw new Exception("A display at a new resolution was lost");
+    if (EdgeDockPlacement.Resolve(new[] { main }, "side", saved) is not { Matched: false } gone || gone.Display.Id != "main")
+        throw new Exception("An unplugged display did not fall back to the main one");
+    var twins = new[] { Display("a", 0, 0, 1920, 1080), Display("b", 0, 0, 1920, 1080, primary: true) };
+    if (EdgeDockPlacement.Resolve(twins, "gone", new DockRect(0, 0, 1920, 1080))?.Display.Id != "b")
+        throw new Exception("Twins with the saved frame did not resolve to the main display");
+
+    var screen = new DockRect(0, 0, 1000, 1040);
+    var work = new DockRect(0, 0, 1000, 1000);   // 40 px taskbar at the bottom
+    if (EdgeDockPlacement.Place(screen, work, false, "top", 22, 100) != (978, 200)
+        || EdgeDockPlacement.Place(screen, work, true, "middle", 22, 100) != (0, 450)
+        || EdgeDockPlacement.Place(screen, work, true, "bottom", 22, 100) != (0, 700))
+        throw new Exception("The rows are not a fifth of the work area away from its top and bottom");
+    if (EdgeDockPlacement.Place(screen, work, false, "top", 240, 900) != (760, 100)
+        || EdgeDockPlacement.Place(screen, work, false, "bottom", 240, 1200).Y != 0)
+        throw new Exception("A tall strip ran off its display");
+
+    var leftDisplay = Display("left", 0, 0, 1920, 1080, primary: true);
+    var rightDisplay = Display("right", 1920, -200, 2560, 1440);
+    var above = Display("above", 0, -1080, 1920, 1080);
+    var all = new[] { leftDisplay, rightDisplay, above };
+    if (!EdgeDockPlacement.IsInnerEdge(leftDisplay, false, all) || EdgeDockPlacement.IsInnerEdge(leftDisplay, true, all)
+        || !EdgeDockPlacement.IsInnerEdge(rightDisplay, true, all) || EdgeDockPlacement.IsInnerEdge(rightDisplay, false, all)
+        || EdgeDockPlacement.IsInnerEdge(above, false, new[] { leftDisplay, above }))
+        throw new Exception("Inner edges are not the ones shared with another display");
+
+    var frame = new DockRect(-1920, 120, 1920, 1080);
+    if (EdgeDockPlacement.ParseFrame(EdgeDockPlacement.FormatFrame(frame)) != frame
+        || EdgeDockPlacement.ParseFrame("1,2,0,4") is not null || EdgeDockPlacement.ParseFrame("junk") is not null)
+        throw new Exception("Saved display frames do not round-trip");
+    var choices = EdgeDockPlacement.Choices(new[] { main }, "dell", "DELL U2723QE", Same);
+    if (string.Join("|", choices.Select(c => c.Id)) != "|main|dell" || choices.Single(c => c.Selected).Id != "dell"
+        || !EdgeDockPlacement.Choices(new[] { main }, "", "", Same)[0].Selected)
+        throw new Exception("The monitor list lost an unplugged display or the main display");
+}
+Console.WriteLine("Windows edge dock placement OK — display lookup, rows, inner edges, saved frames, monitor list");

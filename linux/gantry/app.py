@@ -498,6 +498,11 @@ class Gantry:
             updates = Gtk.MenuItem(label=(i18n.t("Check for updates…")))
             updates.connect("activate", lambda *_: self.check_updates_background()); menu.append(updates)
         settings = Gtk.MenuItem(label=i18n.t("Settings")); settings.connect("activate", lambda *_: self.open_settings()); menu.append(settings)
+        if edition.HAS_EXTRAS and bool(self.config.data.get("edge-dock-enabled", False)):
+            dock = Gtk.MenuItem(label=i18n.t("🖥  Edge dock"))
+            dock_menu = Gtk.Menu()
+            self._fill_dock_menu(dock_menu)
+            dock.set_submenu(dock_menu); menu.append(dock)
         legend = Gtk.MenuItem(label=i18n.t("Color legend"))
         legend_menu = Gtk.Menu()
         for label in ("Blue — printing (live data)", "Green — ready / finished",
@@ -524,6 +529,50 @@ class Gantry:
             self.indicator = AppIndicator.Indicator.new("gantry", icon, AppIndicator.IndicatorCategory.APPLICATION_STATUS)
             self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE); self.indicator.set_menu(menu)
         self._refresh_progress_indicators()
+
+    def _fill_dock_menu(self, menu: Gtk.Menu) -> None:
+        """The strip's monitor and place without opening Settings: one tick among the monitors and one among
+        the six places. The same submenu as the macOS status item and the Windows tray."""
+        from .dockplacement import ROWS, choices, position_title
+        from .edgedock import connected_displays
+        config = self.config.data
+        group = None
+        for ident, title, selected in choices(connected_displays(), str(config.get("edge-dock-display", "")),
+                                              str(config.get("edge-dock-display-name", ""))):
+            item = Gtk.RadioMenuItem.new_with_label_from_widget(group, title)
+            group = group or item
+            item.set_active(selected)
+            item.connect("toggled", lambda widget, ident=ident: widget.get_active() and self._choose_dock_display(ident))
+            menu.append(item)
+        menu.append(Gtk.SeparatorMenuItem())
+        group = None
+        current = (str(config.get("edge-dock-edge", "right")) == "left", str(config.get("edge-dock-row", "middle")))
+        for left in (True, False):
+            for row in ROWS:
+                item = Gtk.RadioMenuItem.new_with_label_from_widget(group, position_title(left, row))
+                group = group or item
+                item.set_active((left, row) == current)
+                item.connect("toggled", lambda widget, left=left, row=row:
+                             widget.get_active() and self._choose_dock_position(left, row))
+                menu.append(item)
+
+    def _choose_dock_display(self, ident: str) -> None:
+        from .edgedock import choose_display
+        choose_display(self.config.data, ident)
+        self._dock_choice_saved()
+
+    def _choose_dock_position(self, left: bool, row: str) -> None:
+        self.config.data["edge-dock-edge"] = "left" if left else "right"
+        self.config.data["edge-dock-row"] = row
+        self._dock_choice_saved()
+
+    def _dock_choice_saved(self) -> None:
+        self.config.save()
+        dock = getattr(self, "edge_dock", None)
+        if dock is not None:
+            dock.refresh()
+        # Rebuilt once the menu has closed: replacing a menu from inside its own item's handler is unsafe.
+        GLib.idle_add(lambda: (self._tray(), False)[1])
 
     def _toggle_language(self) -> None:
         self.language = "en" if self.language == "pl" else "pl"

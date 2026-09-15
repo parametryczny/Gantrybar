@@ -26,7 +26,7 @@ from gi.repository import GdkPixbuf, GLib, Gtk  # type: ignore  # noqa: E402
 
 from . import i18n
 from .core import PrinterKind
-from .jpegstream import bambu_jpeg_frames, split_jpegs
+from .jpegstream import bambu_jpeg_frames, ensure_huffman_tables, split_jpegs
 from .overrides import overrides_for
 
 try:
@@ -50,10 +50,26 @@ def supports_camera(kind: Any) -> bool:
     return kind in CAMERA_KINDS
 
 
+def elegoo_video_refusal(ack: int | None) -> str | None:
+    """Cmd 386 Ack: 0 started, 1 too many viewers, 2 no camera, 3 unknown. No answer at all (older firmware,
+    a socket still connecting) is not a refusal, so the stream is tried anyway."""
+    if ack is None or ack == 0:
+        return None
+    if ack == 1:
+        return i18n.t("The printer allows one camera viewer at a time. Close the camera in Elegoo Slicer or the Elegoo app, or restart the printer.")
+    if ack == 2:
+        return i18n.t("The printer reports that it has no camera.")
+    return i18n.t("The printer could not start the camera (code {0}).").format(ack)
+
+
 class CameraView(Gtk.Box):
     # A feed that worked and then went quiet is restarted, with a growing delay so a camera that is
     # genuinely gone is not hammered. Matches the macOS CameraFeedController watchdog.
     FIRST_FRAME_TIMEOUT = 10.0
+    #: A printer that has just been told to start its camera can take a moment to serve it, so an MJPEG
+    #: stream that has not produced a picture yet is retried before the failure is shown.
+    MJPEG_ATTEMPTS = 3
+    DECODE_FAILURES_BEFORE_NOTICE = 5
     MINIMUM_RESTART_DELAY = 8.0
     MAXIMUM_RESTART_DELAY = 30.0
     WATCHDOG_INTERVAL_MS = 2000
@@ -70,6 +86,7 @@ class CameraView(Gtk.Box):
         self._pipeline: Any | None = None
         self._running = False
         self._received_frame = False
+        self._decode_failures = 0
         self._last_frame_at = time.monotonic()
         self._last_healthy_reset = time.monotonic()
         self._restart_delay = CameraView.MINIMUM_RESTART_DELAY
@@ -106,6 +123,7 @@ class CameraView(Gtk.Box):
         stop = threading.Event()
         self._stop = stop
         self._received_frame = False
+        self._decode_failures = 0
         self._last_frame_at = time.monotonic()
         threading.Thread(target=self._run, args=(stop,),
                          name=f"camera-{self.serial}", daemon=True).start()
@@ -330,21 +348,58 @@ class CameraView(Gtk.Box):
         if self._pipeline is pipeline: self._pipeline = None
 
     def _run_mjpeg(self, stop: threading.Event) -> None:
-        pl = self.app.language == "pl"
+        gate = self._elegoo_video_gate()
+        if gate is None:
+            self._stream_mjpeg(stop)
+            return
+        # The CC1 serves nothing on 3031 until it has accepted Cmd 386, and it says why when it refuses.
+        ack = gate.acquire()
+        try:
+            refusal = elegoo_video_refusal(ack)
+            if refusal is not None:
+                if not stop.is_set():
+                    self._set_status(refusal)
+                return
+            if not stop.is_set():
+                self._stream_mjpeg(stop)
+        finally:
+            gate.release()
+
+    def _elegoo_video_gate(self) -> Any | None:
+        if self.printer is None or self.printer.kind != PrinterKind.ELEGOO_CC1:
+            return None
+        return getattr(self.app.connections.get(self.serial), "video_gate", None)
+
+    def _stream_mjpeg(self, stop: threading.Event) -> None:
         url = self._mjpeg_url()
         if not url:
             self._set_status(i18n.t("No MJPEG camera URL found."))
             return
         self._set_badge("MJPEG")
-        request = urllib.request.Request(url)
-        with urllib.request.urlopen(request, timeout=10) as stream:
-            buffer = bytearray()
-            while not stop.is_set():
-                chunk = stream.read(16384)
-                if not chunk:
-                    break
-                buffer.extend(chunk)
-                split_jpegs(buffer, self._push_jpeg)
+        emit = lambda frame: self._push_jpeg(ensure_huffman_tables(frame))  # noqa: E731
+        for attempt in range(1, CameraView.MJPEG_ATTEMPTS + 1):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url), timeout=10) as stream:
+                    buffer = bytearray()
+                    while not stop.is_set():
+                        chunk = stream.read(16384)
+                        if not chunk:
+                            break
+                        buffer.extend(chunk)
+                        split_jpegs(buffer, emit)
+                if stop.is_set():
+                    return
+                failure = i18n.t("The camera stream ended.")
+            except OSError as error:
+                if stop.is_set():
+                    return
+                failure = i18n.t("Camera error: {0}").format(error)
+            # A stream that already showed pictures is the watchdog's to restart.
+            if self._received_frame or attempt == CameraView.MJPEG_ATTEMPTS:
+                self._set_status(failure)
+                return
+            if stop.wait(2.0):
+                return
 
     def _mjpeg_url(self) -> str | None:
         host, port = self.camera_host, self.printer.port
@@ -354,9 +409,6 @@ class CameraView(Gtk.Box):
             if callable(sender): sender(1042, {})
             return f"http://{host}:8080/?action=stream"
         if self.printer.kind == PrinterKind.ELEGOO_CC1:
-            connection = self.app.connections.get(self.serial)
-            sender = getattr(connection, "send_method", None)
-            if callable(sender): sender(386, {"Enable": 1})
             return f"http://{host}:3031/video"
         if self.printer.kind == PrinterKind.KLIPPER:
             try:
@@ -387,9 +439,14 @@ class CameraView(Gtk.Box):
                 loader.close()
                 pixbuf = loader.get_pixbuf()
             except Exception:
-                return False
+                pixbuf = None
             if pixbuf is None:
+                # Frames that arrive but never decode used to leave "Connecting to camera…" up for good.
+                self._decode_failures += 1
+                if self._decode_failures == CameraView.DECODE_FAILURES_BEFORE_NOTICE:
+                    self.status.set_text(i18n.t("The camera sends pictures that cannot be decoded."))
                 return False
+            self._decode_failures = 0
             sink = self.frame_sink
             if sink is not None:
                 width = pixbuf.get_width()

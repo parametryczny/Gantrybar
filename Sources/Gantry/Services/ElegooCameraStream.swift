@@ -2,6 +2,9 @@ import Foundation
 
 final class ElegooCameraStream: @unchecked Sendable {
     enum State: Sendable { case connecting, streaming, failed(String) }
+    /// A printer that has just been told to start its camera can take a moment to serve it, so a stream
+    /// that has not produced a picture yet is retried a few times before the failure is shown.
+    private static let attemptsBeforeFailing = 3
     private let url: URL
     private let onFrame: @Sendable (Data) -> Void
     private let onState: @Sendable (State) -> Void
@@ -15,23 +18,31 @@ final class ElegooCameraStream: @unchecked Sendable {
 
     private func run() async {
         onState(.connecting)
-        do {
-            var request = URLRequest(url: url); request.timeoutInterval = 15; request.cachePolicy = .reloadIgnoringLocalCacheData
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { onState(.failed("HTTP")); return }
-            var buffer = Data(); buffer.reserveCapacity(256_000)
-            for try await byte in bytes {
-                if Task.isCancelled { return }
-                buffer.append(byte)
-                while let start = buffer.range(of: Data([0xFF, 0xD8])),
-                      let end = buffer.range(of: Data([0xFF, 0xD9]), in: start.lowerBound..<buffer.endIndex) {
-                    let frame = buffer.subdata(in: start.lowerBound..<end.upperBound)
-                    buffer.removeSubrange(buffer.startIndex..<end.upperBound)
-                    onFrame(frame); onState(.streaming)
+        var delivered = false
+        for attempt in 1... {
+            let failure: String
+            do {
+                var request = URLRequest(url: url); request.timeoutInterval = 15; request.cachePolicy = .reloadIgnoringLocalCacheData
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+                // Frames are cut as bytes arrive. Searching the whole buffer again for every byte made a
+                // 100 KB frame cost billions of comparisons, far slower than the camera sends them.
+                var splitter = MJPEGFrameSplitter()
+                for try await byte in bytes {
+                    guard let frame = splitter.push(byte) else { continue }
+                    delivered = true
+                    onFrame(JPEGHuffman.ensureTables(frame)); onState(.streaming)
                 }
-                if buffer.count > 4_000_000 { buffer.removeFirst(buffer.count - 1_000_000) }
+                if Task.isCancelled { return }
+                failure = Localization.t("The camera stream ended.")
+            } catch {
+                if Task.isCancelled { return }
+                failure = error.localizedDescription
             }
-        } catch is CancellationError { return }
-        catch { onState(.failed(error.localizedDescription)) }
+            // A stream that already showed pictures is the watchdog's to restart.
+            guard !delivered, attempt < Self.attemptsBeforeFailing else { onState(.failed(failure)); return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if Task.isCancelled { return }
+        }
     }
 }

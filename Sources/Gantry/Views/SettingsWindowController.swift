@@ -134,8 +134,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private let dockHeading = settingsHeading()
     private lazy var dockEnableCheck = SettingsCheckbox(target: self, action: #selector(dockEnableToggled))
-    private let dockEdgeControl = NSSegmentedControl(labels: ["L", "R"], trackingMode: .selectOne, target: nil, action: nil)
-    private let dockEdgeCaption = settingsCaption()
+    private let dockDisplayControl = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let dockDisplayCaption = settingsCaption()
+    /// Display ids in the order of `dockDisplayControl`'s items; the titles alone can repeat.
+    private var dockDisplayChoiceIDs: [String] = []
+    private let dockPositionPicker = EdgeDockPositionPicker()
+    private let dockPositionCaption = settingsCaption()
+    private var screenObserver: NSObjectProtocol?
     private let dockScaleControl = SettingsScaleControl()
     private let dockScaleCaption = settingsCaption()
     private let dockBehaviourCaption = settingsCaption()
@@ -212,6 +217,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
             self?.scheduleRefresh()
         }
+        // A display plugged in or out while Settings is open changes the monitor list under the user.
+        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleRefresh() }
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -243,7 +253,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         languageControl.action = #selector(languageChanged)
         configureSegmented(themeControl, action: #selector(themeChanged), widths: [82, 82])
         configureSegmented(transparencyControl, action: #selector(transparencyChanged), widths: [72, 72, 72])
-        configureSegmented(dockEdgeControl, action: #selector(dockEdgeChanged), widths: [78, 78])
+        dockDisplayControl.target = self
+        dockDisplayControl.action = #selector(dockDisplayChanged)
+        dockPositionPicker.onChange = { edge, row in
+            AppSettings.shared.edgeDockEdge = edge
+            AppSettings.shared.edgeDockRow = row
+        }
         cardScaleControl.onStep = { [weak self] direction in self?.changeCardScale(direction) }
         dockScaleControl.onStep = { [weak self] direction in self?.changeDockScale(direction) }
 
@@ -344,7 +359,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.group(floatingWindowCaption, [floatingWindowCheck])
         grid.section(dockHeading)
         grid.aligned(dockEnableCheck)
-        grid.field(dockEdgeCaption, dockEdgeControl)
+        grid.field(dockDisplayCaption, dockDisplayControl)
+        grid.field(dockPositionCaption, dockPositionPicker, baseline: false)
         grid.field(dockScaleCaption, dockScaleControl, baseline: false)
         grid.group(dockBehaviourCaption, [dockPinnedCheck, dockCameraCheck, dockOnlyPrintingCheck])
         grid.field(dockPrintersCaption, dockPrintersHolder)
@@ -706,11 +722,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         setText(dockHeading, settings.t("Edge dock"))
         dockEnableCheck.title = settings.t("Show the strip on top")
         dockEnableCheck.isOn = settings.edgeDockEnabled
-        setText(dockEdgeCaption, settings.t("Edge") + ":")
-        dockEdgeControl.setLabel(settings.t("LEFT"), forSegment: 0)
-        dockEdgeControl.setLabel(settings.t("RIGHT"), forSegment: 1)
-        dockEdgeControl.selectedSegment = settings.edgeDockEdge == .left ? 0 : 1
-        dockEdgeControl.isEnabled = settings.edgeDockEnabled
+        setText(dockDisplayCaption, settings.t("Monitor") + ":")
+        let choices = EdgeDockPlacement.choices(displays: EdgeDockPlacement.connectedDisplays(),
+                                                savedID: settings.edgeDockDisplayID,
+                                                savedName: settings.edgeDockDisplayName)
+        // Items are added as menu items: addItem(withTitle:) drops a title already on the list, and two
+        // identical monitors have identical titles.
+        if dockDisplayChoiceIDs != choices.map(\.id) || dockDisplayControl.itemTitles != choices.map(\.title) {
+            dockDisplayControl.removeAllItems()
+            for choice in choices {
+                dockDisplayControl.menu?.addItem(NSMenuItem(title: choice.title, action: nil, keyEquivalent: ""))
+            }
+            dockDisplayChoiceIDs = choices.map(\.id)
+        }
+        if let index = choices.firstIndex(where: \.selected), dockDisplayControl.indexOfSelectedItem != index {
+            dockDisplayControl.selectItem(at: index)
+        }
+        dockDisplayControl.isEnabled = settings.edgeDockEnabled
+        setText(dockPositionCaption, settings.t("Position") + ":")
+        if dockPositionPicker.edge != settings.edgeDockEdge { dockPositionPicker.edge = settings.edgeDockEdge }
+        if dockPositionPicker.row != settings.edgeDockRow { dockPositionPicker.row = settings.edgeDockRow }
+        dockPositionPicker.isEnabled = settings.edgeDockEnabled
         setText(dockScaleCaption, settings.t("Edge dock size") + ":")
         dockScaleControl.configure(percent: settings.edgeDockScalePercent,
                                    steps: AppSettings.edgeDockScaleSteps,
@@ -946,8 +978,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppSettings.shared.edgeDockEnabled = dockEnableCheck.isOn
     }
 
-    @objc private func dockEdgeChanged() {
-        AppSettings.shared.edgeDockEdge = dockEdgeControl.selectedSegment == 0 ? .left : .right
+    @objc private func dockDisplayChanged() {
+        let index = dockDisplayControl.indexOfSelectedItem
+        guard index >= 0, index < dockDisplayChoiceIDs.count else { return }
+        EdgeDockMenuAction.chooseDisplay(dockDisplayChoiceIDs[index])
     }
 
     private func changeDockScale(_ direction: Int) {
