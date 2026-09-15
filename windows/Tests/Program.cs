@@ -212,3 +212,60 @@ Console.WriteLine("Windows physical store OK — atomic rollback, replay, warnin
     if (!ReferenceEquals(JpegHuffman.EnsureTables(repaired), repaired)) throw new Exception("A frame with tables was changed");
 }
 Console.WriteLine("Windows Elegoo camera OK — Cmd 386 reply, shared stream slot, release grace, Huffman repair");
+
+// Edge dock on simulated desktops: which display it lands on and where. The same cases as macOS
+// EdgeDockPlacementTests and linux/tests/test_dock_placement.py, in y-down pixels.
+{
+    EdgeDockDisplay Display(string id, double x, double y, double width, double height, bool primary = false) =>
+        new(id, id, (int)width, (int)height, new DockRect(x, y, width, height), new DockRect(x, y, width, height - 40), primary);
+    string Same(string text) => text;
+
+    var main = Display("main", 0, 0, 1920, 1080, primary: true);
+    var side = Display("side", 1920, 0, 2560, 1440);
+    if (EdgeDockPlacement.Resolve(new[] { side, main }, "", null) is not { Matched: false } none || none.Display.Id != "main")
+        throw new Exception("No choice did not mean the main display");
+    if (EdgeDockPlacement.Resolve(Array.Empty<EdgeDockDisplay>(), "", null) is not null)
+        throw new Exception("An empty desktop resolved to a display");
+    var saved = new DockRect(1920, 0, 2560, 1440);
+    if (EdgeDockPlacement.Resolve(new[] { main, side }, "side", saved)?.Display.Id != "side")
+        throw new Exception("The saved display was not found by its id");
+    var renamed = Display(@"\\.\DISPLAY7", 1924, 0, 2560, 1440);
+    if (EdgeDockPlacement.Resolve(new[] { main, renamed }, "side", saved) is not { Matched: true } byFrame || byFrame.Display != renamed)
+        throw new Exception("A renamed display was not found by its frame");
+    if (EdgeDockPlacement.Resolve(new[] { main, Display("side", 1920, 0, 3840, 2160) }, "side", saved)?.Display.Id != "side")
+        throw new Exception("A display at a new resolution was lost");
+    if (EdgeDockPlacement.Resolve(new[] { main }, "side", saved) is not { Matched: false } gone || gone.Display.Id != "main")
+        throw new Exception("An unplugged display did not fall back to the main one");
+    var twins = new[] { Display("a", 0, 0, 1920, 1080), Display("b", 0, 0, 1920, 1080, primary: true) };
+    if (EdgeDockPlacement.Resolve(twins, "gone", new DockRect(0, 0, 1920, 1080))?.Display.Id != "b")
+        throw new Exception("Twins with the saved frame did not resolve to the main display");
+
+    var screen = new DockRect(0, 0, 1000, 1040);
+    var work = new DockRect(0, 0, 1000, 1000);   // 40 px taskbar at the bottom
+    if (EdgeDockPlacement.Place(screen, work, false, "top", 22, 100) != (978, 200)
+        || EdgeDockPlacement.Place(screen, work, true, "middle", 22, 100) != (0, 450)
+        || EdgeDockPlacement.Place(screen, work, true, "bottom", 22, 100) != (0, 700))
+        throw new Exception("The rows are not a fifth of the work area away from its top and bottom");
+    if (EdgeDockPlacement.Place(screen, work, false, "top", 240, 900) != (760, 100)
+        || EdgeDockPlacement.Place(screen, work, false, "bottom", 240, 1200).Y != 0)
+        throw new Exception("A tall strip ran off its display");
+
+    var leftDisplay = Display("left", 0, 0, 1920, 1080, primary: true);
+    var rightDisplay = Display("right", 1920, -200, 2560, 1440);
+    var above = Display("above", 0, -1080, 1920, 1080);
+    var all = new[] { leftDisplay, rightDisplay, above };
+    if (!EdgeDockPlacement.IsInnerEdge(leftDisplay, false, all) || EdgeDockPlacement.IsInnerEdge(leftDisplay, true, all)
+        || !EdgeDockPlacement.IsInnerEdge(rightDisplay, true, all) || EdgeDockPlacement.IsInnerEdge(rightDisplay, false, all)
+        || EdgeDockPlacement.IsInnerEdge(above, false, new[] { leftDisplay, above }))
+        throw new Exception("Inner edges are not the ones shared with another display");
+
+    var frame = new DockRect(-1920, 120, 1920, 1080);
+    if (EdgeDockPlacement.ParseFrame(EdgeDockPlacement.FormatFrame(frame)) != frame
+        || EdgeDockPlacement.ParseFrame("1,2,0,4") is not null || EdgeDockPlacement.ParseFrame("junk") is not null)
+        throw new Exception("Saved display frames do not round-trip");
+    var choices = EdgeDockPlacement.Choices(new[] { main }, "dell", "DELL U2723QE", Same);
+    if (string.Join("|", choices.Select(c => c.Id)) != "|main|dell" || choices.Single(c => c.Selected).Id != "dell"
+        || !EdgeDockPlacement.Choices(new[] { main }, "", "", Same)[0].Selected)
+        throw new Exception("The monitor list lost an unplugged display or the main display");
+}
+Console.WriteLine("Windows edge dock placement OK — display lookup, rows, inner edges, saved frames, monitor list");

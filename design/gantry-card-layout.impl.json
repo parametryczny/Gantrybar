@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "date": "2026-09-14",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
@@ -712,7 +712,19 @@
       "edge-dock-camera",
       "edge-dock-camera-serials"
     ],
-    "ringPlacement": "the ring stays beside the physical screen edge while the text unfolds inward"
+    "ringPlacement": "the ring stays beside the physical screen edge while the text unfolds inward",
+    "placement": {
+      "note": "The strip lives on a chosen display, at one of six places: top, middle or bottom of the left or right edge. Settings show a display list and a small screen with six squares; the menu-bar or tray menu offers the same choices in an Edge dock submenu while the strip is on.",
+      "rows": ["top", "middle", "bottom"],
+      "rowMargin": 0.2,
+      "rowRule": "top and bottom sit rowMargin of the work-area height from its top and bottom; middle is centred in the work area; the strip is kept inside the work area and touches the display's full side",
+      "displayTolerance": 8,
+      "resolve": "saved id with the saved size, then the saved frame within displayTolerance (twins resolve to the main display), then the saved id alone, then the main display; a missing display never clears the choice",
+      "innerEdgeDwellMs": 250,
+      "innerEdge": "on an edge shared with another display the strip unfolds only when the pointer is still over it after innerEdgeDwellMs; an outer edge unfolds at once",
+      "displayChangeDebounceMs": 600,
+      "settingsKeys": ["edge-dock-row", "edge-dock-display", "edge-dock-display-frame", "edge-dock-display-name"]
+    }
   },
   "detailControls": {
     "setting": "printer-control-enabled",

@@ -173,6 +173,7 @@ public sealed class TrayIcon : IDisposable
                 null, (_, _) => ShowUpdateChecker()));
         }
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Settings…"), null, (_, _) => ShowSettings()));
+        if (Build.HasExtras && AppSettings.EdgeDockEnabled) menu.Items.Add(BuildEdgeDockMenu());
         menu.Items.Add(BuildColourLegend());
 
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Buy me a coffee ☕️"), null, (_, _) =>
@@ -206,6 +207,42 @@ public sealed class TrayIcon : IDisposable
             ShowGuide();
         };
         menu.Closed += closed;
+    }
+
+    /// <summary>The strip's display and place without opening Settings. Filled as it opens, so a display
+    /// plugged in after the menu was built is on the list. Mirrors the macOS status-item submenu.</summary>
+    private ToolStripMenuItem BuildEdgeDockMenu()
+    {
+        var root = new ToolStripMenuItem(AppSettings.T("🖥  Edge dock"));
+        root.DropDownItems.Add(new ToolStripMenuItem("…"));   // a submenu needs one item to show its arrow
+        root.DropDownOpening += (_, _) =>
+        {
+            root.DropDownItems.Clear();
+            var choices = EdgeDockPlacement.Choices(EdgeDockWindow.ConnectedDisplays(), AppSettings.EdgeDockDisplay,
+                AppSettings.EdgeDockDisplayName, AppSettings.T);
+            foreach (var choice in choices)
+            {
+                var id = choice.Id;
+                root.DropDownItems.Add(new ToolStripMenuItem(choice.Title, null, (_, _) =>
+                {
+                    EdgeDockWindow.ChooseDisplay(id);
+                    _edgeDock?.Refresh();
+                }) { Checked = choice.Selected });
+            }
+            root.DropDownItems.Add(new ToolStripSeparator());
+            foreach (bool left in new[] { true, false })
+                foreach (var row in new[] { "top", "middle", "bottom" })
+                {
+                    bool current = (AppSettings.EdgeDockEdge == "left") == left && AppSettings.EdgeDockRow == row;
+                    root.DropDownItems.Add(new ToolStripMenuItem(EdgeDockPlacement.PositionTitle(left, row, AppSettings.T), null, (_, _) =>
+                    {
+                        AppSettings.EdgeDockEdge = left ? "left" : "right";
+                        AppSettings.EdgeDockRow = row;
+                        _edgeDock?.Refresh();
+                    }) { Checked = current });
+                }
+        };
+        return root;
     }
 
     /// <summary>Non-interactive legend explaining the status colours on the cards. Emoji dots keep
@@ -310,7 +347,8 @@ public sealed class TrayIcon : IDisposable
                 _dashboard?.RefreshTheme();
                 if (_spoolbase is not null) { _spoolbase.Close(); _spoolbase = null; }
             };
-            _settings.OnEdgeDockChanged = () => _edgeDock?.Refresh();
+            // The tray offers the strip's submenu only while the strip is on, so the menu follows too.
+            _settings.OnEdgeDockChanged = () => { _edgeDock?.Refresh(); RebuildMenu(); };
             _settings.OnCardScaleChanged = () => _dashboard?.RefreshTheme();
             _settings.Closed += (_, _) => { _settings = null; RebuildMenu(); _dashboard?.RefreshTheme(); };
         }

@@ -194,6 +194,12 @@ final class AppSettings: ObservableObject {
     // opt-in second surface, not a replacement for the menu-bar popover.
     @Published var edgeDockEnabled: Bool { didSet { defaults.set(edgeDockEnabled, forKey: "edge-dock-enabled") } }
     @Published var edgeDockEdge: EdgeDockEdge { didSet { defaults.set(edgeDockEdge.rawValue, forKey: "edge-dock-edge") } }
+    @Published var edgeDockRow: EdgeDockRow { didSet { defaults.set(edgeDockRow.rawValue, forKey: "edge-dock-row") } }
+    /// The display the strip lives on. Empty means the main display. The frame and name are kept with
+    /// the id so the display is found again when its id changes, and named while it is unplugged.
+    @Published var edgeDockDisplayID: String { didSet { defaults.set(edgeDockDisplayID, forKey: "edge-dock-display") } }
+    @Published var edgeDockDisplayFrame: String { didSet { defaults.set(edgeDockDisplayFrame, forKey: "edge-dock-display-frame") } }
+    @Published var edgeDockDisplayName: String { didSet { defaults.set(edgeDockDisplayName, forKey: "edge-dock-display-name") } }
     @Published var edgeDockScalePercent: Int { didSet { defaults.set(edgeDockScalePercent, forKey: "edge-dock-scale-percent") } }
     /// Keep the strip unfolded instead of expanding it on hover, so progress stays readable without
     /// keeping the pointer there. Asked for in issue #34.
@@ -274,6 +280,10 @@ final class AppSettings: ObservableObject {
         floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? true
         edgeDockEnabled = defaults.object(forKey: "edge-dock-enabled") as? Bool ?? false
         edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
+        edgeDockRow = EdgeDockRow(rawValue: defaults.string(forKey: "edge-dock-row") ?? "") ?? .middle
+        edgeDockDisplayID = defaults.string(forKey: "edge-dock-display") ?? ""
+        edgeDockDisplayFrame = defaults.string(forKey: "edge-dock-display-frame") ?? ""
+        edgeDockDisplayName = defaults.string(forKey: "edge-dock-display-name") ?? ""
         edgeDockScalePercent = Self.nearestStep(defaults.object(forKey: "edge-dock-scale-percent") as? Int ?? 100,
                                                 in: Self.edgeDockScaleSteps)
         edgeDockPinned = defaults.object(forKey: "edge-dock-pinned") as? Bool ?? false

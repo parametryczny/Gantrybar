@@ -29,6 +29,8 @@ from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, PangoCairo  # type: ignore
 
 from . import i18n
 from .core import PrinterKind
+from .dockplacement import (DISPLAY_CHANGE_DEBOUNCE_MS, INNER_EDGE_DWELL_MS, EdgeDockDisplay, format_frame,
+                            is_inner_edge, parse_frame, place, resolve)
 
 RING = 14.0
 RING_STROKE = 2.0
@@ -86,6 +88,46 @@ def pin_outline(cx: float, cy: float, size: float, angle_degrees: float) -> list
     return points
 
 
+def connected_displays() -> list[EdgeDockDisplay]:
+    """Every monitor GDK reports. The id is the manufacturer and model, which GDK keeps across a re-plug;
+    two identical monitors share it and are told apart by their saved frame."""
+    display = Gdk.Display.get_default()
+    if display is None:
+        return []
+    result: list[EdgeDockDisplay] = []
+    for index in range(display.get_n_monitors()):
+        monitor = display.get_monitor(index)
+        if monitor is None:
+            continue
+        geometry, workarea, scale = monitor.get_geometry(), monitor.get_workarea(), monitor.get_scale_factor()
+        manufacturer, model = monitor.get_manufacturer() or "", monitor.get_model() or ""
+        name = " ".join(part for part in (manufacturer, model) if part) or i18n.t("Display {0}").format(index + 1)
+        result.append(EdgeDockDisplay(
+            id=f"{manufacturer}|{model}" if manufacturer or model else f"monitor-{index}", name=name,
+            pixel_width=geometry.width * scale, pixel_height=geometry.height * scale,
+            frame=(geometry.x, geometry.y, geometry.width, geometry.height),
+            workarea=(workarea.x, workarea.y, workarea.width, workarea.height),
+            is_primary=bool(monitor.is_primary())))
+    return result
+
+
+def choose_display(config: dict[str, Any], ident: str) -> None:
+    """Saves a display choice with the frame and name that find it again and name it while it is unplugged.
+    An empty id goes back to the main display; an id no longer connected changes nothing."""
+    if ident == str(config.get("edge-dock-display", "")):
+        return
+    if not ident:
+        for key in ("edge-dock-display", "edge-dock-display-frame", "edge-dock-display-name"):
+            config[key] = ""
+        return
+    display = next((d for d in connected_displays() if d.id == ident), None)
+    if display is None:
+        return
+    config["edge-dock-display"] = display.id
+    config["edge-dock-display-frame"] = format_frame(display.frame)
+    config["edge-dock-display-name"] = display.name
+
+
 class EdgeDock:
     """Owns the strip window and keeps it in sync with the printer store."""
 
@@ -95,6 +137,11 @@ class EdgeDock:
         self.hovering = False
         self._inside = False
         self._collapse_source: int | None = None
+        #: On an edge shared with another monitor the pointer crosses the strip on its way over, so there
+        #: the strip unfolds only after the pointer has stayed a moment. An outer edge unfolds at once.
+        self._inner_edge = False
+        self._dwell_source: int | None = None
+        self._display_change_source: int | None = None
         self._pin_hovered = False
         self._pin_hit: tuple[float, float, float, float] | None = None
         self._row_hits: list[tuple[float, float, str]] = []
@@ -116,6 +163,8 @@ class EdgeDock:
         visual = screen.get_rgba_visual() if screen is not None else None
         if visual is not None:
             self.window.set_visual(visual)
+        if screen is not None:
+            screen.connect("monitors-changed", self._on_monitors_changed)
 
         self.area = Gtk.DrawingArea()
         self.area.add_events(Gdk.EventMask.POINTER_MOTION_MASK
@@ -174,7 +223,8 @@ class EdgeDock:
         # Telemetry arrives several times a second and usually says the same thing the strip already
         # draws. Repositioning and redrawing an identical strip is pure waste, so it is skipped.
         signature = (tuple(tuple(sorted(entry.items())) for entry in entries),
-                     self._scale(), str(config.get("edge-dock-edge", "right")), self.expanded,
+                     self._scale(), str(config.get("edge-dock-edge", "right")),
+                     str(config.get("edge-dock-row", "middle")), str(config.get("edge-dock-display", "")), self.expanded,
                      tuple(sorted(self.camera_views)))
         if signature == getattr(self, "_drawn_signature", None) and self.window.get_visible():
             return
@@ -336,17 +386,48 @@ class EdgeDock:
         width, height = self._size()
         self.window.resize(int(width), int(height))
         self.area.set_size_request(int(width), int(height))
-        display = Gdk.Display.get_default()
-        if display is None:
+        # The chosen monitor, flush with its side, at the chosen height. It used to be the primary monitor,
+        # centred, with no way to put the strip anywhere else.
+        config = self.app.config.data
+        displays = connected_displays()
+        resolved = resolve(displays, str(config.get("edge-dock-display", "")),
+                           parse_frame(str(config.get("edge-dock-display-frame", ""))))
+        if resolved is None:
             return
-        monitor = display.get_primary_monitor() or display.get_monitor(0)
-        if monitor is None:
+        chosen, matched = resolved
+        self._remember_display(chosen, matched)
+        left = str(config.get("edge-dock-edge", "right")) == "left"
+        self._inner_edge = is_inner_edge(chosen, left, displays)
+        x, y = place(chosen.frame, chosen.workarea, left, str(config.get("edge-dock-row", "middle")), width, height)
+        self.window.move(int(round(x)), int(round(y)))
+
+    def _remember_display(self, display: EdgeDockDisplay, matched: bool) -> None:
+        """A chosen monitor found under a new id, or at a new size, is saved as it is now. The fallback to the
+        main monitor writes nothing: the choice stays for when the monitor returns."""
+        config = self.app.config.data
+        if not matched or not str(config.get("edge-dock-display", "")):
             return
-        geometry = monitor.get_geometry()
-        left = str(self.app.config.data.get("edge-dock-edge", "right")) == "left"
-        x = geometry.x if left else geometry.x + geometry.width - int(width)
-        y = geometry.y + max(0, (geometry.height - int(height)) // 2)
-        self.window.move(x, y)
+        frame = format_frame(display.frame)
+        if config.get("edge-dock-display") == display.id and config.get("edge-dock-display-frame") == frame:
+            return
+        config["edge-dock-display"] = display.id
+        config["edge-dock-display-frame"] = frame
+        self.app.config.save()
+
+    def _on_monitors_changed(self, *_args: object) -> None:
+        """A plug or a TV waking up posts a burst of these while the monitor list is still settling."""
+        if self._display_change_source is not None:
+            GLib.source_remove(self._display_change_source)
+        self._display_change_source = GLib.timeout_add(DISPLAY_CHANGE_DEBOUNCE_MS, self._displays_settled)
+
+    def _displays_settled(self) -> bool:
+        self._display_change_source = None
+        self._drawn_signature = None
+        self.refresh()
+        tray = getattr(self.app, "_tray", None)
+        if callable(tray):
+            tray()   # the tray's monitor list
+        return False
 
     # ------------------------------------------------------------- drawing
 
@@ -555,16 +636,34 @@ class EdgeDock:
             GLib.source_remove(self._collapse_source)
             self._collapse_source = None
         if not self.hovering:
-            self.hovering = True
-            if not self.pinned:   # a pinned strip is already open
-                self._relayout()
+            if self._inner_edge and not self.pinned:
+                if self._dwell_source is not None:
+                    GLib.source_remove(self._dwell_source)
+                self._dwell_source = GLib.timeout_add(INNER_EDGE_DWELL_MS, self._unfold_if_still_inside)
+                return False
+            self._begin_hover()
         return False
+
+    def _unfold_if_still_inside(self) -> bool:
+        """Still over the strip after the dwell: a stop, not a pass on the way to the next monitor."""
+        self._dwell_source = None
+        if self._inside and not self.hovering:
+            self._begin_hover()
+        return False
+
+    def _begin_hover(self) -> None:
+        self.hovering = True
+        if not self.pinned:   # a pinned strip is already open
+            self._relayout()
 
     def _on_leave(self, *_args: object) -> bool:
         """Folding waits a moment. The strip resizes under the pointer as it opens, and a window that
         moves out from under the cursor emits a leave event although the user has not moved; folding at
         once would put the edge back under the cursor and open it again."""
         self._inside = False
+        if self._dwell_source is not None:
+            GLib.source_remove(self._dwell_source)
+            self._dwell_source = None
         if self._pin_hovered:
             self._pin_hovered = False
             self.area.queue_draw()

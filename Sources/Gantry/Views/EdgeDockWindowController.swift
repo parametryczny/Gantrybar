@@ -82,9 +82,11 @@ final class EdgeDockWindowController {
         settingsSubscription = AppSettings.shared.objectWillChange
             .sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }
         // Resolution changes and display hot-plugs move the edge, so the strip has to be re-pinned.
+        // A single plug or a TV waking up can post a burst of these while the display list is still
+        // settling, so only the last one counts.
         screenSubscription = NotificationCenter.default
             .publisher(for: NSApplication.didChangeScreenParametersNotification)
-            .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(EdgeDockPlacement.displayChangeDebounceMilliseconds), scheduler: RunLoop.main)
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.reposition() } }
         refresh()
     }
@@ -172,15 +174,23 @@ final class EdgeDockWindowController {
         return live.count == 1 ? live[0].serial : nil
     }
 
-    /// Pins the panel flush to the chosen edge of the screen holding the menu bar, vertically centred.
-    /// Uses `frame` rather than `visibleFrame` so it really touches the edge instead of stopping at the
-    /// Dock; being at `.statusBar` level it simply floats over anything in the way.
+    /// Pins the panel flush to the chosen edge of the chosen display, at the chosen height. The side uses
+    /// `frame` rather than `visibleFrame` so it really touches the edge instead of stopping at the Dock;
+    /// being at `.statusBar` level it simply floats over anything in the way. It used to follow
+    /// the screen holding the key window, so with two displays it wandered between them.
     private func reposition(animated: Bool = false) {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let settings = AppSettings.shared
+        let displays = EdgeDockPlacement.connectedDisplays()
+        guard let resolved = EdgeDockPlacement.resolve(displays: displays, savedID: settings.edgeDockDisplayID,
+                                                       savedFrame: EdgeDockPlacement.parseFrame(settings.edgeDockDisplayFrame))
+        else { return }
+        rememberDisplay(resolved.display, matched: resolved.matched)
+        dockView.dwellBeforeUnfold = EdgeDockPlacement.isInnerEdge(resolved.display, edge: dockView.edge, among: displays)
         let size = dockView.preferredSize()
-        let y = screen.frame.midY - size.height / 2
-        let x = dockView.edge == .right ? screen.frame.maxX - size.width : screen.frame.minX
-        let frame = NSRect(x: x, y: y, width: size.width, height: size.height)
+        let origin = EdgeDockPlacement.origin(size: size, frame: resolved.display.frame,
+                                              visibleFrame: resolved.display.visibleFrame,
+                                              edge: dockView.edge, row: settings.edgeDockRow)
+        let frame = NSRect(origin: origin, size: size)
         guard panel.frame != frame else { return }
         // Unfolding and folding are the only size changes worth animating. A telemetry refresh can
         // also change the width, by a few points when a remaining time gains a digit, and animating
@@ -201,6 +211,16 @@ final class EdgeDockWindowController {
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().setFrame(frame, display: true)
         }
+    }
+
+    /// A chosen display found under a new id, or at a new size, is saved as it is now, so the next
+    /// lookup finds it at once. The fallback to the main display writes nothing: the choice stays.
+    private func rememberDisplay(_ display: EdgeDockDisplay, matched: Bool) {
+        let settings = AppSettings.shared
+        guard matched, !settings.edgeDockDisplayID.isEmpty else { return }
+        let frame = EdgeDockPlacement.formatFrame(display.frame)
+        if settings.edgeDockDisplayID != display.id { settings.edgeDockDisplayID = display.id }
+        if settings.edgeDockDisplayFrame != frame { settings.edgeDockDisplayFrame = frame }
     }
 
 
@@ -285,6 +305,11 @@ private final class EdgeDockView: NSView {
     private var isExpanded: Bool { pinned || isHovering }
     private var trackingArea: NSTrackingArea?
     private var collapseTimer: Timer?
+    /// On an edge shared with another display the pointer crosses the strip on its way over, so there
+    /// the strip unfolds only once the pointer has stayed a moment. An outer edge stops the pointer by
+    /// itself and still unfolds at once.
+    var dwellBeforeUnfold = false
+    private var dwellTimer: Timer?
     /// 0 folded, 1 unfolded. Read off the window's own width rather than kept on a clock of its own.
     /// There used to be a second animation here, a 60 Hz timer running the same curve alongside the
     /// window's resize, and the two disagreed: the window is driven by the display link, so on a
@@ -848,6 +873,23 @@ private final class EdgeDockView: NSView {
         collapseTimer?.invalidate()
         collapseTimer = nil
         guard !isHovering else { return }
+        guard dwellBeforeUnfold, !pinned else {
+            beginHover()
+            return
+        }
+        dwellTimer?.invalidate()
+        dwellTimer = Timer.scheduledTimer(withTimeInterval: EdgeDockPlacement.innerEdgeDwell, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.dwellTimer = nil
+                // Still here after the dwell: a stop, not a pass on the way to the next display.
+                if let frame = self.window?.frame, frame.contains(NSEvent.mouseLocation) { self.beginHover() }
+            }
+        }
+    }
+
+    private func beginHover() {
+        guard !isHovering else { return }
         isHovering = true
         guard !pinned else { return }   // already unfolded, nothing to re-lay out
         onLayoutChange?(true)
@@ -868,6 +910,8 @@ private final class EdgeDockView: NSView {
     }
 
     override func mouseExited(with event: NSEvent) {
+        dwellTimer?.invalidate()
+        dwellTimer = nil
         if pinHovered {
             pinHovered = false
             needsDisplay = true

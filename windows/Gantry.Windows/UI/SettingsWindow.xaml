@@ -316,27 +316,31 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <CheckBox Grid.Column="1" x:Name="DockEnableCheckBox" Margin="10,0,0,0"/>
-                        <TextBlock Grid.Row="1" x:Name="DockEdgeLabel" Style="{StaticResource PaneCaption}" Margin="0,7,0,0"/>
-                        <Button Grid.Row="1" Grid.Column="1" x:Name="DockEdgeButton" MinWidth="120" Margin="10,5,0,0"/>
-                        <TextBlock Grid.Row="2" x:Name="DockSizeLabel" Style="{StaticResource PaneCaption}" Margin="0,12,0,0"/>
-                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="10,9,0,0">
+                        <TextBlock Grid.Row="1" x:Name="DockDisplayLabel" Style="{StaticResource PaneCaption}" Margin="0,7,0,0"/>
+                        <Button Grid.Row="1" Grid.Column="1" x:Name="DockDisplayButton" MinWidth="120" Margin="10,5,0,0"/>
+                        <TextBlock Grid.Row="2" x:Name="DockPositionLabel" Style="{StaticResource PaneCaption}" Margin="0,12,0,0"/>
+                        <Canvas Grid.Row="2" Grid.Column="1" x:Name="DockPositionPicker" Width="124" Height="78"
+                                HorizontalAlignment="Left" Margin="10,9,0,0" Background="Transparent" Cursor="Hand"/>
+                        <TextBlock Grid.Row="3" x:Name="DockSizeLabel" Style="{StaticResource PaneCaption}" Margin="0,12,0,0"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="10,9,0,0">
                             <Button x:Name="DockSizeMinusButton" Content="−" Width="32" Height="26" FontSize="15" Padding="0"/>
                             <TextBlock x:Name="DockSizeValue" Width="54" TextAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
                             <Button x:Name="DockSizePlusButton" Content="+" Width="32" Height="26" FontSize="15" Padding="0"/>
                         </StackPanel>
-                        <TextBlock Grid.Row="3" x:Name="DockBehaviourCaption" Style="{StaticResource PaneCaption}" Margin="0,13,0,0"/>
-                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="10,11,0,0">
+                        <TextBlock Grid.Row="4" x:Name="DockBehaviourCaption" Style="{StaticResource PaneCaption}" Margin="0,13,0,0"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="10,11,0,0">
                             <CheckBox x:Name="DockPinnedCheckBox"/>
                             <CheckBox x:Name="DockCameraCheckBox" Margin="0,4,0,0"/>
                             <TextBlock x:Name="DockCameraNote" Style="{StaticResource PaneNote}" Margin="22,2,0,4" TextWrapping="Wrap"/>
                             <CheckBox x:Name="DockOnlyPrintingCheckBox" Margin="0,4,0,0"/>
                         </StackPanel>
-                        <TextBlock Grid.Row="4" x:Name="DockPrintersCaption" Style="{StaticResource PaneCaption}"/>
-                        <StackPanel Grid.Row="4" Grid.Column="1" x:Name="DockPrintersList" Margin="10,0,0,0"/>
-                        <TextBlock Grid.Row="5" x:Name="DockCamerasCaption" Style="{StaticResource PaneCaption}" Margin="0,10,0,0"/>
-                        <StackPanel Grid.Row="5" Grid.Column="1" x:Name="DockCamerasList" Margin="10,10,0,0"/>
+                        <TextBlock Grid.Row="5" x:Name="DockPrintersCaption" Style="{StaticResource PaneCaption}"/>
+                        <StackPanel Grid.Row="5" Grid.Column="1" x:Name="DockPrintersList" Margin="10,0,0,0"/>
+                        <TextBlock Grid.Row="6" x:Name="DockCamerasCaption" Style="{StaticResource PaneCaption}" Margin="0,10,0,0"/>
+                        <StackPanel Grid.Row="6" Grid.Column="1" x:Name="DockCamerasList" Margin="10,10,0,0"/>
                     </Grid>
                     <TextBlock x:Name="DockHint" Style="{StaticResource PaneNote}" Margin="174,6,0,0"/>
                 </StackPanel>

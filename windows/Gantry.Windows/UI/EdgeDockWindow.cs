@@ -38,6 +38,12 @@ public sealed class EdgeDockWindow : Window
     private List<Entry> _entries = new();
     private bool _hovering;
     private readonly DispatcherTimer _collapseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    /// On an edge shared with another display the pointer crosses the strip on its way over, so there the
+    /// strip unfolds only after the pointer has stayed a moment. An outer edge still unfolds at once.
+    private bool _innerEdge;
+    private readonly DispatcherTimer _dwellTimer = new() { Interval = TimeSpan.FromMilliseconds(EdgeDockPlacement.InnerEdgeDwellMs) };
+    /// A plug or a TV waking up posts a burst of display changes while the display list is still settling.
+    private readonly DispatcherTimer _displayChangeTimer = new() { Interval = TimeSpan.FromMilliseconds(EdgeDockPlacement.DisplayChangeDebounceMs) };
     /// One feed and one picture per printer the user ticked, keyed by serial. The images outlive a
     /// rebuild, so a new frame only swaps a Source and never redraws the strip.
     private readonly Dictionary<string, DockCameraFeed> _cameraFeeds = new();
@@ -80,6 +86,21 @@ public sealed class EdgeDockWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hWnd, int index, int newLong);
 
+    private const uint SwpNoSize = 0x0001, SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010;
+    private const uint MonitorDefaultToNearest = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X; public int Y; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+
     private sealed record Entry(string Serial, string Name, PrinterState State, int Progress, int? RemainingMinutes);
 
     public EdgeDockWindow(PrinterStore store, Action<string> onSelect)
@@ -120,13 +141,16 @@ public sealed class EdgeDockWindow : Window
         {
             _collapseTimer.Stop();
             if (_hovering) return;
-            _hovering = true;
-            if (!AppSettings.EdgeDockPinned) Rebuild();   // a pinned strip is already open
+            if (_innerEdge && !AppSettings.EdgeDockPinned) { _dwellTimer.Stop(); _dwellTimer.Start(); return; }
+            BeginHover();
         };
+        // Still over the strip after the dwell: a stop, not a pass on the way to the next display.
+        _dwellTimer.Tick += (_, _) => { _dwellTimer.Stop(); if (IsMouseOver) BeginHover(); };
         // Repositioning the transparent window can emit a transient leave event. Verify it only
         // after the new hit region has settled instead of immediately collapsing and reopening.
         MouseLeave += (_, _) =>
         {
+            _dwellTimer.Stop();
             if (_pinHovered) { _pinHovered = false; Cursor = null; Rebuild(); }
             _collapseTimer.Stop();
             _collapseTimer.Start();
@@ -141,7 +165,19 @@ public sealed class EdgeDockWindow : Window
             Rebuild();
         };
         MouseLeftButtonDown += OnClick;
-        Closed += (_, _) => { _collapseTimer.Stop(); DetachCameras(); };
+        _displayChangeTimer.Tick += (_, _) => { _displayChangeTimer.Stop(); if (IsVisible) Rebuild(); };
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        // Landing on a display with another scale changes the pixel size the placement was worked out for.
+        DpiChanged += (_, _) => Dispatcher.BeginInvoke(new Action(() => { if (IsVisible) Rebuild(); }));
+        Closed += (_, _) =>
+        {
+            _collapseTimer.Stop();
+            _dwellTimer.Stop();
+            _displayChangeTimer.Stop();
+            // A static event: left subscribed, it would keep this window alive after it closed.
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            DetachCameras();
+        };
 
         _store.Updated += (_, _) => Dispatcher.Invoke(Refresh);
         Refresh();
@@ -167,6 +203,87 @@ public sealed class EdgeDockWindow : Window
         SyncCameras();
         Rebuild();
         if (!IsVisible) Show();
+    }
+
+    private void BeginHover()
+    {
+        if (_hovering) return;
+        _hovering = true;
+        if (!AppSettings.EdgeDockPinned) Rebuild();   // a pinned strip is already open
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) =>
+        Dispatcher.BeginInvoke(new Action(() => { _displayChangeTimer.Stop(); _displayChangeTimer.Start(); }));
+
+    /// <summary>Puts the strip on the chosen display, flush with its side, at the chosen height. It used to
+    /// take its side from the whole virtual desktop and its height from the primary display, so with two
+    /// displays it sat on the outermost edge and could hang off a display of another height. Positioned in
+    /// physical pixels, because a WPF Left/Top means different pixels on displays with different scales.</summary>
+    private void PlaceOnDisplay(double width, double height, bool left)
+    {
+        var displays = ConnectedDisplays();
+        if (EdgeDockPlacement.Resolve(displays, AppSettings.EdgeDockDisplay,
+                EdgeDockPlacement.ParseFrame(AppSettings.EdgeDockDisplayFrame)) is not { } resolved) return;
+        RememberDisplay(resolved.Display, resolved.Matched);
+        _innerEdge = EdgeDockPlacement.IsInnerEdge(resolved.Display, left, displays);
+        double scale = DpiScale(resolved.Display.Frame);
+        var (x, y) = EdgeDockPlacement.Place(resolved.Display.Frame, resolved.Display.WorkArea, left,
+            AppSettings.EdgeDockRow, width * scale, height * scale);
+        var handle = new WindowInteropHelper(this).EnsureHandle();
+        SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(x), (int)Math.Round(y), 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+    }
+
+    private static double DpiScale(DockRect frame)
+    {
+        try
+        {
+            var monitor = MonitorFromPoint(new NativePoint { X = (int)(frame.X + frame.Width / 2), Y = (int)(frame.Y + frame.Height / 2) },
+                MonitorDefaultToNearest);
+            if (GetDpiForMonitor(monitor, 0, out uint dpi, out _) == 0 && dpi > 0) return dpi / 96.0;
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+        return 1;
+    }
+
+    /// <summary>Every display as Windows reports it, in physical pixels, keyed by its device name.</summary>
+    public static List<EdgeDockDisplay> ConnectedDisplays() => System.Windows.Forms.Screen.AllScreens
+        .Select((screen, index) => new EdgeDockDisplay(screen.DeviceName, DisplayName(screen.DeviceName, index),
+            screen.Bounds.Width, screen.Bounds.Height, ToRect(screen.Bounds), ToRect(screen.WorkingArea), screen.Primary))
+        .ToList();
+
+    private static DockRect ToRect(System.Drawing.Rectangle rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+
+    private static string DisplayName(string deviceName, int index)
+    {
+        var digits = new string(deviceName.Where(char.IsDigit).ToArray());
+        return string.Format(AppSettings.T("Display {0}"), digits.Length > 0 ? digits : (index + 1).ToString());
+    }
+
+    /// <summary>Saves a display choice with the frame and name that find it again and name it while it is
+    /// unplugged. An empty id goes back to the main display.</summary>
+    public static void ChooseDisplay(string id)
+    {
+        if (id == AppSettings.EdgeDockDisplay) return;
+        if (string.IsNullOrEmpty(id))
+        {
+            AppSettings.EdgeDockDisplay = AppSettings.EdgeDockDisplayFrame = AppSettings.EdgeDockDisplayName = "";
+            return;
+        }
+        if (ConnectedDisplays().FirstOrDefault(d => d.Id == id) is not { } display) return;
+        AppSettings.EdgeDockDisplay = display.Id;
+        AppSettings.EdgeDockDisplayFrame = EdgeDockPlacement.FormatFrame(display.Frame);
+        AppSettings.EdgeDockDisplayName = display.Name;
+    }
+
+    /// <summary>A chosen display found under a new device name, or at a new size, is saved as it is now. The
+    /// fallback to the main display writes nothing: the choice stays for when the display returns.</summary>
+    private static void RememberDisplay(EdgeDockDisplay display, bool matched)
+    {
+        if (!matched || string.IsNullOrEmpty(AppSettings.EdgeDockDisplay)) return;
+        if (AppSettings.EdgeDockDisplay != display.Id) AppSettings.EdgeDockDisplay = display.Id;
+        var frame = EdgeDockPlacement.FormatFrame(display.Frame);
+        if (AppSettings.EdgeDockDisplayFrame != frame) AppSettings.EdgeDockDisplayFrame = frame;
     }
 
     /// Taking the strip off screen must also take the streams down; an invisible camera would keep
@@ -313,13 +430,9 @@ public sealed class EdgeDockWindow : Window
         bool left = AppSettings.EdgeDockEdge == "left";
         Width = width;
         Height = height;
-        var screen = SystemParameters.WorkArea;   // in device-independent units, like Left/Top below
-        // Use the full virtual screen edge rather than the work area, so the strip really touches the
-        // border instead of stopping at the taskbar; being topmost it simply floats over it.
-        double screenLeft = SystemParameters.VirtualScreenLeft;
-        double screenWidth = SystemParameters.VirtualScreenWidth;
-        Left = left ? screenLeft : screenLeft + screenWidth - width;
-        Top = Math.Max(screen.Top, screen.Top + (screen.Height - height) / 2);
+        // The side is the display's full edge rather than its work area, so the strip really touches the
+        // border instead of stopping at a side taskbar; being topmost it simply floats over it.
+        PlaceOnDisplay(width, height, left);
 
         _canvas.Width = width;
         _canvas.Height = height;
