@@ -1062,5 +1062,7 @@
   "A full-screen dashboard for a Raspberry Pi or a monitor in the workshop, with the same printers and settings. Go back with Konfiguracja, Open regular Gantry, or Ctrl+Q.": "Pełnoekranowy pulpit dla Raspberry Pi albo monitora w warsztacie, z tymi samymi drukarkami i ustawieniami. Wrócisz przyciskiem Konfiguracja, Otwórz zwykłe Gantry, albo skrótem Ctrl+Q.",
   "Gantry closes and opens full screen. If Gantry starts after login, workshop mode will start instead.": "Gantry zamknie się i otworzy na pełnym ekranie. Jeśli Gantry startuje po zalogowaniu, zamiast niego będzie startować tryb warsztatowy.",
   "Switch": "Przełącz",
-  "Could not start workshop mode": "Nie udało się uruchomić trybu warsztatowego"
+  "Could not start workshop mode": "Nie udało się uruchomić trybu warsztatowego",
+  "No camera found. Type the code from the label into the search field.": "Nie znaleziono kamery. Wpisz kod z etykiety w polu wyszukiwania.",
+  "The camera sends no picture. Close other apps using it, or type the code into the search field.": "Kamera nie przekazuje obrazu. Zamknij inne programy, które jej używają, albo wpisz kod w polu wyszukiwania."
 }
