@@ -14,7 +14,7 @@ gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
-from . import i18n
+from . import i18n, workshop
 from .app import Gantry, PrinterCard
 from .core import Printer, PrinterKind, PrinterState, Telemetry
 from .http_clients import HttpConnection
@@ -40,6 +40,7 @@ KIOSK_CSS = b"""
 Result = TypeVar("Result")
 
 QUIT_RESPONSE = 1
+SWITCH_RESPONSE = 2
 
 
 def is_quit_shortcut(keyval: int, state: int) -> bool:
@@ -176,7 +177,9 @@ class KioskMenuDialog(Gtk.Dialog):
         leave = Gtk.Button(label="Zakończ tryb warsztatowy")
         leave.get_style_context().add_class("destructive-action")
         leave.connect("clicked", lambda _button: self.response(QUIT_RESPONSE))
-        actions.attach(leave, 0, 3, 2, 1)
+        switch = Gtk.Button(label="Otwórz zwykłe Gantry")
+        switch.connect("clicked", lambda _button: self.response(SWITCH_RESPONSE))
+        actions.attach(switch, 0, 3, 1, 1); actions.attach(leave, 1, 3, 1, 1)
         box.pack_start(actions, True, True, 0)
         hint = Gtk.Label(label="Ctrl+Q też kończy tryb warsztatowy. SSH służy tylko do aktualizacji i diagnostyki.", xalign=0)
         hint.get_style_context().add_class("meta"); box.pack_end(hint, False, False, 0)
@@ -194,6 +197,8 @@ class KioskMenuDialog(Gtk.Dialog):
 
 
 class KioskGantry(Gantry):
+    is_kiosk = True
+
     def __init__(self) -> None:
         self.config, self.secrets = Config(), SecretStore()
         self.config.data["theme"] = "dark"
@@ -245,6 +250,8 @@ class KioskGantry(Gantry):
         response = dialog.run(); dialog.destroy(); self.window.fullscreen()
         if response == QUIT_RESPONSE:
             self.confirm_quit()
+        elif response == SWITCH_RESPONSE:
+            self.switch_to_desktop_app()
 
     def confirm_quit(self) -> None:
         if getattr(self, "_quit_prompt_open", False):
@@ -254,18 +261,31 @@ class KioskGantry(Gantry):
                                    message_type=Gtk.MessageType.QUESTION, buttons=Gtk.ButtonsType.NONE,
                                    text="Zakończyć tryb warsztatowy?")
         dialog.format_secondary_text(
-            "Ekran przestanie pokazywać drukarki. Na zwykłym komputerze uruchamiaj Gantry z menu, "
-            "a nie Gantry Workshop, który jest pełnoekranowym widokiem dla Raspberry Pi."
+            "„Otwórz zwykłe Gantry” wraca do aplikacji z tymi samymi drukarkami i ustawieniami. "
+            "Jeśli tryb warsztatowy startował po zalogowaniu, od teraz będzie startować zwykłe Gantry."
         )
         dialog.add_button("Anuluj", Gtk.ResponseType.CANCEL)
         dialog.add_button("Zakończ", Gtk.ResponseType.ACCEPT)
-        dialog.set_default_response(Gtk.ResponseType.CANCEL)
+        dialog.add_button("Otwórz zwykłe Gantry", SWITCH_RESPONSE)
+        dialog.set_default_response(SWITCH_RESPONSE)
         response = dialog.run(); dialog.destroy()
         self._quit_prompt_open = False
         if response == Gtk.ResponseType.ACCEPT:
             self.quit()
+        elif response == SWITCH_RESPONSE:
+            self.switch_to_desktop_app()
         else:
             self.window.fullscreen()
+
+    def switch_to_desktop_app(self) -> None:
+        """Leave the kiosk for the regular app (see workshop.leave_workshop)."""
+        try:
+            workshop.leave_workshop()
+        except OSError as error:
+            self._message("Nie udało się uruchomić Gantry", str(error), Gtk.MessageType.ERROR)
+            self.window.fullscreen()
+            return
+        self.quit()
 
     def _on_ui(self, action: Callable[[], Result], timeout: float = 15) -> tuple[bool, Result | str]:
         finished = threading.Event()

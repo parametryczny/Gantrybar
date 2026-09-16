@@ -1055,5 +1055,12 @@
   "Review filament usage": "Sprawdź zużycie filamentu",
   "Some prints could not be accounted for. Check the remaining filament weights.": "Nie udało się rozliczyć części wydruków. Sprawdź pozostałą wagę filamentu.",
   "Could not save filament data. The change was not saved.": "Nie udało się zapisać danych filamentu. Zmiana nie została zapisana.",
-  "Mark as reviewed": "Oznacz jako sprawdzone"
+  "Mark as reviewed": "Oznacz jako sprawdzone",
+  "Workshop mode": "Tryb warsztatowy",
+  "Switch to workshop mode": "Przełącz na tryb warsztatowy",
+  "Switch to workshop mode?": "Przełączyć na tryb warsztatowy?",
+  "A full-screen dashboard for a Raspberry Pi or a monitor in the workshop, with the same printers and settings. Go back with Konfiguracja, Open regular Gantry, or Ctrl+Q.": "Pełnoekranowy pulpit dla Raspberry Pi albo monitora w warsztacie, z tymi samymi drukarkami i ustawieniami. Wrócisz przyciskiem Konfiguracja, Otwórz zwykłe Gantry, albo skrótem Ctrl+Q.",
+  "Gantry closes and opens full screen. If Gantry starts after login, workshop mode will start instead.": "Gantry zamknie się i otworzy na pełnym ekranie. Jeśli Gantry startuje po zalogowaniu, zamiast niego będzie startować tryb warsztatowy.",
+  "Switch": "Przełącz",
+  "Could not start workshop mode": "Nie udało się uruchomić trybu warsztatowego"
 }

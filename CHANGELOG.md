@@ -10,7 +10,7 @@ Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są op
 
 ### Poprawione
 
-- **Gantry Workshop na zwykłym pulpicie GNU/Linuksa**: pełnoekranowy widok warsztatowy dla Raspberry Pi był widoczny w menu aplikacji obok Gantry, a po uruchomieniu nie dawał się zamknąć. Nie miał przycisków okna, ignorował Alt+F4 i zamykanie z paska zadań, a do tego wyłączał wygaszanie ekranu do końca sesji. Teraz w Konfiguracji jest przycisk „Zakończ tryb warsztatowy”, Ctrl+Q, Alt+F4 i zamknięcie z paska zadań pytają o potwierdzenie, wygaszanie ekranu wraca po wyjściu, a skrót Gantry Workshop nie pokazuje się w menu (autostart ustawiany przez `gantry-kiosk-setup` działa jak dotąd).
+- **Gantry Workshop na zwykłym pulpicie GNU/Linuksa**: pełnoekranowy widok warsztatowy dla Raspberry Pi był widoczny w menu aplikacji obok Gantry, a po uruchomieniu nie dawał się zamknąć. Nie miał przycisków okna, ignorował Alt+F4 i zamykanie z paska zadań, a do tego wyłączał wygaszanie ekranu do końca sesji. Teraz domyślnie otwiera się zwykła aplikacja, a tryb warsztatowy jest jej trybem: włączasz go w Ustawieniach, w panelu Zaawansowane, przyciskiem „Przełącz na tryb warsztatowy” (paczki DEB, RPM i Arch). W trybie warsztatowym Konfiguracja ma przyciski „Otwórz zwykłe Gantry” i „Zakończ tryb warsztatowy”. Oba tryby korzystają z tych samych drukarek i ustawień, a start po zalogowaniu przechodzi razem z przełączeniem. Ctrl+Q, Alt+F4 i zamknięcie z paska zadań pytają, co zrobić, wygaszanie ekranu wraca po wyjściu, a skrót Gantry Workshop nie pokazuje się w menu (autostart ustawiany przez `gantry-kiosk-setup` działa jak dotąd).
 
 ## 0.12.0 - 2026-09-15
 
