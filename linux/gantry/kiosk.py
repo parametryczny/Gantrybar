@@ -181,7 +181,7 @@ class KioskMenuDialog(Gtk.Dialog):
         switch.connect("clicked", lambda _button: self.response(SWITCH_RESPONSE))
         actions.attach(switch, 0, 3, 1, 1); actions.attach(leave, 1, 3, 1, 1)
         box.pack_start(actions, True, True, 0)
-        hint = Gtk.Label(label="Ctrl+Q też kończy tryb warsztatowy. SSH służy tylko do aktualizacji i diagnostyki.", xalign=0)
+        hint = Gtk.Label(label="Ctrl+Q pyta, czy wrócić do Gantry, czy zakończyć. SSH służy tylko do aktualizacji i diagnostyki.", xalign=0)
         hint.get_style_context().add_class("meta"); box.pack_end(hint, False, False, 0)
         self.show_all()
 
