@@ -1,9 +1,24 @@
 #!/bin/sh
+# Full-screen workshop view for Raspberry Pi. Screen blanking is switched off only while the kiosk
+# runs and restored when it ends, so trying it on a regular desktop leaves no lasting change.
+blanking_off=0
+restore_screen() {
+  if [ "$blanking_off" = 1 ]; then
+    xset s default >/dev/null 2>&1 || true
+    xset +dpms >/dev/null 2>&1 || true
+  fi
+}
+trap restore_screen EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 if command -v xset >/dev/null 2>&1; then
   xset s off >/dev/null 2>&1 || true
   xset -dpms >/dev/null 2>&1 || true
+  blanking_off=1
 fi
 if command -v systemd-inhibit >/dev/null 2>&1; then
-  exec systemd-inhibit --what=idle:sleep --mode=block --why="Gantry workshop kiosk" /usr/bin/python3 -m gantry --kiosk "$@"
+  systemd-inhibit --what=idle:sleep --mode=block --why="Gantry workshop kiosk" /usr/bin/python3 -m gantry --kiosk "$@"
+else
+  /usr/bin/python3 -m gantry --kiosk "$@"
 fi
-exec /usr/bin/python3 -m gantry --kiosk "$@"

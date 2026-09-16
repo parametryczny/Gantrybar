@@ -12,7 +12,9 @@ fi
 
 mkdir -p "$AUTOSTART_DIR"
 rm -f "$AUTOSTART_DIR/gantry.desktop"
-install -m 0644 /usr/share/applications/gantry-kiosk.desktop "$AUTOSTART_FILE"
+# The menu entry is hidden on regular desktops; the autostart copy must not inherit that.
+sed '/^NoDisplay=/d' /usr/share/applications/gantry-kiosk.desktop > "$AUTOSTART_FILE"
+chmod 0644 "$AUTOSTART_FILE"
 
 if command -v xdg-user-dir >/dev/null 2>&1; then
   DOCUMENTS_DIR=$(xdg-user-dir DOCUMENTS)

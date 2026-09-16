@@ -10,4 +10,5 @@ Icon=gantry
 Terminal=false
 Categories=Utility;Network;
 StartupNotify=false
+NoDisplay=true
 X-GNOME-Autostart-enabled=true

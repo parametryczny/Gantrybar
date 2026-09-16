@@ -39,13 +39,23 @@ KIOSK_CSS = b"""
 
 Result = TypeVar("Result")
 
+QUIT_RESPONSE = 1
+
+
+def is_quit_shortcut(keyval: int, state: int) -> bool:
+    """Ctrl+Q leaves the kiosk; Caps Lock or Num Lock must not get in the way."""
+    return bool(state & Gdk.ModifierType.CONTROL_MASK) and Gdk.keyval_to_lower(keyval) == Gdk.KEY_q
+
 
 class KioskDashboard(Gtk.Window):
     def __init__(self, app: "KioskGantry") -> None:
         super().__init__(title="Gantry Workshop")
         self.app = app
         self.set_decorated(False)
-        self.connect("delete-event", lambda *_args: True)
+        # Alt+F4 and "close" from a taskbar land here: ask instead of ignoring, so the full-screen
+        # kiosk can always be left on a desktop without a terminal.
+        self.connect("delete-event", lambda *_args: (app.confirm_quit(), True)[1])
+        self.connect("key-press-event", self._on_key)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(root)
 
@@ -88,6 +98,12 @@ class KioskDashboard(Gtk.Window):
 
         self._update_clock()
         GLib.timeout_add_seconds(1, self._update_clock)
+
+    def _on_key(self, _window: Gtk.Window, event: Gdk.EventKey) -> bool:
+        if is_quit_shortcut(event.keyval, event.state):
+            self.app.confirm_quit()
+            return True
+        return False
 
     def _update_clock(self) -> bool:
         now = datetime.now()
@@ -157,8 +173,12 @@ class KioskMenuDialog(Gtk.Dialog):
         actions.attach(add, 0, 0, 1, 1); actions.attach(settings, 1, 0, 1, 1)
         actions.attach(import_csv, 0, 1, 1, 1); actions.attach(template, 1, 1, 1, 1)
         actions.attach(reconnect, 0, 2, 1, 1); actions.attach(rotate, 1, 2, 1, 1)
+        leave = Gtk.Button(label="Zakończ tryb warsztatowy")
+        leave.get_style_context().add_class("destructive-action")
+        leave.connect("clicked", lambda _button: self.response(QUIT_RESPONSE))
+        actions.attach(leave, 0, 3, 2, 1)
         box.pack_start(actions, True, True, 0)
-        hint = Gtk.Label(label="SSH służy tylko do aktualizacji i diagnostyki.", xalign=0)
+        hint = Gtk.Label(label="Ctrl+Q też kończy tryb warsztatowy. SSH służy tylko do aktualizacji i diagnostyki.", xalign=0)
         hint.get_style_context().add_class("meta"); box.pack_end(hint, False, False, 0)
         self.show_all()
 
@@ -222,7 +242,30 @@ class KioskGantry(Gantry):
 
     def open_kiosk_menu(self) -> None:
         dialog = KioskMenuDialog(self)
-        dialog.run(); dialog.destroy(); self.window.fullscreen()
+        response = dialog.run(); dialog.destroy(); self.window.fullscreen()
+        if response == QUIT_RESPONSE:
+            self.confirm_quit()
+
+    def confirm_quit(self) -> None:
+        if getattr(self, "_quit_prompt_open", False):
+            return
+        self._quit_prompt_open = True
+        dialog = Gtk.MessageDialog(transient_for=self.window, modal=True,
+                                   message_type=Gtk.MessageType.QUESTION, buttons=Gtk.ButtonsType.NONE,
+                                   text="Zakończyć tryb warsztatowy?")
+        dialog.format_secondary_text(
+            "Ekran przestanie pokazywać drukarki. Na zwykłym komputerze uruchamiaj Gantry z menu, "
+            "a nie Gantry Workshop, który jest pełnoekranowym widokiem dla Raspberry Pi."
+        )
+        dialog.add_button("Anuluj", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Zakończ", Gtk.ResponseType.ACCEPT)
+        dialog.set_default_response(Gtk.ResponseType.CANCEL)
+        response = dialog.run(); dialog.destroy()
+        self._quit_prompt_open = False
+        if response == Gtk.ResponseType.ACCEPT:
+            self.quit()
+        else:
+            self.window.fullscreen()
 
     def _on_ui(self, action: Callable[[], Result], timeout: float = 15) -> tuple[bool, Result | str]:
         finished = threading.Event()

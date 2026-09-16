@@ -166,6 +166,10 @@ The CSV contains printer access codes. Remove it after a successful import. Code
 the desktop Secret Service and are not copied to Gantry's JSON settings. SSH is only needed for
 system updates and diagnostics.
 
+Leave the kiosk with **Konfiguracja → Zakończ tryb warsztatowy**, Ctrl+Q or Alt+F4; each asks for
+confirmation first. Screen blanking comes back when the kiosk ends. The Gantry Workshop launcher is
+hidden from desktop menus, so on a regular desktop start **Gantry** instead.
+
 Disable kiosk autostart with:
 
 ```sh
