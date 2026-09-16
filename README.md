@@ -19,7 +19,8 @@ live state, progress, layers, temperatures, filament and notifications.
 
 </div>
 
-<img src="docs/renders/readme-dashboard.png" alt="Gantry: all your printers in one view, on macOS, Windows and GNU/Linux">
+<img width="1448" height="1086" alt="gantey" src="https://github.com/user-attachments/assets/b63a071b-1afc-4f47-a04d-d22056a7eb49" />
+
 
 Gantry watches **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) and Snapmaker** printers over your own network. No account, no cloud, no middleman server.
 
