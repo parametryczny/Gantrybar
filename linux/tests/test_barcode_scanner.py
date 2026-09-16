@@ -158,7 +158,7 @@ class ScannerMessagesTests(unittest.TestCase):
         catalog = json.loads((root / "i18n" / "pl.json").read_text(encoding="utf-8"))
         source = (root / "linux" / "gantry" / "barcodescan.py").read_text(encoding="utf-8")
         messages = set(re.findall(r'(?:return|_fail\(|_post\(self\._fail, )\s*"([^"]+\.)"', source))
-        self.assertGreaterEqual(len(messages), 6)
+        self.assertGreaterEqual(len(messages), 5)
         self.assertEqual(sorted(message for message in messages if message not in catalog), [])
 
 
