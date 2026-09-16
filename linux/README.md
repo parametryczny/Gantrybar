@@ -166,6 +166,16 @@ The CSV contains printer access codes. Remove it after a successful import. Code
 the desktop Secret Service and are not copied to Gantry's JSON settings. SSH is only needed for
 system updates and diagnostics.
 
+The kiosk is a mode of the regular app, over the same printers and settings. Gantry opens as the
+regular app by default and the Gantry Workshop launcher is hidden from desktop menus. Switch modes
+without a terminal:
+
+- regular app to kiosk: **Settings → Advanced → Switch to workshop mode** (DEB, RPM and Arch packages)
+- kiosk to regular app: **Konfiguracja → Otwórz zwykłe Gantry**, or Ctrl+Q / Alt+F4 and the same button
+
+If the mode you leave was starting after login, the other one starts after login instead.
+**Zakończ tryb warsztatowy** only closes the kiosk. Screen blanking comes back when the kiosk ends.
+
 Disable kiosk autostart with:
 
 ```sh

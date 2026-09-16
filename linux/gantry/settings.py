@@ -495,6 +495,34 @@ class SettingsDialog(Gtk.Dialog):
         pane.group(i18n.t("Features"), [self.printer_control, self.developer, self.allow_scripts])
         pane.note(i18n.t("Enables temperature, fan and speed controls in Details. Off by default."))
         pane.note(i18n.t("Off by default for safety. Every rule still asks for confirmation the first time it runs."))
+        self._build_workshop(pane)
+
+    def _build_workshop(self, pane: SettingsPane) -> None:
+        """The switch into Gantry Workshop. Shown only where the kiosk launcher is installed, and not
+        inside the kiosk itself, which has its own way back."""
+        from . import workshop
+        if getattr(self.app, "is_kiosk", False) or workshop.kiosk_command() is None:
+            return
+        pane.section(i18n.t("Workshop mode"))
+        switch = Gtk.Button(label=i18n.t("Switch to workshop mode"))
+        switch.connect("clicked", self._switch_to_workshop)
+        pane.aligned(switch)
+        pane.note(i18n.t("A full-screen dashboard for a Raspberry Pi or a monitor in the workshop, with the same printers and settings. Go back with Konfiguracja, Open regular Gantry, or Ctrl+Q."))
+
+    def _switch_to_workshop(self, *_args: object) -> None:
+        confirm = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
+                                    buttons=Gtk.ButtonsType.NONE, text=i18n.t("Switch to workshop mode?"))
+        confirm.format_secondary_text(i18n.t("Gantry closes and opens full screen. If Gantry starts after login, workshop mode will start instead."))
+        confirm.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
+        confirm.add_button(i18n.t("Switch"), Gtk.ResponseType.ACCEPT)
+        confirm.set_default_response(Gtk.ResponseType.ACCEPT)
+        response = confirm.run(); confirm.destroy()
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        # Leave the settings dialog first, then switch from the main loop: quitting from inside this
+        # handler would leave the dialog's own loop running.
+        self.response(Gtk.ResponseType.CLOSE)
+        GLib.idle_add(self.app.switch_to_workshop)
 
     # ------------------------------------------------------------- helpers
 

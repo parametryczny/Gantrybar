@@ -1394,6 +1394,20 @@ class Gantry:
         dialog.show_all()
         dialog.present()
 
+    def switch_to_workshop(self) -> bool:
+        """Hand over to Gantry Workshop, the full-screen kiosk (see workshop.enter_workshop)."""
+        from . import workshop
+        try:
+            workshop.enter_workshop()
+        except OSError as error:
+            dialog = Gtk.MessageDialog(transient_for=self.window, modal=True, message_type=Gtk.MessageType.ERROR,
+                                       buttons=Gtk.ButtonsType.CLOSE, text=i18n.t("Could not start workshop mode"))
+            dialog.format_secondary_text(str(error))
+            dialog.run(); dialog.destroy()
+            return False
+        self.quit()
+        return False
+
     def quit(self) -> None:
         for connection in self.connections.values(): connection.stop()
         Gtk.main_quit()
