@@ -6,7 +6,7 @@ Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są op
 
 ### Zmienione
 
-- **pasek krawędziowy: drukarki w kafelkach**: po rozwinięciu każda drukarka ma własny lekki kafelek z cienką obwódką, a w nim swój wiersz i kamerę. Przy kilku drukarkach z kamerami nazwy i obrazy nie zlewają się już w jedną kolumnę. Ciemny panel i sterowanie jego przezroczystością zostają bez zmian i widać je jako margines wokół kafelków. Kliknięcie w kafelek otwiera szczegóły drukarki, kliknięcie w kamerę nie. Tak samo na macOS, Windows i GNU/Linuksie.
+- **pasek krawędziowy: podpis pod obrazem kamery**: po rozwinięciu każda drukarka to jeden blok w kolumnie: obraz kamery, pod nim podpis z nazwą, procentem, pozostałym czasem i pierścieniem, a do następnej drukarki cienka linia. Nic nie zasłania obrazu, a obraz jest pokazywany w całości, bez przycinania i rozciągania. Drukarki z podglądem są na górze, pozostałe pod nimi, w kolejności z floty. Drukarka z kamerą, której podgląd nie jest włączony, ma dopisek „Podgląd wyłączony”, a drukarka bez kamery „Bez kamery”, bez pustego miejsca na obraz. Gdy obraz przestaje przychodzić, miejsce zostaje i pokazuje „Brak obrazu”, a dane wydruku dalej się odświeżają. Długa nazwa zawija się, a procent i czas przechodzą do wiersza pod nią, bez poszerzania paska. Na małym ekranie pasek się mieści: najpierw zmniejsza obrazy, potem zastępuje je dopiskiem „Za mało miejsca na podgląd”. Ciemne tło i sterowanie jego przezroczystością zostają bez zmian. Tak samo na macOS, Windows i GNU/Linuksie; na GNU/Linuksie poprawione też zaokrlone narożniki paska, które wycinały koła zamiast je zaokrąglać.
 
 ### Dodane
 

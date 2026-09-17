@@ -50,6 +50,14 @@ final class CameraFeedController {
     /// True between `start()` and `stop()`, so a surface can avoid restarting a feed it already runs.
     private(set) var isRunning = false
 
+    /// For a small picture such as the edge dock's: every message becomes "Connecting…" before the
+    /// first frame or "No picture" after a failure, and a picture that goes quiet says so after a few
+    /// seconds instead of freezing on its last frame until the restart.
+    var compactStatus = false {
+        didSet { view.dimsUnderStatus = compactStatus }
+    }
+    private static let compactSilence: TimeInterval = 4
+
     init(store: PrinterStore, serial: String) {
         self.store = store
         self.serial = serial
@@ -89,12 +97,23 @@ final class CameraFeedController {
         // If no frame arrives in time, show a helpful fallback.
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.receivedFrame else { return }
-            self.view.showStatus(Self.unavailableText)
+            self.showStatus(Self.unavailableText)
         }
         timeout = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: work)
         lastFrameAt = Date()
         armWatchdog()
+    }
+
+    private func showStatus(_ text: String) {
+        guard compactStatus else {
+            view.showStatus(text)
+            return
+        }
+        let settings = AppSettings.shared
+        let connecting = [settings.t("Connecting to camera…"), settings.t("Connecting to FLV camera…"),
+                          settings.t("Connecting to the P1/A1 camera…")].contains(text)
+        view.showStatus(connecting && !receivedFrame ? settings.t("Connecting…") : settings.t("No picture"))
     }
 
     private func armWatchdog() {
@@ -111,6 +130,9 @@ final class CameraFeedController {
     /// Restarts a feed that was working and then stopped, backing off so a camera that is genuinely
     /// gone is not hammered. A feed that never produced a frame is left to the 12 second message.
     private func checkForSilence() {
+        if compactStatus, receivedFrame, Date().timeIntervalSince(lastFrameAt) > Self.compactSilence {
+            view.showStatus(AppSettings.shared.t("No picture"))
+        }
         guard receivedFrame, Date().timeIntervalSince(lastFrameAt) > restartDelay else {
             armWatchdog()
             return
@@ -149,10 +171,10 @@ final class CameraFeedController {
 
     private func startBambuCamera(_ printer: SavedPrinter) {
         guard stream == nil, let code = store.accessCode(for: serial), !code.isEmpty else {
-            view.showStatus(AppSettings.shared.t("Camera unavailable (no access code)"))
+            showStatus(AppSettings.shared.t("Camera unavailable (no access code)"))
             return
         }
-        view.showStatus(AppSettings.shared.t("Connecting to camera…"))
+        showStatus(AppSettings.shared.t("Connecting to camera…"))
         let stream = RTSPCameraStream(
             host: cameraHost(for: printer),
             accessCode: code,
@@ -166,7 +188,7 @@ final class CameraFeedController {
 
     private func startKlipperCamera(_ printer: SavedPrinter) {
         guard klipperStream == nil else { return }
-        view.showStatus(AppSettings.shared.t("Connecting to camera…"))
+        showStatus(AppSettings.shared.t("Connecting to camera…"))
         let stream = KlipperCameraStream(
             host: cameraHost(for: printer),
             port: printer.port ?? 7125,
@@ -184,7 +206,7 @@ final class CameraFeedController {
         let port = isCC2 ? 8080 : 3031
         let path = isCC2 ? "/?action=stream" : "/video"
         guard let url = URL(string: "http://\(cameraHost(for: printer)):\(port)\(path)") else { return }
-        view.showStatus(AppSettings.shared.t("Connecting to camera…"))
+        showStatus(AppSettings.shared.t("Connecting to camera…"))
         guard !isCC2, let gate = store.elegooVideoGate(serial: serial) else {
             if isCC2 { store.sendElegooMethod(serial: serial, method: 1042) }
             openElegooStream(url)
@@ -198,7 +220,7 @@ final class CameraFeedController {
                 guard let self, self.isRunning, generation == self.feedGeneration else { return }
                 if let refusal = ElegooVideoGate.refusalMessage(ack: ack) {
                     self.timeout?.cancel()
-                    self.view.showStatus(refusal)
+                    self.showStatus(refusal)
                 } else {
                     self.openElegooStream(url)
                 }
@@ -210,18 +232,18 @@ final class CameraFeedController {
         let stream = ElegooCameraStream(url: url,
             onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } },
             onState: { state in Task { @MainActor [weak self] in
-                if case .failed = state, self?.receivedFrame == false { self?.view.showStatus(Self.unavailableText) }
+                if case .failed = state, self?.receivedFrame == false { self?.showStatus(Self.unavailableText) }
             } })
         elegooStream = stream; stream.start()
     }
 
     private func startAnycubicCamera(_ printer: SavedPrinter) {
         guard anycubicStream == nil, let url = URL(string: "http://\(cameraHost(for: printer)):18088/flv") else { return }
-        view.showStatus(AppSettings.shared.t("Connecting to FLV camera…"))
+        showStatus(AppSettings.shared.t("Connecting to FLV camera…"))
         let stream = AnycubicCameraStream(url: url,
             onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } },
             onState: { state in Task { @MainActor [weak self] in
-                if case .failed(let message) = state, self?.receivedFrame == false { self?.view.showStatus(message) }
+                if case .failed(let message) = state, self?.receivedFrame == false { self?.showStatus(message) }
             } })
         anycubicStream = stream; stream.start()
     }
@@ -242,7 +264,7 @@ final class CameraFeedController {
             // Frames that arrive but never decode used to leave "Connecting…" on screen for good.
             decodeFailures += 1
             if decodeFailures == Self.decodeFailuresBeforeNotice {
-                view.showStatus(AppSettings.shared.t("The camera sends pictures that cannot be decoded."))
+                showStatus(AppSettings.shared.t("The camera sends pictures that cannot be decoded."))
             }
         }
     }
@@ -266,14 +288,14 @@ final class CameraFeedController {
     private func startBambuJPEGFallback(_ printer: SavedPrinter) {
         guard jpegStream == nil, !receivedFrame,
               let code = store.accessCode(for: serial), !code.isEmpty else { return }
-        view.showStatus(AppSettings.shared.t("Connecting to the P1/A1 camera…"))
+        showStatus(AppSettings.shared.t("Connecting to the P1/A1 camera…"))
         let stream = BambuJPEGCameraStream(
             host: cameraHost(for: printer),
             accessCode: code,
             onState: { state in Task { @MainActor [weak self] in
                 guard let self else { return }
                 if case .failed = state, !self.receivedFrame {
-                    self.view.showStatus(Self.unavailableText)
+                    self.showStatus(Self.unavailableText)
                 }
             } },
             onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } })
@@ -288,7 +310,7 @@ final class CameraFeedController {
         case .failed:
             // Not necessarily a dead end: on a P1/A1 there is no RTSP endpoint to begin with.
             guard let printer = store.printers.first(where: { $0.serial == serial }) else {
-                if !receivedFrame { view.showStatus(Self.unavailableText) }
+                if !receivedFrame { showStatus(Self.unavailableText) }
                 return
             }
             startBambuJPEGFallback(printer)
@@ -301,7 +323,7 @@ final class CameraFeedController {
             break
         case .failed:
             if !receivedFrame {
-                view.showStatus(AppSettings.shared.t("Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)"))
+                showStatus(AppSettings.shared.t("Camera unavailable — check the webcam config in Moonraker (Fluidd/Mainsail)"))
             }
         }
     }
@@ -314,6 +336,10 @@ final class CameraView: NSView {
     private let displayLayer = AVSampleBufferDisplayLayer()   // Bambu H.264
     private let imageView = NSImageView()                     // Klipper JPEG snapshots
     private let statusLabel = NSTextField(labelWithString: "")
+    /// Darkens a stale last frame while a status is shown over it, so the text reads and the frame does
+    /// not pass for a live one. Only surfaces that ask for it.
+    private let statusDim = NSView()
+    var dimsUnderStatus = false
     private var formatDescription: CMFormatDescription?
 
     /// Corner rounding of the black plate. The detail view's card wants 10; the edge dock sits inside
@@ -340,6 +366,18 @@ final class CameraView: NSView {
             imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
             imageView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+
+        statusDim.wantsLayer = true
+        statusDim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.62).cgColor
+        statusDim.isHidden = true
+        statusDim.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(statusDim)
+        NSLayoutConstraint.activate([
+            statusDim.topAnchor.constraint(equalTo: topAnchor),
+            statusDim.leadingAnchor.constraint(equalTo: leadingAnchor),
+            statusDim.trailingAnchor.constraint(equalTo: trailingAnchor),
+            statusDim.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
 
         statusLabel.font = .systemFont(ofSize: 11)
@@ -424,6 +462,7 @@ final class CameraView: NSView {
         if displayLayer.status == .failed { displayLayer.flush() }
         displayLayer.enqueue(sampleBuffer)
         statusLabel.isHidden = true
+        statusDim.isHidden = true
     }
 
     /// Klipper JPEG snapshot frame.
@@ -431,11 +470,13 @@ final class CameraView: NSView {
         imageView.image = image
         imageView.isHidden = false
         statusLabel.isHidden = true
+        statusDim.isHidden = true
     }
 
     func showStatus(_ text: String) {
         statusLabel.stringValue = text
         statusLabel.isHidden = false
+        statusDim.isHidden = !dimsUnderStatus
     }
 }
 

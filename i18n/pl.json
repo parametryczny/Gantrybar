@@ -1064,5 +1064,9 @@
   "Switch": "Przełącz",
   "Could not start workshop mode": "Nie udało się uruchomić trybu warsztatowego",
   "No camera found. Type the code from the label into the search field.": "Nie znaleziono kamery. Wpisz kod z etykiety w polu wyszukiwania.",
-  "The camera sends no picture. Close other apps using it, or type the code into the search field.": "Kamera nie przekazuje obrazu. Zamknij inne programy, które jej używają, albo wpisz kod w polu wyszukiwania."
+  "The camera sends no picture. Close other apps using it, or type the code into the search field.": "Kamera nie przekazuje obrazu. Zamknij inne programy, które jej używają, albo wpisz kod w polu wyszukiwania.",
+  "No picture": "Brak obrazu",
+  "Preview off": "Podgląd wyłączony",
+  "No camera": "Bez kamery",
+  "Not enough room for the preview": "Za mało miejsca na podgląd"
 }

@@ -516,7 +516,7 @@ require("Sources/Gantry/Views/EdgeDockWindowController.swift",
         "the macOS pin band is not there whenever the strip is open")
 require("linux/gantry/edgedock.py", r'pinned = not self\.pinned\s*\n\s*self\.app\.config\.data\["edge-dock-pinned"\] = pinned',
         "the GNU/Linux strip cannot be pinned or released from the strip itself")
-require("linux/gantry/edgedock.py", r"body = PAD_Y \* 2 \+ PIN_ROW \+ PIN_GAP \+ self\._rows_height\(width\)",
+require("linux/gantry/edgedock.py", r"body = PAD_Y \* 2 \+ EXPANDED_BOTTOM_PAD \+ PIN_ROW \+ PIN_GAP \+ rows",
         "the GNU/Linux pin band is not there whenever the strip is open")
 
 # ---- Edge dock placement: chosen display, six places, inner-edge dwell (contract edgeDock.placement) ----
@@ -582,25 +582,35 @@ require("linux/gantry/layout.py", rf"return {one} if max\(1, min\(2, columns\)\)
         "the GNU/Linux panel widths differ from the contract")
 require("linux/gantry/edgedock.py", r"return self\.hovering or self\.pinned",
         "a pinned GNU/Linux strip still folds when the pointer leaves")
-# Bento tiles in the open strip: same metrics on macOS and GNU/Linux, the Windows port in its own units.
-tiles = edge_dock["tiles"]
-for name, swift, python in (("insetX", "tileInsetX", "TILE_INSET_X"), ("padX", "tilePadX", "TILE_PAD_X"),
-                            ("padTop", "tilePadTop", "TILE_PAD_TOP"), ("padBottom", "tilePadBottom", "TILE_PAD_BOTTOM"),
-                            ("padBottomWithCamera", "tilePadBottomWithCamera", "TILE_PAD_BOTTOM_WITH_CAMERA"),
-                            ("gap", "tileGap", "TILE_GAP"), ("radius", "tileRadius", "TILE_RADIUS")):
-    value = _number(tiles[name])
+# Captions under pictures in the open strip: same metrics on macOS and GNU/Linux, Windows in its own units.
+captions = edge_dock["captions"]
+for name, swift, python in (("insetX", "insetX", "INSET_X"), ("pictureRadius", "pictureRadius", "PICTURE_RADIUS"),
+                            ("captionGap", "captionGap", "CAPTION_GAP"), ("captionMinHeight", "captionMinHeight", "CAPTION_MIN_HEIGHT"),
+                            ("captionPadY", "captionPadY", "CAPTION_PAD_Y"), ("captionInnerGap", "captionInnerGap", "CAPTION_INNER_GAP"),
+                            ("wrappedLineGap", "wrappedLineGap", "WRAPPED_LINE_GAP"), ("noteRow", "statusRow", "STATUS_ROW"),
+                            ("noteIcon", "statusIcon", "STATUS_ICON"), ("printerGap", "printerGap", "PRINTER_GAP")):
+    value = _number(captions[name])
     require("Sources/Gantry/Views/EdgeDockWindowController.swift", rf"static let {swift}: CGFloat = {value}\b",
-            f"macOS edge-dock tile {name} differs from the contract")
-    require("linux/gantry/edgedock.py", rf"^{python} = {value}(\.0)?$",
-            f"GNU/Linux edge-dock tile {name} differs from the contract")
-require("Sources/Gantry/Views/EdgeDockWindowController.swift", r"tileFillAlpha: CGFloat = 0\.035\b[\s\S]{0,60}?tileBorderAlpha: CGFloat = 0\.10\b",
-        "macOS edge-dock tiles are no longer a faint lift and a hairline")
-require("linux/gantry/edgedock.py", r"^TILE_FILL_ALPHA = 0\.035\nTILE_BORDER_ALPHA = 0\.10$",
-        "GNU/Linux edge-dock tiles are no longer a faint lift and a hairline")
-require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"TileFillAlpha = 9, TileBorderAlpha = 26;",
-        "Windows edge-dock tiles are no longer a faint lift and a hairline")
-require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"_rowHits\.Add\(\(new Rect\(0, tileTop, width, tileHeight \+ TileGap \* scale\), entry\.Serial\)\);",
-        "a Windows edge-dock tile is not one click target")
+            f"macOS edge-dock caption {name} differs from the contract")
+    require("linux/gantry/dockcaptions.py", rf"^{python} = {value}(\.0)?$",
+            f"GNU/Linux edge-dock caption {name} differs from the contract")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"private const double InsetX = 12, PictureRadius = 9, CaptionGap = 6, CaptionMinHeight = 34",
+        "Windows edge-dock captions differ from the contract's Windows units")
+# Nothing over a picture, pictures never cropped, the fallbacks for a small display, live pictures first.
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"new Image \{ Stretch = Stretch\.Uniform, IsHitTestVisible = false \}",
+        "Windows edge-dock pictures are cropped again")
+require("linux/gantry/edgedock.py", r"factor = min\(w / pw, h / ph\)", "GNU/Linux edge-dock pictures are cropped again")
+require("Sources/Gantry/Views/CameraFeed.swift", r"displayLayer\.videoGravity = \.resizeAspect\b", "macOS camera pictures are cropped again")
+for dock_source in ("Sources/Gantry/Views/EdgeDockWindowController.swift", "windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+                    "linux/gantry/dockcaptions.py"):
+    require(dock_source, r"Not enough room for the preview", f"{dock_source}: a picture that does not fit is not replaced by a note")
+    require(dock_source, r"minimumPictureShare|MinimumPictureShare|MINIMUM_PICTURE_SHARE", f"{dock_source}: pictures do not shrink to fit the display")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", r"described\.filter \{ \$0\.camera == \.live \} \+ described\.filter \{ \$0\.camera != \.live \}",
+        "macOS edge dock no longer lists printers with a live picture first")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"_entries = described\.Where\(entry => entry\.Camera == DockCamera\.Live\)",
+        "Windows edge dock no longer lists printers with a live picture first")
+require("linux/gantry/edgedock.py", r"entries = \[entry for entry in entries if entry\[\"camera\"\] == dc\.LIVE\]",
+        "GNU/Linux edge dock no longer lists printers with a live picture first")
 for dock_source in ("windows/Gantry.Windows/UI/EdgeDockWindow.cs", "linux/gantry/edgedock.py"):
     require(dock_source, r"_picture_?[hH]its", f"{dock_source}: a click on a picture opens the printer again")
 # Pictures: same width band, same brands, same stream rules.
@@ -611,7 +621,7 @@ require("Sources/Gantry/Views/EdgeDockWindowController.swift",
 require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
         rf"CameraMinStripWidth = {_number(cams['minStripWidth'])}, CameraMaxStripWidth = {_number(cams['maxStripWidth'])};",
         "Windows edge-dock picture width band differs from the contract")
-require("linux/gantry/edgedock.py",
+require("linux/gantry/dockcaptions.py",
         rf"CAMERA_MIN_STRIP_WIDTH = {_number(cams['minStripWidth'])}\s*\nCAMERA_MAX_STRIP_WIDTH = {_number(cams['maxStripWidth'])}",
         "GNU/Linux edge-dock picture width band differs from the contract")
 require("linux/gantry/camera.py",
@@ -629,7 +639,7 @@ for key in edge_dock["settingsKeys"]:
     require("linux/gantry/settings.py", rf'"{key}"', f"GNU/Linux settings do not write the shared {key} setting")
 # Geometry fixed along the way: the ring beside the physical edge, the silhouette mirrored only for the
 # left edge, and folding after a grace period instead of on the leave event the resize itself causes.
-require("linux/gantry/edgedock.py", r"ring_x = content_inset \+ RING / 2 if left else width - content_inset - RING / 2",
+require("linux/gantry/edgedock.py", r"ring_x = dc\.INSET_X \+ RING / 2 if left else width - dc\.INSET_X - RING / 2",
         "the GNU/Linux ring is not beside the physical screen edge")
 require("linux/gantry/edgedock.py", r"if left:\s*\n\s*# The silhouette is drawn flush against the right edge",
         "the GNU/Linux silhouette is mirrored for the wrong edge")
@@ -990,7 +1000,7 @@ require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
         r"MouseLeave[\s\S]*?_collapseTimer\.Start",
         "Windows edge dock collapses synchronously and can enter a hover loop")
 require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
-        r"double ringX = left \? contentInset \+ Ring / 2 \* scale : width - contentInset - Ring / 2 \* scale",
+        r"double ringX = left \? \(InsetX \+ Ring / 2\) \* scale : width - \(InsetX \+ Ring / 2\) \* scale",
         "Windows edge dock ring does not stay anchored to its screen edge")
 require("windows/Gantry.Windows/UI/TrayIcon.cs",
         r"ShowOnboardingAfterMenuCloses[\s\S]*?menu\.Closed \+= closed",

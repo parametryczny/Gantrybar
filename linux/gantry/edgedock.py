@@ -7,8 +7,8 @@ and ring fill; hovering expands it into a list with names, percentages and remai
 clicking a row opens that printer's details. Mirrors the macOS EdgeDockWindowController.
 
 Issue #34, as on macOS and Windows: the strip can be pinned open, and pinned or released with the pin
-on the strip itself; and any printer can be given a live picture hung directly under its own row. The
-two are independent. A picture works on a strip that still folds, it is simply not drawn while folded,
+on the strip itself; and any printer can be given a live picture, shown whole with its caption under
+it (dockcaptions, contract edgeDock.captions). The two are independent. A picture works on a strip that still folds, it is simply not drawn while folded,
 and its stream keeps running so unfolding shows a live image at once instead of a reconnect.
 
 The "grows out of the edge" look comes from the two concave fillets where the strip meets the screen:
@@ -21,12 +21,14 @@ cover the strip. The rest of the behaviour is identical there.
 """
 
 import math
+import time
 from typing import Any
 
 import cairo
 
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, PangoCairo  # type: ignore
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango, PangoCairo  # type: ignore
 
+from . import dockcaptions as dc
 from . import i18n
 from .core import PrinterKind
 from .dockplacement import (DISPLAY_CHANGE_DEBOUNCE_MS, INNER_EDGE_DWELL_MS, EdgeDockDisplay, format_frame,
@@ -36,32 +38,18 @@ RING = 14.0
 RING_STROKE = 2.0
 COLLAPSED_WIDTH = 22.0
 COLLAPSED_GAP = 8.0
-ROW_HEIGHT = 20.0
 PAD_Y = 8.0
 NOTCH = 11.0
-EXPANDED_TEXT_GAP = 8.0
 #: Band above the rows holding the pin, present whenever the strip is open.
 PIN_ROW = 14.0
-PIN_GAP = 4.0
+PIN_GAP = 10.0
+#: Extra room under the last printer of an open strip, so its note clears the rounded bottom corner.
+EXPANDED_BOTTOM_PAD = 8.0
 PIN_GLYPH = 10.0
-CAMERA_GAP = 6.0
-CAMERA_RADIUS = 6.0
-# Open, every printer sits in a light bento tile inside the dark strip: its row and its picture in one
-# rounded frame, so a column of printers reads as separate machines. The strip itself is unchanged and
-# shows as a margin around the tiles. A tile is a hairline and a barely-there lift, never a colour of
-# its own, so it follows the floor (contract edgeDock.tiles).
-TILE_INSET_X = 8.0
-TILE_PAD_X = 7.0
-TILE_PAD_TOP = 5.0
-TILE_PAD_BOTTOM = 5.0
-TILE_PAD_BOTTOM_WITH_CAMERA = 8.0
-TILE_GAP = 8.0
-TILE_RADIUS = 10.0
-TILE_FILL_ALPHA = 0.035
-TILE_BORDER_ALPHA = 0.10
-#: A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
-CAMERA_MIN_STRIP_WIDTH = 236.0
-CAMERA_MAX_STRIP_WIDTH = 300.0
+#: A picture that has not sent a frame for this long says "No picture"; before its first frame it says
+#: "Connecting…" for this long.
+PICTURE_SILENCE_S = 4.0
+PICTURE_FIRST_FRAME_S = 12.0
 #: Grace period before folding, long enough to outlast the leave event the strip's own resize emits.
 COLLAPSE_DELAY_MS = 440
 
@@ -79,7 +67,7 @@ ERROR = (1.0, 0.353, 0.306)
 TEXT = (0.949, 0.953, 0.945)
 SECONDARY = (0.655, 0.667, 0.651)
 MUTED = (0.427, 0.443, 0.431)
-PICTURE_PLATE = (0.082, 0.090, 0.102)
+PICTURE_PLATE = (0.063, 0.086, 0.075)
 
 
 def _escape(text: str) -> str:
@@ -139,6 +127,43 @@ def choose_display(config: dict[str, Any], ident: str) -> None:
     config["edge-dock-display-name"] = display.name
 
 
+class _PangoMeasure:
+    """dockcaptions.Measure over Pango, in the strip's logical points."""
+
+    def __init__(self, area: Gtk.Widget) -> None:
+        self.layout = area.create_pango_layout("")
+        base = area.get_style_context().get_font(Gtk.StateFlags.NORMAL)
+        self.name_font = self._font(base, dc.NAME_SIZE, Pango.Weight.SEMIBOLD)
+        self.value_font = self._font(base, dc.VALUE_SIZE, Pango.Weight.NORMAL)
+        self.status_font = self._font(base, dc.STATUS_SIZE, Pango.Weight.NORMAL)
+        self.name_line = float(self.use(self.name_font, "Ag").get_pixel_size()[1])
+        self.value_line = float(self.use(self.value_font, "0").get_pixel_size()[1])
+
+    @staticmethod
+    def _font(base: Any, size: float, weight: Any) -> Any:
+        font = base.copy()
+        font.set_absolute_size(size * Pango.SCALE)
+        font.set_weight(weight)
+        return font
+
+    def use(self, font: Any, text: str, width: float | None = None) -> Any:
+        layout = self.layout
+        layout.set_font_description(font)
+        layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+        layout.set_width(-1 if width is None else int(width * Pango.SCALE))
+        layout.set_text(text, -1)
+        return layout
+
+    def name_width(self, text: str) -> float:
+        return float(self.use(self.name_font, text).get_pixel_size()[0])
+
+    def value_width(self, text: str) -> float:
+        return float(self.use(self.value_font, text).get_pixel_size()[0])
+
+    def name_height(self, text: str, width: float) -> float:
+        return float(self.use(self.name_font, text, width).get_pixel_size()[1])
+
+
 class EdgeDock:
     """Owns the strip window and keeps it in sync with the printer store."""
 
@@ -158,9 +183,18 @@ class EdgeDock:
         self._row_hits: list[tuple[float, float, str]] = []
         # Pictures take no clicks: a click on one is not a click on its printer's tile.
         self._picture_hits: list[tuple[float, float, float, float]] = []
-        #: One stream per printer the user ticked, and its latest frame. Keyed by serial.
+        #: One stream per printer the user ticked, its latest frame, when that frame arrived and when the
+        #: stream started. Keyed by serial.
         self.camera_views: dict[str, Any] = {}
         self.camera_frames: dict[str, Any] = {}
+        self.camera_frame_times: dict[str, float] = {}
+        self.camera_started: dict[str, float] = {}
+        self._status_source: int | None = None
+        self._picture_statuses: tuple[Any, ...] = ()
+        #: Height of the chosen monitor's work area, so the open strip can fit itself to it.
+        self._available_height = float("inf")
+        self._plan_cache: tuple[Any, dc.Plan] | None = None
+        self._measure_cache: _PangoMeasure | None = None
 
         self.window = Gtk.Window(type=Gtk.WindowType.POPUP)
         self.window.set_app_paintable(True)
@@ -233,6 +267,12 @@ class EdgeDock:
             return
         self.entries = entries
         self._sync_cameras()
+        for entry in entries:
+            entry["camera"] = self._camera_state(entry["serial"])
+        # Printers with a live picture first, the rest under them, each group in fleet order.
+        entries = [entry for entry in entries if entry["camera"] == dc.LIVE] + \
+                  [entry for entry in entries if entry["camera"] != dc.LIVE]
+        self.entries = entries
         # Telemetry arrives several times a second and usually says the same thing the strip already
         # draws. Repositioning and redrawing an identical strip is pure waste, so it is skipped.
         signature = (tuple(tuple(sorted(entry.items())) for entry in entries),
@@ -259,6 +299,18 @@ class EdgeDock:
             view.stop()
         self.camera_views = {}
         self.camera_frames = {}
+        self.camera_frame_times = {}
+        self.camera_started = {}
+
+    def _camera_state(self, serial: str) -> str:
+        from . import edition
+        from .camera import supports_camera
+        if not edition.HAS_EXTRAS:
+            return dc.HIDDEN
+        if serial in self.camera_views:
+            return dc.LIVE
+        kind = next((printer.kind for printer in self.app.printers if printer.serial == serial), None)
+        return dc.PREVIEW_OFF if supports_camera(kind) else dc.NO_CAMERA
 
     def _sync_cameras(self) -> None:
         """Starts and drops streams so the running set matches what the user ticked. Membership is the
@@ -287,6 +339,8 @@ class EdgeDock:
             view.frame_sink = None
             view.stop()
             self.camera_frames.pop(serial, None)
+            self.camera_frame_times.pop(serial, None)
+            self.camera_started.pop(serial, None)
         kinds = {printer.serial: printer.kind for printer in self.app.printers}
         for serial in wanted - set(self.camera_views):
             access_code = None
@@ -298,7 +352,10 @@ class EdgeDock:
             view = CameraView(self.app, serial, access_code)
             view.frame_sink = lambda pixbuf, target=serial: self._on_frame(target, pixbuf)
             self.camera_views[serial] = view
+            self.camera_started[serial] = time.monotonic()
             view.start()
+        if self.camera_views and self._status_source is None:
+            self._status_source = GLib.timeout_add(1000, self._picture_status_tick)
 
     @staticmethod
     def _active_print(candidates: list[dict[str, Any]]) -> str | None:
@@ -314,8 +371,31 @@ class EdgeDock:
         if serial not in self.camera_views:
             return
         self.camera_frames[serial] = pixbuf
+        self.camera_frame_times[serial] = time.monotonic()
         if self.expanded and self.window.get_visible():
             self.area.queue_draw()
+
+    def _picture_status(self, serial: str) -> str | None:
+        """None while frames flow; otherwise the few words the plate shows."""
+        now = time.monotonic()
+        last = self.camera_frame_times.get(serial)
+        if last is None:
+            started = self.camera_started.get(serial, now)
+            return "Connecting…" if now - started < PICTURE_FIRST_FRAME_S else "No picture"
+        return "No picture" if now - last > PICTURE_SILENCE_S else None
+
+    def _picture_status_tick(self) -> bool:
+        """A camera that goes quiet sends nothing to redraw on, so the strip looks once a second."""
+        if not self.camera_views:
+            self._status_source = None
+            self._picture_statuses = ()
+            return False
+        statuses = tuple((serial, self._picture_status(serial)) for serial in sorted(self.camera_views))
+        if statuses != self._picture_statuses:
+            self._picture_statuses = statuses
+            if self.expanded and self.window.get_visible():
+                self.area.queue_draw()
+        return True
 
     def _value_text(self, entry: dict[str, Any]) -> str:
         state = entry["state"]
@@ -334,38 +414,37 @@ class EdgeDock:
 
     # ------------------------------------------------------------ geometry
 
-    def _has_picture(self, entry: dict[str, Any]) -> bool:
-        return entry["serial"] in self.camera_views
+    def _measure(self) -> _PangoMeasure:
+        if self._measure_cache is None:
+            self._measure_cache = _PangoMeasure(self.area)
+        return self._measure_cache
 
-    @staticmethod
-    def _camera_width(strip_width: float) -> float:
-        return max(0.0, strip_width - (TILE_INSET_X + TILE_PAD_X) * 2)
+    def _captions(self) -> list[dc.Caption]:
+        return [dc.Caption(name=entry["name"], value=self._value_text(entry),
+                           camera=entry.get("camera", dc.HIDDEN), has_picture=entry["serial"] in self.camera_views)
+                for entry in self.entries]
 
-    def _tile_height(self, entry: dict[str, Any], picture: float) -> float:
-        """One printer's tile: padding, its row and, when it has one, its picture."""
-        height = TILE_PAD_TOP + ROW_HEIGHT
-        if self._has_picture(entry) and picture > 0:
-            return height + CAMERA_GAP + picture + TILE_PAD_BOTTOM_WITH_CAMERA
-        return height + TILE_PAD_BOTTOM
+    def _chrome(self) -> float:
+        """Everything around the column in an open strip, plus the margin kept free on the display."""
+        return NOTCH * 2 + PAD_Y * 2 + EXPANDED_BOTTOM_PAD + PIN_ROW + PIN_GAP + dc.SCREEN_MARGIN * 2
 
-    def _rows_height(self, strip_width: float) -> float:
-        """Height of the open strip's tiles, pictures included. The same arithmetic the drawing walks."""
-        if not self.entries:
-            return ROW_HEIGHT
-        picture = round(self._camera_width(strip_width) * 9 / 16)
-        height = 0.0
-        for index, entry in enumerate(self.entries):
-            height += self._tile_height(entry, picture)
-            if index < len(self.entries) - 1:
-                height += TILE_GAP
-        return height
+    def _plan(self, width: float) -> dc.Plan:
+        captions = self._captions()
+        limit = self._available_height / self._scale() - self._chrome()
+        key = (tuple(captions), width, limit, self.app.language)
+        if self._plan_cache is not None and self._plan_cache[0] == key:
+            return self._plan_cache[1]
+        result = dc.fitted_plan(captions, width, self._measure(), limit)
+        self._plan_cache = (key, result)
+        return result
 
     def _size(self) -> tuple[float, float]:
         scale = self._scale()
         count = max(len(self.entries), 1)
         if self.expanded:
             width = self._expanded_width()
-            body = PAD_Y * 2 + PIN_ROW + PIN_GAP + self._rows_height(width)
+            rows = self._plan(width).height if self.entries else dc.CAPTION_MIN_HEIGHT
+            body = PAD_Y * 2 + EXPANDED_BOTTOM_PAD + PIN_ROW + PIN_GAP + rows
             return width * scale, (body + NOTCH * 2) * scale
         body = PAD_Y * 2 + count * RING + (count - 1) * COLLAPSED_GAP
         return COLLAPSED_WIDTH * scale, (body + NOTCH * 2) * scale
@@ -375,41 +454,30 @@ class EdgeDock:
         return max(1.0, min(1.5, value / 100))
 
     def _expanded_width(self) -> float:
-        # Measuring every row through Pango is the most expensive thing the strip does, and _size()
+        # Measuring every caption through Pango is the most expensive thing the strip does, and _size()
         # is asked for it on every draw and every reposition. The answer only changes when the rows,
         # the language or the pictures do, so it is kept until then.
-        pictures = any(self._has_picture(entry) for entry in self.entries)
-        key = (tuple((entry["name"], self._value_text(entry)) for entry in self.entries),
-               self.app.language, pictures)
+        captions = self._captions()
+        key = (tuple(captions), self.app.language)
         cached = getattr(self, "_expanded_width_cache", None)
         if cached is not None and cached[0] == key:
             return cached[1]
-        layout = self.area.create_pango_layout("")
-        widest = 0.0
-        for entry in self.entries:
-            layout.set_markup(f"<b>{_escape(entry['name'])}</b>")
-            name = layout.get_pixel_size()[0]
-            layout.set_text(self._value_text(entry), -1)
-            widest = max(widest, name + layout.get_pixel_size()[0])
-        content = (TILE_INSET_X + TILE_PAD_X) * 2 + RING + EXPANDED_TEXT_GAP + widest + 14
-        # With a picture the strip stops being sized by its longest printer name: the image needs a
-        # usable width of its own, so it raises the floor and lifts the ceiling.
-        minimum = CAMERA_MIN_STRIP_WIDTH if pictures else 150.0
-        maximum = CAMERA_MAX_STRIP_WIDTH if pictures else 260.0
-        width = min(max(content, minimum), maximum)
+        width = dc.strip_width(captions, self._measure())
         self._expanded_width_cache = (key, width)
         return width
 
     def _reposition(self) -> None:
-        width, height = self._size()
-        self.window.resize(int(width), int(height))
-        self.area.set_size_request(int(width), int(height))
         # The chosen monitor, flush with its side, at the chosen height. It used to be the primary monitor,
         # centred, with no way to put the strip anywhere else.
         config = self.app.config.data
         displays = connected_displays()
         resolved = resolve(displays, str(config.get("edge-dock-display", "")),
                            parse_frame(str(config.get("edge-dock-display-frame", ""))))
+        if resolved is not None:
+            self._available_height = float(resolved[0].workarea[3])
+        width, height = self._size()
+        self.window.resize(int(width), int(height))
+        self.area.set_size_request(int(width), int(height))
         if resolved is None:
             return
         chosen, matched = resolved
@@ -491,9 +559,11 @@ class EdgeDock:
         cr.move_to(w, 0)
         cr.arc(w - r, 0, r, 0, math.pi / 2)                       # concave, top
         cr.line_to(body, top)
-        cr.arc(body, top + body, body, -math.pi / 2, math.pi)     # convex, top-left
+        # Counter-clockwise: a clockwise arc between the same angles sweeps three quarters of a turn and
+        # bites a disc out of the corner instead of rounding it.
+        cr.arc_negative(body, top + body, body, -math.pi / 2, -math.pi)     # convex, top-left
         cr.line_to(0, bottom - body)
-        cr.arc(body, bottom - body, body, math.pi, math.pi / 2)   # convex, bottom-left
+        cr.arc_negative(body, bottom - body, body, math.pi, math.pi / 2)    # convex, bottom-left
         cr.line_to(w - r, bottom)
         cr.arc(w - r, h, r, -math.pi / 2, 0)                      # concave, bottom
         cr.close_path()
@@ -518,84 +588,136 @@ class EdgeDock:
 
     def _draw_expanded(self, cr: Any, width: float, left: bool) -> None:
         # The ring stays beside the physical screen edge while the text unfolds inward, as on macOS and
-        # Windows. It used to sit on the inner side of a right-edge strip and run the text off it on a
-        # left-edge one.
-        content_inset = TILE_INSET_X + TILE_PAD_X
-        ring_x = content_inset + RING / 2 if left else width - content_inset - RING / 2
+        # Windows, at the end of each caption.
+        ring_x = dc.INSET_X + RING / 2 if left else width - dc.INSET_X - RING / 2
         top = NOTCH + PAD_Y
-        # The pin sits in the ring column above the first row, so it can never collide with a name.
+        # The pin sits in the ring column above the first printer, so it can never collide with a name.
         self._draw_pin(cr, ring_x, top + PIN_ROW / 2)
-        top += PIN_ROW + PIN_GAP
+        content_top = top + PIN_ROW + PIN_GAP
+        plan = self._plan(width)
+        bottom_limit = content_top + plan.height
+        measure = self._measure()
+        gap = dc.PRINTER_GAP
+        for index, (entry, row) in enumerate(zip(self.entries, plan.rows)):
+            caption_top = content_top + row.caption_top
+            # A strip cut at the display's height draws only what is inside it.
+            if caption_top + row.caption_height > bottom_limit + 1:
+                break
+            block_top = content_top + row.block_top
+            if row.picture_height > 0:
+                picture_left = (width - row.picture_width) / 2
+                self._picture(cr, picture_left, block_top, row.picture_width, row.picture_height, entry["serial"], measure)
+                self._picture_hits.append((picture_left, block_top, row.picture_width, row.picture_height))
+            self._caption(cr, entry, row, caption_top, width, left, ring_x, measure)
+            if row.note:
+                self._note(cr, entry, row, caption_top + row.caption_height, width, left, measure)
+            # The caption, its note and the room around its hairline open the printer; its picture does
+            # not, because _on_click checks the pictures first.
+            hit_top = block_top - (gap if index else 0.0)
+            self._row_hits.append((hit_top, block_top + row.block_height + gap + 1, entry["serial"]))
+            if index < len(plan.rows) - 1:
+                cr.set_source_rgba(1, 1, 1, dc.SEPARATOR_ALPHA)
+                cr.rectangle(dc.INSET_X, round(block_top + row.block_height + gap), max(0.0, width - dc.INSET_X * 2), 1)
+                cr.fill()
 
-        picture_width = self._camera_width(width)
-        picture_height = round(picture_width * 9 / 16)
-        layout = self.area.create_pango_layout("")
-        for entry in self.entries:
-            tile_top = top
-            tile_height = self._tile_height(entry, picture_height if picture_width > 0 else 0)
-            self._rounded(cr, TILE_INSET_X + 0.5, tile_top + 0.5, max(0.0, width - TILE_INSET_X * 2 - 1),
-                          tile_height - 1, TILE_RADIUS)
-            cr.set_source_rgba(1, 1, 1, TILE_FILL_ALPHA)
-            cr.fill_preserve()
-            cr.set_line_width(1)
-            cr.set_source_rgba(1, 1, 1, TILE_BORDER_ALPHA)
-            cr.stroke()
-            top += TILE_PAD_TOP
-            center_y = top + ROW_HEIGHT / 2
-            self._ring(cr, ring_x, center_y, entry)
-
-            dim = entry["state"] in ("idle", "offline", "finished")
-            colour = ERROR if entry["state"] in ("error", "offline") else (SECONDARY if dim else TEXT)
-            text_left = ring_x + RING / 2 + EXPANDED_TEXT_GAP if left else content_inset
-            text_right = width - content_inset if left else ring_x - RING / 2 - EXPANDED_TEXT_GAP
-
-            layout.set_text(self._value_text(entry), -1)
-            value_w, value_h = layout.get_pixel_size()
-            cr.set_source_rgb(*MUTED)
-            cr.move_to(text_right - value_w, center_y - value_h / 2)
-            PangoCairo.show_layout(cr, layout)
-
-            layout.set_markup(f"<b>{_escape(entry['name'])}</b>")
-            name_w, name_h = layout.get_pixel_size()
-            available = max(0.0, text_right - value_w - 8 - text_left)
-            cr.save()
-            cr.rectangle(text_left, center_y - name_h / 2, available, name_h)
-            cr.clip()
+    def _caption(self, cr: Any, entry: dict[str, Any], row: dc.Row, top: float, width: float, left: bool,
+                 ring_x: float, measure: _PangoMeasure) -> None:
+        """Name on the leading side, then the percentage and time, then the ring. A name that does not fit
+        beside its metrics wraps, and the metrics move to the line under it."""
+        center_y = top + row.caption_height / 2
+        self._ring(cr, ring_x, center_y, entry)
+        dim = entry["state"] in ("idle", "offline", "finished")
+        colour = ERROR if entry["state"] in ("error", "offline") else (SECONDARY if dim else TEXT)
+        text_left = dc.INSET_X + (dc.RING_SPAN if left else 0.0)
+        text_right = width - dc.INSET_X - (0.0 if left else dc.RING_SPAN)
+        value = self._value_text(entry)
+        if row.wraps:
+            block = row.name_height + dc.WRAPPED_LINE_GAP + measure.value_line
+            y = center_y - block / 2
+            layout = measure.use(measure.name_font, entry["name"], text_right - text_left)
             cr.set_source_rgb(*colour)
-            cr.move_to(text_left, center_y - name_h / 2)
+            cr.move_to(text_left, y)
             PangoCairo.show_layout(cr, layout)
-            cr.restore()
-            top += ROW_HEIGHT
+            layout = measure.use(measure.value_font, value)
+            cr.set_source_rgb(*SECONDARY)
+            cr.move_to(text_left, y + row.name_height + dc.WRAPPED_LINE_GAP)
+            PangoCairo.show_layout(cr, layout)
+            return
+        layout = measure.use(measure.value_font, value)
+        value_w, value_h = layout.get_pixel_size()
+        cr.set_source_rgb(*SECONDARY)
+        cr.move_to(text_right - value_w, center_y - value_h / 2)
+        PangoCairo.show_layout(cr, layout)
+        layout = measure.use(measure.name_font, entry["name"])
+        name_h = layout.get_pixel_size()[1]
+        cr.set_source_rgb(*colour)
+        cr.move_to(text_left, center_y - name_h / 2)
+        PangoCairo.show_layout(cr, layout)
 
-            # The picture hangs directly under its own row, so which machine it shows needs no caption.
-            if self._has_picture(entry) and picture_width > 0:
-                top += CAMERA_GAP
-                picture_left = (width - picture_width) / 2
-                self._picture(cr, picture_left, top, picture_width, picture_height,
-                              self.camera_frames.get(entry["serial"]))
-                self._picture_hits.append((picture_left, top, picture_width, picture_height))
+    def _note(self, cr: Any, entry: dict[str, Any], row: dc.Row, top: float, width: float, left: bool,
+              measure: _PangoMeasure) -> None:
+        """The line under a caption without a picture: a camera glyph, struck through when the printer has
+        none, and a few words."""
+        x = dc.INSET_X + (dc.RING_SPAN if left else 0.0)
+        center_y = top + dc.STATUS_ROW / 2 - 1
+        unit = dc.STATUS_ICON / 12
+        oy = center_y - dc.STATUS_ICON / 2
+        cr.set_source_rgb(*SECONDARY)
+        cr.set_line_width(1.1 * unit)
+        cr.set_line_join(cairo.LINE_JOIN_ROUND)
+        cr.set_line_cap(cairo.LINE_CAP_ROUND)
+        bx, by, bw, bh = dc.CAMERA_GLYPH_BODY
+        self._rounded(cr, x + bx * unit, oy + by * unit, bw * unit, bh * unit, 1.5 * unit)
+        cr.stroke()
+        cr.new_path()
+        lens = dc.CAMERA_GLYPH_LENS
+        cr.move_to(x + lens[0][0] * unit, oy + lens[0][1] * unit)
+        for px, py in lens[1:]:
+            cr.line_to(x + px * unit, oy + py * unit)
+        cr.close_path()
+        cr.stroke()
+        if row.note == dc.NOTES[dc.NO_CAMERA]:
+            (sx, sy), (ex, ey) = dc.CAMERA_GLYPH_STRIKE
+            cr.move_to(x + sx * unit, oy + sy * unit)
+            cr.line_to(x + ex * unit, oy + ey * unit)
+            cr.stroke()
+        cr.set_line_cap(cairo.LINE_CAP_BUTT)
+        layout = measure.use(measure.status_font, i18n.t(row.note or ""))
+        text_h = layout.get_pixel_size()[1]
+        cr.move_to(x + dc.STATUS_ICON + dc.CAPTION_INNER_GAP, center_y - text_h / 2)
+        PangoCairo.show_layout(cr, layout)
+        cr.new_path()
 
-            # A click on the tile, or in the gap below it, opens that printer; a click on its picture
-            # does not, because _on_click checks the pictures first.
-            self._row_hits.append((tile_top, tile_top + tile_height + TILE_GAP, entry["serial"]))
-            top = tile_top + tile_height + TILE_GAP
-
-    def _picture(self, cr: Any, x: float, y: float, w: float, h: float, pixbuf: Any) -> None:
-        """One live frame, cropped to fill a 16:9 rounded rectangle. A dark plate until the first frame
-        arrives, so the space reads as a picture loading rather than as a hole in the strip."""
+    def _picture(self, cr: Any, x: float, y: float, w: float, h: float, serial: str, measure: _PangoMeasure) -> None:
+        """One live frame, shown whole in a 16:9 rounded rectangle: never cropped or stretched. A dark plate
+        until the first frame, and a dimmed plate saying "No picture" when frames stop arriving."""
         cr.save()
-        self._rounded(cr, x, y, w, h, CAMERA_RADIUS)
+        self._rounded(cr, x, y, w, h, dc.PICTURE_RADIUS)
         cr.clip()
         cr.set_source_rgb(*PICTURE_PLATE)
         cr.paint()
+        pixbuf = self.camera_frames.get(serial)
         if pixbuf is not None:
             pw, ph = pixbuf.get_width(), pixbuf.get_height()
             if pw > 0 and ph > 0:
-                factor = max(w / pw, h / ph)
+                factor = min(w / pw, h / ph)
+                cr.save()
                 cr.translate(x + (w - pw * factor) / 2, y + (h - ph * factor) / 2)
                 cr.scale(factor, factor)
                 Gdk.cairo_set_source_pixbuf(cr, pixbuf, 0, 0)
                 cr.paint()
+                cr.restore()
+        status = self._picture_status(serial)
+        if status is not None:
+            if pixbuf is not None:
+                cr.set_source_rgba(0, 0, 0, 0.62)
+                cr.paint()
+            layout = measure.use(measure.status_font, i18n.t(status))
+            text_w, text_h = layout.get_pixel_size()
+            cr.set_source_rgb(0.89, 0.91, 0.89)
+            cr.move_to(x + (w - text_w) / 2, y + (h - text_h) / 2)
+            PangoCairo.show_layout(cr, layout)
+        cr.new_path()
         cr.restore()
 
     def _draw_pin(self, cr: Any, cx: float, cy: float) -> None:
@@ -628,6 +750,7 @@ class EdgeDock:
         """A dim track plus an arc from twelve o'clock; error and offline draw a dot instead, so a
         dead printer never looks like a stalled one."""
         radius = (RING - RING_STROKE) / 2
+        cr.new_path()   # text leaves a current point behind, and an arc would draw a line from it
         cr.set_line_width(RING_STROKE)
         state = entry["state"]
         if state in ("error", "offline"):

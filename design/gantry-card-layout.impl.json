@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "date": "2026-09-17",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
@@ -692,23 +692,39 @@
       "action": "click toggles edge-dock-pinned; hover lifts the disc (and shows a hand cursor on Windows); tooltip Keep the strip open",
       "rendering": "a vector path on every platform, never an emoji or a platform symbol, so it is the same shape everywhere"
     },
-    "tiles": {
-      "note": "Open, every printer sits in a light bento tile inside the unchanged dark strip: its row and its picture in one rounded frame. The strip floor and its panel-transparency setting stay as they were and show as a margin around the tiles. Points on macOS and GNU/Linux; Windows uses its own larger dock units (inset 10, padX 9, padTop 6, padBottom 6/10, gap 10, radius 13).",
-      "insetX": 8,
-      "padX": 7,
-      "padTop": 5,
-      "padBottom": 5,
-      "padBottomWithCamera": 8,
-      "gap": 8,
-      "radius": 10,
-      "fill": "white at 3.5 %",
-      "border": "1 px hairline, white at 10 %",
-      "hitTest": "the whole tile and the gap below it open the printer; its picture does not"
+    "captions": {
+      "note": "Open, every printer is one block in a single column, in fleet order with printers showing a live picture first: its picture, then a caption under it, then a hairline to the next printer. Nothing is drawn over a picture. The caption has no plate of its own and sits on the strip's dark floor, which keeps its panel-transparency setting. Points on macOS and GNU/Linux (dockcaptions.py); Windows uses its own larger dock units (inset 12, picture radius 9, caption gap 6, caption min height 34, pad 5, inner gap 6, note row 20, icon 14, printer gap 16, name 14, metrics 12).",
+      "insetX": 10,
+      "pictureRadius": 8,
+      "captionGap": 5,
+      "captionMinHeight": 28,
+      "captionPadY": 4,
+      "captionInnerGap": 5,
+      "wrappedLineGap": 1,
+      "noteRow": 16,
+      "noteIcon": 12,
+      "printerGap": 14,
+      "separator": "1 px, white at 12 %, centred in twice the printer gap",
+      "fonts": "name 13 semibold, metrics 11 (tabular where the platform has it), note 11",
+      "caption": "name on the leading side, percentage and remaining time, ring at the end; on a left-edge strip mirrored so the ring stays by the screen edge",
+      "longName": "wraps onto as many lines as it needs; the metrics move to the line under it; the strip does not widen past a 120 pt name",
+      "states": {
+        "live": "picture shown whole (never cropped or stretched) on a dark plate, caption under it",
+        "connecting": "before the first frame, for 12 s: the plate says Connecting…",
+        "noPicture": "no frame for 4 s, or none within 12 s: the plate keeps its place, dims a stale frame and says No picture; the caption keeps following telemetry",
+        "previewOff": "a printer with a supported camera whose preview is not on in the strip: caption plus a note with a camera glyph, Preview off",
+        "noCamera": "a brand without a stream Gantry can show: caption plus a note with a struck-through camera glyph, No camera",
+        "lite": "no note"
+      },
+      "order": "printers with a live picture first, then the rest, each group in fleet order",
+      "fit": "taller than the display's work area minus 16 pt top and bottom: pictures shrink in 2 % steps down to 55 % of the column, then pictures give way to a Not enough room for the preview note, then notes are dropped, then the strip is cut at the display height; printers are never reordered or removed",
+      "cameraGlyph": {"designBox": 12, "body": [1, 3, 7.5, 6], "bodyRadius": 1.5, "lens": [[8.5, 5], [11, 3.5], [11, 8.5], [8.5, 7]], "strike": [[1, 1.5], [11, 10.5]], "stroke": 1.1},
+      "toolbar": "the pin row stays above the first printer with a 10 pt gap; 8 pt extra under the last printer so its note clears the rounded corner",
+      "hitTest": "a caption, its note and the room around its hairline open the printer; a picture does not"
     },
     "cameras": {
-      "aspect": "16:9, cropped to fill, rounded corners",
-      "gap": 6,
-      "radius": 6,
+      "aspect": "16:9 plate, the frame fitted whole inside it, rounded corners",
+      "radius": 8,
       "minStripWidth": 236,
       "maxStripWidth": 300,
       "kinds": [
