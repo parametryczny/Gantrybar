@@ -4,6 +4,10 @@ Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są op
 
 ## Niewydane
 
+### Zmienione
+
+- **pasek krawędziowy: drukarki w kafelkach**: po rozwinięciu każda drukarka ma własny lekki kafelek z cienką obwódką, a w nim swój wiersz i kamerę. Przy kilku drukarkach z kamerami nazwy i obrazy nie zlewają się już w jedną kolumnę. Ciemny panel i sterowanie jego przezroczystością zostają bez zmian i widać je jako margines wokół kafelków. Kliknięcie w kafelek otwiera szczegóły drukarki, kliknięcie w kamerę nie. Tak samo na macOS, Windows i GNU/Linuksie.
+
 ### Dodane
 
 - **Gantry LITE**: prace wstrzymane, edycja nie wchodzi do wydań. Druga edycja tej samej aplikacji, zbudowana z tych samych źródeł z wyłączonymi dodatkami (`scripts/build-app.sh lite`, `dotnet build -p:GantryEdition=lite`, `GANTRY_EDITION=lite linux/scripts/build-deb.sh`). Zostaje monitor: ikona w pasku menu/zasobniku, panel floty z kartami, dodawanie i wyszukiwanie drukarek wszystkich obsługiwanych marek, powiadomienia z godzinami ciszy oraz krótkie ustawienia — język, autostart, motyw, przezroczystość, kolory monochromatyczne i przełączniki zawartości karty. Znika Spoolbase, widok szczegółów, kamera, konserwacja z wykrzyknikiem alertu, automatyzacje, centrum diagnostyczne, statystyki floty, Telegram, panel webowy, tryb okna, pasek krawędziowy, przewodnik „Jak czytać Gantry", czyszczenie zakończonych druków, temperatura i wilgotność AMS na karcie, otwieranie kamery w Bambu Studio i slicera, a także cały moduł aktualizacji — LITE ich nie sprawdza ani nie instaluje. Osobna nazwa i identyfikator (macOS `pl.gantry.lite`, Windows `GantryLite.exe`, GNU/Linux pakiet `gantry-lite`), więc na macOS i Windows stoi obok pełnego Gantry; paczka macOS waży 4 MB zamiast 13 MB.

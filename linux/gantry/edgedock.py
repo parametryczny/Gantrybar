@@ -37,17 +37,28 @@ RING_STROKE = 2.0
 COLLAPSED_WIDTH = 22.0
 COLLAPSED_GAP = 8.0
 ROW_HEIGHT = 20.0
-ROW_GAP = 2.0
 PAD_Y = 8.0
 NOTCH = 11.0
-EXPANDED_PAD_X = 11.0
 EXPANDED_TEXT_GAP = 8.0
 #: Band above the rows holding the pin, present whenever the strip is open.
 PIN_ROW = 14.0
 PIN_GAP = 4.0
 PIN_GLYPH = 10.0
-CAMERA_GAP = 8.0
-CAMERA_RADIUS = 8.0
+CAMERA_GAP = 6.0
+CAMERA_RADIUS = 6.0
+# Open, every printer sits in a light bento tile inside the dark strip: its row and its picture in one
+# rounded frame, so a column of printers reads as separate machines. The strip itself is unchanged and
+# shows as a margin around the tiles. A tile is a hairline and a barely-there lift, never a colour of
+# its own, so it follows the floor (contract edgeDock.tiles).
+TILE_INSET_X = 8.0
+TILE_PAD_X = 7.0
+TILE_PAD_TOP = 5.0
+TILE_PAD_BOTTOM = 5.0
+TILE_PAD_BOTTOM_WITH_CAMERA = 8.0
+TILE_GAP = 8.0
+TILE_RADIUS = 10.0
+TILE_FILL_ALPHA = 0.035
+TILE_BORDER_ALPHA = 0.10
 #: A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
 CAMERA_MIN_STRIP_WIDTH = 236.0
 CAMERA_MAX_STRIP_WIDTH = 300.0
@@ -145,6 +156,8 @@ class EdgeDock:
         self._pin_hovered = False
         self._pin_hit: tuple[float, float, float, float] | None = None
         self._row_hits: list[tuple[float, float, str]] = []
+        # Pictures take no clicks: a click on one is not a click on its printer's tile.
+        self._picture_hits: list[tuple[float, float, float, float]] = []
         #: One stream per printer the user ticked, and its latest frame. Keyed by serial.
         self.camera_views: dict[str, Any] = {}
         self.camera_frames: dict[str, Any] = {}
@@ -326,20 +339,25 @@ class EdgeDock:
 
     @staticmethod
     def _camera_width(strip_width: float) -> float:
-        return max(0.0, strip_width - EXPANDED_PAD_X * 2)
+        return max(0.0, strip_width - (TILE_INSET_X + TILE_PAD_X) * 2)
+
+    def _tile_height(self, entry: dict[str, Any], picture: float) -> float:
+        """One printer's tile: padding, its row and, when it has one, its picture."""
+        height = TILE_PAD_TOP + ROW_HEIGHT
+        if self._has_picture(entry) and picture > 0:
+            return height + CAMERA_GAP + picture + TILE_PAD_BOTTOM_WITH_CAMERA
+        return height + TILE_PAD_BOTTOM
 
     def _rows_height(self, strip_width: float) -> float:
-        """Height of the open strip's rows, pictures included. The same arithmetic the drawing walks."""
+        """Height of the open strip's tiles, pictures included. The same arithmetic the drawing walks."""
         if not self.entries:
             return ROW_HEIGHT
         picture = round(self._camera_width(strip_width) * 9 / 16)
         height = 0.0
         for index, entry in enumerate(self.entries):
-            height += ROW_HEIGHT
-            if self._has_picture(entry) and picture > 0:
-                height += CAMERA_GAP + picture
+            height += self._tile_height(entry, picture)
             if index < len(self.entries) - 1:
-                height += ROW_GAP
+                height += TILE_GAP
         return height
 
     def _size(self) -> tuple[float, float]:
@@ -373,7 +391,7 @@ class EdgeDock:
             name = layout.get_pixel_size()[0]
             layout.set_text(self._value_text(entry), -1)
             widest = max(widest, name + layout.get_pixel_size()[0])
-        content = EXPANDED_PAD_X * 2 + RING + EXPANDED_TEXT_GAP + widest + 14
+        content = (TILE_INSET_X + TILE_PAD_X) * 2 + RING + EXPANDED_TEXT_GAP + widest + 14
         # With a picture the strip stops being sized by its longest printer name: the image needs a
         # usable width of its own, so it raises the floor and lifts the ceiling.
         minimum = CAMERA_MIN_STRIP_WIDTH if pictures else 150.0
@@ -454,6 +472,7 @@ class EdgeDock:
 
         cr.save(); cr.scale(scale, scale)
         self._row_hits = []
+        self._picture_hits = []
         self._pin_hit = None
         if self.expanded:
             self._draw_expanded(cr, logical_width, left)
@@ -501,7 +520,8 @@ class EdgeDock:
         # The ring stays beside the physical screen edge while the text unfolds inward, as on macOS and
         # Windows. It used to sit on the inner side of a right-edge strip and run the text off it on a
         # left-edge one.
-        ring_x = EXPANDED_PAD_X + RING / 2 if left else width - EXPANDED_PAD_X - RING / 2
+        content_inset = TILE_INSET_X + TILE_PAD_X
+        ring_x = content_inset + RING / 2 if left else width - content_inset - RING / 2
         top = NOTCH + PAD_Y
         # The pin sits in the ring column above the first row, so it can never collide with a name.
         self._draw_pin(cr, ring_x, top + PIN_ROW / 2)
@@ -511,14 +531,23 @@ class EdgeDock:
         picture_height = round(picture_width * 9 / 16)
         layout = self.area.create_pango_layout("")
         for entry in self.entries:
-            row_top = top
+            tile_top = top
+            tile_height = self._tile_height(entry, picture_height if picture_width > 0 else 0)
+            self._rounded(cr, TILE_INSET_X + 0.5, tile_top + 0.5, max(0.0, width - TILE_INSET_X * 2 - 1),
+                          tile_height - 1, TILE_RADIUS)
+            cr.set_source_rgba(1, 1, 1, TILE_FILL_ALPHA)
+            cr.fill_preserve()
+            cr.set_line_width(1)
+            cr.set_source_rgba(1, 1, 1, TILE_BORDER_ALPHA)
+            cr.stroke()
+            top += TILE_PAD_TOP
             center_y = top + ROW_HEIGHT / 2
             self._ring(cr, ring_x, center_y, entry)
 
             dim = entry["state"] in ("idle", "offline", "finished")
             colour = ERROR if entry["state"] in ("error", "offline") else (SECONDARY if dim else TEXT)
-            text_left = ring_x + RING / 2 + EXPANDED_TEXT_GAP if left else EXPANDED_PAD_X
-            text_right = width - EXPANDED_PAD_X if left else ring_x - RING / 2 - EXPANDED_TEXT_GAP
+            text_left = ring_x + RING / 2 + EXPANDED_TEXT_GAP if left else content_inset
+            text_right = width - content_inset if left else ring_x - RING / 2 - EXPANDED_TEXT_GAP
 
             layout.set_text(self._value_text(entry), -1)
             value_w, value_h = layout.get_pixel_size()
@@ -541,14 +570,15 @@ class EdgeDock:
             # The picture hangs directly under its own row, so which machine it shows needs no caption.
             if self._has_picture(entry) and picture_width > 0:
                 top += CAMERA_GAP
-                self._picture(cr, (width - picture_width) / 2, top, picture_width, picture_height,
+                picture_left = (width - picture_width) / 2
+                self._picture(cr, picture_left, top, picture_width, picture_height,
                               self.camera_frames.get(entry["serial"]))
-                top += picture_height
+                self._picture_hits.append((picture_left, top, picture_width, picture_height))
 
-            # A click on the row, or in the gap below it, opens that printer; a click on its picture
-            # does not, because the picture is not part of the hit area.
-            self._row_hits.append((row_top, row_top + ROW_HEIGHT + ROW_GAP, entry["serial"]))
-            top += ROW_GAP
+            # A click on the tile, or in the gap below it, opens that printer; a click on its picture
+            # does not, because _on_click checks the pictures first.
+            self._row_hits.append((tile_top, tile_top + tile_height + TILE_GAP, entry["serial"]))
+            top = tile_top + tile_height + TILE_GAP
 
     def _picture(self, cr: Any, x: float, y: float, w: float, h: float, pixbuf: Any) -> None:
         """One live frame, cropped to fill a 16:9 rounded rectangle. A dark plate until the first frame
@@ -703,6 +733,8 @@ class EdgeDock:
         # The pin wins over the row beneath it.
         if self._over_pin(x, y):
             self.toggle_pinned()
+            return True
+        if any(left <= x < left + w and top <= y < top + h for left, top, w, h in self._picture_hits):
             return True
         for top, bottom, serial in self._row_hits:
             if top <= y < bottom:

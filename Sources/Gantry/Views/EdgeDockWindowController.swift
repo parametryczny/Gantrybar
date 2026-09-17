@@ -157,7 +157,7 @@ final class EdgeDockWindowController {
         }
         for serial in wanted where cameraFeeds[serial] == nil {
             let feed = CameraFeedController(store: store, serial: serial)
-            feed.view.cornerRadius = 8
+            feed.view.cornerRadius = EdgeDockView.cameraRadius
             cameraFeeds[serial] = feed
             feed.start()
         }
@@ -348,11 +348,9 @@ private final class EdgeDockView: NSView {
     private static let collapsedWidth: CGFloat = 22
     private static let collapsedGap: CGFloat = 8
     private static let rowHeight: CGFloat = 20
-    private static let rowGap: CGFloat = 2
     private static let padY: CGFloat = 8
     private static let notch: CGFloat = 11
     private static let expandedTextGap: CGFloat = 8
-    private static let expandedPadX: CGFloat = 11
     /// Band above the rows holding the pin. Present whenever the strip is open, pinned or not, because
     /// it is also where a hovering user pins it; a folded strip keeps exactly the height it had.
     private static let pinRow: CGFloat = 14
@@ -371,7 +369,22 @@ private final class EdgeDockView: NSView {
     static let unfoldDuration: TimeInterval = 0.42
     /// Grace period before folding, long enough to outlast the unfold animation's own leave event.
     private static let collapseDelay: TimeInterval = 0.44
-    private static let cameraGap: CGFloat = 8
+    private static let cameraGap: CGFloat = 6
+    fileprivate static let cameraRadius: CGFloat = 6
+    /// Open, every printer sits in a light bento tile inside the dark strip: its row and its picture in
+    /// one rounded frame, so a column of printers reads as separate machines instead of one run of names
+    /// and images. The strip itself stays exactly as it was, dark floor and transparency setting
+    /// included, and shows as a margin around the tiles. A tile is a hairline and a barely-there lift,
+    /// never a colour of its own, so it follows the floor whatever the transparency.
+    private static let tileInsetX: CGFloat = 8
+    private static let tilePadX: CGFloat = 7
+    private static let tilePadTop: CGFloat = 5
+    private static let tilePadBottom: CGFloat = 5
+    private static let tilePadBottomWithCamera: CGFloat = 8
+    private static let tileGap: CGFloat = 8
+    private static let tileRadius: CGFloat = 10
+    private static let tileFillAlpha: CGFloat = 0.035
+    private static let tileBorderAlpha: CGFloat = 0.10
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private static let cameraMinStripWidth: CGFloat = 236
     private static let cameraMaxStripWidth: CGFloat = 300
@@ -457,7 +470,7 @@ private final class EdgeDockView: NSView {
             let value = (valueText(entry) as NSString).size(withAttributes: [.font: valueFont]).width
             widest = max(widest, name + value)
         }
-        let content = (Self.expandedPadX * 2 + Self.ring + Self.expandedTextGap + 14) * scale + widest
+        let content = ((Self.tileInsetX + Self.tilePadX) * 2 + Self.ring + Self.expandedTextGap + 14) * scale + widest
         // With a picture the strip stops being sized by its longest printer name: the image needs a
         // usable width of its own, so it raises the floor and lifts the ceiling.
         let showsAny = entries.contains { cameraViews[$0.serial] != nil }
@@ -470,6 +483,8 @@ private final class EdgeDockView: NSView {
     /// pictures and hit-testing clicks cannot drift apart. Offsets run downward from the content top.
     private struct RowMetric {
         let entry: EdgeDockEntry
+        let tileTop: CGFloat        // distance from the content top to the top of the printer's tile
+        let tileHeight: CGFloat     // the whole tile: padding, text row and picture
         let top: CGFloat            // distance from the content top to the top of the text row
         let height: CGFloat         // the text row itself
         let cameraHeight: CGFloat   // 0 when this printer has no picture
@@ -482,13 +497,23 @@ private final class EdgeDockView: NSView {
         var offset: CGFloat = 0
         for (index, entry) in entries.enumerated() {
             let camera = cameraViews[entry.serial] != nil && pictureWidth > 0 ? pictureHeight : 0
-            rows.append(RowMetric(entry: entry, top: offset, height: Self.rowHeight * scale,
+            var tile = Self.tilePadTop * scale + Self.rowHeight * scale
+            tile += camera > 0 ? (Self.cameraGap + Self.tilePadBottomWithCamera) * scale + camera
+                               : Self.tilePadBottom * scale
+            rows.append(RowMetric(entry: entry, tileTop: offset, tileHeight: tile,
+                                  top: offset + Self.tilePadTop * scale, height: Self.rowHeight * scale,
                                   cameraHeight: camera))
-            offset += Self.rowHeight * scale
-            if camera > 0 { offset += Self.cameraGap * scale + camera }
-            if index < entries.count - 1 { offset += Self.rowGap * scale }
+            offset += tile
+            if index < entries.count - 1 { offset += Self.tileGap * scale }
         }
         return (rows, offset)
+    }
+
+    /// The tile of one printer, in view coordinates.
+    private func tileRect(_ metric: RowMetric) -> NSRect {
+        let inset = Self.tileInsetX * scale
+        return NSRect(x: inset, y: contentTop - metric.tileTop - metric.tileHeight,
+                      width: max(0, bounds.width - inset * 2), height: metric.tileHeight)
     }
 
     private func expandedContentHeight(stripWidth: CGFloat) -> CGFloat {
@@ -511,9 +536,7 @@ private final class EdgeDockView: NSView {
     private func pinButtonRect() -> NSRect? {
         guard isExpanded else { return nil }
         let side = Self.pinRow * scale
-        let centerX = edge == .right
-            ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
-            : (Self.expandedPadX + Self.ring / 2) * scale
+        let centerX = ringX
         let centerY = bounds.height - (Self.notch + Self.padY) * scale - side / 2
         return NSRect(x: centerX - side / 2, y: centerY - side / 2, width: side, height: side)
     }
@@ -558,7 +581,13 @@ private final class EdgeDockView: NSView {
     }
 
     private func cameraWidth(stripWidth: CGFloat) -> CGFloat {
-        max(0, stripWidth - Self.expandedPadX * 2 * scale)
+        max(0, stripWidth - (Self.tileInsetX + Self.tilePadX) * 2 * scale)
+    }
+
+    /// Ring column and text edges inside the tiles. The ring stays on the physical screen edge's side.
+    private var ringX: CGFloat {
+        let inset = (Self.tileInsetX + Self.tilePadX + Self.ring / 2) * scale
+        return edge == .right ? bounds.width - inset : inset
     }
 
     /// The pictures are real subviews inside a hand-drawn silhouette, so they get framed here rather
@@ -672,6 +701,9 @@ private final class EdgeDockView: NSView {
     /// The silhouette: a rounded body flush against the screen edge, plus a concave fillet at each end
     /// so the strip appears to flow out of the edge rather than sit next to it.
     private func shapePath() -> NSBezierPath { shapePath(in: bounds.size) }
+    #if GANTRY_RENDER
+    func silhouetteForRender() -> NSBezierPath { shapePath() }
+    #endif
 
     private func shapePath(in size: NSSize) -> NSBezierPath {
         let w = size.width, h = size.height
@@ -762,9 +794,20 @@ private final class EdgeDockView: NSView {
 
     private func drawExpanded() {
         // Keep the ring beside the physical screen edge while the text unfolds inward.
-        let ringX = edge == .right
-            ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
-            : (Self.expandedPadX + Self.ring / 2) * scale
+        let ringX = self.ringX
+        let contentInset = (Self.tileInsetX + Self.tilePadX) * scale
+        // The tiles arrive with the strip, like the labels.
+        let fade = max(0, min(1, unfoldProgress))
+        for metric in rowMetrics(stripWidth: bounds.width).rows {
+            let tile = tileRect(metric).insetBy(dx: 0.5, dy: 0.5)
+            let radius = Self.tileRadius * scale
+            let frame = NSBezierPath(roundedRect: tile, xRadius: radius, yRadius: radius)
+            NSColor.white.withAlphaComponent(Self.tileFillAlpha * fade).setFill()
+            frame.fill()
+            frame.lineWidth = 1
+            NSColor.white.withAlphaComponent(Self.tileBorderAlpha * fade).setStroke()
+            frame.stroke()
+        }
         for metric in rowMetrics(stripWidth: bounds.width).rows {
             let entry = metric.entry
             let centerY = contentTop - metric.top - metric.height / 2
@@ -774,8 +817,6 @@ private final class EdgeDockView: NSView {
             let nameColor = entry.state == .error || entry.state == .offline ? GantryTheme.statusError
                           : (dim ? GantryTheme.secondary : GantryTheme.text)
             let halo = labelShadow
-            // The labels arrive with the strip rather than before it.
-            let fade = max(0, min(1, unfoldProgress))
             let name = NSAttributedString(string: entry.name,
                                           attributes: [.font: nameFont,
                                                        .foregroundColor: nameColor.withAlphaComponent(fade),
@@ -785,11 +826,11 @@ private final class EdgeDockView: NSView {
                                                         .foregroundColor: GantryTheme.secondary.withAlphaComponent(fade),
                                                         .shadow: halo])
             let textLeft = edge == .right
-                ? Self.expandedPadX * scale
+                ? contentInset
                 : ringX + (Self.ring / 2 + Self.expandedTextGap) * scale
             let textRight = edge == .right
                 ? ringX - (Self.ring / 2 + Self.expandedTextGap) * scale
-                : bounds.width - Self.expandedPadX * scale
+                : bounds.width - contentInset
             let valueSize = value.size()
             // Clip the name so a long one never runs under the value on the right.
             let nameBox = NSRect(x: textLeft, y: centerY - name.size().height / 2,
@@ -956,15 +997,13 @@ private final class EdgeDockView: NSView {
             let index = Int(offset / step)
             return index >= 0 && index < entries.count ? index : nil
         }
-        // Expanded rows are no longer a fixed pitch, because a picture may sit between two of them.
-        // Walk the same metrics the drawing uses, and let each row own the gap below it so a click
-        // between rows still lands somewhere sensible.
+        // Expanded, a printer is its tile. Walk the same metrics the drawing uses, and let each tile
+        // own the gap below it so a click between two tiles still lands somewhere sensible.
         let rows = rowMetrics(stripWidth: bounds.width).rows
         for (index, metric) in rows.enumerated() {
-            let rowTop = contentTop - metric.top
-            let claimed = metric.height + (metric.cameraHeight > 0
-                ? Self.cameraGap * scale + metric.cameraHeight : 0) + Self.rowGap * scale
-            if point.y <= rowTop && point.y > rowTop - claimed { return index }
+            let tileTop = contentTop - metric.tileTop
+            let claimed = metric.tileHeight + Self.tileGap * scale
+            if point.y <= tileTop && point.y > tileTop - claimed { return index }
         }
         return nil
     }
@@ -980,3 +1019,43 @@ private final class EdgeDockRowsView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override var isOpaque: Bool { false }
 }
+
+#if GANTRY_RENDER
+/// Offscreen picture of the open strip for design review: silhouette, tiles, rows and stand-in
+/// pictures over a sample desktop, at the panel-transparency setting in the defaults. The window
+/// server's behind-window blur cannot be captured, so the desktop shows through unblurred.
+@MainActor enum EdgeDockRender {
+    static func image(entries: [EdgeDockEntry], pictures: [String: NSImage], edge: EdgeDockEdge,
+                      desktop: NSImage) -> NSImage? {
+        let view = EdgeDockView(frame: .zero)
+        view.edge = edge
+        view.pinned = true
+        view.entries = entries
+        view.cameraViews = pictures.mapValues { _ in NSView() }
+        let size = view.preferredSize()
+        view.frame = NSRect(origin: .zero, size: size)
+        view.viewDidMoveToSuperview()
+        view.layoutSubtreeIfNeeded()
+        view.layout()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let result = NSImage(size: size)
+        result.lockFocus()
+        NSGraphicsContext.saveGraphicsState()
+        view.silhouetteForRender().addClip()   // the desktop shows through only inside the strip
+        desktop.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)
+        NSGraphicsContext.restoreGraphicsState()
+        rep.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver, fraction: 1,
+                 respectFlipped: false, hints: nil)
+        for (serial, picture) in pictures {
+            guard let frame = view.cameraViews[serial]?.frame, !(view.cameraViews[serial]?.isHidden ?? true) else { continue }
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(roundedRect: frame, xRadius: EdgeDockView.cameraRadius, yRadius: EdgeDockView.cameraRadius).addClip()
+            picture.draw(in: frame, from: .zero, operation: .sourceOver, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        result.unlockFocus()
+        return result
+    }
+}
+#endif

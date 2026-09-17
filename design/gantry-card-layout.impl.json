@@ -1,8 +1,8 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.11.0",
-    "date": "2026-09-14",
+    "version": "1.12.0",
+    "date": "2026-09-17",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
   "tokens": {
@@ -692,10 +692,23 @@
       "action": "click toggles edge-dock-pinned; hover lifts the disc (and shows a hand cursor on Windows); tooltip Keep the strip open",
       "rendering": "a vector path on every platform, never an emoji or a platform symbol, so it is the same shape everywhere"
     },
+    "tiles": {
+      "note": "Open, every printer sits in a light bento tile inside the unchanged dark strip: its row and its picture in one rounded frame. The strip floor and its panel-transparency setting stay as they were and show as a margin around the tiles. Points on macOS and GNU/Linux; Windows uses its own larger dock units (inset 10, padX 9, padTop 6, padBottom 6/10, gap 10, radius 13).",
+      "insetX": 8,
+      "padX": 7,
+      "padTop": 5,
+      "padBottom": 5,
+      "padBottomWithCamera": 8,
+      "gap": 8,
+      "radius": 10,
+      "fill": "white at 3.5 %",
+      "border": "1 px hairline, white at 10 %",
+      "hitTest": "the whole tile and the gap below it open the printer; its picture does not"
+    },
     "cameras": {
       "aspect": "16:9, cropped to fill, rounded corners",
-      "gap": 8,
-      "radius": 8,
+      "gap": 6,
+      "radius": 6,
       "minStripWidth": 236,
       "maxStripWidth": 300,
       "kinds": [

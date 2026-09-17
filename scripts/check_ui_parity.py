@@ -582,6 +582,27 @@ require("linux/gantry/layout.py", rf"return {one} if max\(1, min\(2, columns\)\)
         "the GNU/Linux panel widths differ from the contract")
 require("linux/gantry/edgedock.py", r"return self\.hovering or self\.pinned",
         "a pinned GNU/Linux strip still folds when the pointer leaves")
+# Bento tiles in the open strip: same metrics on macOS and GNU/Linux, the Windows port in its own units.
+tiles = edge_dock["tiles"]
+for name, swift, python in (("insetX", "tileInsetX", "TILE_INSET_X"), ("padX", "tilePadX", "TILE_PAD_X"),
+                            ("padTop", "tilePadTop", "TILE_PAD_TOP"), ("padBottom", "tilePadBottom", "TILE_PAD_BOTTOM"),
+                            ("padBottomWithCamera", "tilePadBottomWithCamera", "TILE_PAD_BOTTOM_WITH_CAMERA"),
+                            ("gap", "tileGap", "TILE_GAP"), ("radius", "tileRadius", "TILE_RADIUS")):
+    value = _number(tiles[name])
+    require("Sources/Gantry/Views/EdgeDockWindowController.swift", rf"static let {swift}: CGFloat = {value}\b",
+            f"macOS edge-dock tile {name} differs from the contract")
+    require("linux/gantry/edgedock.py", rf"^{python} = {value}(\.0)?$",
+            f"GNU/Linux edge-dock tile {name} differs from the contract")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", r"tileFillAlpha: CGFloat = 0\.035\b[\s\S]{0,60}?tileBorderAlpha: CGFloat = 0\.10\b",
+        "macOS edge-dock tiles are no longer a faint lift and a hairline")
+require("linux/gantry/edgedock.py", r"^TILE_FILL_ALPHA = 0\.035\nTILE_BORDER_ALPHA = 0\.10$",
+        "GNU/Linux edge-dock tiles are no longer a faint lift and a hairline")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"TileFillAlpha = 9, TileBorderAlpha = 26;",
+        "Windows edge-dock tiles are no longer a faint lift and a hairline")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"_rowHits\.Add\(\(new Rect\(0, tileTop, width, tileHeight \+ TileGap \* scale\), entry\.Serial\)\);",
+        "a Windows edge-dock tile is not one click target")
+for dock_source in ("windows/Gantry.Windows/UI/EdgeDockWindow.cs", "linux/gantry/edgedock.py"):
+    require(dock_source, r"_picture_?[hH]its", f"{dock_source}: a click on a picture opens the printer again")
 # Pictures: same width band, same brands, same stream rules.
 cams = edge_dock["cameras"]
 require("Sources/Gantry/Views/EdgeDockWindowController.swift",
@@ -608,7 +629,7 @@ for key in edge_dock["settingsKeys"]:
     require("linux/gantry/settings.py", rf'"{key}"', f"GNU/Linux settings do not write the shared {key} setting")
 # Geometry fixed along the way: the ring beside the physical edge, the silhouette mirrored only for the
 # left edge, and folding after a grace period instead of on the leave event the resize itself causes.
-require("linux/gantry/edgedock.py", r"ring_x = EXPANDED_PAD_X \+ RING / 2 if left else width - EXPANDED_PAD_X - RING / 2",
+require("linux/gantry/edgedock.py", r"ring_x = content_inset \+ RING / 2 if left else width - content_inset - RING / 2",
         "the GNU/Linux ring is not beside the physical screen edge")
 require("linux/gantry/edgedock.py", r"if left:\s*\n\s*# The silhouette is drawn flush against the right edge",
         "the GNU/Linux silhouette is mirrored for the wrong edge")
@@ -969,7 +990,7 @@ require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
         r"MouseLeave[\s\S]*?_collapseTimer\.Start",
         "Windows edge dock collapses synchronously and can enter a hover loop")
 require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
-        r"double ringX = left \? \(ExpandedPadX \+ Ring / 2\) \* scale : width - \(ExpandedPadX \+ Ring / 2\) \* scale",
+        r"double ringX = left \? contentInset \+ Ring / 2 \* scale : width - contentInset - Ring / 2 \* scale",
         "Windows edge dock ring does not stay anchored to its screen edge")
 require("windows/Gantry.Windows/UI/TrayIcon.cs",
         r"ShowOnboardingAfterMenuCloses[\s\S]*?menu\.Closed \+= closed",

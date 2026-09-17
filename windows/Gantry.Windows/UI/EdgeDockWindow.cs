@@ -51,11 +51,20 @@ public sealed class EdgeDockWindow : Window
     /// Click targets from the last draw. Rows are not a fixed pitch once a picture sits between two
     /// of them, so hit-testing uses exactly what was drawn.
     private readonly List<(Rect Area, string Serial)> _rowHits = new();
+    /// Pictures take no clicks: a click on one is not a click on its printer's tile.
+    private readonly List<Rect> _pictureHits = new();
     private Rect? _pinHit;
 
     private const double Ring = 18, RingStroke = 2.2, CollapsedWidth = 30, CollapsedGap = 10;
-    private const double RowHeight = 26, RowGap = 3, PadY = 10, Notch = 13;
-    private const double ExpandedPadX = 13, ExpandedTextGap = 9;
+    private const double RowHeight = 26, PadY = 10, Notch = 13;
+    private const double ExpandedTextGap = 9;
+    /// Open, every printer sits in a light bento tile inside the dark strip: its row and its picture in
+    /// one rounded frame, so a column of printers reads as separate machines. The strip itself is
+    /// unchanged and shows as a margin around the tiles. A tile is a hairline and a barely-there lift,
+    /// never a colour of its own, so it follows the floor (contract edgeDock.tiles, in Windows units).
+    private const double TileInsetX = 10, TilePadX = 9, TilePadTop = 6, TilePadBottom = 6,
+                         TilePadBottomWithCamera = 10, TileGap = 10, TileRadius = 13;
+    private const byte TileFillAlpha = 9, TileBorderAlpha = 26;   // 3.5 % and 10 % white
     /// Band above the rows holding the pin control, shown whenever the strip is open.
     private const double PinRow = 18, PinGap = 4, PinGlyph = 12;
     /// The pin, in a 16x16 design box, upright with the needle down: a flat head, a shaft, a flared
@@ -381,7 +390,7 @@ public sealed class EdgeDockWindow : Window
         // usable width of its own, so it raises the floor.
         double minimum = (_entries.Any(HasPicture) ? CameraMinStripWidth : 180) * scale;
         double maximum = CameraMaxStripWidth * scale;
-        return Math.Min(Math.Max((ExpandedPadX * 2 + Ring + ExpandedTextGap + 16) * scale + widest, minimum), maximum);
+        return Math.Min(Math.Max(((TileInsetX + TilePadX) * 2 + Ring + ExpandedTextGap + 16) * scale + widest, minimum), maximum);
     }
 
     private static double MeasureText(string text, double size, FontWeight weight)
@@ -391,7 +400,17 @@ public sealed class EdgeDockWindow : Window
         return block.DesiredSize.Width;
     }
 
-    private static double CameraWidth(double stripWidth) => Math.Max(0, stripWidth - ExpandedPadX * 2 * UiScale);
+    private static double CameraWidth(double stripWidth) => Math.Max(0, stripWidth - (TileInsetX + TilePadX) * 2 * UiScale);
+
+    /// One printer's tile height: padding, its row and, when it has one, its picture.
+    private double TileHeight(Entry entry, double pictureHeight)
+    {
+        double scale = UiScale;
+        double height = (TilePadTop + RowHeight) * scale;
+        return HasPicture(entry) && pictureHeight > 0
+            ? height + (CameraGap + TilePadBottomWithCamera) * scale + pictureHeight
+            : height + TilePadBottom * scale;
+    }
 
     /// Height of the open strip's rows, pictures included. The same arithmetic DrawExpanded walks.
     private double ExpandedRowsHeight(double stripWidth)
@@ -402,9 +421,8 @@ public sealed class EdgeDockWindow : Window
         double height = 0;
         for (int i = 0; i < _entries.Count; i++)
         {
-            height += RowHeight * scale;
-            if (HasPicture(_entries[i]) && pictureHeight > 0) height += CameraGap * scale + pictureHeight;
-            if (i < _entries.Count - 1) height += RowGap * scale;
+            height += TileHeight(_entries[i], pictureHeight);
+            if (i < _entries.Count - 1) height += TileGap * scale;
         }
         return height;
     }
@@ -445,6 +463,7 @@ public sealed class EdgeDockWindow : Window
             if (!ReferenceEquals(_canvas.Children[i], _shape)) _canvas.Children.RemoveAt(i);
         }
         _rowHits.Clear();
+        _pictureHits.Clear();
         _pinHit = null;
         if (expanded) DrawExpanded(width, left); else DrawCollapsed(width);
     }
@@ -496,7 +515,8 @@ public sealed class EdgeDockWindow : Window
         double top = (Notch + PadY) * scale;
         // The progress ring stays at the physical screen edge in both orientations. Previously it
         // jumped across the expanded window and left the cursor, causing an enter/leave loop.
-        double ringX = left ? (ExpandedPadX + Ring / 2) * scale : width - (ExpandedPadX + Ring / 2) * scale;
+        double contentInset = (TileInsetX + TilePadX) * scale;
+        double ringX = left ? contentInset + Ring / 2 * scale : width - contentInset - Ring / 2 * scale;
 
         // The pin sits in the ring column, above the first row, so it can never collide with a name.
         DrawPinButton(new Point(ringX, top + PinRow * scale / 2));
@@ -506,7 +526,20 @@ public sealed class EdgeDockWindow : Window
         double pictureHeight = Math.Round(pictureWidth * 9 / 16);
         foreach (var entry in _entries)
         {
-            double rowTop = top;
+            double tileTop = top;
+            double tileHeight = TileHeight(entry, pictureHeight);
+            var tile = new Rectangle
+            {
+                Width = Math.Max(0, width - TileInsetX * 2 * scale), Height = tileHeight,
+                RadiusX = TileRadius * scale, RadiusY = TileRadius * scale,
+                Fill = new SolidColorBrush(Color.FromArgb(TileFillAlpha, 0xFF, 0xFF, 0xFF)),
+                Stroke = new SolidColorBrush(Color.FromArgb(TileBorderAlpha, 0xFF, 0xFF, 0xFF)),
+                StrokeThickness = 1, IsHitTestVisible = false,
+            };
+            Canvas.SetLeft(tile, TileInsetX * scale);
+            Canvas.SetTop(tile, tileTop);
+            _canvas.Children.Add(tile);
+            top += TilePadTop * scale;
             double centerY = top + RowHeight * scale / 2;
             DrawRing(new Point(ringX, centerY), entry);
 
@@ -514,8 +547,8 @@ public sealed class EdgeDockWindow : Window
             var nameColor = entry.State is PrinterState.Error or PrinterState.Offline
                 ? GTheme.StatusPrinting
                 : (dim ? GTheme.Secondary : GTheme.Text);
-            double textLeft = left ? ringX + (Ring / 2 + ExpandedTextGap) * scale : ExpandedPadX * scale;
-            double textRight = left ? width - ExpandedPadX * scale : ringX - (Ring / 2 + ExpandedTextGap) * scale;
+            double textLeft = left ? ringX + (Ring / 2 + ExpandedTextGap) * scale : contentInset;
+            double textRight = left ? width - contentInset : ringX - (Ring / 2 + ExpandedTextGap) * scale;
 
             var value = new TextBlock
             {
@@ -561,13 +594,14 @@ public sealed class EdgeDockWindow : Window
                 Canvas.SetLeft(image, pictureLeft);
                 Canvas.SetTop(image, top);
                 _canvas.Children.Add(image);
+                _pictureHits.Add(new Rect(pictureLeft, top, pictureWidth, pictureHeight));
                 top += pictureHeight;
             }
 
-            // A click on the row, or in the gap below it, opens that printer. A click on its picture does
-            // not: the picture is not part of the hit area.
-            _rowHits.Add((new Rect(0, rowTop, width, RowHeight * scale + RowGap * scale), entry.Serial));
-            top += RowGap * scale;
+            // A click on the tile, or in the gap below it, opens that printer. A click on its picture does
+            // not: OnClick checks the pictures first.
+            _rowHits.Add((new Rect(0, tileTop, width, tileHeight + TileGap * scale), entry.Serial));
+            top = tileTop + tileHeight + TileGap * scale;
         }
     }
 
@@ -692,6 +726,7 @@ public sealed class EdgeDockWindow : Window
             e.Handled = true;
             return;
         }
+        if (_pictureHits.Any(picture => picture.Contains(point))) return;
         foreach (var (area, serial) in _rowHits)
         {
             if (!area.Contains(point)) continue;
