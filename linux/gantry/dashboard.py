@@ -1105,8 +1105,20 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         self.columns.set_visible(self.tray_mode and not compact)
         self.columns.set_label("▯" if int(self.app.config.data.get("dashboard_columns", 2)) == 2 else "▥")
 
+    def fills_screen(self) -> bool:
+        """Maximised, full screen or tiled: the window manager owns the size then."""
+        gdk_window = self.get_window()
+        if gdk_window is None:
+            return False
+        state = gdk_window.get_state()
+        return bool(state & (Gdk.WindowState.MAXIMIZED | Gdk.WindowState.FULLSCREEN | Gdk.WindowState.TILED))
+
     def resize_for_content(self) -> None:
         if self._panel_layer is not None:
+            return
+        # Fitting the height to the cards on a maximised or full-screen window asked the window manager
+        # to shrink it after every rebuild, and it bounced between the two sizes: the jumping picture.
+        if not self.tray_mode and self.fills_screen():
             return
         compact = self.app.is_compact()
         if self.tray_mode:

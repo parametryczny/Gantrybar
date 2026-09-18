@@ -30,7 +30,7 @@ KIOSK_CSS = b"""
 .kiosk-tag { color: #8f949c; font-size: 11px; }
 .kiosk-summary { color: #b1b5bb; font-size: 14px; }
 .kiosk-clock { font-size: 19px; font-weight: 700; }
-.kiosk-alert { margin: 10px 14px 0; padding: 9px 12px; color: #ffd7da; background: #44272b; border: 1px solid #873e46; border-radius: 10px; }
+.kiosk-alert { padding: 6px 12px; color: #ffd7da; background: #44272b; border: 1px solid #873e46; border-radius: 10px; }
 .kiosk-footer { padding: 9px 16px; color: #9fa4ac; background: #1d1f22; border-top: 1px solid #3c3f44; font-size: 12px; }
 .kiosk-card { border-radius: 14px; padding: 14px; }
 .kiosk-card .printer-name { font-size: 18px; }
@@ -72,14 +72,15 @@ class KioskDashboard(Gtk.Window):
         settings.connect("clicked", lambda _button: app.open_kiosk_menu())
         header.pack_start(branding, False, False, 0)
         header.pack_start(self.summary, True, True, 8)
-        header.pack_start(self.clock, False, False, 0)
-        header.pack_start(settings, False, False, 0)
-        root.pack_start(header, False, False, 0)
-
+        # In the header rather than above the tiles: appearing and disappearing there pushed the whole
+        # wall down and back up every time a printer went into and out of an error.
         self.alert = Gtk.Label(xalign=0)
         self.alert.get_style_context().add_class("kiosk-alert")
         self.alert.set_no_show_all(True)
-        root.pack_start(self.alert, False, False, 0)
+        header.pack_start(self.alert, False, False, 0)
+        header.pack_start(self.clock, False, False, 0)
+        header.pack_start(settings, False, False, 0)
+        root.pack_start(header, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -198,17 +199,12 @@ class KioskMenuDialog(Gtk.Dialog):
 
 class KioskGantry(Gantry):
     is_kiosk = True
+    forced_theme = "dark"
 
     def __init__(self) -> None:
-        self.config, self.secrets = Config(), SecretStore()
-        self.config.data["theme"] = "dark"
-        self.language = str(self.config.data.get("language", "pl"))
-        i18n.set_language(self.language)
-        self.printers = self.config.printers
-        self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
-        self.connections: dict[str, MqttConnection | HttpConnection] = {}
-        self.cards: dict[str, KioskPrinterCard] = {}
-        self.expanded_compact_serial: str | None = None
+        # The same state the regular app starts from: the cards and the telemetry handler read all of
+        # it, and a hand-picked subset here crashed the kiosk on its first printer card.
+        self._init_fleet_state()
         self.web_config = WebConfigServer(
             self._remote_snapshot, self._remote_add, self._remote_remove, self._remote_import
         )
@@ -224,6 +220,12 @@ class KioskGantry(Gantry):
 
     def _tray(self) -> None:
         return
+
+    def _card_layout_changed(self, serial: str, first_report: bool, previous: Telemetry, current: Telemetry) -> bool:
+        """Every printer has its tile from the start and the tiles never change form, so a report only
+        ever updates a card in place. Rebuilding here tore down and redrew the whole wall each time a
+        printer reported for the first time or raised an error, which is what made the screen jump."""
+        return False
 
     def _apply_kiosk_theme(self) -> None:
         provider = Gtk.CssProvider(); provider.load_from_data(KIOSK_CSS)

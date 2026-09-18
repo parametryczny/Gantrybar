@@ -300,25 +300,7 @@ from .settings import SettingsDialog as SettingsDialog  # noqa: E402
 
 class Gantry:
     def __init__(self, background: bool = False) -> None:
-        self.config, self.secrets = Config(), SecretStore()
-        from .insights import PrinterInsights
-        self.insights = PrinterInsights(self)
-        self.language = str(self.config.data.get("language", "pl"))
-        i18n.set_language(self.language)
-        self.printers = self.config.printers
-        self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
-        from .startup import StartupState
-        self.startup = StartupState([p.serial for p in self.printers])
-        self.connection_reasons: dict[str, str] = {}
-        self.connections: dict[str, object] = {}; self.cards: dict[str, PrinterCard] = {}
-        self.indicator_available = AppIndicator is not None
-        self.stages = STAGES
-        # Rolling temperature history per printer (time, nozzle, bed, chamber), drawn by the Details graph.
-        self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
-        self.detail_window: Any | None = None
-        self.expanded_compact_serial: str | None = None
-        # Set when telemetry lands on a hidden panel, cleared by the catch-up rebuild in show().
-        self._dashboard_stale = False
+        self._init_fleet_state()
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         GLib.timeout_add_seconds(15, self._finish_startup)
         self.reconnect_all()
@@ -350,6 +332,35 @@ class Gantry:
             GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
         if show_window_on_start(AppIndicator is not None, self.window.tray_mode, background):
             self.show()
+
+    def _card_layout_changed(self, serial: str, first_report: bool, previous: Telemetry, current: Telemetry) -> bool:
+        """The panel lists only printers that have reported, and a card can switch to its wide form, so
+        either change needs the cards laid out again rather than updated in place."""
+        return ((first_report and serial in self.startup.received)
+                or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()))
+
+    def _init_fleet_state(self) -> None:
+        """Everything the cards, the telemetry handler and the dialogs read, shared with the kiosk
+        (KioskGantry builds its own window but must start from exactly this state)."""
+        self.config, self.secrets = Config(), SecretStore()
+        from .insights import PrinterInsights
+        self.insights = PrinterInsights(self)
+        self.language = str(self.config.data.get("language", "pl"))
+        i18n.set_language(self.language)
+        self.printers = self.config.printers
+        self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
+        from .startup import StartupState
+        self.startup = StartupState([p.serial for p in self.printers])
+        self.connection_reasons: dict[str, str] = {}
+        self.connections: dict[str, object] = {}; self.cards: dict[str, PrinterCard] = {}
+        self.indicator_available = AppIndicator is not None
+        self.stages = STAGES
+        # Rolling temperature history per printer (time, nozzle, bed, chamber), drawn by the Details graph.
+        self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
+        self.detail_window: Any | None = None
+        self.expanded_compact_serial: str | None = None
+        # Set when telemetry lands on a hidden panel, cleared by the catch-up rebuild in show().
+        self._dashboard_stale = False
 
     def _finish_startup(self) -> bool:
         self.startup.finish()
@@ -421,8 +432,11 @@ class Gantry:
             GLib.source_remove(source)
             self._transparency_animation_id = None
 
+    # The kiosk is always dark without writing that into the settings it shares with the regular app.
+    forced_theme: str | None = None
+
     def apply_theme(self, panel_transparency: object | None = None, animate: bool = False) -> None:
-        theme = str(self.config.data.get("theme", "dark"))
+        theme = self.forced_theme or str(self.config.data.get("theme", "dark"))
         settings = Gtk.Settings.get_default()
         settings.set_property("gtk-application-prefer-dark-theme", theme == "dark")
         # Background-only alpha for the frosted-glass popover (cards stay solid). Lower = more see-through:
@@ -1219,7 +1233,7 @@ class Gantry:
         # are what the app is for while the panel is closed.
         if not self.dashboard_visible():
             self._dashboard_stale = True
-        elif (first_report and serial in self.startup.received) or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()):
+        elif self._card_layout_changed(serial, first_report, previous, current):
             self.rebuild_cards()
         else:
             if card := self.cards.get(serial):
