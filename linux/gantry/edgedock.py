@@ -472,9 +472,11 @@ class EdgeDock:
         cr.move_to(w, 0)
         cr.arc(w - r, 0, r, 0, math.pi / 2)                       # concave, top
         cr.line_to(body, top)
-        cr.arc(body, top + body, body, -math.pi / 2, math.pi)     # convex, top-left
+        # Counter-clockwise: a clockwise arc between the same angles sweeps three quarters of a turn and
+        # bites a disc out of the corner instead of rounding it.
+        cr.arc_negative(body, top + body, body, -math.pi / 2, -math.pi)     # convex, top-left
         cr.line_to(0, bottom - body)
-        cr.arc(body, bottom - body, body, math.pi, math.pi / 2)   # convex, bottom-left
+        cr.arc_negative(body, bottom - body, body, math.pi, math.pi / 2)    # convex, bottom-left
         cr.line_to(w - r, bottom)
         cr.arc(w - r, h, r, -math.pi / 2, 0)                      # concave, bottom
         cr.close_path()
