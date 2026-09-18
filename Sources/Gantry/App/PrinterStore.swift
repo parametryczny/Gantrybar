@@ -971,6 +971,8 @@ final class PrinterStore: ObservableObject {
 
     /// Printers already warned that their job is nearly done, so the alert fires once per print.
     private var finishingSoonWarned: Set<String> = []
+    /// Low rolls already reported, per printer (LowFilament.Slot.key).
+    private var lowFilamentWarned: [String: Set<String>] = [:]
 
     private func notifyChanges(printer: SavedPrinter, previous: PrinterTelemetry?, current: PrinterTelemetry) {
         let settings = AppSettings.shared
@@ -1006,19 +1008,35 @@ final class PrinterStore: ObservableObject {
                     ? settings.t("Diagnostic code: 0x{0}", HMSResolver.shared.formatted(errorCode: current.errorCode))
                     : settings.t("The printer reported an error."))
             push(title: settings.t("Printer error"), body: description)
+        } else if settings.notifyPaused || settings.notifyLowFilament,
+                  current.currentStage == LowFilament.runoutStage, previous?.currentStage != LowFilament.runoutStage {
+            // A pause for a reason worth naming: which roll ran out, not just that the print stopped.
+            let slot = LowFilament.feedingSlot(previous: previous?.filamentGroups, current: current.filamentGroups)
+            let feeding = slot.map { [$0.label, $0.material].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ") }
+            push(title: settings.t("Filament ran out"),
+                 body: feeding.map { settings.t("{0}: load a new roll to continue.", $0) }
+                     ?? settings.t("Load a new roll to continue."))
         } else if settings.notifyPaused, current.state == .paused, previous?.state != .paused {
             push(title: settings.t("Print paused"),
                  body: current.jobName ?? settings.t("The printer needs attention."))
         }
 
-        // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
-        // so `remainingPercent` reads as 0 and must not raise a false "low filament" alert (issue #27).
-        func lowAndTrusted(_ s: AMSSlot) -> Bool { s.remainingWeightGrams != nil && (s.remainingPercent ?? 100) <= 15 }
-        let previousLow = Set(previous?.amsSlots.filter(lowAndTrusted).map(\.id) ?? [])
-        let newLow = current.amsSlots.filter { lowAndTrusted($0) && !previousLow.contains($0.id) }
-        if settings.notifyLowFilament, let slot = newLow.first {
-            push(title: settings.t("Low filament"),
-                 body: "\(slot.label) • \(slot.material) • \(slot.remainingPercent ?? 0)%")
+        // A report without filament data (offline, a partial update) says nothing about the rolls, so it
+        // must not reset what was already reported and make every low roll warn again on reconnect.
+        if !current.filamentGroups.isEmpty {
+            let spoolbase = Build.hasExtras && settings.spoolbaseEnabled
+            let low = LowFilament.lowSlots(serial: printer.serial, groups: current.filamentGroups) { location in
+                spoolbase ? SpoolbaseShared.spools.spool(at: location) : nil
+            }
+            let warned = lowFilamentWarned[printer.serial] ?? []
+            if settings.notifyLowFilament {
+                for slot in low where !warned.contains(slot.key) {
+                    push(title: settings.t("Low filament"),
+                         body: [slot.label, slot.material, slot.amount].filter { !$0.isEmpty }.joined(separator: " • "))
+                }
+            }
+            // A slot warns once while low and again only after it has been refilled above the line.
+            lowFilamentWarned[printer.serial] = Set(low.map(\.key))
         }
 
         if settings.notifyHumidity, isHumidityHigh(current.amsHumidity), !isHumidityHigh(previous?.amsHumidity) {

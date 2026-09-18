@@ -361,6 +361,8 @@ class Gantry:
         self.expanded_compact_serial: str | None = None
         # Set when telemetry lands on a hidden panel, cleared by the catch-up rebuild in show().
         self._dashboard_stale = False
+        # Low rolls already reported, per printer (lowfilament.LowSlot.key).
+        self.low_filament_warned: dict[str, set[str]] = {}
 
     def _finish_startup(self) -> bool:
         self.startup.finish()
@@ -1276,7 +1278,19 @@ class Gantry:
                 telegram.notify(self, printer_name, title, body)
         else:
             warned.discard(serial)
-        if current.state != previous.state:
+        from . import lowfilament
+        # A pause for a reason worth naming: which roll ran out, not just that the print stopped.
+        runout = (current.stage == lowfilament.RUNOUT_STAGE and previous.stage != lowfilament.RUNOUT_STAGE
+                  and (self.config.data.get("notify_paused") or self.config.data.get("notify_low_filament")))
+        if runout:
+            slot = lowfilament.feeding_slot(previous.filament_groups, current.filament_groups)
+            where = " • ".join(part for part in ((slot.label, slot.material) if slot else ()) if part)
+            title = i18n.t("Filament ran out")
+            detail = i18n.t("Load a new roll to continue.")
+            self.notify(printer_name, f"{title}: {where}. {detail}" if where else f"{title}. {detail}")
+            from . import telegram
+            telegram.notify(self, printer_name, title, f"{where}. {detail}" if where else detail)
+        if current.state != previous.state and not (runout and current.state == PrinterState.PAUSED):
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key):
@@ -1289,16 +1303,23 @@ class Gantry:
                 self.notify(printer_name, body)
                 from . import telegram
                 telegram.notify(self, printer_name, body, "")
-        previous_remaining = {slot.slot_id: slot.remaining for slot in previous.ams_slots}
-        # Only warn for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain (issue #27).
-        low = next((slot for slot in current.ams_slots if slot.remaining_weight_g is not None
-                    and slot.remaining is not None and slot.remaining <= 10
-                    and (previous_remaining.get(slot.slot_id) is None or previous_remaining[slot.slot_id] > 10)), None)
-        if low and self.config.data.get("notify_low_filament"):
-            body = i18n.t("Low filament: {0} ({1}%)").format(low.label, low.remaining)
-            self.notify(printer_name, body)
-            from . import telegram
-            telegram.notify(self, printer_name, body, "")
+        # A report without filament data (offline, a partial update) says nothing about the rolls, so it
+        # must not reset what was already reported and make every low roll warn again on reconnect.
+        if current.filament_groups:
+            spools = self.physical_spools if self._spoolbase_active() else None
+            low = lowfilament.low_slots(serial, current.filament_groups,
+                                        lambda location: spools.spool_at(location) if spools else None)
+            warned = self.low_filament_warned.get(serial, set())
+            if self.config.data.get("notify_low_filament"):
+                for slot in low:
+                    if slot.key in warned:
+                        continue
+                    title = i18n.t("Low filament")
+                    self.notify(printer_name, f"{title}: {slot.describe()}")
+                    from . import telegram
+                    telegram.notify(self, printer_name, title, slot.describe())
+            # A slot warns once while low and again only after it has been refilled above the line.
+            self.low_filament_warned[serial] = {slot.key for slot in low}
         humidity_high = current.ams_humidity is not None and current.ams_humidity >= 4
         humidity_was_high = previous.ams_humidity is not None and previous.ams_humidity >= 4
         if humidity_high and not humidity_was_high and self.config.data.get("notify_humidity"):
