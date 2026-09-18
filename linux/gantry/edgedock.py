@@ -8,7 +8,7 @@ clicking a row opens that printer's details. Mirrors the macOS EdgeDockWindowCon
 
 Issue #34, as on macOS and Windows: the strip can be pinned open, and pinned or released with the pin
 on the strip itself; and any printer can be given a live picture, shown whole with its caption under
-it (dockcaptions, contract edgeDock.captions). The two are independent. A picture works on a strip that still folds, it is simply not drawn while folded,
+it and its caption laid over its bottom (dockcaptions, contract edgeDock.captions). The two are independent. A picture works on a strip that still folds, it is simply not drawn while folded,
 and its stream keeps running so unfolding shows a live image at once instead of a reconnect.
 
 The "grows out of the edge" look comes from the two concave fillets where the strip meets the screen:
@@ -59,6 +59,16 @@ PIN_POINTS = ((5.0, 1.5), (11.0, 1.5), (11.0, 3.0), (9.8, 3.0), (9.8, 7.0), (12.
               (8.0, 15.0), (7.3, 9.5), (3.5, 9.5), (6.2, 7.0), (6.2, 3.0), (5.0, 3.0))
 #: Released, the pin leans over; pinned, it stands straight in.
 PIN_RELEASED_ANGLE = 45.0
+#: The settings button under the strip (contract edgeDock.settingsButton). At rest only a quarter arc tucked
+#: into the pocket the bottom fillet makes, running parallel to it; on hover the same circle fills in and
+#: takes a gear. The circle is the fillet's own, so the disc exactly fills the pocket and, folded, the
+#: strip's whole width. ORB_BAND is the room under the fillet for the disc's lower half.
+ORB_BAND = 14.0
+ORB_ARC_GAP = 2.0
+ORB_STROKE = 3.0
+ORB_GLYPH = 12.0
+ORB_HOVER_MS = 180
+ORB_SPIN_MS = 500
 
 SHAPE = (0.031, 0.035, 0.043, 0.96)
 PRINTING = (1.0, 0.407, 0.341)
@@ -146,10 +156,11 @@ class _PangoMeasure:
         font.set_weight(weight)
         return font
 
-    def use(self, font: Any, text: str, width: float | None = None) -> Any:
+    def use(self, font: Any, text: str, width: float | None = None, ellipsize: bool = False) -> Any:
         layout = self.layout
         layout.set_font_description(font)
         layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+        layout.set_ellipsize(Pango.EllipsizeMode.END if ellipsize else Pango.EllipsizeMode.NONE)
         layout.set_width(-1 if width is None else int(width * Pango.SCALE))
         layout.set_text(text, -1)
         return layout
@@ -180,6 +191,12 @@ class EdgeDock:
         self._display_change_source: int | None = None
         self._pin_hovered = False
         self._pin_hit: tuple[float, float, float, float] | None = None
+        #: The settings button: 0 resting arc, 1 disc with the gear; a click adds a turn of the gear.
+        self._orb_hover = 0.0
+        self._orb_target = 0.0
+        self._orb_spin_started: float | None = None
+        self._orb_spin = 0.0
+        self._orb_source: int | None = None
         self._row_hits: list[tuple[float, float, str]] = []
         # Pictures take no clicks: a click on one is not a click on its printer's tile.
         self._picture_hits: list[tuple[float, float, float, float]] = []
@@ -402,7 +419,10 @@ class EdgeDock:
         if state in ("printing", "paused"):
             minutes = entry["remaining"]
             if isinstance(minutes, int) and minutes > 0:
-                return f"{entry['progress']}% · {minutes // 60}:{minutes % 60:02d}"
+                # How long is left and the clock time it ends, as on the fleet cards. "1:16" on its own
+                # read as a time of day.
+                finish = time.strftime("%H:%M", time.localtime(time.time() + minutes * 60))
+                return dc.finish_value(entry["progress"], minutes, finish)
             return f"{entry['progress']}%"
         if state == "finished":
             return i18n.t("done")
@@ -426,7 +446,7 @@ class EdgeDock:
 
     def _chrome(self) -> float:
         """Everything around the column in an open strip, plus the margin kept free on the display."""
-        return NOTCH * 2 + PAD_Y * 2 + EXPANDED_BOTTOM_PAD + PIN_ROW + PIN_GAP + dc.SCREEN_MARGIN * 2
+        return NOTCH * 2 + PAD_Y * 2 + EXPANDED_BOTTOM_PAD + PIN_ROW + PIN_GAP + ORB_BAND + dc.SCREEN_MARGIN * 2
 
     def _plan(self, width: float) -> dc.Plan:
         captions = self._captions()
@@ -445,9 +465,9 @@ class EdgeDock:
             width = self._expanded_width()
             rows = self._plan(width).height if self.entries else dc.CAPTION_MIN_HEIGHT
             body = PAD_Y * 2 + EXPANDED_BOTTOM_PAD + PIN_ROW + PIN_GAP + rows
-            return width * scale, (body + NOTCH * 2) * scale
+            return width * scale, (body + NOTCH * 2 + ORB_BAND) * scale
         body = PAD_Y * 2 + count * RING + (count - 1) * COLLAPSED_GAP
-        return COLLAPSED_WIDTH * scale, (body + NOTCH * 2) * scale
+        return COLLAPSED_WIDTH * scale, (body + NOTCH * 2 + ORB_BAND) * scale
 
     def _scale(self) -> float:
         value = round(int(self.app.config.data.get("edge-dock-scale-percent", 100)) / 5) * 5
@@ -533,9 +553,11 @@ class EdgeDock:
             # The silhouette is drawn flush against the right edge; the left edge is its mirror image.
             cr.translate(logical_width, 0)
             cr.scale(-1, 1)
-        self._silhouette(cr, logical_width, logical_height)
+        # The silhouette sits above the band that holds the settings button.
+        self._silhouette(cr, logical_width, logical_height - ORB_BAND)
         cr.set_source_rgba(*SHAPE)
         cr.fill()
+        self._draw_orb(cr, logical_width, logical_height)
         cr.restore()
 
         cr.save(); cr.scale(scale, scale)
@@ -605,9 +627,13 @@ class EdgeDock:
                 break
             block_top = content_top + row.block_top
             if row.picture_height > 0:
-                picture_left = (width - row.picture_width) / 2
+                picture_left = round((width - row.picture_width) / 2)
                 self._picture(cr, picture_left, block_top, row.picture_width, row.picture_height, entry["serial"], measure)
-                self._picture_hits.append((picture_left, block_top, row.picture_width, row.picture_height))
+                # A click on the picture is not a click on its printer, except on the caption over its bottom.
+                self._picture_hits.append((picture_left, block_top, row.picture_width,
+                                           max(0.0, row.picture_height - dc.CAPTION_MIN_HEIGHT)))
+                if row.overlay:
+                    self._shade(cr, picture_left, block_top, row.picture_width, row.picture_height)
             self._caption(cr, entry, row, caption_top, width, left, ring_x, measure)
             if row.note:
                 self._note(cr, entry, row, caption_top + row.caption_height, width, left, measure)
@@ -623,13 +649,20 @@ class EdgeDock:
     def _caption(self, cr: Any, entry: dict[str, Any], row: dc.Row, top: float, width: float, left: bool,
                  ring_x: float, measure: _PangoMeasure) -> None:
         """Name on the leading side, then the percentage and time, then the ring. A name that does not fit
-        beside its metrics wraps, and the metrics move to the line under it."""
+        beside its metrics wraps, and the metrics move to the line under it. Over a picture the caption
+        keeps to the picture's own edges and stays on one line, a long name cut with an ellipsis."""
         center_y = top + row.caption_height / 2
+        if row.overlay:
+            edge_left = round((width - row.picture_width) / 2) + dc.OVERLAY_PAD_X
+            edge_right = round((width - row.picture_width) / 2) + row.picture_width - dc.OVERLAY_PAD_X
+            ring_x = edge_left + RING / 2 if left else edge_right - RING / 2
+        else:
+            edge_left, edge_right = dc.INSET_X, width - dc.INSET_X
         self._ring(cr, ring_x, center_y, entry)
         dim = entry["state"] in ("idle", "offline", "finished")
         colour = ERROR if entry["state"] in ("error", "offline") else (SECONDARY if dim else TEXT)
-        text_left = dc.INSET_X + (dc.RING_SPAN if left else 0.0)
-        text_right = width - dc.INSET_X - (0.0 if left else dc.RING_SPAN)
+        text_left = edge_left + (dc.RING_SPAN if left else 0.0)
+        text_right = edge_right - (0.0 if left else dc.RING_SPAN)
         value = self._value_text(entry)
         if row.wraps:
             block = row.name_height + dc.WRAPPED_LINE_GAP + measure.value_line
@@ -645,14 +678,16 @@ class EdgeDock:
             return
         layout = measure.use(measure.value_font, value)
         value_w, value_h = layout.get_pixel_size()
-        cr.set_source_rgb(*SECONDARY)
+        cr.set_source_rgb(*(TEXT if row.overlay else SECONDARY))
         cr.move_to(text_right - value_w, center_y - value_h / 2)
         PangoCairo.show_layout(cr, layout)
-        layout = measure.use(measure.name_font, entry["name"])
+        room = max(1.0, text_right - value_w - dc.CAPTION_INNER_GAP - text_left)
+        layout = measure.use(measure.name_font, entry["name"], room, ellipsize=True)
         name_h = layout.get_pixel_size()[1]
         cr.set_source_rgb(*colour)
         cr.move_to(text_left, center_y - name_h / 2)
         PangoCairo.show_layout(cr, layout)
+        cr.new_path()
 
     def _note(self, cr: Any, entry: dict[str, Any], row: dc.Row, top: float, width: float, left: bool,
               measure: _PangoMeasure) -> None:
@@ -720,6 +755,117 @@ class EdgeDock:
         cr.new_path()
         cr.restore()
 
+    @classmethod
+    def _shade(cls, cr: Any, x: float, y: float, w: float, h: float) -> None:
+        """A soft dark fade over the bottom of a picture, so the caption on it reads on any image."""
+        band = min(h, dc.OVERLAY_SHADE)
+        cr.save()
+        cls._rounded(cr, x, y, w, h, dc.PICTURE_RADIUS)
+        cr.clip()
+        gradient = cairo.LinearGradient(0, y + h - band, 0, y + h)
+        gradient.add_color_stop_rgba(0, 0, 0, 0, 0)
+        gradient.add_color_stop_rgba(1, 0, 0, 0, dc.OVERLAY_SHADE_ALPHA)
+        cr.rectangle(x, y + h - band, w, band)
+        cr.set_source(gradient)
+        cr.fill()
+        cr.restore()
+
+    def _orb_center(self, width: float, height: float) -> tuple[float, float]:
+        """The bottom fillet's centre, in unmirrored strip coordinates."""
+        return width - NOTCH, height - ORB_BAND
+
+    def _draw_orb(self, cr: Any, width: float, height: float) -> None:
+        """Resting: the quarter of the fillet's circle that faces up and out to the screen edge, in the
+        strip's own colour. Hovered: the whole disc with a gear that turns into place. Drawn inside the
+        silhouette's transform, so a left-edge strip gets the mirror image."""
+        cx, cy = self._orb_center(width, height)
+        eased = self._orb_hover * self._orb_hover * (3 - 2 * self._orb_hover)
+        if eased < 1:
+            cr.save()
+            cr.translate(cx, cy)
+            shrink = 1 - 0.14 * eased
+            cr.scale(shrink, shrink)
+            cr.new_path()
+            cr.arc(0, 0, NOTCH - ORB_ARC_GAP - ORB_STROKE / 2, -math.pi / 2, 0)
+            cr.set_line_width(ORB_STROKE)
+            cr.set_line_cap(cairo.LINE_CAP_ROUND)
+            cr.set_source_rgba(*SHAPE[:3], SHAPE[3] * (1 - eased))
+            cr.stroke()
+            cr.set_line_cap(cairo.LINE_CAP_BUTT)
+            cr.restore()
+        if eased <= 0:
+            return
+        radius = NOTCH * (1.1 - 0.1 * eased)
+        cr.new_path()
+        cr.arc(cx, cy, radius, 0, 2 * math.pi)
+        cr.set_source_rgba(*SHAPE[:3], SHAPE[3] * eased)
+        cr.fill_preserve()
+        cr.set_source_rgba(1, 1, 1, 0.14 * eased)
+        cr.set_line_width(1)
+        cr.stroke()
+        # Arrives from sixty degrees back; a click adds a full turn on top.
+        grow = 0.5 + 0.5 * eased
+        points = dc.gear_outline(cx, cy, ORB_GLYPH * grow, -60 * (1 - eased) + self._orb_spin)
+        cr.move_to(*points[0])
+        for point in points[1:]:
+            cr.line_to(*point)
+        cr.close_path()
+        cr.new_sub_path()
+        cr.arc(cx, cy, ORB_GLYPH * grow / 2 * dc.GEAR_HOLE, 0, 2 * math.pi)
+        cr.set_source_rgba(*TEXT, eased)
+        cr.set_line_width(1.2)
+        cr.set_line_join(cairo.LINE_JOIN_ROUND)
+        cr.stroke()
+
+    def _orb_logical_center(self) -> tuple[float, float]:
+        width, height = self._size()
+        scale = self._scale()
+        width, height = width / scale, height / scale
+        left = str(self.app.config.data.get("edge-dock-edge", "right")) == "left"
+        return (NOTCH if left else width - NOTCH), height - ORB_BAND
+
+    def _over_orb(self, x: float, y: float) -> bool:
+        cx, cy = self._orb_logical_center()
+        return math.hypot(x - cx, y - cy) <= NOTCH + 2
+
+    def _below_body(self, y: float) -> bool:
+        """The fillet's pocket and the band under it: the pointer is on its way to the settings button
+        there, and must not unfold a folded strip."""
+        return y > self._orb_logical_center()[1] - NOTCH
+
+    def _set_orb_hovered(self, hovered: bool) -> None:
+        target = 1.0 if hovered else 0.0
+        if target == self._orb_target:
+            return
+        self._orb_target = target
+        settings = Gtk.Settings.get_default()
+        if settings is not None and not settings.get_property("gtk-enable-animations"):
+            self._orb_hover = target
+            self.area.queue_draw()
+            return
+        self._start_orb_animation()
+
+    def _start_orb_animation(self) -> None:
+        if self._orb_source is None:
+            self._orb_source = GLib.timeout_add(16, self._step_orb)
+
+    def _step_orb(self) -> bool:
+        step = 16 / ORB_HOVER_MS
+        if self._orb_hover < self._orb_target:
+            self._orb_hover = min(self._orb_target, self._orb_hover + step)
+        elif self._orb_hover > self._orb_target:
+            self._orb_hover = max(self._orb_target, self._orb_hover - step)
+        if self._orb_spin_started is not None:
+            t = min(1.0, (time.monotonic() - self._orb_spin_started) * 1000 / ORB_SPIN_MS)
+            self._orb_spin = 360 * (1 - (1 - t) ** 3)
+            if t >= 1:
+                self._orb_spin, self._orb_spin_started = 0.0, None
+        self.area.queue_draw()
+        if self._orb_hover == self._orb_target and self._orb_spin_started is None:
+            self._orb_source = None
+            return False
+        return True
+
     def _draw_pin(self, cr: Any, cx: float, cy: float) -> None:
         """Pin and release, on the strip itself. Released: a faint disc and a hollow pin leaning over.
         Pinned: a brighter disc and a solid pin standing straight in. Hover lifts the disc either way."""
@@ -783,19 +929,24 @@ class EdgeDock:
         self._reposition()
         self.area.queue_draw()
 
-    def _on_enter(self, *_args: object) -> bool:
+    def _on_enter(self, _widget: Gtk.Widget, event: Any) -> bool:
         self._inside = True
         if self._collapse_source is not None:
             GLib.source_remove(self._collapse_source)
             self._collapse_source = None
-        if not self.hovering:
-            if self._inner_edge and not self.pinned:
-                if self._dwell_source is not None:
-                    GLib.source_remove(self._dwell_source)
-                self._dwell_source = GLib.timeout_add(INNER_EDGE_DWELL_MS, self._unfold_if_still_inside)
-                return False
-            self._begin_hover()
+        x, y = self._logical(event)
+        self._set_orb_hovered(self._over_orb(x, y))
+        if not self._below_body(y):
+            self._pointer_reached_body()
         return False
+
+    def _pointer_reached_body(self) -> None:
+        if self.hovering or self._dwell_source is not None:
+            return
+        if self._inner_edge and not self.pinned:
+            self._dwell_source = GLib.timeout_add(INNER_EDGE_DWELL_MS, self._unfold_if_still_inside)
+            return
+        self._begin_hover()
 
     def _unfold_if_still_inside(self) -> bool:
         """Still over the strip after the dwell: a stop, not a pass on the way to the next monitor."""
@@ -820,6 +971,7 @@ class EdgeDock:
         if self._pin_hovered:
             self._pin_hovered = False
             self.area.queue_draw()
+        self._set_orb_hovered(False)
         if self._collapse_source is not None:
             GLib.source_remove(self._collapse_source)
         self._collapse_source = GLib.timeout_add(COLLAPSE_DELAY_MS, self._collapse_if_left)
@@ -845,7 +997,11 @@ class EdgeDock:
         return left <= x <= left + width and top <= y <= top + height
 
     def _on_motion(self, _widget: Gtk.Widget, event: Any) -> bool:
-        over = self._over_pin(*self._logical(event))
+        x, y = self._logical(event)
+        self._set_orb_hovered(self._over_orb(x, y))
+        if not self._below_body(y):
+            self._pointer_reached_body()
+        over = self._over_pin(x, y)
         if over != self._pin_hovered:
             self._pin_hovered = over
             self.area.queue_draw()
@@ -853,6 +1009,13 @@ class EdgeDock:
 
     def _on_click(self, _widget: Gtk.Widget, event: Any) -> bool:
         x, y = self._logical(event)
+        if self._over_orb(x, y):
+            self._orb_spin_started = time.monotonic()
+            self._start_orb_animation()
+            opener = getattr(self.app, "open_edge_dock_settings", None)
+            if callable(opener):
+                opener()
+            return True
         # The pin wins over the row beneath it.
         if self._over_pin(x, y):
             self.toggle_pinned()

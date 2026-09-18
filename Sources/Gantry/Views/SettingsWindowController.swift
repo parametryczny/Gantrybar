@@ -229,6 +229,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// Centred on the screen, always. It used to be centred on the fleet panel, which parked it
     /// straight on top of the cards the user had just come to adjust. `companion` only lends its
     /// window level, so the panel cannot end up covering the settings window they are typing in.
+    /// Brings the pane holding the edge strip's own options to the front, for the strip's settings
+    /// button: whoever clicks it came for those options, not for the pane that happened to be open.
+    func selectWindowsPane() {
+        guard let index = tabController.tabViewItems.firstIndex(where: {
+            ($0.identifier as? String) == SettingsPaneID.windows.rawValue
+        }) else { return }
+        tabController.selectedTabViewItemIndex = index
+    }
+
     func presentCentered(levelMatching companion: NSWindow? = nil) {
         webInfo = nil
         refresh()

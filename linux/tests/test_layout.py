@@ -7,7 +7,7 @@ from gantry.layout import Placement, needs_wide, panel_width, place_cards
 class DashboardLayoutTests(unittest.TestCase):
     def test_panel_widths_match_current_macos_controller(self) -> None:
         self.assertEqual(panel_width(False, 1), 420)
-        self.assertEqual(panel_width(False, 2), 643)
+        self.assertEqual(panel_width(False, 2), 645)
         self.assertEqual(panel_width(True, 2), 512)
 
     def test_last_odd_card_spans_full_width_like_macos(self) -> None:

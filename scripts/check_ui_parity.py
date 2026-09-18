@@ -58,10 +58,32 @@ slot_assignment = panel_window["slotAssignment"]
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
         rf"basePanelWidth:\s*CGFloat\s*=\s*useCompactMode\s*\?\s*{compact}\s*:\s*\(expandedColumnCount\s*==\s*1\s*\?\s*{one}\s*:\s*{two}\)",
         "panel widths differ from the contract")
+# One gap between cards, across and down (fleet.cardSeparation), and the lighter card with its firmer edge.
+if column_gap != row_gap:
+    ERRORS.append("design contract: macOS uses one card gap across and down, but columnGap and rowGap.cards differ")
+require("Sources/Gantry/App/GantryTheme.swift", rf"static let cardGap: CGFloat = {column_gap}\b",
+        "fleet card gap differs from the contract")
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        rf"let gap:\s*CGFloat\s*=\s*{column_gap}\b", "fleet column gap differs from the contract")
+        r"let effectiveGap = GantryTheme\.cardGap", "fleet column gap differs from the contract")
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        rf"cardsStack\.spacing\s*=\s*{row_gap}\b", "fleet row gap differs from the contract")
+        r"cardsStack\.spacing = GantryTheme\.cardGap", "fleet row gap differs from the contract")
+fleet_card = TOKENS["surface"]["fleetCard"].lstrip("#")
+fleet_card_alpha = TOKENS["surface"]["fleetCardAlpha"]
+require("Sources/Gantry/App/GantryTheme.swift", rf"fleetCard\s*=\s*NSColor\(hex: 0x{fleet_card}\)[\s\S]{{0,80}}fleetCardAlpha: CGFloat = {fleet_card_alpha}"
+        r"[\s\S]{0,80}fleetCardLine = NSColor\.white\.withAlphaComponent\(0\.16\)", "macOS printer card colours differ from the contract")
+require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
+        r"GantryTheme\.fleetCard\.withAlphaComponent\(GantryTheme\.fleetCardAlpha\)[\s\S]{0,120}GantryTheme\.fleetCardLine",
+        "the macOS printer card does not use the fleet card colours")
+require("linux/gantry/dashboard.py", rf'fleet_card, fleet_card_line = "alpha\(#{fleet_card.lower()}, {fleet_card_alpha}\)", "alpha\(#ffffff, 0\.16\)"',
+        "GNU/Linux printer card colours differ from the contract")
+require("linux/gantry/dashboard.py", r"\.card \{ background: %\(fleet_card\)s; border: 1px solid %\(fleet_card_line\)s;",
+        "the GNU/Linux printer card does not use the fleet card colours")
+require("windows/Gantry.Windows/UI/GantryTheme.cs",
+        rf"FleetCard => IsLight \? Color\.FromArgb\(A\(0\.86\), 0xFF, 0xFF, 0xFF\) : Color\.FromArgb\(A\({fleet_card_alpha}\), 0x{fleet_card[0:2]}, 0x{fleet_card[2:4]}, 0x{fleet_card[4:6]}\)",
+        "Windows printer card colours differ from the contract")
+require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
+        r"Background = GTheme\.Brush\(GTheme\.FleetCard\),[\s\S]{0,120}BorderBrush = GTheme\.Brush\(GTheme\.FleetCardLine\)",
+        "the Windows printer card does not use the fleet card colours")
 require("Sources/Gantry/App/GantryTheme.swift", rf"cardRadius:\s*CGFloat\s*=\s*{radius}\b",
         "card radius differs from the contract")
 require("Sources/Gantry/App/GantryTheme.swift", rf"gap:\s*CGFloat\s*=\s*{theme_gap}\b",
@@ -585,7 +607,8 @@ require("linux/gantry/edgedock.py", r"return self\.hovering or self\.pinned",
 # Captions under pictures in the open strip: same metrics on macOS and GNU/Linux, Windows in its own units.
 captions = edge_dock["captions"]
 for name, swift, python in (("insetX", "insetX", "INSET_X"), ("pictureRadius", "pictureRadius", "PICTURE_RADIUS"),
-                            ("captionGap", "captionGap", "CAPTION_GAP"), ("captionMinHeight", "captionMinHeight", "CAPTION_MIN_HEIGHT"),
+                            ("overlayShade", "overlayShade", "OVERLAY_SHADE"), ("overlayPadX", "overlayPadX", "OVERLAY_PAD_X"),
+                            ("captionMinHeight", "captionMinHeight", "CAPTION_MIN_HEIGHT"),
                             ("captionPadY", "captionPadY", "CAPTION_PAD_Y"), ("captionInnerGap", "captionInnerGap", "CAPTION_INNER_GAP"),
                             ("wrappedLineGap", "wrappedLineGap", "WRAPPED_LINE_GAP"), ("noteRow", "statusRow", "STATUS_ROW"),
                             ("noteIcon", "statusIcon", "STATUS_ICON"), ("printerGap", "printerGap", "PRINTER_GAP")):
@@ -594,8 +617,58 @@ for name, swift, python in (("insetX", "insetX", "INSET_X"), ("pictureRadius", "
             f"macOS edge-dock caption {name} differs from the contract")
     require("linux/gantry/dockcaptions.py", rf"^{python} = {value}(\.0)?$",
             f"GNU/Linux edge-dock caption {name} differs from the contract")
-require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"private const double InsetX = 12, PictureRadius = 9, CaptionGap = 6, CaptionMinHeight = 34",
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        r"private const double InsetX = 12, PictureRadius = 9, CaptionMinHeight = 34, CaptionPadY = 5,[\s\S]{0,160}PrinterGap = 10,"
+        r"\s*OverlayShade = 52, OverlayShadeAlpha = 0\.72, OverlayPadX = 10,",
         "Windows edge-dock captions differ from the contract's Windows units")
+# The caption lies over the bottom of its picture: the fade's strength per platform, one line over a picture.
+shade_alpha = captions["overlayShadeAlpha"]
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", rf"static let overlayShadeAlpha: CGFloat = {shade_alpha['macOS']}\b",
+        "macOS edge-dock caption fade differs from the contract")
+require("linux/gantry/dockcaptions.py", rf"^OVERLAY_SHADE_ALPHA = {shade_alpha['linux']}$",
+        "GNU/Linux edge-dock caption fade differs from the contract")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift", r"static let captionBlurHeight: CGFloat = 40\b",
+        "the macOS frosted band under a caption differs from the contract")
+require("linux/gantry/edgedock.py", r"measure\.use\(measure\.name_font, entry\[\"name\"\], room, ellipsize=True\)",
+        "a long GNU/Linux name over a picture is not cut with an ellipsis")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"TextTrimming = row\.Wraps \? TextTrimming\.None : TextTrimming\.CharacterEllipsis",
+        "a long Windows name over a picture is not cut with an ellipsis")
+# How long is left and when it ends, as on the fleet cards.
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        r'return "\\\(entry\.progress\)% · \\\(left\) · \\\(finish\)"', "the macOS strip no longer shows the finish time")
+require("linux/gantry/dockcaptions.py", r'return f"\{progress\}% · \{left\} · \{finish_clock\}"',
+        "the GNU/Linux strip no longer shows the finish time")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"\{DateTime\.Now\.AddMinutes\(minutes\):t\}",
+        "the Windows strip no longer shows the finish time")
+# The settings button under the strip: one circle, one gear, the same pane on every platform.
+button = edge_dock["settingsButton"]
+gear = button["gear"]
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        rf"gearTeeth = {gear['teeth']}\b[\s\S]{{0,60}}gearRoot: CGFloat = {gear['root']}\b[\s\S]{{0,60}}gearTipSpan: CGFloat = {gear['tipSpan']}\b"
+        rf"[\s\S]{{0,60}}gearRootSpan: CGFloat = {_number(gear['rootSpan'])}0?\b[\s\S]{{0,60}}gearHole: CGFloat = {gear['hole']}\b",
+        "the macOS gear differs from the contract")
+require("linux/gantry/dockcaptions.py",
+        rf"GEAR_TEETH = {gear['teeth']}\nGEAR_ROOT = {gear['root']}\nGEAR_TIP_SPAN = {gear['tipSpan']}\nGEAR_ROOT_SPAN = {_number(gear['rootSpan'])}0?\nGEAR_HOLE = {gear['hole']}\n",
+        "the GNU/Linux gear differs from the contract")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        rf"GearTeeth = {gear['teeth']};[\s\S]{{0,40}}GearRoot = {gear['root']}, GearTipSpan = {gear['tipSpan']}, GearRootSpan = {_number(gear['rootSpan'])}0?, GearHole = {gear['hole']};",
+        "the Windows gear differs from the contract")
+require("Sources/Gantry/Views/EdgeDockWindowController.swift",
+        rf"orbArcGap: CGFloat = {_number(button['restingArc']['gap'])}\b[\s\S]{{0,60}}orbStroke: CGFloat = {_number(button['restingArc']['stroke'])}\b"
+        rf"[\s\S]{{0,200}}orbBand: CGFloat = {button['band']['macOS']}\b",
+        "the macOS settings button differs from the contract")
+require("linux/gantry/edgedock.py",
+        rf"ORB_BAND = {button['band']['linux']}\.0\nORB_ARC_GAP = {_number(button['restingArc']['gap'])}\.0\nORB_STROKE = {_number(button['restingArc']['stroke'])}\.0",
+        "the GNU/Linux settings button differs from the contract")
+require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
+        rf"OrbBand = {button['band']['windows']}, OrbArcGap = {button['restingArc']['windows']['gap']}, OrbStroke = {button['restingArc']['windows']['stroke']},",
+        "the Windows settings button differs from the contract")
+require("Sources/Gantry/Views/MenuBarController.swift", r"showSettings\(\)\s*\n\s*settingsWindow\?\.selectWindowsPane\(\)",
+        "the macOS settings button does not open the strip's pane")
+require("linux/gantry/app.py", r'dialog\.stack\.set_visible_child_name\("windows"\)',
+        "the GNU/Linux settings button does not open the strip's pane")
+require("windows/Gantry.Windows/UI/TrayIcon.cs", r"ShowSettings\(\);\s*\n\s*_settings\?\.SelectWindowsPane\(\);",
+        "the Windows settings button does not open the strip's pane")
 # Nothing over a picture, pictures never cropped, the fallbacks for a small display, live pictures first.
 require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"new Image \{ Stretch = Stretch\.Uniform, IsHitTestVisible = false \}",
         "Windows edge-dock pictures are cropped again")
@@ -657,7 +730,7 @@ require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         rf'frameAutosaveName\s*=\s*"{re.escape(floating["frameAutosaveName"])}"',
         "floating window frame is not persisted")
 require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
-        r"func snappedFloatingContentSize[\s\S]*?columnPitch:\s*CGFloat\s*=\s*333[\s\S]*?height:\s*proposed\.height",
+        r"func snappedFloatingContentSize[\s\S]*?columnPitch:\s*CGFloat\s*=\s*\(325 \+ GantryTheme\.cardGap\)[\s\S]*?height:\s*proposed\.height",
         "macOS floating window width is not snapped to whole card columns")
 require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
         r"windowDidEndLiveResize[\s\S]*?snapWindowToTiles[\s\S]*?fitHeightToCards",
@@ -799,13 +872,13 @@ require("linux/gantry/dashboard.py",
         r"\.fleet-header \{ background: %\(surface_on_backdrop\)s;",
         "Linux fleet header borrows its contrast from the desktop behind the panel")
 require("windows/Gantry.Windows/UI/DashboardWindow.Presentation.cs",
-        r"CardColumnPitch\s*=>\s*333 \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
+        r"CardColumnPitch\s*=>\s*\(325 \+ GTheme\.FleetColumnGap\) \* AppSettings\.CardScalePercent / 100\.0[\s\S]*?SnapWindowToTiles\(\)[\s\S]*?columnPitch = CardColumnPitch[\s\S]*?FitHeightToContent",
         "Windows floating window is not snapped to card columns with content-driven height")
 require("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs",
         r"if \(WindowMode\) return false;.*full card tiles",
         "Windows still switches to compact rows while resizing the window")
 require("linux/gantry/presentation.py",
-        r"def _snapped_tile_size[\s\S]*?pitch = 333 \* scale[\s\S]*?columns \* pitch[\s\S]*?content_height_for_width",
+        r"TILE_PITCH = 325 \+ 12\n[\s\S]*?def _snapped_tile_size[\s\S]*?pitch = TILE_PITCH \* scale[\s\S]*?columns \* pitch[\s\S]*?content_height_for_width",
         "Linux floating window does not snap columns and fit the real card-row height")
 require("linux/gantry/app.py",
         r"if not getattr\(self\.window, \"tray_mode\", True\):[\s\S]*?return False.*full card tiles",

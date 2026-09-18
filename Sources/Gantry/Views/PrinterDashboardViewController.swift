@@ -288,7 +288,7 @@ final class PrinterDashboardViewController: NSViewController {
 
         cardsStack.orientation = .vertical
         cardsStack.alignment = .leading
-        cardsStack.spacing = 8
+        cardsStack.spacing = GantryTheme.cardGap
         cardsStack.edgeInsets = presentation == .floatingWindow
             ? NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
             : NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
@@ -403,7 +403,8 @@ final class PrinterDashboardViewController: NSViewController {
         let width = physicalWidth / cardScale
         let compact = false
         let minimumItemWidth: CGFloat = 325
-        let columns = max(1, Int(floor((width - 20 + 8) / (minimumItemWidth + 8))))
+        let gap = GantryTheme.cardGap
+        let columns = max(1, Int(floor((width - 20 + gap) / (minimumItemWidth + gap))))
         let contentWidth = width - 20
         updateFloatingChrome(width: physicalWidth, height: height)
 
@@ -426,8 +427,8 @@ final class PrinterDashboardViewController: NSViewController {
     func snappedFloatingContentSize(for proposed: NSSize) -> NSSize {
         guard presentation == .floatingWindow else { return proposed }
         let scale = cardScale
-        let columnPitch: CGFloat = 333 * scale       // card 325 + gap 8
-        let widthBase: CGFloat = 12 * scale          // 20 outer inset - trailing gap
+        let columnPitch: CGFloat = (325 + GantryTheme.cardGap) * scale   // card + gap
+        let widthBase: CGFloat = (20 - GantryTheme.cardGap) * scale     // 20 outer inset - trailing gap
         let proposedColumns = Int(((proposed.width - widthBase) / columnPitch).rounded())
         let columns = max(1, proposedColumns)
         // Height is measured from the actual rows after the width/column breakpoint settles. Fixed
@@ -582,9 +583,11 @@ final class PrinterDashboardViewController: NSViewController {
         // Cards are 40 points wider than they were: a header with a long name, the connection pill and
         // three status chips pushed the chips out of a 285-point card at any scale.
         let minimumItemWidth: CGFloat = useCompactMode ? 210 : 325
-        let responsiveColumns = max(1, Int(floor((adaptivePanelWidth - 20 + 8) / (minimumItemWidth + 8))))
+        let responsiveColumns = max(1, Int(floor((adaptivePanelWidth - 20 + GantryTheme.cardGap)
+                                                  / (minimumItemWidth + GantryTheme.cardGap))))
         let expandedColumnCount = floating ? responsiveColumns : (useCompactMode ? 1 : preferredColumns)
-        let basePanelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 420 : 643)
+        // Two columns keep the cards' own width: the wider gap between them widens the panel instead.
+        let basePanelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 420 : 645)
         let effectivePanelWidth: CGFloat = floating
             ? view.bounds.width
             : basePanelWidth * cardScale
@@ -771,8 +774,7 @@ final class PrinterDashboardViewController: NSViewController {
     private func addExpandedRows(_ cards: [PrinterCardView], printers: [SavedPrinter],
                                  contentWidth: CGFloat, columns: Int) {
         guard columns > 0 else { return }
-        let gap: CGFloat = 10
-        let effectiveGap: CGFloat = presentation == .floatingWindow ? 8 : gap
+        let effectiveGap = GantryTheme.cardGap
         var rowItems: [(card: PrinterCardView, span: Int)] = []
         var used = 0
 
@@ -1488,11 +1490,9 @@ final class PrinterCardView: NSView, NSDraggingSource {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = GantryTheme.cardRadius
-        // Translucent card so the panel's vibrancy shows through instead of a flat black block that
-        // clashes with the see-through panel.
-        layer?.backgroundColor = GantryTheme.card.withAlphaComponent(0.5).cgColor
+        layer?.backgroundColor = GantryTheme.fleetCard.withAlphaComponent(GantryTheme.fleetCardAlpha).cgColor
         layer?.borderWidth = 1
-        layer?.borderColor = GantryTheme.line.cgColor
+        layer?.borderColor = GantryTheme.fleetCardLine.cgColor
         layer?.masksToBounds = true
         let cardContent = NSView()
         cardContent.wantsLayer = true

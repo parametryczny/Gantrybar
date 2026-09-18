@@ -1,8 +1,8 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.13.0",
-    "date": "2026-09-17",
+    "version": "1.14.0",
+    "date": "2026-09-18",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
   "tokens": {
@@ -14,7 +14,10 @@
       "text": "#F2F3F1",
       "secondary": "#A7AAA6",
       "muted": "#6D716E",
-      "accent": "#D4D7D3"
+      "accent": "#D4D7D3",
+      "fleetCard": "#1B1E21",
+      "fleetCardAlpha": 0.86,
+      "fleetCardLine": "rgba(255,255,255,0.16)"
     },
     "thermal": {
       "nozzle": "#FF8A61",
@@ -46,26 +49,27 @@
     },
     "panelWidth": {
       "oneColumn": 420,
-      "twoColumns": 643,
+      "twoColumns": 645,
       "list": 512
     },
     "contentWidthInset": 24,
-    "columnGap": 10,
+    "columnGap": 12,
     "rowGap": {
-      "cards": 8,
+      "cards": 12,
       "list": 3
     },
     "headerHeight": 36,
     "lastOddCardSpansFullWidth": "popoverOnly",
     "wideCardWhen": "twoOrMoreNonExternalFilamentModules",
-    "maxPanelHeight": "screen.visibleFrame.height - 24"
+    "maxPanelHeight": "screen.visibleFrame.height - 24",
+    "cardSeparation": "printer cards use fleetCard at fleetCardAlpha with a 1 px fleetCardLine edge and 12 pt between cards, across and down, so a big fleet reads as separate cards (2026-09-18); the wider gap widens the two-column panel to 645 instead of narrowing the cards"
   },
   "floatingWindow": {
     "platform": "macOS",
     "enabledByDefault": false,
     "alwaysOnTopDefault": true,
     "initialSize": {
-      "width": 678,
+      "width": 682,
       "height": 400
     },
     "minimumSize": {
@@ -77,13 +81,13 @@
         "width": 325,
         "height": 174
       },
-      "gap": 8,
+      "gap": 12,
       "contentSize": {
-        "width": "12 + columns * 333",
+        "width": "8 + columns * 337",
         "height": "fixedChrome + measuredCardGridHeight"
       },
       "windowsFrameSize": {
-        "width": "24 + columns * 333",
+        "width": "24 + columns * 337",
         "height": "nonClientChrome + measuredCardGridHeight"
       },
       "heightPolicy": "fitEveryCompleteRowAfterWidthSnap",
@@ -95,10 +99,10 @@
     "responsive": {
       "compactWhen": "popover only",
       "contentWidthInset": 20,
-      "gap": 8,
+      "gap": 12,
       "cardMinimumWidth": 325,
       "compactRowMinimumWidth": 210,
-      "columns": "max(1, floor((windowWidth - 20 + 8) / (minimumItemWidth + 8)))",
+      "columns": "max(1, floor((windowWidth - 20 + 12) / (minimumItemWidth + 12)))",
       "maximumColumns": null
     },
     "frameAutosaveName": "GantryFloatingDashboardWindow",
@@ -106,8 +110,8 @@
     "alwaysOnTopControl": "pin in dashboard header"
   },
   "card": {
-    "background": "card @0.5",
-    "border": "line 1px",
+    "background": "fleetCard @fleetCardAlpha (light theme: white @0.86)",
+    "border": "fleetCardLine 1px (light theme: black @0.12)",
     "radius": 16,
     "minHeight": 90,
     "sectionSpacing": 6,
@@ -692,24 +696,58 @@
       "action": "click toggles edge-dock-pinned; hover lifts the disc (and shows a hand cursor on Windows); tooltip Keep the strip open",
       "rendering": "a vector path on every platform, never an emoji or a platform symbol, so it is the same shape everywhere"
     },
+    "settingsButton": {
+      "note": "The strip's settings button, under the strip (after codenotch's settings orb, MIT). At rest only a quarter arc tucked into the pocket the bottom fillet makes, running parallel to it, so it says there is something here without competing with the rings. On hover the same circle fills in and takes a gear: one object waking up rather than one icon swapped for another.",
+      "circle": "the bottom fillet's own circle: centred on the fillet centre at the screen edge's side, radius = notch (11 pt; Windows 13), so the disc exactly fills the pocket and, folded, the strip's whole width",
+      "band": {
+        "macOS": 14,
+        "linux": 14,
+        "windows": 16,
+        "note": "room under the silhouette for the disc's lower half; the silhouette is lifted onto it"
+      },
+      "restingArc": {
+        "gap": 2,
+        "stroke": 3,
+        "windows": {
+          "gap": 2.5,
+          "stroke": 3.5
+        },
+        "quadrant": "twelve o'clock round to the screen edge",
+        "colour": "the strip's own fill at its folded strength",
+        "caps": "round"
+      },
+      "hover": "disc in the strip's fill with a 1 px white rim at 14 %, and the gear in the text colour; macOS and GNU/Linux animate over 0.18 s: the arc fades and shrinks to 86 %, the disc grows in from 110 %, the gear turns in from -60 degrees and grows from half size; Windows switches without the fade",
+      "gear": {
+        "designBox": "glyph size (12 pt; Windows 14)",
+        "teeth": 8,
+        "root": 0.72,
+        "tipSpan": 0.17,
+        "rootSpan": 0.3,
+        "hole": 0.32,
+        "stroke": 1.2,
+        "rendering": "a vector outline plus a centre hole, stroked; never an SF Symbol or a font glyph, so it is the same shape everywhere"
+      },
+      "click": "a full clockwise turn of the gear over 0.5 s, ease out, and the settings window opens on the Windows and strip pane",
+      "pointer": "pointing below the silhouette does not unfold a folded strip; the pocket and the band belong to the button; tooltip Strip settings",
+      "reduceMotion": "macOS: Reduce motion; GNU/Linux: gtk-enable-animations off; the change is then immediate"
+    },
     "captions": {
-      "note": "Open, every printer is one block in a single column, in fleet order with printers showing a live picture first: its picture, then a caption under it, then a hairline to the next printer. Nothing is drawn over a picture. The caption has no plate of its own and sits on the strip's dark floor, which keeps its panel-transparency setting. Points on macOS and GNU/Linux (dockcaptions.py); Windows uses its own larger dock units (inset 12, picture radius 9, caption gap 6, caption min height 34, pad 5, inner gap 6, note row 20, icon 14, printer gap 16, name 14, metrics 12).",
+      "note": "Open, every printer is one block in a single column, in fleet order with printers showing a live picture first. A printer with a picture is just the picture, with its caption laid over the picture's bottom edge on a soft dark fade, so a camera costs no more height than its image. A printer without one is its caption on the strip's dark floor plus a note saying why. A hairline separates neighbours. Points on macOS and GNU/Linux (dockcaptions.py); Windows uses its own larger dock units (inset 12, picture radius 9, caption min height 34, pad 5, inner gap 6, note row 20, icon 14, printer gap 10, overlay shade 52, overlay pad 10, name 14, metrics 12).",
       "insetX": 10,
       "pictureRadius": 8,
-      "captionGap": 5,
       "captionMinHeight": 28,
       "captionPadY": 4,
       "captionInnerGap": 5,
       "wrappedLineGap": 1,
       "noteRow": 16,
       "noteIcon": 12,
-      "printerGap": 14,
+      "printerGap": 8,
       "separator": "1 px, white at 12 %, centred in twice the printer gap",
       "fonts": "name 13 semibold, metrics 11 (tabular where the platform has it), note 11",
-      "caption": "name on the leading side, percentage and remaining time, ring at the end; on a left-edge strip mirrored so the ring stays by the screen edge",
-      "longName": "wraps onto as many lines as it needs; the metrics move to the line under it; the strip does not widen past a 120 pt name",
+      "caption": "name on the leading side, then the value, then the ring at the end; over a picture the caption keeps to the picture's own edges, inset by overlayPadX, and the value is drawn in the text colour; on a left-edge strip mirrored so the ring stays by the screen edge",
+      "longName": "over a picture a long name stays on one line, cut with an ellipsis; without a picture it wraps onto as many lines as it needs and the metrics move to the line under it; the strip does not widen past a 120 pt name",
       "states": {
-        "live": "picture shown whole (never cropped or stretched) on a dark plate, caption under it",
+        "live": "picture shown whole (never cropped or stretched) on a dark plate, caption over its bottom edge",
         "connecting": "before the first frame, for 12 s: the plate says Connecting…",
         "noPicture": "no frame for 4 s, or none within 12 s: the plate keeps its place, dims a stale frame and says No picture; the caption keeps following telemetry",
         "previewOff": "a printer with a supported camera whose preview is not on in the strip: caption plus a note with a camera glyph, Preview off",
@@ -718,9 +756,56 @@
       },
       "order": "printers with a live picture first, then the rest, each group in fleet order",
       "fit": "taller than the display's work area minus 16 pt top and bottom: pictures shrink in 2 % steps down to 55 % of the column, then pictures give way to a Not enough room for the preview note, then notes are dropped, then the strip is cut at the display height; printers are never reordered or removed",
-      "cameraGlyph": {"designBox": 12, "body": [1, 3, 7.5, 6], "bodyRadius": 1.5, "lens": [[8.5, 5], [11, 3.5], [11, 8.5], [8.5, 7]], "strike": [[1, 1.5], [11, 10.5]], "stroke": 1.1},
+      "cameraGlyph": {
+        "designBox": 12,
+        "body": [
+          1,
+          3,
+          7.5,
+          6
+        ],
+        "bodyRadius": 1.5,
+        "lens": [
+          [
+            8.5,
+            5
+          ],
+          [
+            11,
+            3.5
+          ],
+          [
+            11,
+            8.5
+          ],
+          [
+            8.5,
+            7
+          ]
+        ],
+        "strike": [
+          [
+            1,
+            1.5
+          ],
+          [
+            11,
+            10.5
+          ]
+        ],
+        "stroke": 1.1
+      },
       "toolbar": "the pin row stays above the first printer with a 10 pt gap; 8 pt extra under the last printer so its note clears the rounded corner",
-      "hitTest": "a caption, its note and the room around its hairline open the printer; a picture does not"
+      "hitTest": "a caption, its note and the room around its hairline open the printer; a picture does not, except the caption band over its bottom (captionMinHeight)",
+      "overlayShade": 44,
+      "overlayShadeAlpha": {
+        "macOS": 0.38,
+        "windows": 0.72,
+        "linux": 0.72,
+        "note": "macOS adds a band of frosted glass 40 pt tall under the caption that fades in from its top edge, so its dark fade can be lighter; GNU/Linux and Windows have no in-window blur and use the stronger fade alone"
+      },
+      "overlayPadX": 8,
+      "value": "printing or paused with a remaining time: percentage, time left and the clock time it ends, as on the fleet cards, e.g. 75% · 1h 16m · 15:42 (under an hour: 42m); the clock follows the system 12/24-hour setting; otherwise the percentage or the state word"
     },
     "cameras": {
       "aspect": "16:9 plate, the frame fitted whole inside it, rounded corners",
@@ -747,7 +832,11 @@
     "ringPlacement": "the ring stays beside the physical screen edge while the text unfolds inward",
     "placement": {
       "note": "The strip lives on a chosen display, at one of six places: top, middle or bottom of the left or right edge. Settings show a display list and a small screen with six squares; the menu-bar or tray menu offers the same choices in an Edge dock submenu while the strip is on.",
-      "rows": ["top", "middle", "bottom"],
+      "rows": [
+        "top",
+        "middle",
+        "bottom"
+      ],
       "rowMargin": 0.2,
       "rowRule": "top and bottom sit rowMargin of the work-area height from its top and bottom; middle is centred in the work area; the strip is kept inside the work area and touches the display's full side",
       "displayTolerance": 8,
@@ -755,13 +844,25 @@
       "innerEdgeDwellMs": 250,
       "innerEdge": "on an edge shared with another display the strip unfolds only when the pointer is still over it after innerEdgeDwellMs; an outer edge unfolds at once",
       "displayChangeDebounceMs": 600,
-      "settingsKeys": ["edge-dock-row", "edge-dock-display", "edge-dock-display-frame", "edge-dock-display-name"]
+      "settingsKeys": [
+        "edge-dock-row",
+        "edge-dock-display",
+        "edge-dock-display-frame",
+        "edge-dock-display-name"
+      ]
     }
   },
   "detailControls": {
     "setting": "printer-control-enabled",
-    "kinds": ["bambu", "klipper"],
-    "platforms": ["macOS", "Windows", "GNU/Linux"],
+    "kinds": [
+      "bambu",
+      "klipper"
+    ],
+    "platforms": [
+      "macOS",
+      "Windows",
+      "GNU/Linux"
+    ],
     "capsule": {
       "height": 28,
       "buttonWidth": 26,
@@ -770,11 +871,40 @@
       "valueFontSize": 12,
       "layout": "one inset capsule [ minus | caption value | plus ] with hairline separators; flat ends with hover and pressed fills"
     },
-    "steps": {"temperature": 5, "fan": 10, "speed": 10},
-    "ranges": {"nozzle": [0, 300], "bed": [0, 120], "fan": [0, 100], "speed": [10, 166]},
-    "timing": {"settleSeconds": 0.6, "echoWindowSeconds": 6, "repeatDelayMs": 400, "repeatIntervalMs": 70},
+    "steps": {
+      "temperature": 5,
+      "fan": 10,
+      "speed": 10
+    },
+    "ranges": {
+      "nozzle": [
+        0,
+        300
+      ],
+      "bed": [
+        0,
+        120
+      ],
+      "fan": [
+        0,
+        100
+      ],
+      "speed": [
+        10,
+        166
+      ]
+    },
+    "timing": {
+      "settleSeconds": 0.6,
+      "echoWindowSeconds": 6,
+      "repeatDelayMs": 400,
+      "repeatIntervalMs": 70
+    },
     "bambuSpeed": {
-      "levels": [1, 4],
+      "levels": [
+        1,
+        4
+      ],
       "command": "print_speed",
       "why": "Bambu ignores M220 in a gcode_line; it takes one of four speed modes (1 Silent, 2 Standard, 3 Sport, 4 Ludicrous)"
     },

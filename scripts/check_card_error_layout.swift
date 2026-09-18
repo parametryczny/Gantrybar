@@ -75,8 +75,8 @@ import AppKit
         let dashboard = PrinterDashboardViewController(store:store,onAdd:{},onEdit:{_ in},onReconnect:{_ in},
             onShowDetails:{_ in},presentation:.floatingWindow,onPreferredContentSize:{_ in})
         precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:200,height:100)) == NSSize(width:345,height:100))
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:700,height:400)) == NSSize(width:678,height:400))
-        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:1000,height:800)) == NSSize(width:1011,height:800))
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:700,height:400)) == NSSize(width:682,height:400))
+        precondition(dashboard.snappedFloatingContentSize(for:NSSize(width:1000,height:800)) == NSSize(width:1019,height:800))
         // Long HMS descriptions and unbroken diagnostic codes wrap without widening the window.
         let longText = "Wygląda na to, że silnik osi Z utknął podczas ruchu. Sprawdź, czy na prowadnicach osi Z lub kołach paska napędowego osi Z nie znajdują się żadne ciała obce."
         for text in [longText, String(repeating: "03000D000001000B", count: 30)] {

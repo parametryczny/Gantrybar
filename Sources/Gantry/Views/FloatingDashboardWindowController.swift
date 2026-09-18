@@ -56,7 +56,7 @@ final class FloatingDashboardWindowController: NSWindowController, NSWindowDeleg
         )
 
         let panel = FloatingDashboardPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 678, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: 682, height: 400),   // two cards: 20 + 2 × 325 + the 12 pt gap
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false

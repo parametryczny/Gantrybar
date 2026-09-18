@@ -48,7 +48,7 @@ public sealed class TrayIcon : IDisposable
             {
                 ShowDashboard();
                 _dashboard?.ShowDetail(serial);
-            });
+            }, ShowEdgeDockSettings);
         }
         // LITE never checks for or installs updates; it is a fixed, self-contained build.
         if (Build.HasExtras)
@@ -332,6 +332,13 @@ public sealed class TrayIcon : IDisposable
         }
         if (spoolbase.IsVisible) { spoolbase.Hide(); return; }
         ShowAuxiliary(spoolbase);
+    }
+
+    /// <summary>The edge strip's settings button: the same window, on the pane with the strip's options.</summary>
+    private void ShowEdgeDockSettings()
+    {
+        ShowSettings();
+        _settings?.SelectWindowsPane();
     }
 
     private void ShowSettings()

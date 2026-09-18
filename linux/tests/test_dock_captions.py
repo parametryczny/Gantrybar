@@ -1,5 +1,6 @@
-"""The open edge dock as one column: picture, caption under it, hairline to the next printer (contract
-edgeDock.captions). Mixed cameras, long names, lost pictures, all previews off and a small screen."""
+"""The open edge dock as one column: picture with its caption over its bottom, hairline to the next printer
+(contract edgeDock.captions), and the settings button under the strip (edgeDock.settingsButton). Mixed
+cameras, long names, lost pictures, all previews off and a small screen."""
 import unittest
 
 from gantry import dockcaptions as dc
@@ -34,17 +35,19 @@ class CaptionPlanTests(unittest.TestCase):
     def setUp(self):
         self.measure = FakeMeasure()
 
-    def test_picture_then_caption_then_hairline(self):
-        plan = dc.plan([caption("X1"), caption("P2S")], WIDTH, self.measure)
+    def test_caption_over_the_bottom_of_the_picture_then_hairline(self):
+        plan = dc.plan([caption("X1"), caption("P2S · stanowisko produkcyjne przy oknie")], WIDTH, self.measure)
         first, second = plan.rows
         self.assertEqual(first.picture_width, WIDTH - 2 * dc.INSET_X)
         self.assertEqual(first.picture_height, round(first.picture_width * 9 / 16))
-        self.assertEqual(first.caption_top, first.picture_height + dc.CAPTION_GAP)
+        # A picture costs no more height than its image: the caption sits inside its bottom edge.
+        self.assertEqual(first.block_height, first.picture_height)
+        self.assertTrue(first.overlay)
+        self.assertEqual(first.caption_top + first.caption_height, first.block_top + first.picture_height)
         self.assertIsNone(first.note)
-        self.assertFalse(first.wraps)
-        # More room around the hairline than between a picture and its caption.
+        # Over a picture a long name stays on one line.
+        self.assertFalse(second.wraps)
         self.assertEqual(second.block_top - (first.block_top + first.block_height), dc.PRINTER_GAP * 2 + 1)
-        self.assertGreater(dc.PRINTER_GAP, dc.CAPTION_GAP)
 
     def test_mixed_fleet_notes(self):
         plan = dc.plan([caption("X1"), caption("P1S", dc.PREVIEW_OFF), caption("MINI", dc.NO_CAMERA),
@@ -155,15 +158,51 @@ class GtkDockDrawingTests(unittest.TestCase):
         for left, top, w, h in dock._picture_hits:
             self.assertGreaterEqual(left, 0)
             self.assertLessEqual(left + w, width)
-        # A picture and the next printer's hit area never overlap a caption's own area.
+        # Over a picture a long name stays on one line, cut with an ellipsis, instead of wrapping.
         plan = dock._plan(dock._expanded_width())
-        self.assertTrue(plan.rows[1].wraps)
+        self.assertTrue(plan.rows[1].overlay)
+        self.assertFalse(plan.rows[1].wraps)
+        # The caption over the bottom of a picture opens its printer; the rest of the picture does not.
+        for left, top, w, h in dock._picture_hits:
+            self.assertLess(h, plan.rows[0].picture_height)
 
     def test_small_screen_strip_stays_on_the_display(self):
         entries = [self.entry(f"p{i}", f"P{i}", "live") for i in range(8)]
         dock = self.dock(entries, pictures=[f"p{i}" for i in range(8)], available=600.0)
         _width, height = self.draw(dock)
         self.assertLessEqual(height, 600.0)
+
+    def test_settings_button_sits_under_the_strip_and_opens_settings(self):
+        from types import SimpleNamespace
+        dock = self.dock([self.entry("x1", "X1", "hidden")])
+        dock.app.config.data["edge-dock-pinned"] = False
+        width, height = self.draw(dock)
+        # The silhouette ends above the band that holds the button's lower half.
+        self.assertEqual(height, (self.edgedock.PAD_Y * 2 + self.edgedock.RING + self.edgedock.NOTCH * 2
+                                  + self.edgedock.ORB_BAND))
+        cx, cy = dock._orb_logical_center()
+        self.assertEqual((cx, cy), (width - self.edgedock.NOTCH, height - self.edgedock.ORB_BAND))
+        # Reaching for the button does not unfold a folded strip.
+        dock._on_enter(None, SimpleNamespace(x=cx, y=cy + 4))
+        self.assertFalse(dock.hovering)
+        opened = []
+        dock.app.open_edge_dock_settings = lambda: opened.append(True)
+        dock._on_click(None, SimpleNamespace(x=cx, y=cy))
+        self.assertEqual(opened, [True])
+
+    def test_value_says_how_long_is_left_and_when_it_ends(self):
+        dock = self.dock([self.entry("x1", "X1", "hidden")])
+        value = dock._value_text({"state": "printing", "progress": 75, "remaining": 76})
+        self.assertRegex(value, r"^75% · 1h 16m · \d\d:\d\d$")
+        self.assertRegex(dock._value_text({"state": "printing", "progress": 9, "remaining": 42}), r"^9% · 42m · ")
+
+
+class GearTests(unittest.TestCase):
+    def test_gear_has_eight_teeth_inside_its_box(self):
+        points = dc.gear_outline(0, 0, 12)
+        self.assertEqual(len(points), dc.GEAR_TEETH * 4)
+        radii = sorted({round((x * x + y * y) ** 0.5, 6) for x, y in points})
+        self.assertEqual(radii, [round(6 * dc.GEAR_ROOT, 6), 6.0])
 
 
 if __name__ == "__main__":

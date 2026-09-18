@@ -23,7 +23,7 @@ public partial class DashboardWindow
     private bool _reflowPending;
     private bool _nativeUserResize;
     private const int WmEnterSizeMove = 0x0231, WmExitSizeMove = 0x0232;
-    private double CardColumnPitch => 333 * AppSettings.CardScalePercent / 100.0;
+    private double CardColumnPitch => (325 + GTheme.FleetColumnGap) * AppSettings.CardScalePercent / 100.0;
     private int LayoutColumns => WindowMode
         ? Math.Max(1, (int)Math.Round(((ActualWidth > 0 ? ActualWidth : Width) - 24) / CardColumnPitch))
         : AppSettings.DashboardColumns;

@@ -30,10 +30,12 @@ from .marquee import MarqueeLabel  # noqa: E402
 
 # 40 px wider cards than before: a long name, the connection pill and three status chips no longer fit.
 PANEL_ONE_COLUMN = 420
-PANEL_TWO_COLUMNS = 643
+# Two columns keep the cards' own width: the wider gap between them widens the panel instead.
+PANEL_TWO_COLUMNS = 645
 PANEL_COMPACT = 512
-CARD_GAP = 10
-CARD_ROW_GAP = 8
+# Between printer cards, across and down: wide enough that a big fleet reads as separate cards.
+CARD_GAP = 12
+CARD_ROW_GAP = 12
 CONTENT_INSET = 12
 
 
@@ -49,16 +51,21 @@ def css_for(theme: str, window_alpha: float = 1.0, card_scale: float = 1.0) -> b
         )
         segment_off = "alpha(#1c1c1e, 0.14)"
         surface_on_backdrop = "#f2f2f2"
+        fleet_card, fleet_card_line = "alpha(#ffffff, 0.86)", "alpha(#000000, 0.12)"
     else:
         canvas, text, card, line, secondary, muted, metric = (
             "#0c0d0e", "#f2f3f1", "#151719", "#2a2c2e", "#a7aaa6", "#6d716e", "#d4d7d3"
         )
         segment_off = "alpha(#f2f3f1, 0.14)"
         surface_on_backdrop = "#212325"
+        # A printer card: one step lighter than `card` and nearly opaque, with a firmer edge, so cards
+        # stand apart from the canvas instead of melting into it (a fleet of eleven, 2026-09-18).
+        fleet_card, fleet_card_line = "alpha(#1b1e21, 0.86)", "alpha(#ffffff, 0.16)"
     values = {
         "canvas": canvas, "text": text, "card": card, "line": line, "secondary": secondary,
         "muted": muted, "metric": metric, "alpha": window_alpha, "segment_off": segment_off,
         "surface_on_backdrop": surface_on_backdrop,
+        "fleet_card": fleet_card, "fleet_card_line": fleet_card_line,
     }
     base = ("""
 window { background: %(canvas)s; color: %(text)s; }
@@ -76,7 +83,7 @@ window.popover-window { background-color: alpha(%(canvas)s, %(alpha).3f); border
 .footer { color: %(muted)s; font-size: 10px; padding-top: 1px; }
 button.headericon { background: transparent; border: none; box-shadow: none; padding: 1px 4px; min-width: 24px; min-height: 24px; color: %(secondary)s; font-size: 15px; }
 button.headericon:hover { background: alpha(#ffffff, 0.07); border-radius: 10px; }
-.card { background: alpha(%(card)s, 0.86); border: 1px solid alpha(#ffffff, 0.09); border-radius: 16px; padding: 6px 10px; }
+.card { background: %(fleet_card)s; border: 1px solid %(fleet_card_line)s; border-radius: 16px; padding: 6px 10px; }
 .card.offline { color: %(muted)s; }
 .offline-overlay { background: alpha(#0c0d0e, 0.76); border-radius: 0 0 16px 16px; color: %(secondary)s; padding: 12px; }
 .offline-message { background: alpha(%(card)s, 0.88); border: 1px solid %(line)s; border-radius: 12px; padding: 10px 14px; }
@@ -1105,8 +1112,20 @@ class Dashboard(DesktopPresentation, Gtk.Window):
         self.columns.set_visible(self.tray_mode and not compact)
         self.columns.set_label("▯" if int(self.app.config.data.get("dashboard_columns", 2)) == 2 else "▥")
 
+    def fills_screen(self) -> bool:
+        """Maximised, full screen or tiled: the window manager owns the size then."""
+        gdk_window = self.get_window()
+        if gdk_window is None:
+            return False
+        state = gdk_window.get_state()
+        return bool(state & (Gdk.WindowState.MAXIMIZED | Gdk.WindowState.FULLSCREEN | Gdk.WindowState.TILED))
+
     def resize_for_content(self) -> None:
         if self._panel_layer is not None:
+            return
+        # Fitting the height to the cards on a maximised or full-screen window asked the window manager
+        # to shrink it after every rebuild, and it bounced between the two sizes: the jumping picture.
+        if not self.tray_mode and self.fills_screen():
             return
         compact = self.app.is_compact()
         if self.tray_mode:

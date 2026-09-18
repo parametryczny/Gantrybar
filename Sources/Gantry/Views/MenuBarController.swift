@@ -98,9 +98,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // create unconditionally: with the setting off it simply never orders itself in. LITE has one
         // surface only — the menu-bar popover — so neither extra window is built there.
         if Build.hasExtras {
-            edgeDock = EdgeDockWindowController(store: store) { [weak self] serial in
-                self?.revealDetails(serial: serial)
-            }
+            edgeDock = EdgeDockWindowController(
+                store: store,
+                onSelect: { [weak self] serial in self?.revealDetails(serial: serial) },
+                onSettings: { [weak self] in self?.showEdgeDockSettings() })
             floatingDashboard = FloatingDashboardWindowController(
                 store: store,
                 onAdd: { [weak self] in self?.showAddPrinter() },
@@ -529,6 +530,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // close, and so one release, will ever follow.
         if settingsWindow?.window?.isVisible != true { PanelWindowController.retainFleetPanel() }
         settingsWindow?.presentCentered(levelMatching: fleetPanelWindow())
+    }
+
+    /// The edge strip's settings button: the same window, opened on the pane with the strip's options.
+    private func showEdgeDockSettings() {
+        showSettings()
+        settingsWindow?.selectWindowsPane()
     }
 
     /// While anything is open over the fleet panel it stops behaving like a menu. AppKit closes a
