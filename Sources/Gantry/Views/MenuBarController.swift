@@ -214,6 +214,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
+        let awake = KeepAwake.shared.isOn
         if let first = orderedPinned().first {
             // The main icon becomes the first pinned printer's live progress — no separate extra icon,
             // and it keeps the main item's spot next to the clock.
@@ -225,16 +226,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         } else {
             button.attributedTitle = NSAttributedString(string: "")
             button.title = ""
-            button.image = GantryLogo.statusItemImage(height: 14)
+            // Blue while the Mac is being held awake: the mark is the only place that state shows
+            // from every app.
+            button.image = GantryLogo.statusItemImage(height: 14, tint: awake ? .systemBlue : nil)
             button.imagePosition = .imageOnly
             button.toolTip = store.activePrintCount > 0
                 ? AppSettings.shared.t("Gantry — printing: {0}", store.activePrintCount)
                 : Build.appName
         }
-        // Blue while the Mac is being held awake: the icon is the only place that state is visible
-        // from every app, and a template image takes the tint without a second icon to maintain.
-        let awake = KeepAwake.shared.isOn
-        button.contentTintColor = awake ? .systemBlue : nil
         if awake { button.toolTip = AppSettings.shared.t("Gantry is keeping this Mac awake") }
     }
 
