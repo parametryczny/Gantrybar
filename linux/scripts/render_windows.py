@@ -62,6 +62,10 @@ class PreviewPhysicalStore:
                 "location": {"printerSerial": "X1", "feeder": "ext", "amsIndex": 1, "slot": 0},
             },
         ]
+        # Spoolbase shows a warning strip above the list when accounting could not charge a print or
+        # the state failed to load. The render shows the healthy window, so both stay empty.
+        self.warnings: dict[str, str] = {}
+        self.last_error: str | None = None
 
     @staticmethod
     def _same_slot(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -176,9 +180,11 @@ def main(out_dir: str) -> None:
     open_assign_dialog(app, "P1S", group, 0, group.slots[0], 0)
     while Gtk.events_pending():
         Gtk.main_iteration()
+    # The shared panel header renames the dialog to "Gantry · printer · slot", so the only dialog on
+    # screen is matched by what it is, not by a title that moves with the header.
     assign = next(
         (window for window in Gtk.Window.list_toplevels()
-         if isinstance(window, Gtk.Dialog) and window.get_title() == "Przypisz rolkę"),
+         if isinstance(window, Gtk.Dialog) and window.get_visible()),
         None,
     )
     if assign is None:
