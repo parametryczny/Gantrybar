@@ -204,11 +204,11 @@ public partial class DashboardWindow : Window
     {
         if (WindowMode)
         {
-            ShowPanel(new DetailView(_store, serial, ClosePanel), 500, 720);
+            ShowPanel(new DetailView(_store, serial, ClosePanel, () => ShowSkipObjects(serial)), 500, 720);
             return;
         }
         HideCardMenu();
-        DetailLayer.Child = new DetailView(_store, serial, HideDetail);
+        DetailLayer.Child = new DetailView(_store, serial, HideDetail, () => ShowSkipObjects(serial));
         DetailLayer.Visibility = Visibility.Visible;
         FitHeightToContent();
     }

@@ -1127,8 +1127,17 @@ for relative, pattern in (
         ("Sources/Gantry/Views/PrinterDashboardViewController.swift", r"offersObjectSkipping"),
         ("Sources/Gantry/Views/PrinterDetailWindowController.swift", r"ObjectSkipping\.isOffered"),
         ("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", r"OffersObjectSkipping"),
-        ("linux/gantry/dashboard.py", r"offers_object_skipping")):
+        ("windows/Gantry.Windows/UI/DetailWindow.cs", r"OffersObjectSkipping"),
+        ("linux/gantry/dashboard.py", r"offers_object_skipping"),
+        ("linux/gantry/details.py", r"offers_object_skipping")):
     require(relative, pattern, "the skip-object button is not gated on the printer accepting the command")
+# The detail view carries the skip next to Back on all three, not only on macOS.
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"NSStackView\(views: \[backButton, skipObjectsButton", "macOS lost the skip button next to Back")
+require("windows/Gantry.Windows/UI/DetailWindow.cs", r"Children = \{ back, _skipObjects \}",
+        "the Windows detail view is missing the skip button next to Back")
+require("linux/gantry/details.py", r"header\.pack_start\(self\.skip_objects, False, False, 0\)",
+        "the GNU/Linux detail view is missing the skip button next to Back")
 
 # Printer control in Details (macOS and Windows): the setpoint capsule sits inside the tile it changes.
 detail_controls = CONTRACT["detailControls"]
