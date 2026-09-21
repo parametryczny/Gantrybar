@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import IOKit
 import IOKit.pwr_mgt
 
 /// Keeps this Mac from falling asleep, so whatever Gantry is doing for somebody else keeps running:
@@ -9,9 +10,10 @@ import IOKit.pwr_mgt
 /// promise is held, and goes back to its normal habits the moment it is dropped. Gantry holds it
 /// while the switch is on and releases it on quit, so it can never outlive the app.
 ///
-/// What it does not do is keep a MacBook awake with the lid shut. That is not a promise an app can
-/// make; it takes a privileged helper changing a system sleep setting, which Gantry does not install.
-/// With the lid open, on power or on battery, this is enough.
+/// What it does not do is keep a MacBook awake with the lid shut. Closing the lid is a different
+/// path through the power manager, and no assertion stops it; only the system's own `disablesleep`
+/// does, which takes root. Gantry reads that setting (`lidSleepDisabled`) and says so rather than
+/// letting a blue icon promise a night it cannot deliver. With the lid open, this is enough.
 @MainActor
 final class KeepAwake {
     static let shared = KeepAwake()
@@ -45,6 +47,24 @@ final class KeepAwake {
     /// True when the user's switch has silenced the bridge's hold: the checkbox in Settings is still
     /// ticked, but the Mac is allowed to sleep until the shortcut says otherwise.
     var isBridgeHoldSilenced: Bool { bridgeHold && bridgeHoldSilenced }
+
+    /// Whether this Mac has been told, system-wide, not to sleep at all — the setting `pmset
+    /// disablesleep` writes and the only thing that survives a closed lid.
+    ///
+    /// Gantry can read it but cannot set it: that takes root. So the app says what is true instead of
+    /// letting a blue icon promise something a shut MacBook will not honour.
+    static var lidSleepDisabled: Bool {
+        // The power manager publishes it in the IO registry, where anybody may read it; only root may
+        // write it. This is the same value `pmset -g` prints as SleepDisabled.
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard service != 0 else { return false }
+        defer { IOObjectRelease(service) }
+        let property = IORegistryEntryCreateCFProperty(service, "SleepDisabled" as CFString, kCFAllocatorDefault, 0)
+        return (property?.takeRetainedValue() as? Bool) ?? false
+    }
+
+    /// The command that does what Gantry cannot, shown wherever the closed lid is explained.
+    static let lidSleepCommand = "sudo pmset -a disablesleep 1"
 
     /// The shortcut, and the menu row it shares. It always changes something: on when nothing holds
     /// the Mac awake, off when anything does, whichever half that is.

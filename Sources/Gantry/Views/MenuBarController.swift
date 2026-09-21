@@ -405,13 +405,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // The same switch as the shortcut, for the times the hands are already on the mouse. The
         // detail says who is holding the Mac awake, so a blue icon is never a mystery.
         let awake = KeepAwake.shared
-        let detail: String
+        var detail: String
         if awake.isBridgeHoldSilenced {
             detail = settings.t("bridge, paused") + " · " + GlobalHotKey.defaultLabel
         } else if awake.isHeldByBridge {
             detail = settings.t("bridge") + " · " + GlobalHotKey.defaultLabel
         } else {
             detail = GlobalHotKey.defaultLabel
+        }
+        // A closed MacBook sleeps whatever Gantry asks for, so the row says so rather than letting a
+        // blue icon promise it.
+        if awake.isOn && !KeepAwake.lidSleepDisabled {
+            detail = settings.t("lid open only") + " · " + detail
         }
         menu.addItem(row(icon: awake.isOn ? "cup.and.saucer.fill" : "cup.and.saucer",
                          tint: awake.isOn ? .systemBlue : .secondaryLabelColor,

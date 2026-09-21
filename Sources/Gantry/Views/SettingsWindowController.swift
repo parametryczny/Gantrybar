@@ -888,7 +888,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         remoteKeyButton.isEnabled = live
         remoteTestButton.isEnabled = live && !settings.remoteBridgeURL.isEmpty && !settings.remoteBridgeKey.isEmpty
         remoteAwakeCheck.title = settings.t("Don't let this Mac sleep while the bridge runs")
-        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.", GlobalHotKey.defaultLabel))
+        // The closed lid is the one promise Gantry cannot make, so the subtitle says it plainly and
+        // hands over the command that can, instead of leaving the user to find out at night.
+        let lidNote = KeepAwake.lidSleepDisabled
+            ? settings.t("This Mac is set to stay awake with the lid shut too.")
+            : settings.t("With the lid shut a MacBook sleeps anyway; only {0} changes that, and it needs an administrator.", KeepAwake.lidSleepCommand)
+        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.", GlobalHotKey.defaultLabel)
+                                     + " " + lidNote)
         remoteAwakeCheck.isOn = settings.keepAwakeWithBridge
         remoteAwakeCheck.checkbox.isEnabled = live
         for caption in [remoteURLCaption, remoteKeyCaption, remoteTestCaption] {

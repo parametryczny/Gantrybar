@@ -1098,5 +1098,8 @@
   "Don't let this Mac sleep while the bridge runs": "Nie pozwól Macowi zasnąć, gdy most działa",
   "A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.": "Śpiący Mac przestaje odpowiadać stronie. Ten sam przełącznik to {0} i menu w pasku.",
   "bridge": "most",
-  "bridge, paused": "most, wstrzymane"
+  "bridge, paused": "most, wstrzymane",
+  "lid open only": "tylko przy otwartej klapie",
+  "This Mac is set to stay awake with the lid shut too.": "Ten Mac ma ustawione czuwanie także przy zamkniętej klapie.",
+  "With the lid shut a MacBook sleeps anyway; only {0} changes that, and it needs an administrator.": "Przy zamkniętej klapie MacBook i tak zaśnie; zmienia to dopiero {0}, a to wymaga uprawnień administratora."
 }
