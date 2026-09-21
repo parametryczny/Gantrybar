@@ -402,13 +402,21 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))) {
             QuietHours.isEnabled.toggle()
         })
-        // The same switch as the shortcut, for the times the hands are already on the mouse.
-        menu.addItem(row(icon: KeepAwake.shared.isOn ? "cup.and.saucer.fill" : "cup.and.saucer",
-                         tint: KeepAwake.shared.isOn ? .systemBlue : .secondaryLabelColor,
+        // The same switch as the shortcut, for the times the hands are already on the mouse. The
+        // detail says who is holding the Mac awake, so a blue icon is never a mystery.
+        let awake = KeepAwake.shared
+        let detail: String
+        if awake.isBridgeHoldSilenced {
+            detail = settings.t("bridge, paused") + " · " + GlobalHotKey.defaultLabel
+        } else if awake.isHeldByBridge {
+            detail = settings.t("bridge") + " · " + GlobalHotKey.defaultLabel
+        } else {
+            detail = GlobalHotKey.defaultLabel
+        }
+        menu.addItem(row(icon: awake.isOn ? "cup.and.saucer.fill" : "cup.and.saucer",
+                         tint: awake.isOn ? .systemBlue : .secondaryLabelColor,
                          title: settings.t("Keep this Mac awake"),
-                         accessory: .detail(KeepAwake.shared.isHeldByUser
-                                            ? GlobalHotKey.defaultLabel
-                                            : (KeepAwake.shared.isOn ? settings.t("bridge") : GlobalHotKey.defaultLabel))) {
+                         accessory: .detail(detail)) {
             KeepAwake.shared.toggle()
         })
         if Build.hasExtras {

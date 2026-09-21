@@ -19,6 +19,11 @@ final class KeepAwake {
     private var assertion = IOPMAssertionID(0)
     private var bridgeHold = false
     private var manualHold = false
+    /// The shortcut pressed while the bridge was the one holding the Mac awake. The setting in
+    /// Settings stays as it is; its hold is simply silenced until the user asks for it again or the
+    /// bridge stops and starts. A switch that does nothing when pressed is a broken switch, and
+    /// quietly unticking a checkbox the user set for an overnight print would be worse.
+    private var bridgeHoldSilenced = false
 
     /// Whether the Mac is being held awake right now, for whatever reason.
     private(set) var isOn = false {
@@ -31,19 +36,42 @@ final class KeepAwake {
 
     private init() {}
 
-    /// The switch the user flips: the shortcut, the menu row, the Settings checkbox.
+    /// The switch the user flips: the shortcut and the menu row.
     var isHeldByUser: Bool { manualHold }
 
-    func toggle() { setManual(!manualHold) }
+    /// True when the Mac is awake because the bridge asked, not because the user did.
+    var isHeldByBridge: Bool { isOn && !manualHold }
 
-    func setManual(_ on: Bool) {
-        manualHold = on
+    /// True when the user's switch has silenced the bridge's hold: the checkbox in Settings is still
+    /// ticked, but the Mac is allowed to sleep until the shortcut says otherwise.
+    var isBridgeHoldSilenced: Bool { bridgeHold && bridgeHoldSilenced }
+
+    /// The shortcut, and the menu row it shares. It always changes something: on when nothing holds
+    /// the Mac awake, off when anything does, whichever half that is.
+    func toggle() {
+        if isOn {
+            manualHold = false
+            bridgeHoldSilenced = bridgeHold
+        } else {
+            manualHold = true
+            bridgeHoldSilenced = false
+        }
         apply()
     }
 
-    /// The automatic half: on while the bridge is working, if Settings asks for it.
+    func setManual(_ on: Bool) {
+        manualHold = on
+        if on { bridgeHoldSilenced = false }
+        apply()
+    }
+
+    /// The automatic half: on while the bridge is working, if Settings asks for it. Only a change
+    /// counts, because the bridge repeats this on every settings read, and a repeat must not undo the
+    /// user's shortcut. Its own stop and start do clear the silence: that is a fresh request.
     func setBridgeHold(_ on: Bool) {
+        guard on != bridgeHold else { return }
         bridgeHold = on
+        bridgeHoldSilenced = false
         apply()
     }
 
@@ -52,11 +80,12 @@ final class KeepAwake {
     func releaseAll() {
         manualHold = false
         bridgeHold = false
+        bridgeHoldSilenced = false
         apply()
     }
 
     private func apply() {
-        let wanted = manualHold || bridgeHold
+        let wanted = manualHold || (bridgeHold && !bridgeHoldSilenced)
         guard wanted != isOn else { return }
         if wanted {
             var created = IOPMAssertionID(0)

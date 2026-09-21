@@ -51,4 +51,31 @@ import IOKit.pwr_mgt
         #expect(KeepAwake.shared.isOn == false)
         #expect(systemHoldsGantrysAssertion() == false)
     }
+
+    /// Reported 2026-09-21: with the Settings option on, the shortcut looked dead — the Mac stayed
+    /// awake and the icon stayed blue however often it was pressed.
+    @Test func theShortcutAlwaysChangesSomething() {
+        KeepAwake.shared.releaseAll()
+        KeepAwake.shared.setBridgeHold(true)
+        #expect(KeepAwake.shared.isOn)
+
+        KeepAwake.shared.toggle()
+        #expect(KeepAwake.shared.isOn == false, "the shortcut did nothing while the bridge held it")
+        #expect(KeepAwake.shared.isBridgeHoldSilenced, "the setting is silenced, not unticked")
+        #expect(systemHoldsGantrysAssertion() == false)
+
+        // The bridge repeats its request on every settings read; a repeat must not undo the press.
+        KeepAwake.shared.setBridgeHold(true)
+        #expect(KeepAwake.shared.isOn == false, "a repeated request from the bridge overrode the user")
+
+        KeepAwake.shared.toggle()
+        #expect(KeepAwake.shared.isOn, "the shortcut could not turn it back on")
+
+        // The bridge stopping and starting again is a fresh request, and it counts.
+        KeepAwake.shared.toggle()
+        KeepAwake.shared.setBridgeHold(false)
+        KeepAwake.shared.setBridgeHold(true)
+        #expect(KeepAwake.shared.isOn, "a bridge that stopped and started again stayed silenced")
+        KeepAwake.shared.releaseAll()
+    }
 }

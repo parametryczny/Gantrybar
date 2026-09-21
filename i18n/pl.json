@@ -1097,5 +1097,6 @@
   "Gantry is keeping this Mac awake": "Gantry trzyma tego Maca w czuwaniu",
   "Don't let this Mac sleep while the bridge runs": "Nie pozwól Macowi zasnąć, gdy most działa",
   "A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.": "Śpiący Mac przestaje odpowiadać stronie. Ten sam przełącznik to {0} i menu w pasku.",
-  "bridge": "most"
+  "bridge": "most",
+  "bridge, paused": "most, wstrzymane"
 }
