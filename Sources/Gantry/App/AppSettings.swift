@@ -86,6 +86,15 @@ final class AppSettings: ObservableObject {
     /// pure desktop app with no listening socket.
     @Published var webDashboardEnabled: Bool { didSet { defaults.set(webDashboardEnabled, forKey: "web-dashboard-enabled") } }
 
+    /// The bridge to a page the user hosts themselves: Gantry dials out over HTTPS, leaves the fleet
+    /// there and picks up whatever the page queued. Three positions, and the middle one is the default
+    /// the moment an address is entered: off, view only, control. See RemoteBridge.
+    @Published var remoteBridgeMode: String { didSet { defaults.set(remoteBridgeMode, forKey: "remote-bridge-mode") } }
+    /// Full address of api.php on the user's server, e.g. https://example.com/gantry/api.php.
+    @Published var remoteBridgeURL: String { didSet { defaults.set(remoteBridgeURL, forKey: "remote-bridge-url") } }
+    /// The shared secret both ends sign with. Written into the page's config.php by the user.
+    @Published var remoteBridgeKey: String { didSet { defaults.set(remoteBridgeKey, forKey: "remote-bridge-key") } }
+
     /// Download and install new releases automatically (verifying the signature) instead of only
     /// notifying that one is available.
     @Published var autoUpdate: Bool { didSet { defaults.set(autoUpdate, forKey: "auto-update") } }
@@ -253,6 +262,9 @@ final class AppSettings: ObservableObject {
         panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
         spoolbaseEnabled = defaults.object(forKey: "spoolbase-enabled") as? Bool ?? true
         webDashboardEnabled = defaults.object(forKey: "web-dashboard-enabled") as? Bool ?? true
+        remoteBridgeMode = defaults.string(forKey: "remote-bridge-mode") ?? "off"
+        remoteBridgeURL = defaults.string(forKey: "remote-bridge-url") ?? ""
+        remoteBridgeKey = defaults.string(forKey: "remote-bridge-key") ?? ""
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
         printerControlEnabled = defaults.object(forKey: "printer-control-enabled") as? Bool ?? false
@@ -310,6 +322,7 @@ final class AppSettings: ObservableObject {
     private func forceLiteDefaults() {
         spoolbaseEnabled = false
         webDashboardEnabled = false
+        remoteBridgeMode = "off"
         telegramEnabled = false
         floatingWindowEnabled = false
         edgeDockEnabled = false

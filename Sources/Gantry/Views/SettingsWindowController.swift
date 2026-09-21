@@ -170,6 +170,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let telegramTestStatus = settingsNote()
     private let telegramHint = settingsNote()
 
+    // The bridge to the user's own page: a mode, an address, a key, and what the bridge is doing.
+    private let remoteHeading = settingsHeading()
+    private let remoteModePopup = NSPopUpButton()
+    private let remoteModeCaption = settingsCaption()
+    private let remoteURLField = NSTextField()
+    private let remoteURLCaption = settingsCaption()
+    private let remoteKeyField = NSTextField()
+    private let remoteKeyCaption = settingsCaption()
+    private let remoteKeyButton = NSButton()
+    private let remoteTestCaption = settingsCaption()
+    private let remoteTestButton = NSButton()
+    private let remoteStatus = settingsNote()
+    private let remoteHint = settingsNote()
+    private var remoteStatusSub: AnyCancellable?
+
     private let webHeading = settingsHeading()
     private lazy var webEnableCheck = SettingsCheckbox(target: self, action: #selector(webEnabledChanged))
     private let webPrimaryURL = NSTextField(labelWithString: "")
@@ -393,6 +408,30 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         telegramTestButton.action = #selector(telegramTest)
         telegramTestButton.bezelStyle = .rounded
 
+        for field in [remoteURLField, remoteKeyField] {
+            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            field.bezelStyle = .roundedBezel
+            field.target = self
+            field.action = #selector(remoteFieldChanged)
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
+        }
+        remoteURLField.placeholderString = "https://twojastrona.pl/gantry/api.php"
+        remoteKeyField.placeholderString = "0123456789abcdef…"
+        remoteModePopup.target = self
+        remoteModePopup.action = #selector(remoteModeChanged)
+        remoteKeyButton.target = self
+        remoteKeyButton.action = #selector(remoteNewKey)
+        remoteKeyButton.bezelStyle = .rounded
+        remoteTestButton.target = self
+        remoteTestButton.action = #selector(remoteTest)
+        remoteTestButton.bezelStyle = .rounded
+        let remoteKeyRow = NSStackView(views: [remoteKeyField, remoteKeyButton])
+        remoteKeyRow.orientation = .horizontal
+        remoteKeyRow.spacing = 7
+        // The bridge reports what it is doing; the label follows it while the window is open.
+        remoteStatusSub = RemoteBridge.current?.statusChanged.sink { [weak self] _ in self?.scheduleRefresh() }
+
         webPrimaryURL.font = .monospacedSystemFont(ofSize: 12, weight: .semibold)
         webPrimaryURL.textColor = .labelColor
         webPrimaryURL.isSelectable = true
@@ -437,6 +476,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.section(webHeading)
         grid.aligned(webEnableCheck)
         grid.aligned(webContentStack)
+        grid.section(remoteHeading)
+        grid.field(remoteModeCaption, remoteModePopup)
+        grid.field(remoteURLCaption, remoteURLField)
+        grid.field(remoteKeyCaption, remoteKeyRow)
+        grid.field(remoteTestCaption, remoteTestButton)
+        grid.aligned(remoteStatus)
+        grid.aligned(remoteHint)
         return grid.build()
     }
 
@@ -806,8 +852,101 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
 
         refreshWebSection(settings)
+        refreshRemoteSection(settings)
+    }
 
-        refreshWebSection(settings)
+    /// The bridge to the user's own page: the mode switch, where it dials and what came of it.
+    private func refreshRemoteSection(_ settings: AppSettings) {
+        setText(remoteHeading, settings.t("Own page on the internet"))
+        setText(remoteModeCaption, settings.t("Page can") + ":")
+        setText(remoteURLCaption, settings.t("Address of api.php") + ":")
+        setText(remoteKeyCaption, settings.t("Bridge key") + ":")
+        setText(remoteTestCaption, settings.t("Connection test") + ":")
+        remoteKeyButton.title = settings.t("New key")
+        remoteTestButton.title = settings.t("Check")
+        setText(remoteHint, settings.t("Gantry dials out to your page every few seconds, so nothing has to be opened on the router. Upload the web/ folder from the Gantry repository, paste the same key into its config.php, and the page shows the fleet. Control also obeys the printer: a Bambu machine takes commands only in LAN Only mode with Developer Mode on."))
+
+        let titles = [settings.t("Nothing (off)"), settings.t("Only show the fleet"), settings.t("Show and control")]
+        if remoteModePopup.itemTitles != titles {
+            // Filling the menu moves the selection, and a popup that still has its target would send
+            // its action for that move — a refresh would quietly rewrite the very setting it is only
+            // meant to display. The target comes back once the items are in place.
+            remoteModePopup.target = nil
+            remoteModePopup.removeAllItems()
+            remoteModePopup.addItems(withTitles: titles)
+            remoteModePopup.target = self
+        }
+        let mode = RemoteBridge.mode(settings)
+        remoteModePopup.selectItem(at: [.off, .view, .control].firstIndex(of: mode) ?? 0)
+        setText(remoteURLField, settings.remoteBridgeURL)
+        setText(remoteKeyField, settings.remoteBridgeKey)
+        let live = mode != .off
+        remoteURLField.isEnabled = live
+        remoteKeyField.isEnabled = live
+        remoteKeyButton.isEnabled = live
+        remoteTestButton.isEnabled = live && !settings.remoteBridgeURL.isEmpty && !settings.remoteBridgeKey.isEmpty
+        for caption in [remoteURLCaption, remoteKeyCaption, remoteTestCaption] {
+            caption.textColor = live ? .labelColor : .tertiaryLabelColor
+        }
+
+        guard live, let status = RemoteBridge.current?.status else {
+            setText(remoteStatus, "")
+            return
+        }
+        if let error = status.lastError {
+            setText(remoteStatus, settings.t("Last attempt failed: {0}", error))
+            remoteStatus.textColor = GantryTheme.statusError
+        } else if let last = status.lastSync {
+            let watchers = status.watchers > 0
+                ? settings.t("someone is watching")
+                : settings.t("nobody is watching")
+            setText(remoteStatus, settings.t("Sent {0} printers at {1} · {2}",
+                                             status.printersSent, Self.clockFormatter.string(from: last), watchers))
+            remoteStatus.textColor = .secondaryLabelColor
+        } else {
+            setText(remoteStatus, settings.t("Waiting for the first connection…"))
+            remoteStatus.textColor = .secondaryLabelColor
+        }
+    }
+
+    private static let clockFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    @objc private func remoteModeChanged() {
+        let modes: [RemoteBridge.Mode] = [.off, .view, .control]
+        let mode = modes[min(max(remoteModePopup.indexOfSelectedItem, 0), modes.count - 1)]
+        guard mode != RemoteBridge.mode() else { return }
+        // A first switch-on with nothing configured writes a key straight away: one less thing to do
+        // by hand, and the page needs exactly this value in its config.php.
+        if mode != .off, AppSettings.shared.remoteBridgeKey.isEmpty {
+            AppSettings.shared.remoteBridgeKey = RemoteBridge.freshKey()
+        }
+        AppSettings.shared.remoteBridgeMode = mode.rawValue
+        scheduleRefresh()
+    }
+
+    @objc private func remoteFieldChanged() {
+        AppSettings.shared.remoteBridgeURL = remoteURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppSettings.shared.remoteBridgeKey = remoteKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @objc private func remoteNewKey() {
+        AppSettings.shared.remoteBridgeKey = RemoteBridge.freshKey()
+        scheduleRefresh()
+    }
+
+    @objc private func remoteTest() {
+        remoteFieldChanged()
+        setText(remoteStatus, AppSettings.shared.t("Connecting…"))
+        remoteStatus.textColor = .secondaryLabelColor
+        Task { @MainActor in
+            await RemoteBridge.current?.syncNow()
+            scheduleRefresh()
+        }
     }
 
 

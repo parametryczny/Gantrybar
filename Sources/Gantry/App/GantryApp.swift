@@ -10,6 +10,8 @@ final class GantryApp: NSObject, NSApplicationDelegate {
     private var webServerSub: AnyCancellable?
     private var telegramBot: TelegramBot?
     private var telegramSub: AnyCancellable?
+    private var remoteBridge: RemoteBridge?
+    private var remoteBridgeSubs: [AnyCancellable] = []
     private var activationPolicySub: AnyCancellable?
     private var mainMenuSub: AnyCancellable?
 
@@ -230,6 +232,16 @@ final class GantryApp: NSObject, NSApplicationDelegate {
             telegramBot = bot
             bot.syncWithSettings()
             telegramSub = AppSettings.shared.$telegramEnabled.removeDuplicates().sink { _ in bot.syncWithSettings() }
+            // The bridge to the user's own page. It only ever dials out, and only once Settings has an
+            // address, a key and a mode that is not "off".
+            let bridge = RemoteBridge(store: store)
+            remoteBridge = bridge
+            bridge.syncWithSettings()
+            remoteBridgeSubs = [
+                AppSettings.shared.$remoteBridgeMode.removeDuplicates().sink { _ in bridge.syncWithSettings() },
+                AppSettings.shared.$remoteBridgeURL.removeDuplicates().sink { _ in bridge.syncWithSettings() },
+                AppSettings.shared.$remoteBridgeKey.removeDuplicates().sink { _ in bridge.syncWithSettings() }
+            ]
         }
         let prompter = LocalNetworkPermissionPrompter {
             Task { @MainActor in store.retryAfterLocalNetworkPermission() }
