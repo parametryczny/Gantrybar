@@ -182,6 +182,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let remoteTestCaption = settingsCaption()
     private let remoteTestButton = NSButton()
     private lazy var remoteAwakeCheck = SettingsCheckbox(target: self, action: #selector(remoteAwakeToggled))
+    private let remoteLidCaption = settingsCaption()
+    private let remoteLidButton = NSButton()
+    private let remoteLidStatus = settingsNote()
     private let remoteStatus = settingsNote()
     private let remoteHint = settingsNote()
     private var remoteStatusSub: AnyCancellable?
@@ -484,6 +487,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.field(remoteTestCaption, remoteTestButton)
         grid.aligned(remoteStatus)
         grid.aligned(remoteAwakeCheck)
+        remoteLidButton.target = self
+        remoteLidButton.action = #selector(remoteLidPressed)
+        remoteLidButton.bezelStyle = .rounded
+        grid.field(remoteLidCaption, remoteLidButton)
+        grid.aligned(remoteLidStatus)
         grid.aligned(remoteHint)
         return grid.build()
     }
@@ -888,13 +896,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         remoteKeyButton.isEnabled = live
         remoteTestButton.isEnabled = live && !settings.remoteBridgeURL.isEmpty && !settings.remoteBridgeKey.isEmpty
         remoteAwakeCheck.title = settings.t("Don't let this Mac sleep while the bridge runs")
-        // The closed lid is the one promise Gantry cannot make, so the subtitle says it plainly and
-        // hands over the command that can, instead of leaving the user to find out at night.
-        let lidNote = KeepAwake.lidSleepDisabled
-            ? settings.t("This Mac is set to stay awake with the lid shut too.")
-            : settings.t("With the lid shut a MacBook sleeps anyway; only {0} changes that, and it needs an administrator.", KeepAwake.lidSleepCommand)
-        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.", GlobalHotKey.defaultLabel)
-                                     + " " + lidNote)
+        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.", GlobalHotKey.defaultLabel))
+
+        // The closed lid: a permission the user grants once, with their own password, or does not.
+        setText(remoteLidCaption, settings.t("With the lid shut") + ":")
+        let granted = LidSleepControl.isInstalled
+        remoteLidButton.title = granted ? settings.t("Take the permission away") : settings.t("Allow…")
+        setText(remoteLidStatus, granted
+                ? settings.t("Gantry may keep this Mac awake with the lid shut. It turns the system setting off again when the switch goes off and when Gantry quits.")
+                : settings.t("A shut MacBook sleeps whatever an app asks for. Allowing this installs one rule that lets Gantry run exactly {0} and nothing else; it asks for your administrator password once.", KeepAwake.lidSleepCommand))
+        remoteLidStatus.textColor = .secondaryLabelColor
         remoteAwakeCheck.isOn = settings.keepAwakeWithBridge
         remoteAwakeCheck.checkbox.isEnabled = live
         for caption in [remoteURLCaption, remoteKeyCaption, remoteTestCaption] {
@@ -944,6 +955,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func remoteFieldChanged() {
         AppSettings.shared.remoteBridgeURL = remoteURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         AppSettings.shared.remoteBridgeKey = remoteKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @objc private func remoteLidPressed() {
+        let settings = AppSettings.shared
+        do {
+            if LidSleepControl.isInstalled {
+                try LidSleepControl.remove()
+            } else {
+                try LidSleepControl.install()
+                // If the Mac is already being held awake, the new permission applies to it right away
+                // rather than at the next toggle.
+                if KeepAwake.shared.isOn { LidSleepControl.setDisabled(true) }
+            }
+            setText(remoteLidStatus, "")
+        } catch {
+            setText(remoteLidStatus, (error as? LidSleepControl.Failure)?.message
+                    ?? settings.t("Cancelled."))
+            remoteLidStatus.textColor = GantryTheme.statusError
+            return
+        }
+        scheduleRefresh()
     }
 
     @objc private func remoteAwakeToggled() {

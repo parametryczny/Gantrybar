@@ -1100,6 +1100,10 @@
   "bridge": "most",
   "bridge, paused": "most, wstrzymane",
   "lid open only": "tylko przy otwartej klapie",
-  "This Mac is set to stay awake with the lid shut too.": "Ten Mac ma ustawione czuwanie także przy zamkniętej klapie.",
-  "With the lid shut a MacBook sleeps anyway; only {0} changes that, and it needs an administrator.": "Przy zamkniętej klapie MacBook i tak zaśnie; zmienia to dopiero {0}, a to wymaga uprawnień administratora."
+  "With the lid shut": "Przy zamkniętej klapie",
+  "Allow…": "Zezwól…",
+  "Take the permission away": "Odbierz uprawnienie",
+  "Cancelled.": "Anulowano.",
+  "Gantry may keep this Mac awake with the lid shut. It turns the system setting off again when the switch goes off and when Gantry quits.": "Gantry może trzymać tego Maca w czuwaniu przy zamkniętej klapie. Wyłącza systemowe ustawienie, gdy gaśnie przełącznik i gdy Gantry się zamyka.",
+  "A shut MacBook sleeps whatever an app asks for. Allowing this installs one rule that lets Gantry run exactly {0} and nothing else; it asks for your administrator password once.": "Zamknięty MacBook zaśnie, o cokolwiek poprosi aplikacja. Zezwolenie zakłada jedną regułę, która pozwala Gantry uruchomić dokładnie {0} i nic więcej; pyta raz o hasło administratora."
 }

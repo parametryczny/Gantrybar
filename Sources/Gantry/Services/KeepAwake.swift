@@ -115,6 +115,9 @@ final class KeepAwake {
                                                     reason, &created)
             guard result == kIOReturnSuccess else { return }
             assertion = created
+            // The assertion covers an idle Mac; the system setting covers a shut one. Gantry asks for
+            // the second only when the user has already granted it (see LidSleepControl).
+            LidSleepControl.setDisabled(true)
             isOn = true
             // One line in the system log for a feature that changes how the Mac behaves, so "why did
             // this Mac not sleep last night" is a question `log show` can answer.
@@ -124,6 +127,8 @@ final class KeepAwake {
                 IOPMAssertionRelease(assertion)
                 assertion = IOPMAssertionID(0)
             }
+            // Only ever gives back what Gantry took: a setting the user turned on by hand stays on.
+            LidSleepControl.releaseIfOurs()
             isOn = false
             NSLog("Gantry keep-awake: off")
         }
