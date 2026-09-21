@@ -529,6 +529,9 @@
       "Integrations",
       "Advanced"
     ],
+    "macOSOnlyPanes": [
+      "Own page"
+    ],
     "layout": "one two-column grid per pane: captions trailing in column 0, controls leading in column 1, one shared vertical axis down the whole window",
     "booleans": "checkbox under a right-aligned category caption, not a switch row",
     "sections": "a system separator plus a 13 pt semibold heading spanning both columns",

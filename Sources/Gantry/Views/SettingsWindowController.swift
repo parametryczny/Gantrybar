@@ -15,7 +15,7 @@ import CoreImage
 /// Six panes now, one idea each, and none of them scrolls. Only the chrome and the layout changed:
 /// every setting, every action and the whole refresh path are the ones that were already here.
 private enum SettingsPaneID: String {
-    case general, appearance, notifications, windows, integrations, advanced
+    case general, appearance, notifications, windows, integrations, remote, advanced
 
     /// LITE has no Spoolbase, no updates, no floating window, no edge dock, no Telegram, no web
     /// dashboard and no developer switches, which empties three of the six panes. It therefore shows
@@ -23,7 +23,7 @@ private enum SettingsPaneID: String {
     /// left to hold it.
     static var visible: [SettingsPaneID] {
         Build.isLite ? [.general, .appearance, .notifications]
-                     : [.general, .appearance, .notifications, .windows, .integrations, .advanced]
+                     : [.general, .appearance, .notifications, .windows, .integrations, .remote, .advanced]
     }
 
     var symbolName: String {
@@ -33,6 +33,7 @@ private enum SettingsPaneID: String {
         case .notifications: "bell"
         case .windows: "macwindow.on.rectangle"
         case .integrations: "antenna.radiowaves.left.and.right"
+        case .remote: "globe"
         case .advanced: "slider.horizontal.3"
         }
     }
@@ -182,6 +183,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let remoteTestCaption = settingsCaption()
     private let remoteTestButton = NSButton()
     private lazy var remoteAwakeCheck = SettingsCheckbox(target: self, action: #selector(remoteAwakeToggled))
+    private let remoteAwakeHeading = settingsHeading()
     private let remoteLidCaption = settingsCaption()
     private let remoteLidButton = NSButton()
     private let remoteLidStatus = settingsNote()
@@ -274,6 +276,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         onClose?()
     }
 
+    /// The tallest this window may be: what the display can show, less the menu bar, the title bar
+    /// with its pane icons, and a margin so the window is not flush with the dock. A pane taller than
+    /// this scrolls inside the window rather than pushing it off the bottom of the screen.
+    private var maxPaneHeight: CGFloat {
+        let screen = window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        guard let visible = screen?.visibleFrame.height, visible > 1 else { return 620 }
+        return max(320, visible - 140)
+    }
+
+    /// The panes, for scripts/check_settings_height.swift: the window has to fit the screen, and a
+    /// pane with more content than that has to scroll to its end.
+    var paneItemsForTesting: [NSTabViewItem] {
+        for item in tabController.tabViewItems {
+            guard let pane = item.viewController as? SettingsPane else { continue }
+            pane.contentDirty = true
+            pane.updatePreferredSize()
+        }
+        return tabController.tabViewItems
+    }
+
     // MARK: Panes
 
     private func buildPanes() {
@@ -313,6 +335,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .notifications: buildNotificationsPane()
         case .windows: buildWindowsPane()
         case .integrations: buildIntegrationsPane()
+        case .remote: buildRemotePane()
         case .advanced: buildAdvancedPane()
         }
     }
@@ -412,30 +435,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         telegramTestButton.action = #selector(telegramTest)
         telegramTestButton.bezelStyle = .rounded
 
-        for field in [remoteURLField, remoteKeyField] {
-            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-            field.bezelStyle = .roundedBezel
-            field.target = self
-            field.action = #selector(remoteFieldChanged)
-            field.translatesAutoresizingMaskIntoConstraints = false
-            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
-        }
-        remoteURLField.placeholderString = "https://twojastrona.pl/gantry/api.php"
-        remoteKeyField.placeholderString = "0123456789abcdef…"
-        remoteModePopup.target = self
-        remoteModePopup.action = #selector(remoteModeChanged)
-        remoteKeyButton.target = self
-        remoteKeyButton.action = #selector(remoteNewKey)
-        remoteKeyButton.bezelStyle = .rounded
-        remoteTestButton.target = self
-        remoteTestButton.action = #selector(remoteTest)
-        remoteTestButton.bezelStyle = .rounded
-        let remoteKeyRow = NSStackView(views: [remoteKeyField, remoteKeyButton])
-        remoteKeyRow.orientation = .horizontal
-        remoteKeyRow.spacing = 7
-        // The bridge reports what it is doing; the label follows it while the window is open.
-        remoteStatusSub = RemoteBridge.current?.statusChanged.sink { [weak self] _ in self?.scheduleRefresh() }
-
         webPrimaryURL.font = .monospacedSystemFont(ofSize: 12, weight: .semibold)
         webPrimaryURL.textColor = .labelColor
         webPrimaryURL.isSelectable = true
@@ -480,19 +479,49 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.section(webHeading)
         grid.aligned(webEnableCheck)
         grid.aligned(webContentStack)
-        grid.section(remoteHeading)
+        return grid.build()
+    }
+
+    /// The page the user hosts themselves, and the Mac staying awake for it. Its own pane because the
+    /// two together are taller than a settings window should be.
+    private func buildRemotePane() -> NSGridView {
+        for field in [remoteURLField, remoteKeyField] {
+            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            field.bezelStyle = .roundedBezel
+            field.target = self
+            field.action = #selector(remoteFieldChanged)
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
+        }
+        remoteURLField.placeholderString = "https://twojastrona.pl/gantry/"
+        remoteKeyField.placeholderString = "0123456789abcdef…"
+        remoteModePopup.target = self
+        remoteModePopup.action = #selector(remoteModeChanged)
+        for button in [remoteKeyButton, remoteTestButton, remoteLidButton] { button.bezelStyle = .rounded }
+        remoteKeyButton.target = self
+        remoteKeyButton.action = #selector(remoteNewKey)
+        remoteTestButton.target = self
+        remoteTestButton.action = #selector(remoteTest)
+        remoteLidButton.target = self
+        remoteLidButton.action = #selector(remoteLidPressed)
+        let remoteKeyRow = NSStackView(views: [remoteKeyField, remoteKeyButton])
+        remoteKeyRow.orientation = .horizontal
+        remoteKeyRow.spacing = 7
+        // The bridge reports what it is doing; the label follows it while the window is open.
+        remoteStatusSub = RemoteBridge.current?.statusChanged.sink { [weak self] _ in self?.scheduleRefresh() }
+
+        let grid = SettingsGrid()
+        grid.wide(remoteHeading)
         grid.field(remoteModeCaption, remoteModePopup)
         grid.field(remoteURLCaption, remoteURLField)
         grid.field(remoteKeyCaption, remoteKeyRow)
         grid.field(remoteTestCaption, remoteTestButton)
         grid.aligned(remoteStatus)
+        grid.aligned(remoteHint)
+        grid.section(remoteAwakeHeading)
         grid.aligned(remoteAwakeCheck)
-        remoteLidButton.target = self
-        remoteLidButton.action = #selector(remoteLidPressed)
-        remoteLidButton.bezelStyle = .rounded
         grid.field(remoteLidCaption, remoteLidButton)
         grid.aligned(remoteLidStatus)
-        grid.aligned(remoteHint)
         return grid.build()
     }
 
@@ -559,7 +588,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.title = item.label
         guard let pane = item.viewController as? SettingsPane else { return }
         pane.updatePreferredSize()
-        let target = pane.preferredContentSize.height
+        let target = min(pane.preferredContentSize.height, maxPaneHeight)
         guard target > 1, let height = paneHeight, abs(height.constant - target) > 0.5 else { return }
         height.constant = target
         // Applied in the same layout pass as the view swap, so no intermediate size is ever drawn.
@@ -644,6 +673,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .appearance: refreshAppearancePane(settings)
         case .windows: refreshWindowsPane(settings)
         case .integrations: refreshIntegrationsPane(settings)
+        case .remote: refreshRemoteSection(settings)
         case .advanced:
             refreshAdvancedPane(settings)
             refreshAbout(settings)
@@ -665,6 +695,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .notifications: settings.t("Notifications")
         case .windows: settings.t("Windows and strip")
         case .integrations: settings.t("Integrations")
+        case .remote: settings.t("Own page")
         case .advanced: settings.t("Advanced")
         }
     }
@@ -862,7 +893,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
 
         refreshWebSection(settings)
-        refreshRemoteSection(settings)
     }
 
     /// The bridge to the user's own page: the mode switch, where it dials and what came of it.
@@ -874,7 +904,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         setText(remoteTestCaption, settings.t("Connection test") + ":")
         remoteKeyButton.title = settings.t("New key")
         remoteTestButton.title = settings.t("Check")
-        setText(remoteHint, settings.t("Gantry dials out to your page every few seconds, so nothing has to be opened on the router. Upload the web/ folder from the Gantry repository, paste the same key into its config.php, and the page shows the fleet. Control also obeys the printer: a Bambu machine takes commands only in LAN Only mode with Developer Mode on."))
+        setText(remoteHint, settings.t("Gantry dials out to your page, so nothing is opened on the router. Upload the web/ folder, paste this key into its config.php, and the page shows the fleet."))
 
         let titles = [settings.t("Nothing (off)"), settings.t("Only show the fleet"), settings.t("Show and control")]
         if remoteModePopup.itemTitles != titles {
@@ -896,15 +926,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         remoteKeyButton.isEnabled = live
         remoteTestButton.isEnabled = live && !settings.remoteBridgeURL.isEmpty && !settings.remoteBridgeKey.isEmpty
         remoteAwakeCheck.title = settings.t("Don't let this Mac sleep while the bridge runs")
-        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.", GlobalHotKey.defaultLabel))
+        setText(remoteAwakeHeading, settings.t("Sleep"))
+        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering. Same switch: {0}.", GlobalHotKey.defaultLabel))
 
         // The closed lid: a permission the user grants once, with their own password, or does not.
         setText(remoteLidCaption, settings.t("With the lid shut") + ":")
         let granted = LidSleepControl.isInstalled
         remoteLidButton.title = granted ? settings.t("Take the permission away") : settings.t("Allow…")
         setText(remoteLidStatus, granted
-                ? settings.t("Gantry may keep this Mac awake with the lid shut. It turns the system setting off again when the switch goes off and when Gantry quits.")
-                : settings.t("A shut MacBook sleeps whatever an app asks for. Allowing this installs one rule that lets Gantry run exactly {0} and nothing else; it asks for your administrator password once.", KeepAwake.lidSleepCommand))
+                ? settings.t("Allowed. Gantry turns it off again when the switch goes off and when it quits.")
+                : settings.t("A shut MacBook sleeps anyway. This installs one rule for exactly {0}, and asks for your administrator password once.", KeepAwake.lidSleepCommand))
         remoteLidStatus.textColor = .secondaryLabelColor
         remoteAwakeCheck.isOn = settings.keepAwakeWithBridge
         remoteAwakeCheck.checkbox.isEnabled = live

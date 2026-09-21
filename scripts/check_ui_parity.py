@@ -96,11 +96,14 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
 require("Sources/Gantry/Views/SettingsWindowController.swift",
         r"toolbarStyle = \.preference",
         "macOS settings window lays its toolbar out like a document window's")
+# macOS carries one pane the other two do not: the bridge to the user's own page lives only here for
+# now, and the contract records that rather than letting the panes drift apart unnoticed.
+macos_panes = len(settings_window["panes"]) + len(settings_window.get("macOSOnlyPanes", []))
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        rf"enum SettingsPaneID: String \{{\s*case (?:\w+, ){{{len(settings_window['panes']) - 1}}}\w+",
+        rf"enum SettingsPaneID: String \{{\s*case (?:\w+, ){{{macos_panes - 1}}}\w+",
         "macOS settings pane count differs from the contract")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"\.general, \.appearance, \.notifications, \.windows, \.integrations, \.advanced",
+        r"\.general, \.appearance, \.notifications, \.windows, \.integrations, \.remote, \.advanced",
         "macOS settings panes are not in the contract's order")
 require("Sources/Gantry/Views/SettingsRowKit.swift",
         rf"captionColumn: CGFloat = {settings_metrics['captionColumn']}[\s\S]*?"

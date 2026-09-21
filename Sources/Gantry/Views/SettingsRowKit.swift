@@ -268,13 +268,32 @@ final class SettingsPane: NSViewController {
         // frame it was first given: the pane came out the right size but at the previous pane's
         // offset, which is why the content sat far from the top and ran off the bottom edge.
         root.autoresizingMask = [.width, .height]
-        root.addSubview(content)
+        // A pane taller than the screen used to make a window that ran off the bottom edge, with its
+        // last rows out of reach. The window caps its height at what the display can show and the
+        // pane scrolls the rest; a pane that fits still sizes the window exactly, and never scrolls.
+        let scroll = NSScrollView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.scrollerStyle = .overlay
+        let document = NSView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(content)
+        scroll.documentView = document
+        root.addSubview(scroll)
         let inset = SettingsMetrics.paneInset
         NSLayoutConstraint.activate([
-            content.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
-            content.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset),
-            content.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
-            content.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
+            scroll.topAnchor.constraint(equalTo: root.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            document.widthAnchor.constraint(equalTo: scroll.widthAnchor),
+            content.topAnchor.constraint(equalTo: document.topAnchor, constant: inset),
+            content.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -inset),
+            content.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: inset),
+            content.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -inset),
             content.widthAnchor.constraint(equalToConstant: SettingsMetrics.captionColumn
                                            + SettingsMetrics.columnSpacing
                                            + SettingsMetrics.controlColumn)
@@ -298,7 +317,11 @@ final class SettingsPane: NSViewController {
         guard contentDirty || preferredContentSize.height < 1 else { return }
         contentDirty = false
         view.layoutSubtreeIfNeeded()
-        let size = view.fittingSize
+        // The root holds a scroll view now, and a scroll view is content to be any size at all, so the
+        // pane's real height is its content plus the inset above and below it.
+        let fitting = content.fittingSize
+        let size = NSSize(width: fitting.width + 2 * SettingsMetrics.paneInset,
+                          height: fitting.height + 2 * SettingsMetrics.paneInset)
         guard size.height > 1, preferredContentSize != size else { return }
         preferredContentSize = size
     }
