@@ -1116,6 +1116,19 @@ require("linux/gantry/http_clients.py", r'exclude_object[\s\S]*?print_objects',
         "Linux is missing Klipper object discovery")
 require("linux/gantry/skipobjects.py", r'class SkipObjectsPanel[\s\S]*?Confirm skip[\s\S]*?skip_objects',
         "Linux is missing the protected object-skipping panel")
+# A Bambu printer outside LAN Only + Developer Mode refuses the skip, so no system offers the button.
+require("Sources/Gantry/App/ObjectSkipping.swift", r"case \.bambu: !signedCommandsRequired",
+        "macOS offers object skipping to a Bambu printer that wants signed commands")
+require("windows/Gantry.Windows/Services/ObjectSkipping.cs", r"PrinterKind\.Bambu => !signedCommandsRequired",
+        "Windows offers object skipping to a Bambu printer that wants signed commands")
+require("linux/gantry/objectskipping.py", r"kind == PrinterKind\.BAMBU and not signed_commands_required",
+        "GNU/Linux offers object skipping to a Bambu printer that wants signed commands")
+for relative, pattern in (
+        ("Sources/Gantry/Views/PrinterDashboardViewController.swift", r"offersObjectSkipping"),
+        ("Sources/Gantry/Views/PrinterDetailWindowController.swift", r"ObjectSkipping\.isOffered"),
+        ("windows/Gantry.Windows/UI/DashboardWindow.xaml.cs", r"OffersObjectSkipping"),
+        ("linux/gantry/dashboard.py", r"offers_object_skipping")):
+    require(relative, pattern, "the skip-object button is not gated on the printer accepting the command")
 
 # Printer control in Details (macOS and Windows): the setpoint capsule sits inside the tile it changes.
 detail_controls = CONTRACT["detailControls"]

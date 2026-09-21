@@ -37,6 +37,14 @@ public sealed class PrinterStore
         Telemetry.TryGetValue(serial, out var current) && current.CommandSigningRequired is { } required
             ? required
             : SigningRejected.Contains(serial);
+
+    /// <summary>Whether the skip-object button belongs on this printer at all (see ObjectSkipping).</summary>
+    public bool OffersObjectSkipping(string serial)
+    {
+        var printer = Printers.FirstOrDefault(value => value.Serial == serial);
+        return printer is not null && ObjectSkipping.IsOffered(printer.Kind, RequiresSignedCommands(serial));
+    }
+
     /// <summary>Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool
     /// auto-detached because an NFC roll was inserted into its slot).</summary>
     public Dictionary<string, List<string>> SpoolNotices { get; } = new();

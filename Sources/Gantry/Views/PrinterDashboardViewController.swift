@@ -716,11 +716,12 @@ final class PrinterDashboardViewController: NSViewController {
         for printer in visiblePrinters {
             let telemetry = store.telemetry[printer.serial] ?? .init()
             let message = store.connectionMessages[printer.serial]
+            let offersSkipping = store.offersObjectSkipping(serial: printer.serial)
             if useCompactMode {
                 compactRowsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
-                expandedCardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
+                expandedCardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading, offersObjectSkipping: offersSkipping)
             } else {
-                cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
+                cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading, offersObjectSkipping: offersSkipping)
             }
             let serial = printer.serial
             cardsBySerial[serial]?.showNotices(store.spoolNotices[serial] ?? []) { [weak self] in
@@ -1382,7 +1383,6 @@ final class PrinterCardView: NSView, NSDraggingSource {
     let serial: String
     private let onShowDetails: () -> Void
     private let onSkipObjects: () -> Void
-    private let supportsObjectSkipping: Bool
     private let onShowMaintenance: () -> Void
     private let stateEmphasisLayer = CAGradientLayer()
     private let dropIndicatorLayer = CALayer()
@@ -1485,7 +1485,6 @@ final class PrinterCardView: NSView, NSDraggingSource {
         serial = printer.serial
         self.onShowDetails = onShowDetails
         self.onSkipObjects = onSkipObjects
-        supportsObjectSkipping = printer.kind == .bambu || printer.kind == .klipper
         self.onShowMaintenance = onShowMaintenance
         super.init(frame: .zero)
         wantsLayer = true
@@ -2036,8 +2035,8 @@ final class PrinterCardView: NSView, NSDraggingSource {
     }
 
     func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings,
-                isStartingUp: Bool = false) {
-        skipObjectsButton.isHidden = !Build.hasExtras || !supportsObjectSkipping || isStartingUp
+                isStartingUp: Bool = false, offersObjectSkipping: Bool = false) {
+        skipObjectsButton.isHidden = !Build.hasExtras || !offersObjectSkipping || isStartingUp
             || (telemetry.state != .printing && telemetry.state != .paused)
         nameLabel.stringValue = printer.name
         nameLabel.toolTip = printer.name

@@ -35,6 +35,13 @@ final class PrinterStore: ObservableObject {
         telemetry[serial]?.commandSigningRequired ?? signingRejected.contains(serial)
     }
 
+    /// Whether the skip-object button belongs on this printer at all (see ObjectSkipping).
+    func offersObjectSkipping(serial: String) -> Bool {
+        guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return false }
+        return ObjectSkipping.isOffered(kind: kind,
+                                        signedCommandsRequired: requiresSignedCommands(serial: serial))
+    }
+
     /// Rolling temperature history per printer, drawn by the detail window's graph. Deliberately not
     /// @Published — the detail view already redraws on the store's telemetry change, so publishing it
     /// separately would only add churn to every observer.

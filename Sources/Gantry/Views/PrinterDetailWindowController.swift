@@ -762,7 +762,13 @@ final class PrinterDetailViewController: NSViewController {
         let settings = AppSettings.shared
         let t = store.telemetry[serial] ?? .init()
         let printer = store.printers.first(where: { $0.serial == serial })
-        let supportsSkipping = printer?.kind == .bambu || printer?.kind == .klipper
+        let kind = printer?.kind
+        // A Bambu printer that only takes commands signed by Bambu Connect refuses every capsule and
+        // every skip, so it keeps the read-only view and gets one notice saying what to switch on.
+        let signingBlocked = kind == .bambu && store.requiresSignedCommands(serial: serial)
+        let supportsSkipping = kind.map {
+            ObjectSkipping.isOffered(kind: $0, signedCommandsRequired: signingBlocked)
+        } ?? false
         skipObjectsButton.isHidden = !supportsSkipping || (t.state != .printing && t.state != .paused)
 
         stateDot.layer?.backgroundColor = Self.color(for: t.state).cgColor
@@ -794,10 +800,6 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         graph.samples = store.temperatureHistory[serial] ?? []
-        let kind = printer?.kind
-        // A Bambu printer that only takes commands signed by Bambu Connect would refuse every capsule,
-        // so it keeps the read-only view and gets one notice saying what to switch on.
-        let signingBlocked = kind == .bambu && store.requiresSignedCommands(serial: serial)
         let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper) && !signingBlocked
         for chip in [nozzleChip, bedChip, chamberChip] { chip.largeReading = controlEnabled }
         nozzleChip.showsControl = controlEnabled

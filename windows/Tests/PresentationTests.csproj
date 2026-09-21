@@ -25,5 +25,6 @@
     <Compile Include="../Gantry.Windows/Services/EdgeDockPlacement.cs" Link="EdgeDockPlacement.cs" />
     <Compile Include="../Gantry.Windows/Services/ChildProcessJob.cs" Link="ChildProcessJob.cs" />
     <Compile Include="../Gantry.Windows/Services/LowFilament.cs" Link="LowFilament.cs" />
+    <Compile Include="../Gantry.Windows/Services/ObjectSkipping.cs" Link="ObjectSkipping.cs" />
   </ItemGroup>
 </Project>

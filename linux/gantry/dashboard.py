@@ -511,7 +511,7 @@ class PrinterCard(Gtk.Frame):
         entries: list[tuple[str, Any]] = []
         if edition.HAS_EXTRAS:
             entries.append((i18n.t("Details"), lambda *_: self.app.open_details(self.printer.serial)))
-            if self.printer.kind in {PrinterKind.BAMBU, PrinterKind.KLIPPER}:
+            if self.app.offers_object_skipping(self.printer.serial):
                 entries.append((i18n.t("Skip object"), lambda *_: self.app.open_skip_objects(self.printer.serial)))
         entries.append((i18n.t("Reconnect"), lambda *_: self.app.reconnect_printer(self.printer.serial)))
         for label, callback in entries:
@@ -577,7 +577,8 @@ class PrinterCard(Gtk.Frame):
 
     def update(self, telemetry: Telemetry, reason: str | None = None) -> None:
         self._last_telemetry = telemetry
-        can_skip = edition.HAS_EXTRAS and self.printer.kind in {PrinterKind.BAMBU, PrinterKind.KLIPPER} and telemetry.state in {PrinterState.PRINTING, PrinterState.PAUSED}
+        can_skip = (edition.HAS_EXTRAS and self.app.offers_object_skipping(self.printer.serial)
+                    and telemetry.state in {PrinterState.PRINTING, PrinterState.PAUSED})
         self.skip_objects.set_no_show_all(not can_skip); self.skip_objects.set_visible(can_skip)
         # LITE carries neither chip: maintenance tracking is a full-edition feature, and the "!" chip
         # opens maintenance, which LITE does not have.

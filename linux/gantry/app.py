@@ -38,6 +38,7 @@ from .http_clients import HttpConnection
 from .layout import needs_wide, place_cards
 from .mqtt import MqttConnection
 from . import i18n
+from . import objectskipping
 from .storage import Config, SecretStore, SecretStoreError, autostart_enabled, set_autostart
 from .studio import devices as studio_devices
 
@@ -746,6 +747,12 @@ class Gantry:
         decides when the printer reports one; otherwise a refusal already seen does."""
         flag = getattr(self.telemetry.get(serial), "command_signing_required", None)
         return flag if flag is not None else serial in self.__dict__.get("signing_rejected", set())
+
+    def offers_object_skipping(self, serial: str) -> bool:
+        """Whether the skip-object button belongs on this printer at all (see objectskipping)."""
+        printer = next((item for item in self.printers if item.serial == serial), None)
+        return printer is not None and objectskipping.is_offered(printer.kind,
+                                                                 self.requires_signed_commands(serial))
 
     def command_rejection(self, serial: str) -> dict | None:
         from .control import REJECTION_SECONDS

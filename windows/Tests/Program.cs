@@ -319,3 +319,20 @@ if (OperatingSystem.IsWindows())
     }
     Console.WriteLine("Windows helper processes OK — a closed job ends the ffmpeg-style child it holds");
 }
+
+// Who gets the skip-object button: a Bambu printer only in LAN Only mode with Developer Mode on,
+// because a cloud-bound one refuses every command Bambu Connect did not sign.
+{
+    if (ObjectSkipping.IsOffered(Gantry.Models.PrinterKind.Bambu, signedCommandsRequired: true))
+        throw new Exception("A Bambu printer that wants signed commands was offered object skipping");
+    if (!ObjectSkipping.IsOffered(Gantry.Models.PrinterKind.Bambu, signedCommandsRequired: false))
+        throw new Exception("A LAN-only Bambu printer was not offered object skipping");
+    if (!ObjectSkipping.IsOffered(Gantry.Models.PrinterKind.Klipper, signedCommandsRequired: true))
+        throw new Exception("Klipper was refused object skipping");
+    foreach (var kind in new[] { Gantry.Models.PrinterKind.Prusa, Gantry.Models.PrinterKind.Snapmaker,
+                                 Gantry.Models.PrinterKind.ElegooCc1, Gantry.Models.PrinterKind.ElegooCc2,
+                                 Gantry.Models.PrinterKind.AnycubicKobraS1 })
+        if (ObjectSkipping.IsOffered(kind, signedCommandsRequired: false))
+            throw new Exception($"{kind} was offered object skipping it cannot do");
+}
+Console.WriteLine("Windows object skipping OK — Bambu only in LAN Only + Developer Mode, Klipper always");

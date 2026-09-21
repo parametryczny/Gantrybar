@@ -1172,9 +1172,8 @@ public partial class DashboardWindow : Window
             _printerAlert.Visibility = hasPrinterAlert ? Visibility.Visible : Visibility.Collapsed;
             _printerAlert.Content = actionable.Count > 1 ? $"! {actionable.Count}" : "!";
             _printerAlert.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x4E));
-            var currentPrinter = _owner._store.Printers.FirstOrDefault(value => value.Serial == Serial);
             _skipObjects.Visibility = Build.HasExtras && (t.State is PrinterState.Printing or PrinterState.Paused)
-                && (currentPrinter?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
+                && _owner._store.OffersObjectSkipping(Serial)
                 ? Visibility.Visible : Visibility.Collapsed;
             _connection.Text = printer.Kind switch
             {
@@ -1901,7 +1900,7 @@ public partial class DashboardWindow : Window
         // LITE keeps the menu to what a monitor needs: reconnect, copy IP, edit, remove. No detail
         // view, no slicer hand-offs.
         if (Build.HasExtras) Item(AppSettings.T("Details"), () => ShowDetail(serial));
-        if (Build.HasExtras && (printer.Kind is PrinterKind.Bambu or PrinterKind.Klipper))
+        if (Build.HasExtras && _store.OffersObjectSkipping(serial))
             Item(AppSettings.T("Skip object"), () => ShowSkipObjects(serial));
         Item(AppSettings.T("Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 
