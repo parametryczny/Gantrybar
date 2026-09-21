@@ -16,6 +16,7 @@ from gi.repository import Gdk, Gtk  # noqa: E402
 
 from gantry import app as gapp  # noqa: E402
 from gantry import i18n
+from gantry import objectskipping  # noqa: E402
 from gantry.core import (  # noqa: E402
     FilamentGroup,
     FilamentSlot,
@@ -85,6 +86,12 @@ class StubApp:
 
     def is_compact(self) -> bool:
         return False
+
+    def offers_object_skipping(self, serial: str) -> bool:
+        """The preview renders printers that take the skip, the same answer the app gives a Bambu
+        printer in LAN Only mode with Developer Mode on."""
+        printer = next((item for item in self.printers if item.serial == serial), None)
+        return printer is not None and objectskipping.is_offered(printer.kind, False)
 
     def open_printer_dialog(self, *args): pass
     def remove_printer(self, *args): pass
