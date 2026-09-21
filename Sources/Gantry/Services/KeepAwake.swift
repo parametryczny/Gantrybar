@@ -67,12 +67,16 @@ final class KeepAwake {
             guard result == kIOReturnSuccess else { return }
             assertion = created
             isOn = true
+            // One line in the system log for a feature that changes how the Mac behaves, so "why did
+            // this Mac not sleep last night" is a question `log show` can answer.
+            NSLog("Gantry keep-awake: on (switch: %@, bridge: %@)", manualHold ? "yes" : "no", bridgeHold ? "yes" : "no")
         } else {
             if assertion != IOPMAssertionID(0) {
                 IOPMAssertionRelease(assertion)
                 assertion = IOPMAssertionID(0)
             }
             isOn = false
+            NSLog("Gantry keep-awake: off")
         }
     }
 }
