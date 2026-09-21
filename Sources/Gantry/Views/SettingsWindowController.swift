@@ -181,6 +181,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let remoteKeyButton = NSButton()
     private let remoteTestCaption = settingsCaption()
     private let remoteTestButton = NSButton()
+    private lazy var remoteAwakeCheck = SettingsCheckbox(target: self, action: #selector(remoteAwakeToggled))
     private let remoteStatus = settingsNote()
     private let remoteHint = settingsNote()
     private var remoteStatusSub: AnyCancellable?
@@ -482,6 +483,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.field(remoteKeyCaption, remoteKeyRow)
         grid.field(remoteTestCaption, remoteTestButton)
         grid.aligned(remoteStatus)
+        grid.aligned(remoteAwakeCheck)
         grid.aligned(remoteHint)
         return grid.build()
     }
@@ -885,6 +887,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         remoteKeyField.isEnabled = live
         remoteKeyButton.isEnabled = live
         remoteTestButton.isEnabled = live && !settings.remoteBridgeURL.isEmpty && !settings.remoteBridgeKey.isEmpty
+        remoteAwakeCheck.title = settings.t("Don't let this Mac sleep while the bridge runs")
+        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.", GlobalHotKey.defaultLabel))
+        remoteAwakeCheck.isOn = settings.keepAwakeWithBridge
+        remoteAwakeCheck.checkbox.isEnabled = live
         for caption in [remoteURLCaption, remoteKeyCaption, remoteTestCaption] {
             caption.textColor = live ? .labelColor : .tertiaryLabelColor
         }
@@ -932,6 +938,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func remoteFieldChanged() {
         AppSettings.shared.remoteBridgeURL = remoteURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         AppSettings.shared.remoteBridgeKey = remoteKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @objc private func remoteAwakeToggled() {
+        AppSettings.shared.keepAwakeWithBridge = remoteAwakeCheck.isOn
     }
 
     @objc private func remoteNewKey() {

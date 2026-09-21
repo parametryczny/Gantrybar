@@ -94,6 +94,9 @@ final class AppSettings: ObservableObject {
     @Published var remoteBridgeURL: String { didSet { defaults.set(remoteBridgeURL, forKey: "remote-bridge-url") } }
     /// The shared secret both ends sign with. Written into the page's config.php by the user.
     @Published var remoteBridgeKey: String { didSet { defaults.set(remoteBridgeKey, forKey: "remote-bridge-key") } }
+    /// Hold the Mac awake for as long as the bridge is running, because a sleeping Mac is a page that
+    /// shows yesterday's fleet. The shortcut still works on its own, for everything else.
+    @Published var keepAwakeWithBridge: Bool { didSet { defaults.set(keepAwakeWithBridge, forKey: "keep-awake-with-bridge") } }
 
     /// Download and install new releases automatically (verifying the signature) instead of only
     /// notifying that one is available.
@@ -265,6 +268,7 @@ final class AppSettings: ObservableObject {
         remoteBridgeMode = defaults.string(forKey: "remote-bridge-mode") ?? "off"
         remoteBridgeURL = defaults.string(forKey: "remote-bridge-url") ?? ""
         remoteBridgeKey = defaults.string(forKey: "remote-bridge-key") ?? ""
+        keepAwakeWithBridge = defaults.object(forKey: "keep-awake-with-bridge") as? Bool ?? false
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
         printerControlEnabled = defaults.object(forKey: "printer-control-enabled") as? Bool ?? false
@@ -323,6 +327,7 @@ final class AppSettings: ObservableObject {
         spoolbaseEnabled = false
         webDashboardEnabled = false
         remoteBridgeMode = "off"
+        keepAwakeWithBridge = false
         telegramEnabled = false
         floatingWindowEnabled = false
         edgeDockEnabled = false

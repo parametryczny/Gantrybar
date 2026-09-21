@@ -25,6 +25,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var updateNotificationObserver: Any?
     private var edgeDock: EdgeDockWindowController?
     private var floatingDashboard: FloatingDashboardWindowController?
+    private var keepAwakeHotKey: GlobalHotKey?
+    private var keepAwakeSubscription: AnyCancellable?
 
     init(store: PrinterStore) {
         self.store = store
@@ -72,6 +74,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             button.target = self
             button.action = #selector(togglePopover)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        // Keep-awake: one system-wide shortcut and the icon that says it is on. Registering can fail
+        // only when another app already holds the combination, and then the menu row still works.
+        keepAwakeHotKey = GlobalHotKey { KeepAwake.shared.toggle() }
+        keepAwakeSubscription = KeepAwake.shared.changed.sink { [weak self] _ in
+            self?.updateStatusItem()
         }
         updateStatusItem()
         updateProgressItems()
@@ -223,6 +231,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 ? AppSettings.shared.t("Gantry — printing: {0}", store.activePrintCount)
                 : Build.appName
         }
+        // Blue while the Mac is being held awake: the icon is the only place that state is visible
+        // from every app, and a template image takes the tint without a second icon to maintain.
+        let awake = KeepAwake.shared.isOn
+        button.contentTintColor = awake ? .systemBlue : nil
+        if awake { button.toolTip = AppSettings.shared.t("Gantry is keeping this Mac awake") }
     }
 
     /// One extra status item per pinned printer BEYOND the first (the first rides on the main icon).
@@ -389,6 +402,15 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          title: settings.t("Quiet hours"),
                          accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))) {
             QuietHours.isEnabled.toggle()
+        })
+        // The same switch as the shortcut, for the times the hands are already on the mouse.
+        menu.addItem(row(icon: KeepAwake.shared.isOn ? "cup.and.saucer.fill" : "cup.and.saucer",
+                         tint: KeepAwake.shared.isOn ? .systemBlue : .secondaryLabelColor,
+                         title: settings.t("Keep this Mac awake"),
+                         accessory: .detail(KeepAwake.shared.isHeldByUser
+                                            ? GlobalHotKey.defaultLabel
+                                            : (KeepAwake.shared.isOn ? settings.t("bridge") : GlobalHotKey.defaultLabel))) {
+            KeepAwake.shared.toggle()
         })
         if Build.hasExtras {
             menu.addItem(row(icon: "arrow.down.circle",

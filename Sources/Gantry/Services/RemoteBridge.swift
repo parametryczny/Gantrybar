@@ -91,6 +91,9 @@ final class RemoteBridge {
             stop()
             return
         }
+        // A sleeping Mac is a page showing yesterday's fleet, so the bridge can hold the Mac awake
+        // while it runs. Only when Settings asks: this changes how the machine behaves.
+        KeepAwake.shared.setBridgeHold(settings.keepAwakeWithBridge)
         schedule(interval: status.watchers > 0 ? Self.watchedInterval : Self.idleInterval)
         Task { await self.syncNow() }
     }
@@ -101,6 +104,9 @@ final class RemoteBridge {
         frames.removeAll()
         results.removeAll()
         status = Status()
+        // Whatever the bridge was holding awake, it stops holding when it stops running. A switch the
+        // user flipped by hand is theirs and stays on.
+        KeepAwake.shared.setBridgeHold(false)
     }
 
     private func schedule(interval: TimeInterval) {

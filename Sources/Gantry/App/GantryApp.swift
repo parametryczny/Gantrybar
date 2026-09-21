@@ -240,7 +240,8 @@ final class GantryApp: NSObject, NSApplicationDelegate {
             remoteBridgeSubs = [
                 AppSettings.shared.$remoteBridgeMode.removeDuplicates().sink { _ in bridge.syncWithSettings() },
                 AppSettings.shared.$remoteBridgeURL.removeDuplicates().sink { _ in bridge.syncWithSettings() },
-                AppSettings.shared.$remoteBridgeKey.removeDuplicates().sink { _ in bridge.syncWithSettings() }
+                AppSettings.shared.$remoteBridgeKey.removeDuplicates().sink { _ in bridge.syncWithSettings() },
+                AppSettings.shared.$keepAwakeWithBridge.removeDuplicates().sink { _ in bridge.syncWithSettings() }
             ]
         }
         let prompter = LocalNetworkPermissionPrompter {
@@ -254,6 +255,11 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         // Only the full edition does this: LITE may well be installed next to another Gantry, and it is
         // not its place to propose removing the app the user already had.
         if Build.hasExtras { LegacyAppCleanup.offerRemovalIfNeeded() }
+    }
+
+    /// A Mac held awake by Gantry goes back to its own habits when Gantry goes away.
+    func applicationWillTerminate(_ notification: Notification) {
+        KeepAwake.shared.releaseAll()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

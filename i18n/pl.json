@@ -1092,5 +1092,10 @@
   "This printer does not take object skipping.": "Ta drukarka nie przyjmuje pomijania obiektów.",
   "Missing value.": "Brakuje wartości.",
   "Gantry dials out to your page every few seconds, so nothing has to be opened on the router. Upload the web/ folder from the Gantry repository, paste the same key into its config.php, and the page shows the fleet. Control also obeys the printer: a Bambu machine takes commands only in LAN Only mode with Developer Mode on.": "Gantry samo dzwoni do Twojej strony co kilka sekund, więc na routerze nie trzeba nic otwierać. Wrzuć katalog web/ z repozytorium Gantry na serwer, wklej ten sam klucz do jego config.php, a strona pokaże flotę. Sterowanie i tak słucha drukarki: Bambu przyjmuje polecenia tylko w trybie Tylko LAN z Trybem deweloperskim.",
-  "That address answered, but not with Gantry data. Check that api.php from the web/ folder is really there.": "Ten adres odpowiedział, ale nie danymi Gantry. Sprawdź, czy leży tam api.php z katalogu web/."
+  "That address answered, but not with Gantry data. Check that api.php from the web/ folder is really there.": "Ten adres odpowiedział, ale nie danymi Gantry. Sprawdź, czy leży tam api.php z katalogu web/.",
+  "Keep this Mac awake": "Nie usypiaj tego Maca",
+  "Gantry is keeping this Mac awake": "Gantry trzyma tego Maca w czuwaniu",
+  "Don't let this Mac sleep while the bridge runs": "Nie pozwól Macowi zasnąć, gdy most działa",
+  "A sleeping Mac stops answering the page. The same switch is {0} and the tray menu.": "Śpiący Mac przestaje odpowiadać stronie. Ten sam przełącznik to {0} i menu w pasku.",
+  "bridge": "most"
 }
