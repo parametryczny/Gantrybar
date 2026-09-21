@@ -120,9 +120,7 @@ final class RemoteBridge {
         guard !syncing, let store else { return }
         let settings = AppSettings.shared
         let mode = Self.mode(settings)
-        guard mode != .off,
-              let url = URL(string: settings.remoteBridgeURL.trimmingCharacters(in: .whitespaces)),
-              url.scheme == "https" || url.scheme == "http" else { return }
+        guard mode != .off, let url = Self.endpoint(from: settings.remoteBridgeURL) else { return }
         let key = settings.remoteBridgeKey.trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty else { return }
         syncing = true
@@ -171,7 +169,7 @@ final class RemoteBridge {
         @MainActor var text: String {
             switch self {
             case .http(let code): AppSettings.shared.t("The page answered {0}.", code)
-            case .badAnswer: AppSettings.shared.t("The page did not answer with Gantry data.")
+            case .badAnswer: AppSettings.shared.t("That address answered, but not with Gantry data. Check that api.php from the web/ folder is really there.")
             case .refused(let reason): reason
             }
         }
@@ -203,6 +201,28 @@ final class RemoteBridge {
         return object
     }
 
+    /// The address the user typed, turned into the one the bridge actually calls. People paste the
+    /// address of the page, not of its api.php, and an address without a scheme at all; both are what
+    /// they meant, so Gantry finishes the job instead of failing on a login page that is not JSON.
+    static func endpoint(from typed: String) -> URL? {
+        var text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.lowercased().hasPrefix("http://") && !text.lowercased().hasPrefix("https://") {
+            text = "https://" + text
+        }
+        guard var url = URL(string: text), url.host != nil else { return nil }
+        let last = url.lastPathComponent.lowercased()
+        // The address of the page itself is the one people have in the browser bar, so it is the one
+        // they paste. api.php sits next to it.
+        if last == "index.php" {
+            url.deleteLastPathComponent()
+            url.appendPathComponent("api.php")
+        } else if !last.hasSuffix(".php") {
+            url.appendPathComponent("api.php")
+        }
+        return url
+    }
+
     static func signature(for data: Data, key: String) -> String {
         let mac = HMAC<SHA256>.authenticationCode(for: data, using: SymmetricKey(data: Data(key.utf8)))
         return mac.map { String(format: "%02x", $0) }.joined()
@@ -219,6 +239,11 @@ final class RemoteBridge {
     }
 
     // MARK: What the page is told
+
+    /// JSONSerialization wants NSNull where a number is simply not reported. Wrapping every optional
+    /// in `as Any` does the same thing while making the compiler complain at each field.
+    private static func json(_ value: Int?) -> Any { value ?? NSNull() }
+    private static func json(_ value: Double?) -> Any { value ?? NSNull() }
 
     private func snapshot(store: PrinterStore, mode: Mode) -> [String: Any] {
         var printers: [[String: Any]] = []
@@ -243,14 +268,15 @@ final class RemoteBridge {
                         "label": slot.label,
                         "material": slot.isPresent ? (slot.material ?? "") : (definition?.type ?? ""),
                         "colorHex": definition?.colorHex ?? slot.colorHex ?? "8E8E93",
-                        "percent": spool?.percent ?? slot.remainingPercent as Any,
-                        "grams": (spool.map { Int($0.remainingWeightGrams) } ?? slot.remainingWeightGrams.map { Int($0) }) as Any,
+                        "percent": Self.json(spool?.percent ?? slot.remainingPercent),
+                        "grams": Self.json(spool.map { Int($0.remainingWeightGrams) }
+                                           ?? slot.remainingWeightGrams.map { Int($0) }),
                         "active": slot.isActive
                     ])
                 }
                 groups.append([
                     "name": group.displayName, "external": group.isExternal,
-                    "humidity": group.humidityPercent as Any, "temp": group.temperatureCelsius as Any,
+                    "humidity": Self.json(group.humidityPercent), "temp": Self.json(group.temperatureCelsius),
                     "slots": slots
                 ])
             }
@@ -262,18 +288,18 @@ final class RemoteBridge {
                 "state": t.state.rawValue,
                 "progress": t.progress,
                 "job": (t.state == .printing || t.state == .paused) ? (t.jobName ?? "") : "",
-                "remainingMinutes": t.remainingMinutes as Any,
-                "layer": t.currentLayer as Any,
-                "totalLayers": t.totalLayers as Any,
-                "nozzle": t.nozzleTemperature as Any,
-                "nozzleTarget": t.nozzleTargetTemperature as Any,
-                "bed": t.bedTemperature as Any,
-                "bedTarget": t.bedTargetTemperature as Any,
-                "chamber": t.chamberTemperature as Any,
-                "fans": ["part": t.partFanPercent as Any, "aux": t.auxFanPercent as Any,
-                         "chamber": t.chamberFanPercent as Any],
-                "speedLevel": t.speedLevel as Any,
-                "speedPercent": t.speedPercent as Any,
+                "remainingMinutes": Self.json(t.remainingMinutes),
+                "layer": Self.json(t.currentLayer),
+                "totalLayers": Self.json(t.totalLayers),
+                "nozzle": Self.json(t.nozzleTemperature),
+                "nozzleTarget": Self.json(t.nozzleTargetTemperature),
+                "bed": Self.json(t.bedTemperature),
+                "bedTarget": Self.json(t.bedTargetTemperature),
+                "chamber": Self.json(t.chamberTemperature),
+                "fans": ["part": Self.json(t.partFanPercent), "aux": Self.json(t.auxFanPercent),
+                         "chamber": Self.json(t.chamberFanPercent)],
+                "speedLevel": Self.json(t.speedLevel),
+                "speedPercent": Self.json(t.speedPercent),
                 "hasCamera": printer.kind != .prusa,
                 "controllable": controllable,
                 "signingBlocked": signingBlocked,
