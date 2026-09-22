@@ -1,121 +1,193 @@
-/* Wygląd wzięty z kart floty w Gantry: ciemne tło, karta #1B1E21, obwódka z 16% bieli, odstęp 12. */
-:root {
-    --bg: #0E1012;
-    --card: #1B1E21;
-    --line: rgba(255, 255, 255, 0.16);
-    --ink: #F2F4F6;
-    --muted: #9AA2AA;
-    --accent: #0A84FF;
-    --ok: #30D158;
-    --warn: #FF9F0A;
-    --bad: #FF453A;
-    --radius: 12px;
-    --gap: 12px;
-}
+/* Czwarty port tej samej karty floty. Wszystkie kolory i wymiary pochodzą z tokens.css, który powstaje
+   z design/gantry-card-layout.impl.json, czyli z tego samego kontraktu, co macOS, Windows i GNU/Linux.
+   Tutaj są tylko reguły układu; żadnej własnej palety. */
+@import url("tokens.css");
 
 * { box-sizing: border-box; }
 
 body {
     margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
-    padding-bottom: 40px;
+    background: var(--canvas);
+    color: var(--text);
+    font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 32px;
 }
 
+.mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .muted { color: var(--muted); }
-.error { color: var(--bad); }
+.error { color: var(--status-printing); }
 
 /* logowanie */
 .gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
-.gate-card { width: min(360px, 100%); display: flex; flex-direction: column; gap: 10px; }
-.gate-card h1 { margin: 0; font-size: 20px; }
-.gate-card label { font-size: 13px; color: var(--muted); }
+.gate-card { width: min(340px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.gate-card h1 { margin: 0; font-size: 17px; font-weight: 600; }
+.gate-card label { font-size: 10px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary); }
 .gate-card input {
-    background: #14171A; border: 1px solid var(--line); border-radius: 8px;
-    color: var(--ink); padding: 10px 12px; font-size: 15px;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: var(--radius-chip);
+    color: var(--text); padding: 9px 11px; font-size: 14px;
 }
+.gate-card input:focus { outline: none; border-color: var(--card-line); }
 .gate-card button, .button {
-    background: var(--accent); border: 0; border-radius: 8px; color: #fff;
-    padding: 10px 14px; font-size: 15px; cursor: pointer; text-decoration: none; text-align: center;
+    background: rgba(255, 255, 255, 0.09); border: 1px solid var(--card-line); border-radius: var(--radius-chip);
+    color: var(--text); padding: 9px 13px; font-size: 13px; cursor: pointer; text-decoration: none; text-align: center;
 }
+.gate-card button:hover, .button:hover { background: rgba(255, 255, 255, 0.14); }
 
-/* nagłówek */
+/* pasek na górze, jak nagłówek panelu floty */
 .top {
     display: flex; align-items: center; justify-content: space-between; gap: var(--gap);
-    padding: 14px 16px; position: sticky; top: 0; background: rgba(14, 16, 18, 0.92);
-    backdrop-filter: blur(12px); z-index: 5;
+    height: 36px; padding: 0 16px; margin-bottom: var(--card-gap);
+    position: sticky; top: 0; z-index: 5;
+    /* Zapas dla przeglądarek bez color-mix; nowsze nadpiszą go wierszem niżej. */
+    background: var(--canvas);
+    background: color-mix(in srgb, var(--canvas) 92%, transparent);
+    backdrop-filter: blur(12px);
 }
 .brand {
-    display: flex; align-items: center; gap: 9px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;
     min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .logo {
-    width: 26px; height: 26px; border-radius: 7px; background: var(--ink); color: #101316;
-    display: grid; place-items: center; font-weight: 800; font-size: 15px;
+    width: 20px; height: 20px; border-radius: var(--radius-chip); background: var(--text); color: var(--canvas);
+    display: grid; place-items: center; font-weight: 800; font-size: 12px; flex: none;
 }
-.top-right { display: flex; align-items: center; gap: 8px; }
+.top-right { display: flex; align-items: center; gap: 6px; }
 .pill {
-    border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px;
-    font-size: 12px; color: var(--muted); white-space: nowrap;
+    border: 1px solid var(--line); border-radius: var(--pill-radius); padding: 3px 8px;
+    font-size: 10px; color: var(--secondary); white-space: nowrap; background: var(--pill-bg);
 }
-.pill.button { background: transparent; color: var(--muted); padding: 5px 11px; }
-.pill.live { color: var(--ok); border-color: rgba(48, 209, 88, 0.45); }
-.pill.stale { color: var(--warn); border-color: rgba(255, 159, 10, 0.45); }
-.pill.down { color: var(--bad); border-color: rgba(255, 69, 58, 0.45); }
+.pill.button { padding: 4px 9px; }
+.pill.live { color: var(--accent); }
+.pill.stale { color: var(--status-paused); border-color: color-mix(in srgb, var(--status-paused) 45%, transparent); }
+.pill.down { color: var(--status-printing); border-color: color-mix(in srgb, var(--status-printing) 45%, transparent); }
 
-/* flota */
+/* siatka floty: te same 325 pt karty i 12 pt odstępu, co w aplikacji */
 .fleet {
-    display: grid; gap: var(--gap); padding: 0 16px;
-    grid-template-columns: repeat(auto-fill, minmax(325px, 1fr));
+    display: grid; gap: var(--card-gap); padding: 0 16px; align-items: start;
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-width), 1fr));
 }
-@media (max-width: 380px) { .fleet { grid-template-columns: 1fr; padding: 0 12px; } }
+@media (max-width: 400px) { .fleet { grid-template-columns: 1fr; padding: 0 12px; } }
 
 .card {
-    background: rgba(27, 30, 33, 0.86); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 14px;
+    background: var(--card);
+    background: color-mix(in srgb, var(--card) calc(var(--card-alpha) * 100%), transparent);
+    border: 1px solid var(--card-line);
+    border-radius: var(--radius-card);
+    padding: var(--card-inset-y) var(--card-inset-x);
+    min-height: var(--card-min-height);
+    display: flex; flex-direction: column; gap: var(--section-gap);
 }
-.card-head { display: flex; align-items: baseline; gap: 8px; }
-.card-head .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-head .state { margin-left: auto; font-size: 13px; }
-.state.printing { color: var(--accent); }
-.state.idle, .state.finished { color: var(--ok); }
-.state.paused { color: var(--warn); }
-.state.error { color: var(--bad); }
-.state.offline { color: var(--muted); }
 
-.job { font-size: 13px; color: var(--muted); margin: 6px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); margin: 10px 0 6px; overflow: hidden; }
-.bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
-.meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-
-.shot { width: 100%; border-radius: 8px; margin-top: 10px; display: block; background: #000; aspect-ratio: 16 / 9; object-fit: contain; }
-
-.slots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.slot {
-    display: flex; align-items: center; gap: 6px; border: 1px solid var(--line);
-    border-radius: 8px; padding: 4px 8px; font-size: 12px; color: var(--muted);
+/* nagłówek karty: kropka stanu, nazwa, pigułka protokołu */
+.card-head { display: flex; align-items: center; gap: var(--header-gap); min-width: 0; }
+.card svg { width: 10px; height: 10px; flex: none; }
+.card-head .glyph { width: 14px; height: 14px; flex: none; color: var(--accent); opacity: 0.9; }
+.card-head .name {
+    font-size: 14px; font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
-.slot.active { border-color: rgba(10, 132, 255, 0.6); color: var(--ink); }
-.dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.4); }
+.card-head .protocol {
+    font-size: 10px; color: var(--secondary); background: var(--pill-bg);
+    border-radius: var(--pill-radius); padding: 1px 5px; white-space: nowrap; flex: none;
+}
 
-.controls { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 8px; }
-.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.row .label { font-size: 12px; color: var(--muted); min-width: 64px; }
+/* wiersz stanu: kropka, stan, plik, procent. Kolor zawsze neutralny, stan czyta się z tekstu. */
+.status-row { display: flex; align-items: center; gap: var(--status-gap); min-width: 0; }
+.status-row .dot { width: 6px; height: 6px; border-radius: 3px; background: var(--accent); flex: none; }
+.status-row .state { font-size: 10px; font-weight: 500; color: var(--accent); white-space: nowrap; }
+.status-row .state.stale { color: var(--status-paused); }
+.status-row .sep { font-size: 10px; font-weight: 600; color: var(--muted); }
+.status-row .job {
+    font-size: 10px; font-weight: 600; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.status-row .percent { margin-left: auto; font-size: 14px; font-weight: 700; color: var(--accent); flex: none; }
+
+/* pasek postępu: 32 segmenty, jak w aplikacji, nie ciągła kreska */
+.summary { display: flex; align-items: center; gap: var(--summary-gap); }
+.bar { display: flex; gap: var(--bar-segment-gap); height: var(--bar-height); flex: 1; min-width: 0; }
+.bar > i {
+    flex: 1; border-radius: var(--bar-segment-radius); background: var(--bar-inactive);
+}
+.bar > i.on { background: var(--accent); }
+.metric { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--secondary); white-space: nowrap; }
+.metric.chip { background: var(--pill-bg); border-radius: var(--pill-radius); padding: 2px 6px; }
+.metric svg { width: 9px; height: 9px; flex: none; opacity: 0.8; }
+
+/* bento temperatur: dysza, stół, komora, każda w swoim kolorze z kontraktu */
+.bento { display: flex; gap: 2px; height: var(--bento-height); }
+.zone {
+    flex: 1; display: flex; align-items: center; gap: 4px; padding: 0 4px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.008) 60%, rgba(255, 255, 255, 0));
+    border-bottom: 1px solid var(--line); min-width: 0;
+}
+.zone svg { width: 10px; height: 10px; flex: none; opacity: 0.85; }
+.zone .value { font-size: 14px; font-weight: 600; }
+.zone .target { font-size: 9px; color: var(--secondary); }
+.zone.nozzle { color: var(--nozzle); }
+.zone.bed { color: var(--bed); }
+.zone.chamber { color: var(--chamber); }
+
+/* dok filamentów: grupy AMS/EXT z kaflami slotów */
+.dock { display: flex; flex-wrap: wrap; gap: var(--group-gap); }
+.group {
+    background: var(--group-bg); border: 1px solid var(--line); border-radius: var(--group-radius);
+    padding: var(--group-inset-y) var(--group-inset-x);
+    display: flex; flex-direction: column; gap: var(--group-header-gap); flex: 1 1 auto; min-width: 0;
+}
+.group-head { display: flex; align-items: center; gap: 5px; }
+.group-head .title { font-size: 10px; font-weight: 600; color: var(--text); }
+.group-head .badge { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--humidity); }
+.group-head .badge.warm { color: var(--status-paused); }
+.group-head .badge.temp { color: var(--sensor-temp); }
+.group-head .badge svg { width: 8px; height: 8px; }
+.slots { display: flex; gap: var(--slot-gap); }
+.slot { display: flex; flex-direction: column; gap: 1px; flex: 1 1 0; min-width: 0; }
+.slot.single { flex: 0 0 auto; }
+.swatch {
+    height: var(--swatch-height); border-radius: var(--radius-swatch); position: relative;
+    display: grid; place-items: center; border: 0.5px solid var(--swatch-border-present);
+    max-width: var(--swatch-max-ams);
+}
+.slot.ext .swatch { max-width: var(--swatch-max-ext); }
+.slot.empty .swatch { background: transparent !important; border: 1px solid var(--line); }
+.slot.active .swatch { border: 1.5px solid var(--swatch-border-active); }
+.swatch .percent { font-size: 9px; font-weight: 700; }
+.swatch .low {
+    position: absolute; top: -2px; right: -2px; width: 6px; height: 6px; border-radius: 3px;
+    background: var(--status-printing);
+}
+.slot-meta { display: flex; align-items: baseline; gap: 3px; height: 11px; max-width: var(--swatch-max-ams); }
+.slot.ext .slot-meta { max-width: var(--swatch-max-ext); }
+.slot-meta .id { font-size: 7.5px; font-weight: 500; color: var(--muted); }
+.slot-meta .material {
+    font-size: 10px; font-weight: 600; color: var(--text); margin: 0 auto;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* kamera: na dole karty, kafel o promieniu kafla */
+.shot {
+    width: 100%; display: block; border-radius: var(--radius-tile); background: #000;
+    aspect-ratio: 16 / 9; object-fit: cover; margin-top: 2px;
+}
+
+/* sterowanie: te same kafle i promienie, oddzielone linią kontraktu */
+.controls { border-top: 1px solid var(--line); padding-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.row .label { font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary); min-width: 58px; }
 button.ctl {
-    background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 8px;
-    color: var(--ink); padding: 7px 12px; font-size: 13px; cursor: pointer; min-width: 44px;
+    background: var(--chip-bg); border: 1px solid var(--line); border-radius: var(--radius-chip);
+    color: var(--text); padding: 5px 9px; font-size: 11px; cursor: pointer; min-width: 34px;
 }
 button.ctl:hover { background: rgba(255, 255, 255, 0.12); }
-button.ctl:disabled { opacity: 0.45; cursor: default; }
-button.ctl.danger { color: var(--bad); }
+button.ctl:disabled { opacity: 0.4; cursor: default; }
+button.ctl.danger { color: var(--status-printing); }
 button.ctl.wide { flex: 1; }
-.value { font-size: 13px; font-variant-numeric: tabular-nums; min-width: 54px; text-align: center; }
-.note { font-size: 12px; color: var(--muted); }
-.note.bad { color: var(--warn); }
-
-.objects { display: flex; flex-wrap: wrap; gap: 6px; }
-.objects button { font-size: 12px; }
+.value { font-size: 11px; min-width: 46px; text-align: center; }
+.note { font-size: 10px; color: var(--secondary); }
+.note.bad { color: var(--status-paused); }
+.objects button { font-size: 10px; }
 .objects button.skipped { opacity: 0.4; text-decoration: line-through; }
 
-.foot { padding: 18px 16px; font-size: 12px; }
+.foot { padding: 14px 16px; font-size: 10px; }

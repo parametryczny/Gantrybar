@@ -1,7 +1,8 @@
-/* Widok floty. Odpytuje api.php i rysuje karty w tym samym układzie, co Gantry na komputerze.
-   Przyciski pojawiają się tylko wtedy, gdy Gantry jest ustawione na sterowanie, a drukarka je przyjmuje.
+/* Karta floty na stronie: czwarty port tego samego układu, co macOS, Windows i GNU/Linux.
+   Kolejność sekcji jest z kontraktu (nagłówek, wiersz stanu, pasek z metrykami, bento temperatur,
+   dok filamentów), a kamera siedzi na końcu karty, bo tam jej miejsce w tej wersji.
 
-   Karta powstaje raz i potem jest tylko poprawiana: teksty podmieniamy w miejscu, kafelki filamentów
+   Karta powstaje raz i potem jest tylko poprawiana: teksty podmieniamy w miejscu, kafle filamentów
    i przyciski przebudowujemy dopiero, gdy naprawdę się zmieniły, a nową klatkę z kamery wstawiamy
    dopiero, gdy jest już wczytana. Przebudowywanie całej strony co dwie sekundy dawało miganie. */
 (function () {
@@ -14,6 +15,7 @@
 
     var POLL_MS = 2500;
     var SHOT_MS = 4000;
+    var SEGMENTS = 32;
 
     var STATES = {
         printing: 'Drukuje', idle: 'Gotowa', paused: 'Wstrzymana',
@@ -21,10 +23,28 @@
     };
     var SPEEDS = { 1: 'Cicho', 2: 'Normalnie', 3: 'Szybko', 4: 'Bardzo szybko' };
     var FANS = [['part', 'Chłodzenie', 0], ['aux', 'Boczny', 1], ['chamber', 'Komora', 2]];
+    /* Ten sam podpis protokołu, co na karcie w aplikacji. */
+    var PROTOCOLS = {
+        bambu: 'MQTT', klipper: 'KLIPPER', prusa: 'PRUSALINK', snapmaker: 'HTTP',
+        elegoo_cc1: 'SDCP', elegoo_cc2: 'MQTT LAN', anycubic_kobra_s1: 'HTTP'
+    };
+    /* Skróty nazw grup z kontraktu (filamentGroup.shortName). */
+    var GROUP_NAMES = { 'AMS A': 'AMS', 'AMS HT': 'HT', 'MMU': 'MMU', 'EXT': 'EXT' };
 
-    var cards = {};          // numer seryjny -> { root, ... węzły do poprawiania }
-    var watching = {};       // kamery, o które prosimy Gantry
-    var sent = {};           // id polecenia -> numer seryjny
+    var ICONS = {
+        printer: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2h8v3H4zM2.5 6h11A1.5 1.5 0 0 1 15 7.5V11a1 1 0 0 1-1 1h-1V9H3v3H2a1 1 0 0 1-1-1V7.5A1.5 1.5 0 0 1 2.5 6zM4 10h8v4H4z"/></svg>',
+        nozzle: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 3h10l-3.2 5.2V13l-3.6-1.6V8.2z"/></svg>',
+        bed: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2l6 3-6 3-6-3z"/><path d="M2 8.5l6 3 6-3"/><path d="M2 11.5l6 3 6-3"/></svg>',
+        chamber: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1.8l5.4 3v6.4L8 14.2 2.6 11.2V4.8z"/><path d="M2.6 4.8L8 7.8l5.4-3M8 7.8v6.4"/></svg>',
+        clock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M8 4.6V8l2.6 1.6"/></svg>',
+        layers: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2l6 3-6 3-6-3z"/><path d="M2 8.5l6 3 6-3"/></svg>',
+        drop: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5s4.5 5 4.5 7.8A4.5 4.5 0 0 1 3.5 9.3C3.5 6.5 8 1.5 8 1.5z"/></svg>',
+        thermometer: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2.5v7"/><circle cx="8" cy="11.5" r="2.2"/></svg>'
+    };
+
+    var cards = {};
+    var watching = {};
+    var sent = {};
     var shownResults = {};
     var notes = {};
     var latest = null;
@@ -37,6 +57,17 @@
         return node;
     }
 
+    /* Ikona jako samo SVG, z klasą na nim, a nie na opakowaniu: opakowanie zabierało regułę rozmiaru
+       i drukarka w nagłówku rozdymała się na całą kartę. */
+    function icon(name, className) {
+        var holder = document.createElement('span');
+        holder.innerHTML = ICONS[name] || '';
+        var node = holder.firstChild;
+        if (!node) { return holder; }
+        if (className) { node.setAttribute('class', className); }
+        return node;
+    }
+
     function setText(node, value) {
         if (node.textContent !== value) { node.textContent = value; }
     }
@@ -44,6 +75,10 @@
     function setShown(node, shown) {
         var display = shown ? '' : 'none';
         if (node.style.display !== display) { node.style.display = display; }
+    }
+
+    function setClass(node, value) {
+        if (node.className !== value) { node.className = value; }
     }
 
     function minutes(value) {
@@ -59,6 +94,17 @@
 
     function temperature(value) {
         return value === null || value === undefined ? null : Math.round(value);
+    }
+
+    /* Kontrast tuszu na kaflu filamentu: reguła z kontraktu (filamentSlot.percentInSwatch.inkRule). */
+    function inkFor(hex) {
+        var clean = String(hex || '').replace('#', '').slice(0, 6);
+        if (clean.length < 6) { return 'rgba(255,255,255,0.95)'; }
+        var r = parseInt(clean.slice(0, 2), 16) / 255;
+        var g = parseInt(clean.slice(2, 4), 16) / 255;
+        var b = parseInt(clean.slice(4, 6), 16) / 255;
+        var luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return luma >= 0.5 ? 'rgba(0,0,0,0.82)' : 'rgba(255,255,255,0.95)';
     }
 
     function send(serial, command) {
@@ -88,7 +134,6 @@
         return node;
     }
 
-    /* --- kamera: nową klatkę wstawiamy dopiero, gdy się wczyta, więc obraz nie mruga --- */
     function refreshShot(entry, serial) {
         if (entry.shotBusy || Date.now() - entry.shotAt < SHOT_MS) { return; }
         entry.shotBusy = true;
@@ -107,7 +152,7 @@
         loader.src = 'api.php?action=camera&serial=' + encodeURIComponent(serial) + '&t=' + Date.now();
     }
 
-    /* --- sterowanie: przebudowa tylko wtedy, gdy zmienia się to, co w ogóle da się zrobić --- */
+    /* --- sterowanie --- */
     function controlSignature(printer, objects) {
         var list = (objects[printer.serial] || {}).objects || [];
         return [
@@ -141,15 +186,14 @@
             var row = element('div', 'row');
             row.appendChild(element('span', 'label', pair[1]));
             row.appendChild(button('−', '', function () {
-                var target = entry.targets[type] || 0;
-                send(serial, { type: type, value: Math.max(0, target - 5) });
+                send(serial, { type: type, value: Math.max(0, (entry.targets[type] || 0) - 5) });
             }));
-            var value = element('span', 'value', '—');
+            var value = element('span', 'value mono', '—');
             row.appendChild(value);
             row.appendChild(button('+', '', function () {
                 send(serial, { type: type, value: (entry.targets[type] || 0) + 5 });
             }));
-            var now = element('span', 'note', '');
+            var now = element('span', 'note mono', '');
             row.appendChild(now);
             entry.values[type] = { value: value, now: now };
             box.appendChild(row);
@@ -157,7 +201,8 @@
 
         entry.fanNotes = {};
         FANS.forEach(function (fan) {
-            if ((printer.fans || {})[fan[0]] === null || (printer.fans || {})[fan[0]] === undefined) { return; }
+            var current = (printer.fans || {})[fan[0]];
+            if (current === null || current === undefined) { return; }
             var row = element('div', 'row');
             row.appendChild(element('span', 'label', fan[1]));
             [0, 25, 50, 75, 100].forEach(function (percent) {
@@ -165,7 +210,7 @@
                     send(serial, { type: 'fan', index: fan[2], value: percent });
                 }));
             });
-            var now = element('span', 'note', '');
+            var now = element('span', 'note mono', '');
             row.appendChild(now);
             entry.fanNotes[fan[0]] = now;
             box.appendChild(row);
@@ -224,7 +269,7 @@
         });
         Object.keys(entry.fanNotes || {}).forEach(function (key) {
             var value = (printer.fans || {})[key];
-            setText(entry.fanNotes[key], value === null || value === undefined ? '' : 'teraz ' + value + '%');
+            setText(entry.fanNotes[key], value === null || value === undefined ? '' : value + '%');
         });
         if (entry.speedButtons) {
             Object.keys(entry.speedButtons).forEach(function (level) {
@@ -233,33 +278,106 @@
         }
     }
 
-    /* --- kafelki filamentów: przebudowa tylko przy zmianie zawartości --- */
+    /* --- bento temperatur --- */
+    function updateBento(entry, printer) {
+        var zones = [
+            ['nozzle', 'nozzle', printer.nozzle, printer.nozzleTarget],
+            ['bed', 'bed', printer.bed, printer.bedTarget],
+            ['chamber', 'chamber', printer.chamber, null]
+        ];
+        var signature = zones.map(function (zone) {
+            return temperature(zone[2]) + '/' + temperature(zone[3]);
+        }).join('|');
+        if (entry.bentoText === signature) { return; }
+        entry.bentoText = signature;
+        entry.bento.innerHTML = '';
+        var shown = 0;
+        zones.forEach(function (zone) {
+            var current = temperature(zone[2]);
+            // Komora pojawia się tylko wtedy, gdy drukarka ją mierzy (chamberShownOnlyIfReading).
+            if (current === null && zone[0] === 'chamber') { return; }
+            var node = element('div', 'zone ' + zone[1]);
+            node.appendChild(icon(zone[0]));
+            node.appendChild(element('span', 'value mono', current === null ? '—' : current + '°'));
+            var target = temperature(zone[3]);
+            if (target) { node.appendChild(element('span', 'target mono', target + '°')); }
+            entry.bento.appendChild(node);
+            shown += 1;
+        });
+        setShown(entry.bento, shown > 0);
+    }
+
+    /* --- dok filamentów --- */
     function slotSignature(printer) {
         return (printer.groups || []).map(function (group) {
-            return (group.slots || []).map(function (slot) {
-                return [slot.label, slot.material, slot.colorHex, slot.percent, slot.grams, slot.active].join('~');
-            }).join(';');
+            return [group.name, group.external, group.humidity, group.temp].join('~') + ':'
+                + (group.slots || []).map(function (slot) {
+                    return [slot.label, slot.material, slot.colorHex, slot.percent, slot.grams, slot.active].join('~');
+                }).join(';');
         }).join('|');
     }
 
-    function buildSlots(entry, printer) {
-        entry.slots.innerHTML = '';
+    function buildDock(entry, printer) {
+        entry.dock.innerHTML = '';
         (printer.groups || []).forEach(function (group) {
-            var row = element('div', 'slots');
-            (group.slots || []).forEach(function (slot) {
-                var chip = element('div', 'slot' + (slot.active ? ' active' : ''));
-                var dot = element('span', 'dot');
-                dot.style.background = '#' + String(slot.colorHex || '8E8E93').replace('#', '').slice(0, 6);
-                chip.appendChild(dot);
-                var parts = [slot.label];
-                if (slot.material) { parts.push(slot.material); }
-                if (slot.percent !== null && slot.percent !== undefined) { parts.push(slot.percent + '%'); }
-                else if (slot.grams) { parts.push(slot.grams + ' g'); }
-                chip.appendChild(element('span', '', parts.join(' · ')));
-                row.appendChild(chip);
+            var box = element('div', 'group');
+            var head = element('div', 'group-head');
+            var name = group.name || '';
+            head.appendChild(element('span', 'title', GROUP_NAMES[name] || name));
+            if (group.humidity !== null && group.humidity !== undefined) {
+                var humid = element('span', 'badge' + (group.humidity >= 40 ? ' warm' : ''));
+                humid.appendChild(icon('drop'));
+                humid.appendChild(element('span', '', group.humidity + '%'));
+                head.appendChild(humid);
+            }
+            if (group.temp !== null && group.temp !== undefined && group.temp > 0) {
+                var warm = element('span', 'badge temp');
+                warm.appendChild(icon('thermometer'));
+                warm.appendChild(element('span', '', Math.round(group.temp) + '°'));
+                head.appendChild(warm);
+            }
+            box.appendChild(head);
+
+            var slots = element('div', 'slots');
+            var list = group.slots || [];
+            list.forEach(function (slot) {
+                var present = !!(slot.material || slot.percent !== null && slot.percent !== undefined || slot.grams);
+                var classes = ['slot'];
+                if (group.external) { classes.push('ext'); }
+                if (list.length === 1) { classes.push('single'); }
+                if (slot.active) { classes.push('active'); }
+                if (!present) { classes.push('empty'); }
+                var node = element('div', classes.join(' '));
+
+                var swatch = element('div', 'swatch');
+                var colour = '#' + String(slot.colorHex || '8E8E93').replace('#', '').slice(0, 6);
+                if (present) { swatch.style.background = colour; }
+                if (slot.percent !== null && slot.percent !== undefined) {
+                    var percent = element('span', 'percent mono', slot.percent + '%');
+                    percent.style.color = inkFor(colour);
+                    swatch.appendChild(percent);
+                } else if (slot.grams) {
+                    var grams = element('span', 'percent mono', slot.grams + ' g');
+                    grams.style.color = inkFor(colour);
+                    swatch.appendChild(grams);
+                }
+                // Ostrzeżenie o kończącej się rolce: tylko AMS, tylko gdy naprawdę jest w slocie.
+                if (present && !group.external && slot.percent !== null && slot.percent !== undefined
+                        && slot.percent <= 15) {
+                    swatch.appendChild(element('span', 'low'));
+                }
+                node.appendChild(swatch);
+
+                var meta = element('div', 'slot-meta');
+                meta.appendChild(element('span', 'id mono', slot.label || ''));
+                meta.appendChild(element('span', 'material', slot.material || ''));
+                node.appendChild(meta);
+                slots.appendChild(node);
             });
-            if (row.childNodes.length) { entry.slots.appendChild(row); }
+            box.appendChild(slots);
+            entry.dock.appendChild(box);
         });
+        setShown(entry.dock, (printer.groups || []).length > 0);
     }
 
     function createCard(printer) {
@@ -267,78 +385,98 @@
         entry.root = element('article', 'card');
 
         var head = element('div', 'card-head');
+        head.appendChild(icon('printer', 'glyph'));
         entry.name = element('span', 'name', printer.name);
-        entry.state = element('span', 'state', '');
+        entry.protocol = element('span', 'protocol', '');
         head.appendChild(entry.name);
-        head.appendChild(entry.state);
+        head.appendChild(entry.protocol);
         entry.root.appendChild(head);
 
-        entry.job = element('p', 'job', '');
-        entry.root.appendChild(entry.job);
+        var status = element('div', 'status-row');
+        status.appendChild(element('span', 'dot'));
+        entry.state = element('span', 'state', '');
+        entry.sep = element('span', 'sep', '·');
+        entry.job = element('span', 'job', '');
+        entry.percent = element('span', 'percent mono', '');
+        status.appendChild(entry.state);
+        status.appendChild(entry.sep);
+        status.appendChild(entry.job);
+        status.appendChild(entry.percent);
+        entry.root.appendChild(status);
 
+        entry.summary = element('div', 'summary');
         entry.bar = element('div', 'bar');
-        entry.fill = element('span');
-        entry.bar.appendChild(entry.fill);
-        entry.root.appendChild(entry.bar);
+        for (var i = 0; i < SEGMENTS; i++) { entry.bar.appendChild(document.createElement('i')); }
+        entry.eta = element('span', 'metric chip');
+        entry.eta.appendChild(icon('clock'));
+        entry.etaText = element('span', 'mono', '');
+        entry.eta.appendChild(entry.etaText);
+        entry.layer = element('span', 'metric');
+        entry.layer.appendChild(icon('layers'));
+        entry.layerText = element('span', 'mono', '');
+        entry.layer.appendChild(entry.layerText);
+        entry.summary.appendChild(entry.bar);
+        entry.summary.appendChild(entry.eta);
+        entry.summary.appendChild(entry.layer);
+        entry.root.appendChild(entry.summary);
 
-        entry.meta = element('div', 'meta');
-        entry.root.appendChild(entry.meta);
+        entry.bento = element('div', 'bento');
+        entry.root.appendChild(entry.bento);
 
-        entry.slots = element('div', '');
-        entry.root.appendChild(entry.slots);
-
-        entry.shot = element('img', 'shot');
-        entry.shot.alt = 'Podgląd z ' + printer.name;
-        setShown(entry.shot, false);
-        entry.root.appendChild(entry.shot);
+        entry.dock = element('div', 'dock');
+        entry.root.appendChild(entry.dock);
 
         entry.controlsHolder = element('div', '');
         entry.root.appendChild(entry.controlsHolder);
 
         entry.note = element('p', 'note', '');
+        entry.note.style.margin = '0';
         entry.root.appendChild(entry.note);
+
+        // Kamera na końcu karty.
+        entry.shot = element('img', 'shot');
+        entry.shot.alt = 'Podgląd z ' + printer.name;
+        setShown(entry.shot, false);
+        entry.root.appendChild(entry.shot);
         return entry;
     }
 
     function updateCard(entry, printer, mode, objects) {
         setText(entry.name, printer.name);
-        setText(entry.state, STATES[printer.state] || printer.state);
-        if (entry.state.className !== 'state ' + printer.state) { entry.state.className = 'state ' + printer.state; }
+        setText(entry.protocol, PROTOCOLS[printer.kind] || '');
 
+        setText(entry.state, STATES[printer.state] || printer.state);
+        setClass(entry.state, 'state' + (printer.state === 'offline' ? ' stale' : ''));
+        var running = printer.state === 'printing' || printer.state === 'paused';
         setText(entry.job, printer.job || '');
         setShown(entry.job, !!printer.job);
+        setShown(entry.sep, !!printer.job);
+        setText(entry.percent, running ? printer.progress + '%' : '');
 
-        var running = printer.state === 'printing' || printer.state === 'paused';
-        setShown(entry.bar, running);
-        var width = Math.max(0, Math.min(100, printer.progress)) + '%';
-        if (entry.fill.style.width !== width) { entry.fill.style.width = width; }
+        var active = Math.round(Math.max(0, Math.min(100, printer.progress)) / 100 * SEGMENTS);
+        if (entry.barActive !== active) {
+            entry.barActive = active;
+            for (var i = 0; i < SEGMENTS; i++) {
+                var on = i < active;
+                var segment = entry.bar.childNodes[i];
+                if ((segment.className === 'on') !== on) { segment.className = on ? 'on' : ''; }
+            }
+        }
+        var eta = running ? minutes(printer.remainingMinutes) : '';
+        setText(entry.etaText, eta ? eta + ' · ' + finishTime(printer.remainingMinutes) : '');
+        setShown(entry.eta, !!eta);
+        var layers = running && printer.layer && printer.totalLayers
+            ? printer.layer + '/' + printer.totalLayers : '';
+        setText(entry.layerText, layers);
+        setShown(entry.layer, !!layers);
+        setShown(entry.summary, running);
 
-        var meta = [];
-        if (running) {
-            meta.push(printer.progress + '%');
-            var left = minutes(printer.remainingMinutes);
-            if (left) { meta.push(left + ' · ' + finishTime(printer.remainingMinutes)); }
-            if (printer.layer && printer.totalLayers) { meta.push('warstwa ' + printer.layer + '/' + printer.totalLayers); }
-        }
-        if (temperature(printer.nozzle) !== null) { meta.push('dysza ' + temperature(printer.nozzle) + '°'); }
-        if (temperature(printer.bed) !== null) { meta.push('stół ' + temperature(printer.bed) + '°'); }
-        if (entry.metaText !== meta.join('|')) {
-            entry.metaText = meta.join('|');
-            entry.meta.innerHTML = '';
-            meta.forEach(function (item) { entry.meta.appendChild(element('span', '', item)); });
-        }
+        updateBento(entry, printer);
 
         var slots = slotSignature(printer);
         if (entry.slotText !== slots) {
             entry.slotText = slots;
-            buildSlots(entry, printer);
-        }
-
-        if (printer.hasCamera) {
-            watching[printer.serial] = true;
-            refreshShot(entry, printer.serial);
-        } else {
-            setShown(entry.shot, false);
+            buildDock(entry, printer);
         }
 
         var signature = mode + '|' + controlSignature(printer, objects);
@@ -359,8 +497,15 @@
 
         var note = notes[printer.serial];
         setText(entry.note, note ? note.text : '');
-        entry.note.className = 'note' + (note && note.bad ? ' bad' : '');
+        setClass(entry.note, 'note' + (note && note.bad ? ' bad' : ''));
         setShown(entry.note, !!note);
+
+        if (printer.hasCamera) {
+            watching[printer.serial] = true;
+            refreshShot(entry, printer.serial);
+        } else {
+            setShown(entry.shot, false);
+        }
     }
 
     function draw() {
@@ -377,7 +522,6 @@
                 cards[printer.serial] = entry;
             }
             seen[printer.serial] = true;
-            // Kolejność z Gantry, bez ruszania kart, które już stoją tam, gdzie trzeba.
             if (fleet.children[index] !== entry.root) {
                 fleet.insertBefore(entry.root, fleet.children[index] || null);
             }
@@ -423,16 +567,16 @@
                     delete sent[result.id];
                 });
                 if (answer.stale) {
-                    link.className = 'pill stale';
+                    setClass(link, 'pill stale');
                     setText(link, 'Gantry milczy od ' + answer.age + ' s');
                 } else {
-                    link.className = 'pill live';
-                    setText(link, 'na żywo · ' + answer.age + ' s temu');
+                    setClass(link, 'pill live');
+                    setText(link, 'na żywo · ' + answer.age + ' s');
                 }
                 draw();
             })
             .catch(function () {
-                link.className = 'pill down';
+                setClass(link, 'pill down');
                 setText(link, 'brak łączności ze stroną');
             });
     }

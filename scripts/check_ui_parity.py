@@ -1271,6 +1271,22 @@ require("linux/gantry/automation.py", r'startswith\("#!"\)[\s\S]*?def stop_scrip
 # Windows automations save as they change.
 forbid("windows/Gantry.Windows/UI/AutomationsWindow.cs", r'T\("Save"\)', "Windows automations need a Save button again")
 
+# The page on the user's own server is a fourth port of the same card, so it holds no palette of its
+# own: web/assets/tokens.css is generated from this very contract and must be current.
+sys.path.insert(0, str(ROOT / "scripts"))
+import build_web_theme  # noqa: E402  (after ROOT is known)
+
+if source("web/assets/tokens.css") != build_web_theme.build():
+    ERRORS.append("web/assets/tokens.css: stale, run scripts/build_web_theme.py")
+require("web/assets/style.css", r'@import url\("tokens.css"\)', "the page does not read the generated tokens")
+for literal in (TOKENS["surface"]["fleetCard"], TOKENS["surface"]["canvas"], TOKENS["thermal"]["nozzle"]):
+    forbid("web/assets/style.css", re.escape(literal),
+           f"the page repeats the contract colour {literal} instead of using its token")
+# The same card geometry the three apps are held to.
+require("web/assets/app.js", r"var SEGMENTS = 32;", "the page's progress bar is not the contract's 32 segments")
+require("web/assets/app.js", r"GROUP_NAMES = \{ 'AMS A': 'AMS', 'AMS HT': 'HT'",
+        "the page does not use the contract's short group names")
+
 if ERRORS:
     print("UI parity check failed:", file=sys.stderr)
     for error in ERRORS:

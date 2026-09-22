@@ -53,6 +53,14 @@ danych, ani zakolejkować polecenia.
   nadpisywana klatka na drukarkę.
 - Strona ma `noindex`, ale nie licz na to: adres trzymaj dla siebie.
 
+## Wygląd
+
+Strona jest czwartym portem tej samej karty floty, co macOS, Windows i GNU/Linux: nagłówek z nazwą
+i protokołem, wiersz stanu z plikiem i procentem, pasek postępu z 32 segmentów, metryki czasu i warstw,
+bento temperatur w kolorach dyszy, stołu i komory, dok filamentów z kaflami slotów, a na końcu karty kamera.
+Kolory i wymiary nie są tu wpisane z ręki: `assets/tokens.css` powstaje z kontraktu wyglądu w `design/`,
+a sprawdzenie zgodności nie przepuści ani nieaktualnego pliku, ani koloru wpisanego obok kontraktu.
+
 ## Pliki
 
 | Plik | Do czego |
@@ -61,5 +69,6 @@ danych, ani zakolejkować polecenia.
 | `api.php` | jedno wejście: dla Gantry (podpisany POST) i dla przeglądarki |
 | `lib.php` | konfiguracja, pliki ze stanem, podpisy, sesja |
 | `assets/app.js` | rysowanie kart i przyciski sterowania |
-| `assets/style.css` | wygląd, ten sam co karty w Gantry |
+| `assets/style.css` | układ karty, bez własnej palety |
+| `assets/tokens.css` | kolory i wymiary z `design/gantry-card-layout.impl.json`, generowane przez `scripts/build_web_theme.py` |
 | `data/` | stan floty, kolejka, wyniki, ostatnia klatka z kamery |
