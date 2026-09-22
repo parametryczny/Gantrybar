@@ -228,7 +228,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
         alert.informativeText = t("Sets a full {0} g (a fresh roll of the same product). This roll's usage history is cleared.", Int(spool.nominalWeightGrams))
         alert.addButton(withTitle: t("Reset"))
         alert.addButton(withTitle: t("Cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard ModalHost.run(alert) == .alertFirstButtonReturn else { return }
         spools.resetToFull(id: spool.id)
         onChange(); showMain()
     }
@@ -303,7 +303,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
             alert.informativeText = t("Move it here? Its previous slot is freed.")
             alert.addButton(withTitle: t("Move here"))
             alert.addButton(withTitle: t("Cancel"))
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            guard ModalHost.run(alert) == .alertFirstButtonReturn else { return }
         }
         spools.assign(spoolID: spool.id, to: location)
         onChange(); onClose?()

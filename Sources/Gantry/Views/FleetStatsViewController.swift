@@ -218,7 +218,7 @@ final class FleetStatsViewController: NSViewController {
                 let alert = NSAlert()
                 alert.messageText = s.t("Could not save the file.")
                 alert.informativeText = error.localizedDescription
-                alert.runModal()
+                ModalHost.run(alert)
             }
         }
     }

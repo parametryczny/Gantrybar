@@ -143,7 +143,7 @@ final class AutomationsWindowController: NSWindowController {
             alert.informativeText = AppSettings.shared.t("The script will run with your privileges.")
             alert.addButton(withTitle: AppSettings.shared.t("Run"))
             alert.addButton(withTitle: AppSettings.shared.t("Cancel"))
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            guard ModalHost.run(alert) == .alertFirstButtonReturn else { return }
         }
         if auto.action.isScript, ScriptRunner.shared.isRunning(auto.id) {
             ScriptRunner.shared.stop(auto.id)

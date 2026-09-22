@@ -417,7 +417,7 @@ final class PrinterStore: ObservableObject {
                  isScript ? s.t("a script on this Mac") : s.t("a printer command"), preview)
         alert.addButton(withTitle: s.t("Allow"))
         alert.addButton(withTitle: s.t("Deny"))
-        let approved = alert.runModal() == .alertFirstButtonReturn
+        let approved = ModalHost.run(alert) == .alertFirstButtonReturn
         if approved { s.approveScriptRule(auto.id) }
         return approved
     }

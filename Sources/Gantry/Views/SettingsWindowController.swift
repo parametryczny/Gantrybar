@@ -1406,7 +1406,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         if let window { alert.beginSheetModal(for: window, completionHandler: handle) }
-        else { handle(alert.runModal()) }
+        else { handle(ModalHost.run(alert)) }
     }
 
     private func installUpdate(_ release: UpdateService.Release) {
@@ -1430,7 +1430,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     if response == .alertFirstButtonReturn { NSWorkspace.shared.open(release.pageURL) }
                 }
                 if let window { alert.beginSheetModal(for: window, completionHandler: openPage) }
-                else { openPage(alert.runModal()) }
+                else { openPage(ModalHost.run(alert)) }
             }
         }
     }
@@ -1441,7 +1441,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
         if let window { alert.beginSheetModal(for: window, completionHandler: nil) }
-        else { alert.runModal() }
+        else { ModalHost.run(alert) }
     }
 
     @objc private func openSupport() {

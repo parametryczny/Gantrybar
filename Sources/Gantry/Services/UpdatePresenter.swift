@@ -80,7 +80,7 @@ enum UpdatePresenter {
             alert.beginSheetModal(for: window, completionHandler: handler)
         } else {
             NSApp.activate(ignoringOtherApps: true)
-            handler(alert.runModal())
+            handler(ModalHost.run(alert))
         }
     }
 }

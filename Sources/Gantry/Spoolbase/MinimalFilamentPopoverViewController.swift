@@ -281,7 +281,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             + "\n" + spools.accountingWarnings.values.sorted().joined(separator: "\n")
         alert.addButton(withTitle: AppSettings.shared.t("Close"))
         if !spools.accountingWarnings.isEmpty { alert.addButton(withTitle: AppSettings.shared.t("Mark as reviewed")) }
-        if alert.runModal() == .alertSecondButtonReturn { spools.clearAccountingWarnings() }
+        if ModalHost.run(alert) == .alertSecondButtonReturn { spools.clearAccountingWarnings() }
     }
 
     private func updateSummary() {

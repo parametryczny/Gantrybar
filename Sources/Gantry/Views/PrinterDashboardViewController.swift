@@ -1034,7 +1034,7 @@ final class PrinterDashboardViewController: NSViewController {
             alert.beginSheetModal(for: window) { [weak self] result in
                 if result == .alertFirstButtonReturn { self?.store.remove(printer) }
             }
-        } else if alert.runModal() == .alertFirstButtonReturn {
+        } else if ModalHost.run(alert) == .alertFirstButtonReturn {
             store.remove(printer)
         }
     }

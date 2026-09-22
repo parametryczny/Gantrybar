@@ -67,7 +67,7 @@
   "floatingWindow": {
     "platform": "macOS",
     "enabledByDefault": false,
-    "alwaysOnTopDefault": true,
+    "alwaysOnTopDefault": false,
     "initialSize": {
       "width": 682,
       "height": 400
@@ -107,7 +107,8 @@
     },
     "frameAutosaveName": "GantryFloatingDashboardWindow",
     "usesFleetCardImplementation": true,
-    "alwaysOnTopControl": "pin in dashboard header"
+    "alwaysOnTopControl": "pin in dashboard header",
+    "alwaysOnTopNote": "Off by default since 2026-09-22: a window above every other window also covers alerts, and the user could not tell that anything had been asked. The pin on the fleet header still raises it, and ModalHost lowers every raised Gantry window while an alert is on screen."
   },
   "card": {
     "background": "fleetCard @fleetCardAlpha (light theme: white @0.86)",

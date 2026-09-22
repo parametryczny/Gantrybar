@@ -293,7 +293,16 @@ final class AppSettings: ObservableObject {
         finishingSoonMinutes = defaults.object(forKey: "notify-finishing-soon-minutes") as? Int ?? 10
         notifyHumidity = defaults.object(forKey: "notify-humidity") as? Bool ?? true
         floatingWindowEnabled = defaults.object(forKey: "floating-window-enabled") as? Bool ?? false
-        floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? true
+        // Zgłoszone 2026-09-22: okno floty przykrywało wszystko, także alerty, i nie dawało się
+        // zasłonić. Zwykłe okno to domyślny stan; pinezka na karcie dalej je podnosi. Zapisane „na
+        // górze” z poprzednich wersji jest jednorazowo czyszczone, bo prawie nikt tego nie wybierał
+        // świadomie: taka była fabryczna wartość.
+        let pinMigrated = "gantry.floating-pin-default-migrated"
+        if !defaults.bool(forKey: pinMigrated) {
+            defaults.set(true, forKey: pinMigrated)
+            defaults.removeObject(forKey: "floating-window-always-on-top")
+        }
+        floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? false
         edgeDockEnabled = defaults.object(forKey: "edge-dock-enabled") as? Bool ?? false
         edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
         edgeDockRow = EdgeDockRow(rawValue: defaults.string(forKey: "edge-dock-row") ?? "") ?? .middle
