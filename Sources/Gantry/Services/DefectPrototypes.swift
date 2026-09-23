@@ -8,18 +8,24 @@ import Vision
 /// things land apart. So a class does not need a trained network: it needs a bank of pictures already
 /// known to be that class, and a new frame belongs to whichever class it sits closest to.
 ///
-/// Gantry ships such a bank, built here from openly licensed photographs (see
-/// `Resources/defect-starter.bank` and `docs/defect-starter-attribution.md`), so spaghetti is
-/// recognised on the first print rather than after the user has photographed their own disaster
-/// three times. Frames the user marks in Details join the same bank and outrank it in practice,
-/// because a picture from their own camera sits far closer to the next frame from that camera than
-/// any stranger's photograph can.
+/// Gantry ships one half of that bank: spaghetti, built from openly licensed photographs (see
+/// `docs/defect-starter-attribution.md`). The other half, "this is what fine looks like", cannot be
+/// shipped, and that is the most important thing in this file.
 ///
-/// Measured on photographs from sources that contributed nothing to the bank: at the default
-/// sensitivity it caught between a quarter and nearly all of the spaghetti depending on the source,
-/// and called at most two normal prints out of a hundred wrong. Catching some is the part that
-/// varies; not crying wolf is the part that holds, which is the right way round for something that
-/// can wake somebody at night.
+/// It was tried. A "fine" class was built from openly licensed photographs of printers, and it was
+/// wrong in a way the measurements did not catch: those were daylight pictures of whole machines on
+/// desks, while the spaghetti frames were close-ups from inside a chamber. The two classes were
+/// really "outdoors" and "inside a printer", so a frame from any real chamber camera landed on the
+/// spaghetti side whatever was on the bed. A perfectly good print came back as spaghetti. Measured
+/// afterwards, properly, with a whole camera held out of the bank on each side: between a fifth and
+/// a half of the spaghetti caught, and in the worst split thirty-seven normal prints in a hundred
+/// called failures. That is not a detector, that is a coin with a bias.
+///
+/// So only failures are shipped, and a bank with one class cannot accuse anybody: with nothing to be
+/// closer *than*, `match` has no opinion to give. The second class comes from the only place it can,
+/// the user's own camera: frames they mark in Details, and frames Gantry keeps by itself while a
+/// print is going well (see `DefectWatch.rememberGoodFrame`). From then on the comparison is between
+/// a stranger's spaghetti and this printer's own idea of normal, which is a question worth asking.
 @MainActor
 enum DefectPrototypes {
     struct Prototype {

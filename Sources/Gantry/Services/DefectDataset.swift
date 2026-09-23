@@ -54,7 +54,7 @@ enum DefectDataset {
     /// Saves one frame under its label, with everything a trainer would want to know about it.
     @discardableResult
     static func save(jpeg: Data, label: Label, printer: SavedPrinter, telemetry: PrinterTelemetry,
-                     limitBytes: Int64 = defaultLimitBytes) throws -> URL {
+                     limitBytes: Int64 = defaultLimitBytes, automatic: Bool = false) throws -> URL {
         let folder = root.appendingPathComponent(label.rawValue, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
@@ -74,6 +74,9 @@ enum DefectDataset {
             "nozzle": telemetry.nozzleTemperature as Any,
             "bed": telemetry.bedTemperature as Any,
             "bytes": jpeg.count,
+            // Frames Gantry kept by itself are marked, so a trainer can tell them from the ones a
+            // person looked at and named. A human's label is worth more and should stay countable.
+            "automatic": automatic,
             "at": ISO8601DateFormatter().string(from: Date())
         ])
         prune(to: limitBytes)

@@ -42,6 +42,8 @@ final class DefectWatch {
     /// uruchomienia i jest jedyną drogą, którą ma nowy użytkownik (patrz PrintBaseline).
     private var baselines: [String: PrintBaseline] = [:]
     private var lastJob: [String: String] = [:]
+    /// Ile klatek „idzie dobrze" Gantry zapisało samo dla bieżącego wydruku i kiedy ostatnio.
+    private var goodFrames: [String: (job: String, count: Int, at: Date)] = [:]
 
     private(set) var status = Status() { didSet { if status != oldValue { changed.send(status) } } }
     let changed = PassthroughSubject<Status, Never>()
@@ -95,6 +97,7 @@ final class DefectWatch {
         prototypes = []
         verdicts.removeAll()
         baselines.removeAll()
+        goodFrames.removeAll()
         status = Status()
     }
 
@@ -216,6 +219,9 @@ final class DefectWatch {
             .filter { $0.confidence >= threshold && ($0.label.map { !DefectVerdict.isHealthy($0) } ?? false) }
             .max { $0.confidence < $1.confidence }
         let best = alarming ?? (first.confidence >= second.confidence ? first : second)
+        if alarming == nil, first.label == nil {
+            rememberGoodFrame(jpeg: jpeg, printer: printer, telemetry: telemetry)
+        }
         var next = status
         next.lastLabel = best.label
         next.lastConfidence = best.confidence
@@ -241,6 +247,37 @@ final class DefectWatch {
             }
         }
         return best.map { (label: $0.0, confidence: $0.1) }
+    }
+
+    /// Keeps a few frames of a print that is going well, from the user's own camera.
+    ///
+    /// Recognising spaghetti needs something for it to be *unlike*, and a stranger's photograph of a
+    /// tidy print is not that. Gantry shipped one for a while and it was a mistake worth writing
+    /// down: the "this is fine" frames were daylight photographs of whole printers on desks, the
+    /// spaghetti frames were close-ups from inside a chamber, so anything at all from a real chamber
+    /// camera landed nearer the spaghetti. A perfectly good print came back as spaghetti.
+    ///
+    /// The only pictures that can stand for "normal on this printer" come from this printer. So
+    /// Gantry takes them itself, quietly, while nothing is wrong: a few per print, spaced out, from
+    /// the middle of the job where a print is neither starting nor finishing. They go in the same
+    /// folder as the marked ones and are pruned by the same limit, and the index records that Gantry
+    /// chose them rather than a person.
+    private func rememberGoodFrame(jpeg: Data, printer: SavedPrinter, telemetry: PrinterTelemetry) {
+        let progress = Double(telemetry.progress) / 100
+        guard progress >= 0.15, progress <= 0.85 else { return }
+        let job = telemetry.jobName ?? ""
+        var kept = goodFrames[printer.serial] ?? (job: job, count: 0, at: .distantPast)
+        if kept.job != job { kept = (job: job, count: 0, at: .distantPast) }
+        // Three a print is enough to describe a camera, and far apart enough to catch it at
+        // different heights of the same object rather than three views of one minute.
+        guard kept.count < 3, Date().timeIntervalSince(kept.at) > 8 * 60 else { return }
+        guard (try? DefectDataset.save(jpeg: jpeg, label: .ok, printer: printer, telemetry: telemetry,
+                                       limitBytes: AppSettings.shared.defectDatasetLimitMB * 1024 * 1024,
+                                       automatic: true)) != nil else { return }
+        goodFrames[printer.serial] = (job: job, count: kept.count + 1, at: Date())
+        // A new "this is fine" frame changes what everything is compared against, so the bank is
+        // rebuilt now rather than at the next restart.
+        rebuildPrototypes()
     }
 
     private func react(label: String?, confidence: Double, jpeg: Data,

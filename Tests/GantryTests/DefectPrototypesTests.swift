@@ -97,12 +97,46 @@ import Foundation
                      "no defect-starter bank found; run scripts/build_defect_starter.py")
     }
 
-    @Test func theShippedBankIsThereAndHoldsBothKinds() throws {
+    @Test func theShippedBankHoldsFailuresOnly() throws {
         let bank = DefectPrototypes.decode(try Data(contentsOf: try shippedBankFile()))
-        #expect(bank.prototypes.count > 50, "a bank this small could not stand for a class")
-        #expect(Set(bank.prototypes.map(\.label)) == ["ok", "spaghetti"])
+        #expect(bank.prototypes.count > 30, "a bank this small could not stand for a class")
+        // Spaghetti only, on purpose. See `theShippedBankAloneNeverAccusesAnything`.
+        #expect(Set(bank.prototypes.map(\.label)) == ["spaghetti"])
         #expect(bank.prototypes.allSatisfy { !$0.mine }, "shipped frames must not be counted as the user's")
         #expect(bank.scale > 0, "without a scale a distance cannot become a confidence")
+    }
+
+    /// The property that matters most in this whole feature, and the one whose absence shipped a bug.
+    ///
+    /// Gantry used to ship a "this is fine" class too, built from openly licensed photographs of
+    /// printers. They were daylight pictures of whole machines on desks, while the spaghetti frames
+    /// were close-ups from inside a chamber, so the two classes were really "outdoors" and "inside a
+    /// printer" and any real camera frame landed on the wrong one. A perfectly good print came back
+    /// as spaghetti at full confidence.
+    ///
+    /// Nothing can stand for "normal on this printer" except this printer, so the shipped bank now
+    /// holds one class and one class cannot accuse anybody: with nothing to be closer *than*, there
+    /// is no opinion to give. The second class arrives from the user's own camera.
+    @Test func theShippedBankAloneNeverAccusesAnything() throws {
+        let bank = DefectPrototypes.decode(try Data(contentsOf: try shippedBankFile()))
+        for frame in [tidy(0), tidy(6), mess(3), mess(11)] {
+            let guess = DefectPrototypes.match(jpeg: frame, against: bank.prototypes, scale: bank.scale)
+            #expect(guess == nil, "the shipped bank on its own must not judge: it said \(guess?.label ?? "")")
+        }
+    }
+
+    @Test func theUsersOwnFramesAreWhatTurnTheShippedBankOn() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("gantry-proto-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try dataset(root: root, ok: [tidy(0), tidy(4), tidy(-4)], spaghetti: [])
+
+        let bank = DefectPrototypes.decode(try Data(contentsOf: try shippedBankFile()))
+        let together = DefectPrototypes.build(from: root, starter: bank.prototypes)
+        #expect(Set(together.map(\.label)) == ["ok", "spaghetti"], "two classes only once the user has one")
+        // And now a frame from the same camera as those "fine" frames is recognised as fine, which is
+        // the whole point of taking the negatives from the user's own printer.
+        let guess = DefectPrototypes.match(jpeg: tidy(2), against: together, scale: bank.scale)
+        #expect(guess?.label == "ok", "a frame like the user's own good frames was called \(guess?.label ?? "nil")")
     }
 
     @Test func aDamagedBankIsIgnoredRatherThanTrusted() throws {
@@ -119,27 +153,4 @@ import Foundation
         #expect(DefectPrototypes.decode(wrongRevision).prototypes.isEmpty)
     }
 
-    /// The shipped bank, asked about its own frames with each one taken out of the bank first.
-    ///
-    /// This is not the accuracy figure, and it is deliberately a low bar. The bank keeps the most
-    /// spread-out frames of each class on purpose, so every one of them is the least typical picture
-    /// available and this is the worst question that can be asked of it. What the test catches is a
-    /// file that shipped scrambled, with its labels off by one or its floats read the wrong way
-    /// round: two balanced classes would then land at chance, and a bank that loads, decodes and
-    /// answers confidently while meaning nothing is exactly the thing worth failing the build over.
-    /// The real figure was measured while building the file, on photographs from sources that
-    /// contributed nothing to it, and is written down in `docs/defect-starter-attribution.md`.
-    @Test func theShippedBankAgreesWithItself() throws {
-        let bank = DefectPrototypes.decode(try Data(contentsOf: try shippedBankFile()))
-        var right = 0
-        for (index, prototype) in bank.prototypes.enumerated() {
-            var rest = bank.prototypes
-            rest.remove(at: index)
-            let guess = DefectPrototypes.classify(vector: DefectPrototypes.vector(of: prototype),
-                                                  against: rest, scale: bank.scale)
-            if guess?.label == prototype.label { right += 1 }
-        }
-        let share = Double(right) / Double(bank.prototypes.count)
-        #expect(share > 0.65, "the shipped bank is no better than chance about itself: \(Int(share * 100))% of the time (\(right)/\(bank.prototypes.count))")
-    }
 }
