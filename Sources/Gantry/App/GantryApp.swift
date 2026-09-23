@@ -11,6 +11,8 @@ final class GantryApp: NSObject, NSApplicationDelegate {
     private var telegramBot: TelegramBot?
     private var telegramSub: AnyCancellable?
     private var remoteBridge: RemoteBridge?
+    private var defectWatch: DefectWatch?
+    private var defectSubs: [AnyCancellable] = []
     private var remoteBridgeSubs: [AnyCancellable] = []
     private var activationPolicySub: AnyCancellable?
     private var mainMenuSub: AnyCancellable?
@@ -234,6 +236,15 @@ final class GantryApp: NSObject, NSApplicationDelegate {
             telegramSub = AppSettings.shared.$telegramEnabled.removeDuplicates().sink { _ in bot.syncWithSettings() }
             // The bridge to the user's own page. It only ever dials out, and only once Settings has an
             // address, a key and a mode that is not "off".
+            // Wykrywanie wpadek: patrzy tylko wtedy, gdy jest model i użytkownik to włączył.
+            let watch = DefectWatch(store: store)
+            defectWatch = watch
+            watch.syncWithSettings()
+            defectSubs = [
+                AppSettings.shared.$defectWatchEnabled.removeDuplicates().sink { _ in watch.syncWithSettings() },
+                AppSettings.shared.$defectModelPath.removeDuplicates().sink { _ in watch.syncWithSettings() },
+                AppSettings.shared.$defectWatchSeconds.removeDuplicates().sink { _ in watch.syncWithSettings() }
+            ]
             let bridge = RemoteBridge(store: store)
             remoteBridge = bridge
             bridge.syncWithSettings()

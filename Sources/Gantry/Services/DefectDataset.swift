@@ -44,12 +44,12 @@ enum DefectDataset {
     /// far more than hand-marking produces, and small enough to never be the reason a disk fills up.
     static let defaultLimitBytes: Int64 = 500 * 1024 * 1024
 
-    static var root: URL {
+    nonisolated static var root: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("Gantry/dataset", isDirectory: true)
     }
 
-    static var indexFile: URL { root.appendingPathComponent("index.jsonl") }
+    nonisolated static var indexFile: URL { root.appendingPathComponent("index.jsonl") }
 
     /// Saves one frame under its label, with everything a trainer would want to know about it.
     @discardableResult

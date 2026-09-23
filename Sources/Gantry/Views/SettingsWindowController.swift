@@ -209,6 +209,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let datasetStatus = settingsNote()
     private let datasetRevealButton = NSButton()
     private let datasetLimitControl = SettingsScaleControl()
+    // Wykrywanie wpadek: model, czułość i co ma się stać.
+    private let watchHeading = settingsHeading()
+    private lazy var watchCheck = SettingsCheckbox(target: self, action: #selector(watchToggled))
+    private let watchModelCaption = settingsCaption()
+    private let watchModelButton = NSButton()
+    private let watchRelearnButton = NSButton()
+    private let watchModelName = settingsNote()
+    private let watchSensitivityCaption = settingsCaption()
+    private let watchSensitivityControl = SettingsScaleControl()
+    private lazy var watchPauseCheck = SettingsCheckbox(target: self, action: #selector(watchPauseToggled))
 
     private var settingsSubscription: AnyCancellable?
     private var refreshScheduled = false
@@ -539,8 +549,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         datasetRow.orientation = .horizontal
         datasetRow.spacing = 7
 
+        watchModelButton.target = self
+        watchModelButton.action = #selector(pickDefectModel)
+        watchRelearnButton.target = self
+        watchRelearnButton.action = #selector(relearnPrototypes)
+        for button in [watchModelButton, watchRelearnButton] { button.bezelStyle = .rounded }
+        let watchModelRow = NSStackView(views: [watchModelButton, watchRelearnButton])
+        watchModelRow.orientation = .horizontal
+        watchModelRow.spacing = 7
+        watchSensitivityControl.onStep = { [weak self] direction in self?.changeWatchSensitivity(direction) }
+
         let grid = SettingsGrid()
         grid.group(featuresCaption, [printerControlCheck, developerCheck, scriptActionsCheck])
+        grid.section(watchHeading)
+        grid.aligned(watchCheck)
+        grid.field(watchModelCaption, watchModelRow)
+        grid.aligned(watchModelName)
+        grid.field(watchSensitivityCaption, watchSensitivityControl)
+        grid.aligned(watchPauseCheck)
         grid.field(datasetCaption, datasetRow)
         grid.aligned(datasetStatus)
         appendAbout(to: grid)
@@ -888,6 +914,40 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         scriptActionsCheck.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
         scriptActionsCheck.isOn = settings.allowScriptActions
 
+        // Wykrywanie wpadek: bez modelu nie ma czym patrzeć, więc reszta czeka na plik.
+        setText(watchHeading, settings.t("Print failure detection"))
+        watchCheck.title = settings.t("Watch prints with a model")
+        watchCheck.setSubtitle(settings.t("Gantry looks at a camera frame every {0} s and warns when the model keeps saying something is wrong.", settings.defectWatchSeconds))
+        watchCheck.isOn = settings.defectWatchEnabled
+        setText(watchModelCaption, settings.t("Model file") + ":")
+        watchModelButton.title = settings.defectModelPath.isEmpty ? settings.t("Choose…") : settings.t("Change…")
+        watchRelearnButton.title = settings.t("Relearn from my frames")
+        watchRelearnButton.isEnabled = settings.defectWatchEnabled && settings.defectModelPath.isEmpty
+        let status = DefectWatch.current?.status
+        if let error = status?.lastError {
+            setText(watchModelName, error)
+            watchModelName.textColor = GantryTheme.statusError
+        } else if settings.defectModelPath.isEmpty {
+            let learned = status?.modelName
+            setText(watchModelName, learned ?? settings.t("With no file chosen Gantry learns from the frames you marked in Details: three of a kind are enough to start. A downloaded model goes here instead."))
+            watchModelName.textColor = .secondaryLabelColor
+        } else {
+            let name = (settings.defectModelPath as NSString).lastPathComponent
+            let seen = status?.lastLabel.map { "\($0) \(Int(((status?.lastConfidence ?? 0) * 100).rounded()))%" }
+            setText(watchModelName, seen == nil ? name : settings.t("{0} · last look: {1}", name, seen!))
+            watchModelName.textColor = .secondaryLabelColor
+        }
+        setText(watchSensitivityCaption, settings.t("Sensitivity") + ":")
+        let thresholds: [Double] = [0.5, 0.6, 0.7, 0.8, 0.9]
+        let thresholdIndex = thresholds.firstIndex(of: settings.defectThreshold) ?? 2
+        watchSensitivityControl.configure(text: "\(Int(settings.defectThreshold * 100))%",
+                                          index: thresholdIndex, count: thresholds.count,
+                                          enabled: settings.defectWatchEnabled)
+        watchPauseCheck.title = settings.t("Pause the print on a warning")
+        watchPauseCheck.setSubtitle(settings.t("Off by default: stopping a print on a guess is a bigger promise than telling you about it."))
+        watchPauseCheck.isOn = settings.defectPausesPrint
+        watchPauseCheck.checkbox.isEnabled = settings.defectWatchEnabled
+
         // Ile zdjęć zebrałeś i ile jeszcze się zmieści; „Pokaż” otwiera katalog dla trenera.
         setText(datasetCaption, settings.t("Defect frames") + ":")
         datasetRevealButton.title = settings.t("Show")
@@ -901,6 +961,43 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 ? settings.t("None yet. Mark one from the camera in Details; the oldest correct frames go first when the limit is reached.")
                 : settings.t("{0} frames, {1} MB. The oldest correct frames go first when the limit is reached.",
                              stats.frames, String(format: "%.1f", megabytes)))
+    }
+
+    @objc private func watchToggled() {
+        AppSettings.shared.defectWatchEnabled = watchCheck.isOn
+        scheduleRefresh()
+    }
+
+    /// Recomputes the prototypes from the marked frames, so newly marked pictures count from now on.
+    @objc private func relearnPrototypes() {
+        DefectWatch.current?.rebuildPrototypes()
+        scheduleRefresh()
+    }
+
+    @objc private func watchPauseToggled() {
+        AppSettings.shared.defectPausesPrint = watchPauseCheck.isOn
+    }
+
+    /// Picks the model file. Compiled (.mlmodelc) and uncompiled (.mlpackage, .mlmodel) both work;
+    /// the trainer in tools/ writes the middle one.
+    @objc private func pickDefectModel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true       // .mlpackage is a folder
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = []
+        panel.message = AppSettings.shared.t("Choose a Core ML model file (.mlpackage, .mlmodel or .mlmodelc).")
+        guard ModalHost.run({ panel.runModal() }) == .OK, let url = panel.url else { return }
+        AppSettings.shared.defectModelPath = url.path
+        scheduleRefresh()
+    }
+
+    private func changeWatchSensitivity(_ direction: Int) {
+        let steps: [Double] = [0.5, 0.6, 0.7, 0.8, 0.9]
+        let current = AppSettings.shared.defectThreshold
+        let index = steps.firstIndex(of: current) ?? 2
+        AppSettings.shared.defectThreshold = steps[min(max(index + (direction > 0 ? 1 : -1), 0), steps.count - 1)]
+        scheduleRefresh()
     }
 
     @objc private func revealDataset() {

@@ -98,6 +98,21 @@ final class AppSettings: ObservableObject {
     /// shows yesterday's fleet. The shortcut still works on its own, for everything else.
     @Published var keepAwakeWithBridge: Bool { didSet { defaults.set(keepAwakeWithBridge, forKey: "keep-awake-with-bridge") } }
 
+    /// Watching prints for failures with a model the user supplies (see DefectWatch). Off until there
+    /// is a model to use, because a watchdog with no model would only pretend to watch.
+    @Published var defectWatchEnabled: Bool { didSet { defaults.set(defectWatchEnabled, forKey: "defect-watch-enabled") } }
+    /// The Core ML file Gantry asks. Gantry ships none: the ready-made ones cannot be handed on, and
+    /// a model trained on these cameras beats a general one.
+    @Published var defectModelPath: String { didSet { defaults.set(defectModelPath, forKey: "defect-model-path") } }
+    /// Seconds between looks. Rare enough to cost nothing, often enough to catch a failure early.
+    @Published var defectWatchSeconds: Int { didSet { defaults.set(defectWatchSeconds, forKey: "defect-watch-seconds") } }
+    /// How sure the model must be, and how many times in a row, before Gantry says anything.
+    @Published var defectThreshold: Double { didSet { defaults.set(defectThreshold, forKey: "defect-threshold") } }
+    @Published var defectHitsNeeded: Int { didSet { defaults.set(defectHitsNeeded, forKey: "defect-hits") } }
+    /// Whether a verdict also pauses the print. Off by default: stopping somebody's print on a guess
+    /// is a bigger promise than telling them about it.
+    @Published var defectPausesPrint: Bool { didSet { defaults.set(defectPausesPrint, forKey: "defect-pauses-print") } }
+
     /// How much room the marked camera frames may take before the oldest ones are dropped. In
     /// megabytes, because that is how the user thinks about a disk (see DefectDataset).
     @Published var defectDatasetLimitMB: Int64 { didSet { defaults.set(Int(defectDatasetLimitMB), forKey: "defect-dataset-limit-mb") } }
@@ -273,6 +288,12 @@ final class AppSettings: ObservableObject {
         remoteBridgeURL = defaults.string(forKey: "remote-bridge-url") ?? ""
         remoteBridgeKey = defaults.string(forKey: "remote-bridge-key") ?? ""
         keepAwakeWithBridge = defaults.object(forKey: "keep-awake-with-bridge") as? Bool ?? false
+        defectWatchEnabled = defaults.object(forKey: "defect-watch-enabled") as? Bool ?? false
+        defectModelPath = defaults.string(forKey: "defect-model-path") ?? ""
+        defectWatchSeconds = defaults.object(forKey: "defect-watch-seconds") as? Int ?? 20
+        defectThreshold = defaults.object(forKey: "defect-threshold") as? Double ?? 0.7
+        defectHitsNeeded = defaults.object(forKey: "defect-hits") as? Int ?? 3
+        defectPausesPrint = defaults.object(forKey: "defect-pauses-print") as? Bool ?? false
         defectDatasetLimitMB = Int64(defaults.object(forKey: "defect-dataset-limit-mb") as? Int ?? 500)
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false

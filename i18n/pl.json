@@ -1122,5 +1122,22 @@
   "Object came off the bed": "Obiekt oderwany od stołu",
   "Blob on the nozzle": "Blob na dyszy",
   "Layer shift": "Przesunięcie warstw",
-  "Something else": "Coś innego"
+  "Something else": "Coś innego",
+  "Print failure detection": "Wykrywanie wpadek",
+  "Watch prints with a model": "Pilnuj wydruków modelem",
+  "Gantry looks at a camera frame every {0} s and warns when the model keeps saying something is wrong.": "Gantry ogląda klatkę z kamery co {0} s i ostrzega, gdy model kilka razy z rzędu powie, że coś jest nie tak.",
+  "Model file": "Plik modelu",
+  "Choose…": "Wybierz…",
+  "Change…": "Zmień…",
+  "Choose a Core ML model file (.mlpackage, .mlmodel or .mlmodelc).": "Wybierz plik modelu Core ML (.mlpackage, .mlmodel albo .mlmodelc).",
+  "{0} · last look: {1}": "{0} · ostatnie spojrzenie: {1}",
+  "Sensitivity": "Czułość",
+  "Pause the print on a warning": "Wstrzymaj wydruk przy ostrzeżeniu",
+  "Off by default: stopping a print on a guess is a bigger promise than telling you about it.": "Domyślnie wyłączone: zatrzymanie wydruku na podstawie domysłu to większa obietnica niż samo powiadomienie.",
+  "Possible print failure": "Możliwa wpadka wydruku",
+  "{0} ({1}%) on {2}": "{0} ({1}%) na {2}",
+  "With no file chosen Gantry learns from the frames you marked in Details: three of a kind are enough to start. A downloaded model goes here instead.": "Bez wskazanego pliku Gantry uczy się z klatek oznaczonych w Szczegółach: wystarczą trzy tego samego rodzaju. Pobrany model wskazujesz tutaj.",
+  "your own frames ({0} classes)": "Twoje własne klatki ({0} klas)",
+  "Mark at least three frames of a kind in Details before Gantry can recognise it.": "Oznacz w Szczegółach co najmniej trzy klatki danego rodzaju, żeby Gantry mogło go rozpoznać.",
+  "Relearn from my frames": "Przelicz z moich klatek"
 }
