@@ -73,8 +73,10 @@ struct DefectVerdict {
 
     /// Labels that mean "this is fine". Models name the healthy class differently, so the check is on
     /// the word rather than on a fixed string from one particular model.
-    private func isHealthy(_ label: String) -> Bool {
+    static func isHealthy(_ label: String) -> Bool {
         let healthy = ["ok", "normal", "good", "healthy", "printing correctly", "no-failure", "none"]
         return healthy.contains(label.lowercased())
     }
+
+    private func isHealthy(_ label: String) -> Bool { Self.isHealthy(label) }
 }

@@ -914,10 +914,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         scriptActionsCheck.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
         scriptActionsCheck.isOn = settings.allowScriptActions
 
-        // Wykrywanie wpadek: bez modelu nie ma czym patrzeć, więc reszta czeka na plik.
+        // Wykrywanie wpadek działa bez żadnego pliku: patrzy, jak wydruk zmienia się w czasie.
         setText(watchHeading, settings.t("Print failure detection"))
-        watchCheck.title = settings.t("Watch prints with a model")
-        watchCheck.setSubtitle(settings.t("Gantry looks at a camera frame every {0} s and warns when the model keeps saying something is wrong.", settings.defectWatchSeconds))
+        watchCheck.title = settings.t("Watch my prints")
+        watchCheck.setSubtitle(settings.t("Gantry looks at a camera frame every {0} s and warns when a print stops behaving the way it has been. Works straight away, with no model file.", settings.defectWatchSeconds))
         watchCheck.isOn = settings.defectWatchEnabled
         setText(watchModelCaption, settings.t("Model file") + ":")
         watchModelButton.title = settings.defectModelPath.isEmpty ? settings.t("Choose…") : settings.t("Change…")
@@ -929,7 +929,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             watchModelName.textColor = GantryTheme.statusError
         } else if settings.defectModelPath.isEmpty {
             let learned = status?.modelName
-            setText(watchModelName, learned ?? settings.t("With no file chosen Gantry learns from the frames you marked in Details: three of a kind are enough to start. A downloaded model goes here instead."))
+            setText(watchModelName, settings.t("Watching: {0}. Gantry needs no file to spot spaghetti, an object coming off the bed or a layer shift: it learns how each print of yours normally looks. Marking frames in Details sharpens it, and a downloaded model goes here instead.",
+                                               learned ?? settings.t("how the print is behaving")))
             watchModelName.textColor = .secondaryLabelColor
         } else {
             let name = (settings.defectModelPath as NSString).lastPathComponent

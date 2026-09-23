@@ -1123,8 +1123,6 @@
   "Layer shift": "Przesunięcie warstw",
   "Something else": "Coś innego",
   "Print failure detection": "Wykrywanie wpadek",
-  "Watch prints with a model": "Pilnuj wydruków modelem",
-  "Gantry looks at a camera frame every {0} s and warns when the model keeps saying something is wrong.": "Gantry ogląda klatkę z kamery co {0} s i ostrzega, gdy model kilka razy z rzędu powie, że coś jest nie tak.",
   "Model file": "Plik modelu",
   "Choose…": "Wybierz…",
   "Change…": "Zmień…",
@@ -1135,12 +1133,14 @@
   "Off by default: stopping a print on a guess is a bigger promise than telling you about it.": "Domyślnie wyłączone: zatrzymanie wydruku na podstawie domysłu to większa obietnica niż samo powiadomienie.",
   "Possible print failure": "Możliwa wpadka wydruku",
   "{0} ({1}%) on {2}": "{0} ({1}%) na {2}",
-  "With no file chosen Gantry learns from the frames you marked in Details: three of a kind are enough to start. A downloaded model goes here instead.": "Bez wskazanego pliku Gantry uczy się z klatek oznaczonych w Szczegółach: wystarczą trzy tego samego rodzaju. Pobrany model wskazujesz tutaj.",
-  "your own frames ({0} classes)": "Twoje własne klatki ({0} klas)",
-  "Mark at least three frames of a kind in Details before Gantry can recognise it.": "Oznacz w Szczegółach co najmniej trzy klatki danego rodzaju, żeby Gantry mogło go rozpoznać.",
   "Relearn from my frames": "Przelicz z moich klatek",
   "Taking a picture…": "Robię zdjęcie…",
   "The printer sent no picture. Check the camera and try again.": "Drukarka nie przysłała obrazu. Sprawdź kamerę i spróbuj jeszcze raz.",
   "Yes, it failed": "Tak, wpadka",
-  "False alarm": "Fałszywy alarm"
+  "False alarm": "Fałszywy alarm",
+  "how the print is behaving": "zachowanie wydruku",
+  "how the print is behaving + your own frames ({0} classes)": "zachowanie wydruku + własne klatki ({0} rodzaje)",
+  "Watch my prints": "Pilnuj moich wydruków",
+  "Gantry looks at a camera frame every {0} s and warns when a print stops behaving the way it has been. Works straight away, with no model file.": "Gantry zagląda do kamery co {0} s i ostrzega, gdy wydruk przestaje zachowywać się tak jak dotąd. Działa od razu, bez żadnego pliku modelu.",
+  "Watching: {0}. Gantry needs no file to spot spaghetti, an object coming off the bed or a layer shift: it learns how each print of yours normally looks. Marking frames in Details sharpens it, and a downloaded model goes here instead.": "Patrzy na: {0}. Żeby wyłapać spaghetti, oderwanie obiektu albo przesunięcie warstw, Gantry nie potrzebuje żadnego pliku: uczy się, jak normalnie wygląda każdy Twój wydruk. Oznaczanie klatek w Szczegółach to wyostrza, a pobrany model wchodzi tutaj zamiast tego."
 }

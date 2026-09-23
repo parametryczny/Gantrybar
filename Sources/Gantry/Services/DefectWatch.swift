@@ -3,13 +3,22 @@ import CoreML
 import Combine
 import Vision
 
-/// Watching prints for failures: a frame every so often, a model's opinion on it, and a warning only
-/// when the opinion holds (see DefectVerdict).
+/// Watching prints for failures: a frame every so often, an opinion on it, and a warning only when
+/// the opinion holds (see DefectVerdict).
 ///
-/// Gantry ships no model. It loads a Core ML file the user points it at, because the ready-made
-/// detectors people can download come under licences that forbid handing them on inside another app,
-/// and because a model trained on the user's own cameras beats a general one anyway. Any model that
-/// takes an image and returns labels with confidences works; the labels it uses are its own business.
+/// Three things can give that opinion, and they stack:
+///
+/// 1. **How the print is behaving** (PrintBaseline). Needs nothing at all: no file, no marked frames,
+///    no training. It compares each frame with the minutes before it on the same camera, so it works
+///    on the first print on a printer nobody has ever photographed. This is what makes the feature
+///    mean something the day it is switched on.
+/// 2. **The frames the user marked** (DefectPrototypes), once there are three of a kind.
+/// 3. **A Core ML file** the user points Gantry at, which then replaces 2.
+///
+/// Gantry ships no model file. The ready-made detectors people can download come under licences that
+/// forbid handing them on inside another app, and the open image sets that would let one be trained
+/// are behind accounts rather than a download. So the answer is a detector that needs no data at all,
+/// which 1 is, with the other two there to sharpen it on the user's own printers.
 @MainActor
 final class DefectWatch {
     struct Status: Equatable {
@@ -29,6 +38,9 @@ final class DefectWatch {
     private var timer: Timer?
     private var busy: Set<String> = []
     private var verdicts: [String: DefectVerdict] = [:]
+    /// Jak zachowuje się każdy wydruk z osobna. Nie wymaga żadnych danych, więc działa od pierwszego
+    /// uruchomienia i jest jedyną drogą, którą ma nowy użytkownik (patrz PrintBaseline).
+    private var baselines: [String: PrintBaseline] = [:]
     private var lastJob: [String: String] = [:]
 
     private(set) var status = Status() { didSet { if status != oldValue { changed.send(status) } } }
@@ -50,15 +62,14 @@ final class DefectWatch {
             return
         }
         if settings.defectModelPath.isEmpty {
-            // Bez wskazanego pliku Gantry uczy się z tego, co sam oznaczyłeś.
+            // Bez wskazanego pliku Gantry uczy się z tego, co sam oznaczyłeś. Nawet gdy nie oznaczyłeś
+            // jeszcze nic, zostaje obserwacja samego wydruku, więc patrzenie ma sens od razu.
             model = nil
             modelName = nil
             rebuildPrototypes()
-            guard !prototypes.isEmpty else { return }
         } else {
             prototypes = []
             loadModel(at: settings.defectModelPath)
-            guard model != nil else { return }
         }
         schedule(interval: TimeInterval(max(5, settings.defectWatchSeconds)))
     }
@@ -69,11 +80,9 @@ final class DefectWatch {
         prototypes = DefectPrototypes.build()
         var next = status
         next.modelName = prototypes.isEmpty
-            ? nil
-            : AppSettings.shared.t("your own frames ({0} classes)", prototypes.count)
-        next.lastError = prototypes.isEmpty
-            ? AppSettings.shared.t("Mark at least three frames of a kind in Details before Gantry can recognise it.")
-            : nil
+            ? AppSettings.shared.t("how the print is behaving")
+            : AppSettings.shared.t("how the print is behaving + your own frames ({0} classes)", prototypes.count)
+        next.lastError = nil
         status = next
     }
 
@@ -83,6 +92,7 @@ final class DefectWatch {
         model = nil
         prototypes = []
         verdicts.removeAll()
+        baselines.removeAll()
         status = Status()
     }
 
@@ -122,7 +132,7 @@ final class DefectWatch {
     // MARK: One look
 
     private func look() {
-        guard let store, model != nil || !prototypes.isEmpty else { return }
+        guard let store else { return }
         for printer in store.printers {
             let telemetry = store.telemetry[printer.serial] ?? PrinterTelemetry()
             // Only a running print can fail in a way worth interrupting, and only a printer with a
@@ -133,6 +143,7 @@ final class DefectWatch {
             if lastJob[printer.serial] != job {
                 lastJob[printer.serial] = job
                 verdicts[printer.serial]?.reset()
+                baselines[printer.serial]?.reset()
             }
             guard !busy.contains(printer.serial) else { continue }
             busy.insert(printer.serial)
@@ -145,16 +156,14 @@ final class DefectWatch {
     }
 
     private func inspect(jpeg: Data, printer: SavedPrinter, telemetry: PrinterTelemetry) {
+        // Zawsze, niezależnie od modelu: jak ten wydruk zachowuje się względem ostatnich minut.
+        let fromBehaviour = watchBehaviour(jpeg: jpeg, printer: printer, telemetry: telemetry)
+
         guard let model else {
-            // Droga bez pliku modelu: porównanie z wzorcami z własnych klatek.
+            // Bez pliku modelu zostają wzorce z własnych klatek, o ile jakieś są.
             let match = DefectPrototypes.match(jpeg: jpeg, against: prototypes)
-            var next = status
-            next.lastLabel = match?.label
-            next.lastConfidence = match?.confidence ?? 0
-            next.lastLookedAt = Date()
-            status = next
-            react(label: match?.label, confidence: match?.confidence ?? 0,
-                  jpeg: jpeg, printer: printer, telemetry: telemetry)
+            settle(fromBehaviour, PrintBaseline.Reading(label: match?.label, confidence: match?.confidence ?? 0),
+                   jpeg: jpeg, printer: printer, telemetry: telemetry)
             return
         }
         guard let image = CIImage(data: jpeg) else { return }
@@ -162,13 +171,9 @@ final class DefectWatch {
             Task { @MainActor in
                 guard let self else { return }
                 let best = Self.bestGuess(from: request.results)
-                var next = self.status
-                next.lastLabel = best?.label
-                next.lastConfidence = best?.confidence ?? 0
-                next.lastLookedAt = Date()
-                self.status = next
-                self.react(label: best?.label, confidence: best?.confidence ?? 0,
-                           jpeg: jpeg, printer: printer, telemetry: telemetry)
+                self.settle(fromBehaviour,
+                            PrintBaseline.Reading(label: best?.label, confidence: best?.confidence ?? 0),
+                            jpeg: jpeg, printer: printer, telemetry: telemetry)
             }
         }
         request.imageCropAndScaleOption = .scaleFill
@@ -179,6 +184,41 @@ final class DefectWatch {
             next.lastError = error.localizedDescription
             status = next
         }
+    }
+
+    /// Co o tej klatce mówi samo zachowanie wydruku. Historia jest osobna dla każdej drukarki, bo
+    /// każda ma własną kamerę, własne światło i własny kadr.
+    private func watchBehaviour(jpeg: Data, printer: SavedPrinter,
+                                telemetry: PrinterTelemetry) -> PrintBaseline.Reading {
+        guard let frame = FrameSignals.grey(from: jpeg) else {
+            return PrintBaseline.Reading(label: nil, confidence: 0)
+        }
+        var baseline = baselines[printer.serial] ?? PrintBaseline()
+        let reading = baseline.observe(frame: frame, progress: Double(telemetry.progress) / 100)
+        baselines[printer.serial] = baseline
+        return reading
+    }
+
+    /// Bierze mocniejszą z dwóch opinii i na niej opiera decyzję.
+    ///
+    /// Dwie drogi patrzą na co innego: jedna na to, jak wydruk się zmienia, druga na to, jak wygląda.
+    /// Zgodzić się nie muszą, a wystarczy, że jedna ma naprawdę mocny powód, żeby zawołać: „wygląda
+    /// normalnie" nie może zagłuszyć „przed chwilą wszystko się posypało". Dopóki jednak żadna nie
+    /// przekroczyła progu, liczy się zwykłe „spokojnie", bo to ono kasuje licznik.
+    private func settle(_ first: PrintBaseline.Reading, _ second: PrintBaseline.Reading,
+                        jpeg: Data, printer: SavedPrinter, telemetry: PrinterTelemetry) {
+        let threshold = AppSettings.shared.defectThreshold
+        let alarming = [first, second]
+            .filter { $0.confidence >= threshold && ($0.label.map { !DefectVerdict.isHealthy($0) } ?? false) }
+            .max { $0.confidence < $1.confidence }
+        let best = alarming ?? (first.confidence >= second.confidence ? first : second)
+        var next = status
+        next.lastLabel = best.label
+        next.lastConfidence = best.confidence
+        next.lastLookedAt = Date()
+        status = next
+        react(label: best.label, confidence: best.confidence,
+              jpeg: jpeg, printer: printer, telemetry: telemetry)
     }
 
     /// The strongest label a Vision request came back with, whether the model classifies whole frames
