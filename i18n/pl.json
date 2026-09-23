@@ -1107,5 +1107,20 @@
   "Gantry dials out to your page, so nothing is opened on the router. Upload the web/ folder, paste this key into its config.php, and the page shows the fleet.": "Gantry samo dzwoni do Twojej strony, więc na routerze nic nie otwierasz. Wrzuć katalog web/ na serwer, wklej ten klucz do jego config.php, a strona pokaże flotę.",
   "A sleeping Mac stops answering. Same switch: {0}.": "Śpiący Mac przestaje odpowiadać. Ten sam przełącznik: {0}.",
   "Allowed. Gantry turns it off again when the switch goes off and when it quits.": "Zezwolone. Gantry wyłącza to, gdy gaśnie przełącznik i gdy się zamyka.",
-  "A shut MacBook sleeps anyway. This installs one rule for exactly {0}, and asks for your administrator password once.": "Zamknięty MacBook i tak zaśnie. To zakłada jedną regułę na dokładnie {0} i pyta raz o hasło administratora."
+  "A shut MacBook sleeps anyway. This installs one rule for exactly {0}, and asks for your administrator password once.": "Zamknięty MacBook i tak zaśnie. To zakłada jedną regułę na dokładnie {0} i pyta raz o hasło administratora.",
+  "Mark defect…": "Zaznacz defekt…",
+  "Saved ({0})": "Zapisano ({0})",
+  "No picture to mark yet.": "Nie ma jeszcze obrazu do oznaczenia.",
+  "Wait for the camera to show a frame and try again.": "Poczekaj, aż kamera pokaże klatkę, i spróbuj jeszcze raz.",
+  "Could not save the frame.": "Nie udało się zapisać klatki.",
+  "Defect frames": "Zdjęcia defektów",
+  "Show": "Pokaż",
+  "None yet. Mark one from the camera in Details; the oldest correct frames go first when the limit is reached.": "Jeszcze żadnych. Oznacz klatkę z kamery w Szczegółach; po przekroczeniu limitu najpierw znikają najstarsze poprawne.",
+  "{0} frames, {1} MB. The oldest correct frames go first when the limit is reached.": "{0} zdjęć, {1} MB. Po przekroczeniu limitu najpierw znikają najstarsze poprawne.",
+  "Printing correctly": "Drukuje poprawnie",
+  "Spaghetti": "Spaghetti",
+  "Object came off the bed": "Obiekt oderwany od stołu",
+  "Blob on the nozzle": "Blob na dyszy",
+  "Layer shift": "Przesunięcie warstw",
+  "Something else": "Coś innego"
 }

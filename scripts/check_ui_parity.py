@@ -1197,7 +1197,11 @@ forbid(win_detail, r"TempChip\(", "Windows rebuilds temperature chips, which wou
 require("windows/Gantry.Windows/Services/Storage.cs", rf'"{detail_controls["setting"]}"', "Windows is missing the printer-control setting")
 require("windows/Gantry.Windows/Services/PrinterStore.cs", r"M104 S[\s\S]*?M140 S[\s\S]*?M106 P\{index\}[\s\S]*?M220 S",
         "Windows is missing the temperature, fan or speed commands")
-require(mac_detail, r'sectionTitle\(AppSettings\.shared\.t\("CAMERA"\)\), NSView\(\), advancedButton', "macOS camera card lost Advanced…")
+# The camera card's header: the title, then whatever buttons it carries, with Advanced… last.
+require(mac_detail, r'sectionTitle\(AppSettings\.shared\.t\("CAMERA"\)\), NSView\(\),[\s\S]{0,120}advancedButton\]',
+        "macOS camera card lost Advanced…")
+require(mac_detail, r"markDefectButton\.action = #selector\(markDefect\)",
+        "macOS camera card lost the defect marker that feeds the training set")
 require(win_detail, r'new AdvancedWindow\(_store, _serial\)', "Windows has no way to open Advanced…")
 
 # Spool accounting: a print is identified by its session, not the hour a FINISHED packet arrived.

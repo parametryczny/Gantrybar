@@ -83,6 +83,7 @@ final class PrinterDetailViewController: NSViewController {
 
     // Camera. The feed itself lives in CameraFeedController; this view only hosts it.
     private lazy var cameraFeed = CameraFeedController(store: store, serial: serial)
+    private let markDefectButton = NSButton()
     private var cameraCard: NSView?
     private let presentation: DashboardPresentation
     /// Reported whenever the cards change the height the panel needs, so the popover can follow.
@@ -440,6 +441,51 @@ final class PrinterDetailViewController: NSViewController {
     @objc private func backPressed() { onBack() }
     @objc private func skipObjectsPressed() { onSkipObjects() }
 
+    /// Asks what is wrong with what the camera is showing and keeps that frame under the answer.
+    @objc private func markDefect() {
+        let settings = AppSettings.shared
+        guard let jpeg = cameraFeed.currentFrameJPEG else {
+            let alert = NSAlert()
+            alert.messageText = settings.t("No picture to mark yet.")
+            alert.informativeText = settings.t("Wait for the camera to show a frame and try again.")
+            ModalHost.run(alert)
+            return
+        }
+        let menu = NSMenu()
+        for label in DefectDataset.Label.allCases {
+            let item = NSMenuItem(title: settings.t(label.title), action: #selector(saveDefectFrame(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = [label.rawValue, jpeg] as [Any]
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: markDefectButton.bounds.height + 4),
+                   in: markDefectButton)
+    }
+
+    @objc private func saveDefectFrame(_ sender: NSMenuItem) {
+        let settings = AppSettings.shared
+        guard let payload = sender.representedObject as? [Any], payload.count == 2,
+              let raw = payload[0] as? String, let label = DefectDataset.Label(rawValue: raw),
+              let jpeg = payload[1] as? Data,
+              let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        do {
+            try DefectDataset.save(jpeg: jpeg, label: label, printer: printer,
+                                   telemetry: store.telemetry[serial] ?? PrinterTelemetry(),
+                                   limitBytes: settings.defectDatasetLimitMB * 1024 * 1024)
+            let stats = DefectDataset.stats()
+            markDefectButton.title = settings.t("Saved ({0})", stats.frames)
+            // Back to the plain title after a moment: the button is a control, not a counter.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                self?.markDefectButton.title = AppSettings.shared.t("Mark defect…")
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = settings.t("Could not save the frame.")
+            alert.informativeText = error.localizedDescription
+            ModalHost.run(alert)
+        }
+    }
+
     // MARK: Card builders
 
     private func card() -> NSView {
@@ -727,7 +773,16 @@ final class PrinterDetailViewController: NSViewController {
         advancedButton.isBordered = false
         advancedButton.font = .systemFont(ofSize: 10, weight: .medium)
         advancedButton.contentTintColor = .controlAccentColor
-        let header = NSStackView(views: [sectionTitle(AppSettings.shared.t("CAMERA")), NSView(), advancedButton])
+        // Oznaczanie defektu wprost z podglądu: etykieta powstaje wtedy, gdy człowiek naprawdę patrzy
+        // na obraz, więc jest warta więcej niż worek klatek do przejrzenia później.
+        markDefectButton.title = AppSettings.shared.t("Mark defect…")
+        markDefectButton.target = self
+        markDefectButton.action = #selector(markDefect)
+        markDefectButton.isBordered = false
+        markDefectButton.font = .systemFont(ofSize: 10, weight: .medium)
+        markDefectButton.contentTintColor = .controlAccentColor
+        let header = NSStackView(views: [sectionTitle(AppSettings.shared.t("CAMERA")), NSView(),
+                                         markDefectButton, advancedButton])
         header.orientation = .horizontal
         header.alignment = .centerY
         // The card's drag grip sits in the top-right corner (8 pt in, 22 wide); the button used to

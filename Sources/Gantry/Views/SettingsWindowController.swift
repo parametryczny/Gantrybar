@@ -204,6 +204,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var developerCheck = SettingsCheckbox(target: self, action: #selector(developerToggled))
     private lazy var printerControlCheck = SettingsCheckbox(target: self, action: #selector(printerControlToggled))
     private lazy var scriptActionsCheck = SettingsCheckbox(target: self, action: #selector(scriptActionsToggled))
+    // Zbiór zdjęć do nauki wykrywania wpadek: ile go jest i gdzie leży.
+    private let datasetCaption = settingsCaption()
+    private let datasetStatus = settingsNote()
+    private let datasetRevealButton = NSButton()
+    private let datasetLimitControl = SettingsScaleControl()
 
     private var settingsSubscription: AnyCancellable?
     private var refreshScheduled = false
@@ -526,8 +531,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func buildAdvancedPane() -> NSGridView {
+        datasetRevealButton.target = self
+        datasetRevealButton.action = #selector(revealDataset)
+        datasetRevealButton.bezelStyle = .rounded
+        datasetLimitControl.onStep = { [weak self] direction in self?.changeDatasetLimit(direction) }
+        let datasetRow = NSStackView(views: [datasetLimitControl, datasetRevealButton])
+        datasetRow.orientation = .horizontal
+        datasetRow.spacing = 7
+
         let grid = SettingsGrid()
         grid.group(featuresCaption, [printerControlCheck, developerCheck, scriptActionsCheck])
+        grid.field(datasetCaption, datasetRow)
+        grid.aligned(datasetStatus)
         appendAbout(to: grid)
         return grid.build()
     }
@@ -872,6 +887,36 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         scriptActionsCheck.title = settings.t("Scripts in automations")
         scriptActionsCheck.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
         scriptActionsCheck.isOn = settings.allowScriptActions
+
+        // Ile zdjęć zebrałeś i ile jeszcze się zmieści; „Pokaż” otwiera katalog dla trenera.
+        setText(datasetCaption, settings.t("Defect frames") + ":")
+        datasetRevealButton.title = settings.t("Show")
+        let limitSteps: [Int64] = [100, 250, 500, 1000, 2000, 5000]
+        let limitIndex = limitSteps.firstIndex(of: settings.defectDatasetLimitMB) ?? 2
+        datasetLimitControl.configure(text: "\(settings.defectDatasetLimitMB) MB",
+                                      index: limitIndex, count: limitSteps.count)
+        let stats = DefectDataset.stats()
+        let megabytes = Double(stats.bytes) / (1024 * 1024)
+        setText(datasetStatus, stats.frames == 0
+                ? settings.t("None yet. Mark one from the camera in Details; the oldest correct frames go first when the limit is reached.")
+                : settings.t("{0} frames, {1} MB. The oldest correct frames go first when the limit is reached.",
+                             stats.frames, String(format: "%.1f", megabytes)))
+    }
+
+    @objc private func revealDataset() {
+        try? FileManager.default.createDirectory(at: DefectDataset.root, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([DefectDataset.root])
+    }
+
+    /// The limit moves in steps a person can hold in their head, not in arbitrary numbers.
+    private func changeDatasetLimit(_ direction: Int) {
+        let steps: [Int64] = [100, 250, 500, 1000, 2000, 5000]
+        let current = AppSettings.shared.defectDatasetLimitMB
+        let index = steps.firstIndex(of: current) ?? steps.firstIndex(where: { $0 >= current }) ?? 2
+        let next = min(max(index + (direction > 0 ? 1 : -1), 0), steps.count - 1)
+        AppSettings.shared.defectDatasetLimitMB = steps[next]
+        DefectDataset.prune(to: steps[next] * 1024 * 1024)
+        scheduleRefresh()
     }
 
     private func refreshIntegrationsPane(_ settings: AppSettings) {

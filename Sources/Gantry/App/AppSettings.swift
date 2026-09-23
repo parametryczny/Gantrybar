@@ -98,6 +98,10 @@ final class AppSettings: ObservableObject {
     /// shows yesterday's fleet. The shortcut still works on its own, for everything else.
     @Published var keepAwakeWithBridge: Bool { didSet { defaults.set(keepAwakeWithBridge, forKey: "keep-awake-with-bridge") } }
 
+    /// How much room the marked camera frames may take before the oldest ones are dropped. In
+    /// megabytes, because that is how the user thinks about a disk (see DefectDataset).
+    @Published var defectDatasetLimitMB: Int64 { didSet { defaults.set(Int(defectDatasetLimitMB), forKey: "defect-dataset-limit-mb") } }
+
     /// Download and install new releases automatically (verifying the signature) instead of only
     /// notifying that one is available.
     @Published var autoUpdate: Bool { didSet { defaults.set(autoUpdate, forKey: "auto-update") } }
@@ -269,6 +273,7 @@ final class AppSettings: ObservableObject {
         remoteBridgeURL = defaults.string(forKey: "remote-bridge-url") ?? ""
         remoteBridgeKey = defaults.string(forKey: "remote-bridge-key") ?? ""
         keepAwakeWithBridge = defaults.object(forKey: "keep-awake-with-bridge") as? Bool ?? false
+        defectDatasetLimitMB = Int64(defaults.object(forKey: "defect-dataset-limit-mb") as? Int ?? 500)
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
         printerControlEnabled = defaults.object(forKey: "printer-control-enabled") as? Bool ?? false

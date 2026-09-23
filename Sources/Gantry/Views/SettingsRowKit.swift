@@ -377,6 +377,13 @@ final class SettingsScaleControl: NSView {
         plus.isEnabled = enabled && index < steps.count - 1
     }
 
+    /// The same control with a label that is not a percentage: megabytes, for one.
+    func configure(text: String, index: Int, count: Int, enabled: Bool = true) {
+        value.stringValue = text
+        minus.isEnabled = enabled && index > 0
+        plus.isEnabled = enabled && index < count - 1
+    }
+
     @objc private func stepDown() { onStep?(-1) }
     @objc private func stepUp() { onStep?(1) }
 }
