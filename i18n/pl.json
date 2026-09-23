@@ -1140,5 +1140,7 @@
   "Mark at least three frames of a kind in Details before Gantry can recognise it.": "Oznacz w Szczegółach co najmniej trzy klatki danego rodzaju, żeby Gantry mogło go rozpoznać.",
   "Relearn from my frames": "Przelicz z moich klatek",
   "Taking a picture…": "Robię zdjęcie…",
-  "The printer sent no picture. Check the camera and try again.": "Drukarka nie przysłała obrazu. Sprawdź kamerę i spróbuj jeszcze raz."
+  "The printer sent no picture. Check the camera and try again.": "Drukarka nie przysłała obrazu. Sprawdź kamerę i spróbuj jeszcze raz.",
+  "Yes, it failed": "Tak, wpadka",
+  "False alarm": "Fałszywy alarm"
 }

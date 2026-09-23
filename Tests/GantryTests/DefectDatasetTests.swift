@@ -45,6 +45,34 @@ import AppKit
         #expect(stats.bytes > 0)
     }
 
+    /// The answer to a warning is what makes the next one better, so a false alarm has to end up
+    /// filed as what it really was, and be visible in the index as the user's own word.
+    @Test func aFalseAlarmIsRefiledUnderWhatItReallyWas() throws {
+        clean()
+        defer { clean() }
+        let url = try DefectDataset.save(jpeg: frame(), label: .spaghetti, printer: printer(),
+                                         telemetry: PrinterTelemetry())
+        DefectDataset.refile(frame: url, as: .ok)
+
+        #expect(FileManager.default.fileExists(atPath: url.path) == false, "the frame stayed under the wrong label")
+        let stats = DefectDataset.stats()
+        #expect(stats.byLabel["ok"] == 1)
+        #expect(stats.byLabel["spaghetti"] == nil)
+        let index = try String(contentsOf: DefectDataset.indexFile, encoding: .utf8)
+        #expect(index.contains("\"confirmedBy\":\"user\""))
+        #expect(index.contains("\"wasGuessed\":\"spaghetti\""), "the index does not say what was guessed")
+    }
+
+    @Test func confirmingAWarningLeavesTheFrameWhereItIs() throws {
+        clean()
+        defer { clean() }
+        let url = try DefectDataset.save(jpeg: frame(), label: .spaghetti, printer: printer(),
+                                         telemetry: PrinterTelemetry())
+        DefectDataset.refile(frame: url, as: nil)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        #expect(DefectDataset.stats().byLabel["spaghetti"] == 1)
+    }
+
     @Test func theFolderCannotOutgrowItsLimitAndGivesUpCorrectFramesFirst() throws {
         clean()
         defer { clean() }

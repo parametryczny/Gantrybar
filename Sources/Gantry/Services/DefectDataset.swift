@@ -80,6 +80,36 @@ enum DefectDataset {
         return file
     }
 
+    /// Moves a frame to the label the user says it really was, and writes that down.
+    ///
+    /// A warning the user calls a false alarm is the most useful picture there is: it is exactly what
+    /// the recogniser got wrong, filed as what it should have said. Passing nil means "it was right",
+    /// and then only the confirmation is recorded.
+    static func refile(frame: URL, as label: Label?) {
+        let was = frame.deletingLastPathComponent().lastPathComponent
+        guard FileManager.default.fileExists(atPath: frame.path) else { return }
+        var moved = frame
+        if let label, label.rawValue != was {
+            let folder = root.appendingPathComponent(label.rawValue, isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let destination = folder.appendingPathComponent(frame.lastPathComponent)
+            try? FileManager.default.removeItem(at: destination)
+            do {
+                try FileManager.default.moveItem(at: frame, to: destination)
+                moved = destination
+            } catch {
+                return
+            }
+        }
+        appendIndex([
+            "file": "\(moved.deletingLastPathComponent().lastPathComponent)/\(moved.lastPathComponent)",
+            "label": label?.rawValue ?? was,
+            "confirmedBy": "user",
+            "wasGuessed": was,
+            "at": ISO8601DateFormatter().string(from: Date())
+        ])
+    }
+
     static func stats() -> Stats {
         var stats = Stats()
         for (url, size, _) in frames() {

@@ -212,13 +212,17 @@ final class DefectWatch {
 
         let percent = Int((sure * 100).rounded())
         let body = settings.t("{0} ({1}%) on {2}", settings.t(failed), percent, printer.name)
-        NotificationService.post(title: settings.t("Possible print failure"), body: body)
+        // The frame that caused the warning is kept under the label it was guessed to be: it is
+        // exactly the picture the recogniser should learn from, whether the call was right or wrong.
+        let frame = try? DefectDataset.save(jpeg: jpeg, label: DefectDataset.Label(rawValue: failed) ?? .other,
+                                            printer: printer, telemetry: telemetry,
+                                            limitBytes: settings.defectDatasetLimitMB * 1024 * 1024)
+        // Two buttons on the warning, because only the person who looks at the printer knows whether
+        // the guess was right, and their answer both settles it and teaches the recogniser.
+        NotificationService.post(title: settings.t("Possible print failure"), body: body,
+                                 userInfo: frame.map { ["frame": $0.path] } ?? [:],
+                                 category: frame == nil ? nil : NotificationService.defectCategory)
         TelegramService.notify(printer: printer.name, title: settings.t("Possible print failure"), body: body)
-        // The frame that caused the warning is kept under its label: it is exactly the picture the
-        // next model should learn from, whether the call was right or wrong.
-        try? DefectDataset.save(jpeg: jpeg, label: DefectDataset.Label(rawValue: failed) ?? .other,
-                                printer: printer, telemetry: telemetry,
-                                limitBytes: settings.defectDatasetLimitMB * 1024 * 1024)
         if settings.defectPausesPrint, let store {
             store.runAutomation(PrinterAutomation(name: "defect", trigger: .manual, action: .pause),
                                 serial: printer.serial)
