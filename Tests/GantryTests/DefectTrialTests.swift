@@ -128,4 +128,31 @@ import Foundation
         #expect(lines.allSatisfy { !$0.isEmpty })
         #expect(DefectTrial.detail(warning).contains("90"), "the sureness belongs in the detail line")
     }
+
+    // MARK: The same answer wherever it is asked
+
+    @Test func aFrameInHandIsJudgedTheSameAsTheSameFrameOnDisk() throws {
+        let (root, prototypes) = try bench(ok: [tidy(0), tidy(4), tidy(-4)], spaghetti: [mess(1), mess(2), mess(3)])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let frame = mess(9)
+        let file = try onDisk(frame)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        // Settings judges a file the user picked; Details judges what the camera is showing right
+        // now. Two places must never start answering the same question differently.
+        let fromDisk = try DefectTrial.judge(imageAt: file, prototypes: prototypes, threshold: 0.6)
+        let inHand = try DefectTrial.judge(jpeg: frame, prototypes: prototypes, threshold: 0.6)
+        #expect(fromDisk.label == inHand.label)
+        #expect(fromDisk.raisesAlarm == inHand.raisesAlarm)
+    }
+
+    @Test func theSheetSaysWhichPrinterItIsAbout() throws {
+        let (root, prototypes) = try bench(ok: [tidy(0), tidy(4), tidy(-4)], spaghetti: [mess(1), mess(2), mess(3)])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let verdict = try DefectTrial.judge(jpeg: mess(9), prototypes: prototypes, threshold: 0.6)
+        let sheet = DefectTrial.sheet(for: verdict, title: "X1")
+        #expect(sheet.messageText.hasPrefix("X1"), "asked about one printer, the answer must name it")
+        #expect(sheet.accessoryView != nil, "the sheet shows the frame that was judged")
+        #expect(DefectTrial.sheet(for: verdict).messageText.hasPrefix("X1") == false)
+    }
 }

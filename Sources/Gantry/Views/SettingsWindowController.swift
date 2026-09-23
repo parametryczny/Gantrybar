@@ -990,35 +990,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         panel.message = settings.t("Choose a photograph of a print, failed or not.")
         guard ModalHost.run({ panel.runModal() }) == .OK, let url = panel.url else { return }
 
-        let alert = NSAlert()
+        let alert: NSAlert
         do {
-            let verdict = try DefectTrial.judge(imageAt: url)
-            alert.messageText = DefectTrial.headline(verdict)
-            alert.informativeText = DefectTrial.detail(verdict)
-            alert.alertStyle = verdict.raisesAlarm ? .critical : .informational
-            alert.accessoryView = Self.trialPicture(verdict.jpeg)
+            alert = DefectTrial.sheet(for: try DefectTrial.judge(imageAt: url))
         } catch {
+            alert = NSAlert()
             alert.messageText = settings.t("Could not try that picture")
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .warning
+            alert.addButton(withTitle: settings.t("Close"))
         }
-        alert.addButton(withTitle: settings.t("Close"))
         _ = ModalHost.run(alert)
-    }
-
-    /// The picture as the recogniser saw it, at a size that fits an alert without shouting.
-    private static func trialPicture(_ jpeg: Data) -> NSView? {
-        guard let image = NSImage(data: jpeg) else { return nil }
-        let width: CGFloat = 320
-        let ratio = image.size.height > 0 ? image.size.width / image.size.height : 4.0 / 3
-        let height = min(260, max(120, width / max(ratio, 0.2)))
-        let view = NSImageView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        view.image = image
-        view.imageScaling = .scaleProportionallyUpOrDown
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 8
-        view.layer?.masksToBounds = true
-        return view
     }
 
     /// Recomputes the prototypes from the marked frames, so newly marked pictures count from now on.

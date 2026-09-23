@@ -44,6 +44,14 @@ enum DefectTrial {
                       prototypes: [DefectPrototypes.Prototype]? = nil,
                       threshold: Double? = nil) throws -> Verdict {
         guard let jpeg = jpeg(from: url) else { throw Failure.unreadable }
+        return try judge(jpeg: jpeg, prototypes: prototypes, threshold: threshold)
+    }
+
+    /// The same question about a frame already in hand, such as the one a printer's camera is showing
+    /// right now.
+    static func judge(jpeg: Data,
+                      prototypes: [DefectPrototypes.Prototype]? = nil,
+                      threshold: Double? = nil) throws -> Verdict {
         let bank = prototypes ?? DefectPrototypes.build()
         guard !bank.isEmpty else { throw Failure.nothingToCompareWith }
         let limit = threshold ?? AppSettings.shared.defectThreshold
@@ -62,6 +70,32 @@ enum DefectTrial {
               let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         return NSBitmapImageRep(cgImage: cgImage)
             .representation(using: .jpeg, properties: [.compressionFactor: 0.9])
+    }
+
+    /// The picture as Gantry sees it, plus the verdict, as a sheet anything can show.
+    ///
+    /// Shared by Settings, which judges a file the user picked, and Details, which judges what a
+    /// particular printer's camera is showing right now. One place, so the two can never start
+    /// answering the same question differently.
+    static func sheet(for verdict: Verdict, title: String? = nil) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = title.map { "\($0): \(headline(verdict))" } ?? headline(verdict)
+        alert.informativeText = detail(verdict)
+        alert.alertStyle = verdict.raisesAlarm ? .critical : .informational
+        if let image = NSImage(data: verdict.jpeg) {
+            let width: CGFloat = 320
+            let ratio = image.size.height > 0 ? image.size.width / image.size.height : 4.0 / 3
+            let height = min(260, max(120, width / max(ratio, 0.2)))
+            let view = NSImageView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+            view.image = image
+            view.imageScaling = .scaleProportionallyUpOrDown
+            view.wantsLayer = true
+            view.layer?.cornerRadius = 8
+            view.layer?.masksToBounds = true
+            alert.accessoryView = view
+        }
+        alert.addButton(withTitle: AppSettings.shared.t("Close"))
+        return alert
     }
 
     /// The one-line answer, in the user's language.

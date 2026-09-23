@@ -84,6 +84,7 @@ final class PrinterDetailViewController: NSViewController {
     // Camera. The feed itself lives in CameraFeedController; this view only hosts it.
     private lazy var cameraFeed = CameraFeedController(store: store, serial: serial)
     private let markDefectButton = NSButton()
+    private let trialButton = NSButton()
     private var cameraCard: NSView?
     private let presentation: DashboardPresentation
     /// Reported whenever the cards change the height the panel needs, so the popover can follow.
@@ -467,6 +468,44 @@ final class PrinterDetailViewController: NSViewController {
         }
     }
 
+    /// Asks what the recogniser would say about what this printer's camera is showing right now.
+    ///
+    /// The same question Settings asks about a file, but pointed at one machine, which is the way
+    /// somebody actually wants to ask it: not "does this work in general" but "does it work on this
+    /// printer, in this light, with this camera".
+    @objc private func tryDefectHere() {
+        let settings = AppSettings.shared
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        trialButton.title = settings.t("Taking a picture…")
+        trialButton.isEnabled = false
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Through `latestFrame`, so asking does not take the camera away from the very preview
+            // sitting under the button.
+            let frame = await CameraSnapshot.latestFrame(printer: printer, store: store)
+            trialButton.isEnabled = true
+            trialButton.title = AppSettings.shared.t("Test")
+            guard let jpeg = frame?.jpeg else {
+                let alert = NSAlert()
+                alert.messageText = AppSettings.shared.t("No picture to mark yet.")
+                alert.informativeText = AppSettings.shared.t("The printer sent no picture. Check the camera and try again.")
+                ModalHost.run(alert)
+                return
+            }
+            let alert: NSAlert
+            do {
+                alert = DefectTrial.sheet(for: try DefectTrial.judge(jpeg: jpeg), title: printer.name)
+            } catch {
+                alert = NSAlert()
+                alert.messageText = AppSettings.shared.t("Could not try that picture")
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: AppSettings.shared.t("Close"))
+            }
+            _ = ModalHost.run(alert)
+        }
+    }
+
     private func showDefectMenu(jpeg: Data) {
         let settings = AppSettings.shared
         let menu = NSMenu()
@@ -799,8 +838,14 @@ final class PrinterDetailViewController: NSViewController {
         markDefectButton.isBordered = false
         markDefectButton.font = .systemFont(ofSize: 10, weight: .medium)
         markDefectButton.contentTintColor = .controlAccentColor
+        trialButton.title = AppSettings.shared.t("Test")
+        trialButton.target = self
+        trialButton.action = #selector(tryDefectHere)
+        trialButton.isBordered = false
+        trialButton.font = .systemFont(ofSize: 10, weight: .medium)
+        trialButton.contentTintColor = .controlAccentColor
         let header = NSStackView(views: [sectionTitle(AppSettings.shared.t("CAMERA")), NSView(),
-                                         markDefectButton, advancedButton])
+                                         trialButton, markDefectButton, advancedButton])
         header.orientation = .horizontal
         header.alignment = .centerY
         // The card's drag grip sits in the top-right corner (8 pt in, 22 wide); the button used to
