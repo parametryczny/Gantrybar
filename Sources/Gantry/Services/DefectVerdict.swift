@@ -74,9 +74,23 @@ struct DefectVerdict {
     /// Labels that mean "this is fine". Models name the healthy class differently, so the check is on
     /// the word rather than on a fixed string from one particular model.
     static func isHealthy(_ label: String) -> Bool {
-        let healthy = ["ok", "normal", "good", "healthy", "printing correctly", "no-failure", "none"]
+        let healthy = ["ok", "normal", "good", "healthy", "printing correctly", "no-failure", "none",
+                       "no defect", "no_defect", "no_defected", "successful print", "success"]
         return healthy.contains(label.lowercased())
     }
 
-    private func isHealthy(_ label: String) -> Bool { Self.isHealthy(label) }
+    /// Blemishes, not disasters. A downloaded detector often knows several of these, and a print
+    /// with stringing finishes and can be cleaned up with a knife; a print with spaghetti is over.
+    /// Waking somebody at three in the morning to tell them about stringing is how a person learns
+    /// to ignore the warnings that matter, so these are recognised and reported but never alarm.
+    static func isCosmetic(_ label: String) -> Bool {
+        let cosmetic = ["stringing", "zits", "blobs and zits", "z-banding", "vfa", "unsmooth surface",
+                        "elephants foot", "over extrusion", "under extrusion", "overhang sagging"]
+        return cosmetic.contains(label.lowercased())
+    }
+
+    /// Whether a label is worth interrupting somebody for at all.
+    static func warrantsWarning(_ label: String) -> Bool { !isHealthy(label) && !isCosmetic(label) }
+
+    private func isHealthy(_ label: String) -> Bool { !Self.warrantsWarning(label) }
 }

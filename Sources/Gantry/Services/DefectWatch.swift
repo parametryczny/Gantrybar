@@ -191,7 +191,7 @@ final class DefectWatch {
         let request = VNCoreMLRequest(model: model) { [weak self] request, _ in
             Task { @MainActor in
                 guard let self else { return }
-                let best = Self.bestGuess(from: request.results)
+                let best = DefectModel.strongest(from: request.results)
                 self.settle(fromBehaviour,
                             PrintBaseline.Reading(label: best?.label, confidence: best?.confidence ?? 0),
                             jpeg: jpeg, printer: printer, telemetry: telemetry)
@@ -230,7 +230,7 @@ final class DefectWatch {
                         jpeg: Data, printer: SavedPrinter, telemetry: PrinterTelemetry) {
         let threshold = AppSettings.shared.defectThreshold
         let alarming = [first, second]
-            .filter { $0.confidence >= threshold && ($0.label.map { !DefectVerdict.isHealthy($0) } ?? false) }
+            .filter { $0.confidence >= threshold && ($0.label.map(DefectVerdict.warrantsWarning) ?? false) }
             .max { $0.confidence < $1.confidence }
         let best = alarming ?? (first.confidence >= second.confidence ? first : second)
         if alarming == nil, first.label == nil {
@@ -245,23 +245,6 @@ final class DefectWatch {
               jpeg: jpeg, printer: printer, telemetry: telemetry)
     }
 
-    /// The strongest label a Vision request came back with, whether the model classifies whole frames
-    /// or finds objects in them.
-    private static func bestGuess(from results: [VNObservation]?) -> (label: String, confidence: Double)? {
-        guard let results else { return nil }
-        var best: (String, Double)?
-        for result in results {
-            if let classification = result as? VNClassificationObservation {
-                let confidence = Double(classification.confidence)
-                if confidence > (best?.1 ?? 0) { best = (classification.identifier, confidence) }
-            } else if let recognized = result as? VNRecognizedObjectObservation,
-                      let top = recognized.labels.first {
-                let confidence = Double(top.confidence)
-                if confidence > (best?.1 ?? 0) { best = (top.identifier, confidence) }
-            }
-        }
-        return best.map { (label: $0.0, confidence: $0.1) }
-    }
 
     /// Keeps a few frames of a print that is going well, from the user's own camera.
     ///

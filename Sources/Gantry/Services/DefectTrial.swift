@@ -24,6 +24,9 @@ enum DefectTrial {
         /// How many reference frames it compared against, and how many of those are the user's own.
         var comparedAgainst: Int
         var mine: Int
+        /// The name of the Core ML file that answered, when one is chosen. The trial has to ask
+        /// whatever the watcher would ask, or it tests something the user is not running.
+        var modelName: String?
     }
 
     /// The message is carried rather than looked up, because `errorDescription` is not isolated to
@@ -52,15 +55,25 @@ enum DefectTrial {
     static func judge(jpeg: Data,
                       prototypes: [DefectPrototypes.Prototype]? = nil,
                       threshold: Double? = nil) throws -> Verdict {
+        let limit = threshold ?? AppSettings.shared.defectThreshold
+        // A chosen Core ML file replaces the reference frames for the watcher, so it has to replace
+        // them here too. Trying one thing and running another is worse than not offering the trial.
+        let path = AppSettings.shared.defectModelPath
+        if prototypes == nil, !path.isEmpty {
+            let guess = try DefectModel.shared.guess(jpeg: jpeg, path: path)
+            let alarming = guess.map { DefectVerdict.warrantsWarning($0.label) && $0.confidence >= limit } ?? false
+            return Verdict(jpeg: jpeg, label: guess?.label, confidence: guess?.confidence ?? 0,
+                           raisesAlarm: alarming, threshold: limit, comparedAgainst: 0, mine: 0,
+                           modelName: (path as NSString).lastPathComponent)
+        }
         let bank = prototypes ?? DefectPrototypes.build()
         guard !bank.isEmpty else { throw Failure.nothingToCompareWith }
-        let limit = threshold ?? AppSettings.shared.defectThreshold
         let match = DefectPrototypes.match(jpeg: jpeg, against: bank)
         let tally = DefectPrototypes.tally(bank)
-        let alarming = match.map { !DefectVerdict.isHealthy($0.label) && $0.confidence >= limit } ?? false
+        let alarming = match.map { DefectVerdict.warrantsWarning($0.label) && $0.confidence >= limit } ?? false
         return Verdict(jpeg: jpeg, label: match?.label, confidence: match?.confidence ?? 0,
                        raisesAlarm: alarming, threshold: limit,
-                       comparedAgainst: bank.count, mine: tally.mine)
+                       comparedAgainst: bank.count, mine: tally.mine, modelName: nil)
     }
 
     /// Any picture macOS can open, as the JPEG the recogniser works on. A camera frame is a JPEG, so
@@ -103,6 +116,11 @@ enum DefectTrial {
         let settings = AppSettings.shared
         guard let label = verdict.label else { return settings.t("No opinion about this picture.") }
         if DefectVerdict.isHealthy(label) { return settings.t("Looks like a print going well.") }
+        // A blemish is worth naming and not worth an alarm, and the sheet should say both.
+        if DefectVerdict.isCosmetic(label) {
+            return settings.t("{0}, which is a blemish rather than a failure: never warned about.",
+                              settings.t(label))
+        }
         return verdict.raisesAlarm
             ? settings.t("This would raise a warning: {0}.", settings.t(label))
             : settings.t("Closest to {0}, but not sure enough to warn.", settings.t(label))
@@ -113,6 +131,10 @@ enum DefectTrial {
         let settings = AppSettings.shared
         let sure = Int((verdict.confidence * 100).rounded())
         let limit = Int((verdict.threshold * 100).rounded())
+        if let model = verdict.modelName {
+            return settings.t("Sureness {0}%, warns from {1}%. Answered by {2}. This checks what the picture looks like; watching how a print changes over time cannot be tried on one photograph.",
+                              sure, limit, model)
+        }
         return settings.t("Sureness {0}%, warns from {1}%. Compared against {2} reference frames, {3} of them yours. This checks what the picture looks like; watching how a print changes over time cannot be tried on one photograph.",
                           sure, limit, verdict.comparedAgainst, verdict.mine)
     }

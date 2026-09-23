@@ -1024,6 +1024,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         panel.message = AppSettings.shared.t("Choose a Core ML model file (.mlpackage, .mlmodel or .mlmodelc).")
         guard ModalHost.run({ panel.runModal() }) == .OK, let url = panel.url else { return }
         AppSettings.shared.defectModelPath = url.path
+        DefectModel.shared.forget()
         scheduleRefresh()
     }
 

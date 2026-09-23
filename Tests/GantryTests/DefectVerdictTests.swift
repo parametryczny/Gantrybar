@@ -60,4 +60,28 @@ import Testing
         _ = verdict.observe(label: "blob", confidence: 0.8)
         #expect(verdict.observe(label: "blob", confidence: 0.8) == .failure(label: "blob", confidence: 0.8))
     }
+
+
+    /// A downloaded detector knows classes Gantry must not wake anybody for.
+    ///
+    /// The YOLO detectors people can get know spaghetti, stringing and zits. A print with stringing
+    /// finishes and is cleaned up with a knife; a print with spaghetti is over. Measured on real
+    /// frames from a working fleet, one good print was called stringing at full confidence, so
+    /// without this the very first night with a downloaded model would have been a false alarm.
+    @Test func ablemishIsRecognisedButNeverWakesAnybody() {
+        for blemish in ["stringing", "Stringing", "zits", "Blobs and Zits", "over extrusion"] {
+            #expect(DefectVerdict.isCosmetic(blemish), "\(blemish) should count as a blemish")
+            #expect(DefectVerdict.warrantsWarning(blemish) == false, "\(blemish) must not warn")
+        }
+        var verdict = DefectVerdict(threshold: 0.5, hitsNeeded: 1)
+        #expect(verdict.observe(label: "stringing", confidence: 1.0) == .quiet)
+        #expect(verdict.observe(label: "spaghetti", confidence: 1.0) == .failure(label: "spaghetti", confidence: 1.0))
+    }
+
+    @Test func theNamesADownloadedDetectorUsesForFineAreUnderstood() {
+        for fine in ["Successful Print", "no_defected", "No Defect", "ok"] {
+            #expect(DefectVerdict.isHealthy(fine), "\(fine) should count as fine")
+            #expect(DefectVerdict.warrantsWarning(fine) == false)
+        }
+    }
 }
