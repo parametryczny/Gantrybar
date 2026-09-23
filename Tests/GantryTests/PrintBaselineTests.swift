@@ -131,18 +131,26 @@ import Testing
     @Test func theObjectComingOffTheBedIsCaught() {
         var baseline = PrintBaseline()
         settled(&baseline)
-        let reading = baseline.observe(frame: emptyPlate(), progress: 0.5)
-        #expect(reading.label == DefectDataset.Label.detached.rawValue)
-        #expect(reading.confidence >= 0.7)
+        // One bare frame is the toolhead parked in front of the lens, so it says nothing yet.
+        let first = baseline.observe(frame: emptyPlate(), progress: 0.5)
+        #expect(first.label == nil, "a single empty frame must not be a verdict")
+        let second = baseline.observe(frame: emptyPlate(), progress: 0.51)
+        #expect(second.label == DefectDataset.Label.detached.rawValue)
+        #expect(second.confidence >= 0.7)
     }
 
-    @Test func aLayerShiftNeedsTwoFramesBeforeItCounts() {
+    /// Layer shift detection was withdrawn: on a real fleet it was wrong almost every time it
+    /// spoke, and a camera that had not moved reported slides of seven pixels one way and eight the
+    /// other. This test keeps it withdrawn rather than letting it quietly return.
+    @Test func aPictureThatSlidSidewaysIsNoLongerCalledALayerShift() {
         var baseline = PrintBaseline()
         settled(&baseline)
         let first = baseline.observe(frame: slid(printing(step: 14), by: 8), progress: 0.5)
-        #expect(first.label == nil, "one frame of movement is a hand in the chamber, not a verdict")
         let second = baseline.observe(frame: slid(printing(step: 15), by: 16), progress: 0.51)
-        #expect(second.label == DefectDataset.Label.layerShift.rawValue)
+        for reading in [first, second] {
+            #expect(reading.label != DefectDataset.Label.layerShift.rawValue,
+                    "layer shift came back without being made to work first")
+        }
     }
 
     @Test func aNewPrintStartsWithNothingLearned() {

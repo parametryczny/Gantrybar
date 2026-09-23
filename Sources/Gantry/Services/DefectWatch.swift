@@ -44,6 +44,11 @@ final class DefectWatch {
     private var lastJob: [String: String] = [:]
     /// Ile klatek „idzie dobrze" Gantry zapisało samo dla bieżącego wydruku i kiedy ostatnio.
     private var goodFrames: [String: (job: String, count: Int, at: Date)] = [:]
+    /// Skąd przyszła poprzednia klatka. Dwa strumienie tej samej drukarki kadrują inaczej, więc
+    /// porównywanie klatki z jednego z klatką z drugiego czyta zmianę kamery jako zmianę wydruku.
+    private var frameSource: [String: CameraSnapshot.Source] = [:]
+    /// O czym już powiedzieliśmy przy tym wydruku, żeby karta nie zbierała tej samej wpadki w kółko.
+    private var toldAbout: [String: (job: String, labels: Set<String>)] = [:]
 
     private(set) var status = Status() { didSet { if status != oldValue { changed.send(status) } } }
     let changed = PassthroughSubject<Status, Never>()
@@ -98,6 +103,8 @@ final class DefectWatch {
         verdicts.removeAll()
         baselines.removeAll()
         goodFrames.removeAll()
+        frameSource.removeAll()
+        toldAbout.removeAll()
         status = Status()
     }
 
@@ -149,15 +156,22 @@ final class DefectWatch {
                 lastJob[printer.serial] = job
                 verdicts[printer.serial]?.reset()
                 baselines[printer.serial]?.reset()
+                toldAbout[printer.serial] = (job: job, labels: [])
             }
             guard !busy.contains(printer.serial) else { continue }
             busy.insert(printer.serial)
             Task { @MainActor [weak self] in
                 defer { self?.busy.remove(printer.serial) }
                 guard let self,
-                      let jpeg = await CameraSnapshot.latestFrame(printer: printer, store: store)
+                      let frame = await CameraSnapshot.latestFrame(printer: printer, store: store)
                 else { return }
-                self.inspect(jpeg: jpeg, printer: printer, telemetry: telemetry)
+                // A frame from a different stream cannot be compared with the last one, so the
+                // history starts again rather than reading the new framing as a failure.
+                if self.frameSource[printer.serial] != frame.source {
+                    self.frameSource[printer.serial] = frame.source
+                    self.baselines[printer.serial]?.reset()
+                }
+                self.inspect(jpeg: frame.jpeg, printer: printer, telemetry: telemetry)
             }
         }
     }
@@ -290,6 +304,16 @@ final class DefectWatch {
         let outcome = verdict.observe(label: label, confidence: confidence)
         verdicts[printer.serial] = verdict
         guard case .failure(let failed, let sure) = outcome else { return }
+        // Once per print per kind, and that is the end of it. The verdict clears itself after a few
+        // calm frames so a failure that comes back can be reported again, which is right for a
+        // notification and wrong for a card: the fleet ended up with three identical warnings
+        // stacked on one printer, all of them wrong, none of them dismissable as a group.
+        let job = telemetry.jobName ?? ""
+        var told = toldAbout[printer.serial] ?? (job: job, labels: [])
+        if told.job != job { told = (job: job, labels: []) }
+        guard !told.labels.contains(failed) else { return }
+        told.labels.insert(failed)
+        toldAbout[printer.serial] = told
 
         let percent = Int((sure * 100).rounded())
         let body = settings.t("{0} ({1}%) on {2}", settings.t(failed), percent, printer.name)

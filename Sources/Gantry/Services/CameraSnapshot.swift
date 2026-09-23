@@ -25,19 +25,36 @@ enum CameraSnapshot {
     ///
     /// `capture` below stays for the cases the user asked for directly, where taking the camera for
     /// a moment is the whole point.
+    /// Where a frame came from. Two streams of the same printer do not frame the same picture: the
+    /// P1/A1 JPEG feed and the RTSP feed differ in field of view, so a frame from one cannot be
+    /// compared with a frame from the other. Anything that compares frames over time has to know
+    /// when the source changed and start again, or it reads the change of camera as a change of
+    /// print. That is exactly what happened: the fleet reported layer shifts of seven pixels one way
+    /// and eight the other between two frames minutes apart, which no fixed camera can do.
+    enum Source: Equatable { case livePreview, liveKeyframe, snapshotRTSP, snapshotJPEG, other }
+
     @MainActor
     static func latestFrame(printer: SavedPrinter, store: PrinterStore,
-                            timeout: TimeInterval = 12) async -> Data? {
+                            timeout: TimeInterval = 12) async -> (jpeg: Data, source: Source)? {
         guard CameraFeedController.isLive(serial: printer.serial) else {
-            return await capture(printer: printer, store: store, timeout: timeout)
+            guard let jpeg = await capture(printer: printer, store: store, timeout: timeout) else { return nil }
+            let source: Source = switch bambuTransports[cameraHost(printer, store)] {
+            case .rtsp: .snapshotRTSP
+            case .jpeg: .snapshotJPEG
+            case nil: .other
+            }
+            return (jpeg, printer.kind == .bambu ? source : .other)
         }
-        if let ready = CameraFeedController.liveFrameJPEG(serial: printer.serial) { return ready }
+        if let ready = CameraFeedController.liveFrameJPEG(serial: printer.serial) {
+            return (ready, .livePreview)
+        }
         guard let keyframe = CameraFeedController.liveKeyframe(serial: printer.serial) else { return nil }
         let avcc = keyframe.avcc
         let format = keyframe.format
-        return await Task.detached(priority: .utility) {
+        guard let jpeg = await Task.detached(priority: .utility, operation: {
             decodeKeyframe(avcc: avcc, format: format)
-        }.value
+        }).value else { return nil }
+        return (jpeg, .liveKeyframe)
     }
 
     @MainActor

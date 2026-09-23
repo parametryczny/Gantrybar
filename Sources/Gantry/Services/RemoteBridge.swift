@@ -419,7 +419,7 @@ final class RemoteBridge {
               let printer = store.printers.first(where: { $0.serial == serial }) else { return }
         capturing.insert(serial)
         Task { @MainActor [weak self] in
-            let jpeg = await CameraSnapshot.latestFrame(printer: printer, store: store)
+            let jpeg = await CameraSnapshot.latestFrame(printer: printer, store: store)?.jpeg
             guard let self else { return }
             capturing.remove(serial)
             if let jpeg, jpeg.count <= Self.maxFrameBytes {
