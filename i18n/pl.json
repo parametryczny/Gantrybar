@@ -1111,7 +1111,6 @@
   "Mark defect…": "Zaznacz defekt…",
   "Saved ({0})": "Zapisano ({0})",
   "No picture to mark yet.": "Nie ma jeszcze obrazu do oznaczenia.",
-  "Wait for the camera to show a frame and try again.": "Poczekaj, aż kamera pokaże klatkę, i spróbuj jeszcze raz.",
   "Could not save the frame.": "Nie udało się zapisać klatki.",
   "Defect frames": "Zdjęcia defektów",
   "Show": "Pokaż",
@@ -1139,5 +1138,7 @@
   "With no file chosen Gantry learns from the frames you marked in Details: three of a kind are enough to start. A downloaded model goes here instead.": "Bez wskazanego pliku Gantry uczy się z klatek oznaczonych w Szczegółach: wystarczą trzy tego samego rodzaju. Pobrany model wskazujesz tutaj.",
   "your own frames ({0} classes)": "Twoje własne klatki ({0} klas)",
   "Mark at least three frames of a kind in Details before Gantry can recognise it.": "Oznacz w Szczegółach co najmniej trzy klatki danego rodzaju, żeby Gantry mogło go rozpoznać.",
-  "Relearn from my frames": "Przelicz z moich klatek"
+  "Relearn from my frames": "Przelicz z moich klatek",
+  "Taking a picture…": "Robię zdjęcie…",
+  "The printer sent no picture. Check the camera and try again.": "Drukarka nie przysłała obrazu. Sprawdź kamerę i spróbuj jeszcze raz."
 }

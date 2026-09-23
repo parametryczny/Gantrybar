@@ -443,14 +443,32 @@ final class PrinterDetailViewController: NSViewController {
 
     /// Asks what is wrong with what the camera is showing and keeps that frame under the answer.
     @objc private func markDefect() {
+        if let jpeg = cameraFeed.currentFrameJPEG { showDefectMenu(jpeg: jpeg); return }
+        // A Bambu preview is an encoded H.264 stream: macOS turns it into a picture inside the display
+        // layer and hands no pixels back. So the printer is asked for a still instead, the same way
+        // the page and the failure watch ask for one. It takes a moment, and the button says so.
         let settings = AppSettings.shared
-        guard let jpeg = cameraFeed.currentFrameJPEG else {
-            let alert = NSAlert()
-            alert.messageText = settings.t("No picture to mark yet.")
-            alert.informativeText = settings.t("Wait for the camera to show a frame and try again.")
-            ModalHost.run(alert)
-            return
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        markDefectButton.title = settings.t("Taking a picture…")
+        markDefectButton.isEnabled = false
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let jpeg = await CameraSnapshot.capture(printer: printer, store: store)
+            markDefectButton.isEnabled = true
+            markDefectButton.title = AppSettings.shared.t("Mark defect…")
+            guard let jpeg else {
+                let alert = NSAlert()
+                alert.messageText = AppSettings.shared.t("No picture to mark yet.")
+                alert.informativeText = AppSettings.shared.t("The printer sent no picture. Check the camera and try again.")
+                ModalHost.run(alert)
+                return
+            }
+            showDefectMenu(jpeg: jpeg)
         }
+    }
+
+    private func showDefectMenu(jpeg: Data) {
+        let settings = AppSettings.shared
         let menu = NSMenu()
         for label in DefectDataset.Label.allCases {
             let item = NSMenuItem(title: settings.t(label.title), action: #selector(saveDefectFrame(_:)), keyEquivalent: "")

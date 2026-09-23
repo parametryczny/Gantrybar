@@ -345,9 +345,9 @@ final class CameraView: NSView {
     private let statusDim = NSView()
     var dimsUnderStatus = false
     private var formatDescription: CMFormatDescription?
-    /// Ostatnia klatka, która trafiła na ekran. Jedna, wciąż nadpisywana: dzięki temu „zaznacz defekt”
-    /// zapisuje dokładnie ten obraz, na który patrzy użytkownik, i nic się nie odkłada.
-    private var lastSampleBuffer: CMSampleBuffer?
+    /// Ostatnia klatka, która trafiła na ekran, o ile w ogóle przyszła jako obrazek (Klipper, MJPEG).
+    /// Strumień Bambu to zakodowany H.264: obraz powstaje dopiero w warstwie wyświetlającej i nie da
+    /// się go stamtąd wyjąć, więc tam „zaznacz defekt” prosi drukarkę o osobne zdjęcie.
     private var lastImage: NSImage?
 
     /// Corner rounding of the black plate. The detail view's card wants 10; the edge dock sits inside
@@ -469,7 +469,6 @@ final class CameraView: NSView {
 
         if displayLayer.status == .failed { displayLayer.flush() }
         displayLayer.enqueue(sampleBuffer)
-        lastSampleBuffer = sampleBuffer
         lastImage = nil
         statusLabel.isHidden = true
         statusDim.isHidden = true
@@ -479,23 +478,16 @@ final class CameraView: NSView {
     func show(_ image: NSImage) {
         imageView.image = image
         lastImage = image
-        lastSampleBuffer = nil
         imageView.isHidden = false
         statusLabel.isHidden = true
         statusDim.isHidden = true
     }
 
-    /// Ostatnia klatka jako JPEG, niezależnie od tego, czy przyszła jako H.264 czy jako gotowy obrazek.
-    /// Nil, gdy jeszcze nic nie przyszło albo gdy dekoder nie oddał obrazu.
+    /// Ostatnia klatka jako JPEG, gdy podgląd dostaje gotowe obrazki. Nil przy strumieniu H.264:
+    /// wtedy klatkę trzeba wziąć od drukarki, a nie z ekranu.
     func currentFrameJPEG(compression: Double = 0.85) -> Data? {
-        if let image = lastImage { return Self.jpeg(from: image, compression: compression) }
-        guard let buffer = lastSampleBuffer,
-              let pixels = CMSampleBufferGetImageBuffer(buffer) else { return nil }
-        let ciImage = CIImage(cvImageBuffer: pixels)
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-        let representation = NSBitmapImageRep(cgImage: cgImage)
-        return representation.representation(using: .jpeg, properties: [.compressionFactor: compression])
+        guard let image = lastImage else { return nil }
+        return Self.jpeg(from: image, compression: compression)
     }
 
     private static func jpeg(from image: NSImage, compression: Double) -> Data? {
