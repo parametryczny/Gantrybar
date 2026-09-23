@@ -37,6 +37,12 @@ final class DefectModel {
         return found
     }
 
+    /// Loads the file now, so a bad one is reported in Settings the moment it is chosen rather than
+    /// silently leaving the watcher not watching.
+    func prepare(path: String) throws {
+        try load(path)
+    }
+
     /// Drops the loaded file, so a newly chosen one is picked up rather than the old one answering.
     func forget() {
         model = nil

@@ -30,8 +30,6 @@ final class DefectWatch {
     }
 
     private weak var store: PrinterStore?
-    private var model: VNCoreMLModel?
-    private var modelName: String?
     /// Wzorce policzone z klatek oznaczonych przez użytkownika: droga, która nie wymaga żadnego
     /// pliku modelu ani trenowania (patrz DefectPrototypes).
     private var prototypes: [DefectPrototypes.Prototype] = []
@@ -71,12 +69,21 @@ final class DefectWatch {
         if settings.defectModelPath.isEmpty {
             // Bez wskazanego pliku Gantry uczy się z tego, co sam oznaczyłeś. Nawet gdy nie oznaczyłeś
             // jeszcze nic, zostaje obserwacja samego wydruku, więc patrzenie ma sens od razu.
-            model = nil
-            modelName = nil
             rebuildPrototypes()
         } else {
+            // Wskazany plik zastępuje wzorce. Ładowany od razu, żeby zły plik zgłosił się teraz,
+            // a nie dopiero przez ciszę w nocy.
             prototypes = []
-            loadModel(at: settings.defectModelPath)
+            var next = status
+            do {
+                try DefectModel.shared.prepare(path: settings.defectModelPath)
+                next.modelName = (settings.defectModelPath as NSString).lastPathComponent
+                next.lastError = nil
+            } catch {
+                next.modelName = nil
+                next.lastError = error.localizedDescription
+            }
+            status = next
         }
         schedule(interval: TimeInterval(max(5, settings.defectWatchSeconds)))
     }
@@ -98,7 +105,6 @@ final class DefectWatch {
     func stop() {
         timer?.invalidate()
         timer = nil
-        model = nil
         prototypes = []
         verdicts.removeAll()
         baselines.removeAll()
@@ -119,27 +125,6 @@ final class DefectWatch {
         Task { @MainActor in self.look() }
     }
 
-    /// Loads the user's model. A bad file is reported once, in Settings, rather than silently leaving
-    /// the feature off: a watchdog that is quietly not watching is worse than none.
-    private func loadModel(at path: String) {
-        let url = URL(fileURLWithPath: path)
-        guard modelName != url.lastPathComponent || model == nil else { return }
-        var next = status
-        do {
-            // A .mlpackage has to be compiled before it can be loaded; a compiled .mlmodelc is used as is.
-            let compiled = url.pathExtension == "mlmodelc" ? url : try MLModel.compileModel(at: url)
-            model = try VNCoreMLModel(for: MLModel(contentsOf: compiled))
-            modelName = url.lastPathComponent
-            next.modelName = modelName
-            next.lastError = nil
-        } catch {
-            model = nil
-            modelName = nil
-            next.modelName = nil
-            next.lastError = error.localizedDescription
-        }
-        status = next
-    }
 
     // MARK: One look
 
@@ -180,26 +165,21 @@ final class DefectWatch {
         // Zawsze, niezależnie od modelu: jak ten wydruk zachowuje się względem ostatnich minut.
         let fromBehaviour = watchBehaviour(jpeg: jpeg, printer: printer, telemetry: telemetry)
 
-        guard let model else {
+        let path = AppSettings.shared.defectModelPath
+        guard !path.isEmpty else {
             // Bez pliku modelu zostają wzorce z własnych klatek, o ile jakieś są.
             let match = DefectPrototypes.match(jpeg: jpeg, against: prototypes)
             settle(fromBehaviour, PrintBaseline.Reading(label: match?.label, confidence: match?.confidence ?? 0),
                    jpeg: jpeg, printer: printer, telemetry: telemetry)
             return
         }
-        guard let image = CIImage(data: jpeg) else { return }
-        let request = VNCoreMLRequest(model: model) { [weak self] request, _ in
-            Task { @MainActor in
-                guard let self else { return }
-                let best = DefectModel.strongest(from: request.results)
-                self.settle(fromBehaviour,
-                            PrintBaseline.Reading(label: best?.label, confidence: best?.confidence ?? 0),
-                            jpeg: jpeg, printer: printer, telemetry: telemetry)
-            }
-        }
-        request.imageCropAndScaleOption = .scaleFill
+        // Ten sam wczytany plik, którego używa „Testuj". Dwa wczytania tego samego modelu prędzej
+        // czy później zaczęłyby odpowiadać inaczej, a wtedy sprawdzanie przestaje cokolwiek znaczyć.
         do {
-            try VNImageRequestHandler(ciImage: image).perform([request])
+            let guess = try DefectModel.shared.guess(jpeg: jpeg, path: path)
+            settle(fromBehaviour,
+                   PrintBaseline.Reading(label: guess?.label, confidence: guess?.confidence ?? 0),
+                   jpeg: jpeg, printer: printer, telemetry: telemetry)
         } catch {
             var next = status
             next.lastError = error.localizedDescription
