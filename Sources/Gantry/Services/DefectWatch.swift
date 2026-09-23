@@ -6,19 +6,19 @@ import Vision
 /// Watching prints for failures: a frame every so often, an opinion on it, and a warning only when
 /// the opinion holds (see DefectVerdict).
 ///
-/// Three things can give that opinion, and they stack:
+/// Two things give that opinion and they stack, so the feature means something the day it is switched
+/// on and gets better as the user uses it:
 ///
-/// 1. **How the print is behaving** (PrintBaseline). Needs nothing at all: no file, no marked frames,
-///    no training. It compares each frame with the minutes before it on the same camera, so it works
-///    on the first print on a printer nobody has ever photographed. This is what makes the feature
-///    mean something the day it is switched on.
-/// 2. **The frames the user marked** (DefectPrototypes), once there are three of a kind.
-/// 3. **A Core ML file** the user points Gantry at, which then replaces 2.
+/// 1. **How the print is behaving** (PrintBaseline). Needs nothing at all. It compares each frame
+///    with the minutes before it on the same camera, which is what catches an object coming off the
+///    bed and a layer shift, neither of which a single picture can show.
+/// 2. **What the frame looks like** (DefectPrototypes): reference frames Gantry ships, built from
+///    openly licensed photographs, plus every frame the user has marked in Details, which outrank
+///    them in practice. A Core ML file the user points Gantry at replaces this half entirely.
 ///
-/// Gantry ships no model file. The ready-made detectors people can download come under licences that
-/// forbid handing them on inside another app, and the open image sets that would let one be trained
-/// are behind accounts rather than a download. So the answer is a detector that needs no data at all,
-/// which 1 is, with the other two there to sharpen it on the user's own printers.
+/// The frame itself is taken through `CameraSnapshot.latestFrame`, never `capture`: a printer camera
+/// allows one client at a time, so a watcher that opens its own connection every minute takes the
+/// picture away from whoever is watching it live.
 @MainActor
 final class DefectWatch {
     struct Status: Equatable {
@@ -151,7 +151,9 @@ final class DefectWatch {
             busy.insert(printer.serial)
             Task { @MainActor [weak self] in
                 defer { self?.busy.remove(printer.serial) }
-                guard let self, let jpeg = await CameraSnapshot.capture(printer: printer, store: store) else { return }
+                guard let self,
+                      let jpeg = await CameraSnapshot.latestFrame(printer: printer, store: store)
+                else { return }
                 self.inspect(jpeg: jpeg, printer: printer, telemetry: telemetry)
             }
         }
@@ -265,6 +267,13 @@ final class DefectWatch {
                                  userInfo: frame.map { ["frame": $0.path] } ?? [:],
                                  category: frame == nil ? nil : NotificationService.defectCategory)
         TelegramService.notify(printer: printer.name, title: settings.t("Possible print failure"), body: body)
+        // The card keeps saying it until dismissed. A notification can be swiped away unread, and
+        // quiet hours suppress it altogether, so it cannot be the only place a warning ever appears.
+        let clock = DateFormatter()
+        clock.dateFormat = "HH:mm"
+        store?.postCardNotice(serial: printer.serial,
+                              text: settings.t("Possible print failure at {0}: {1} ({2}%)",
+                                               clock.string(from: Date()), settings.t(failed), percent))
         if settings.defectPausesPrint, let store {
             store.runAutomation(PrinterAutomation(name: "defect", trigger: .manual, action: .pause),
                                 serial: printer.serial)

@@ -19,6 +19,9 @@ final class CameraFeedController {
     /// Ostatnia klatka podglądu jako JPEG, dla oznaczania defektów ze szczegółów.
     var currentFrameJPEG: Data? { view.currentFrameJPEG() }
 
+    /// Ostatnia klatka kluczowa strumienia H.264, do rozkodowania poza głównym wątkiem.
+    var currentKeyframe: (avcc: Data, format: CMFormatDescription)? { view.currentKeyframe }
+
 
     private let store: PrinterStore
     private let serial: String
@@ -54,6 +57,58 @@ final class CameraFeedController {
     /// True between `start()` and `stop()`, so a surface can avoid restarting a feed it already runs.
     private(set) var isRunning = false
 
+    // MARK: Who is already watching
+
+    /// Every feed currently running, by serial.
+    ///
+    /// A printer camera takes one client at a time. A second connection does not share the picture,
+    /// it takes it away, which is how the defect watcher managed to put "No picture" over a preview
+    /// that was working perfectly well. So anything that wants a frame asks here first: if a surface
+    /// is already showing this printer, take its frame or take nothing.
+    private final class WeakFeed {
+        weak var feed: CameraFeedController?
+        init(_ feed: CameraFeedController) { self.feed = feed }
+    }
+    private static var liveFeeds: [String: [WeakFeed]] = [:]
+
+    /// Being in the list means running: `startedWatching` adds, `stoppedWatching` removes, and a feed
+    /// whose surface went away without either leaves a reference that is already nil.
+    private static func feeds(for serial: String) -> [CameraFeedController] {
+        let alive = (liveFeeds[serial] ?? []).filter { $0.feed != nil }
+        liveFeeds[serial] = alive.isEmpty ? nil : alive
+        return alive.compactMap(\.feed)
+    }
+
+    /// Not private so the registry can be exercised in tests without opening a real stream.
+    func startedWatching() {
+        Self.liveFeeds[serial, default: []].append(WeakFeed(self))
+    }
+
+    func stoppedWatching() {
+        let left = (Self.liveFeeds[serial] ?? []).filter { $0.feed !== self && $0.feed != nil }
+        Self.liveFeeds[serial] = left.isEmpty ? nil : left
+    }
+
+    /// Whether some surface is showing this printer's camera right now.
+    static func isLive(serial: String) -> Bool { !feeds(for: serial).isEmpty }
+
+    /// The newest ready-made frame from a feed that is already running.
+    ///
+    /// Nil on an X1, whose stream is H.264: the display layer takes pixels and gives none back. For
+    /// those there is `liveKeyframe`, which hands over the compressed frame instead.
+    static func liveFrameJPEG(serial: String) -> Data? {
+        feeds(for: serial).lazy.compactMap(\.currentFrameJPEG).first
+    }
+
+    /// The newest H.264 keyframe from a running feed, to be decoded by the caller.
+    ///
+    /// This is what lets watching a printer live and watching it for failures happen at once. Before
+    /// it, a preview open anywhere (and the edge strip keeps its streams running even when folded)
+    /// meant the defect watcher had to choose between taking the camera away and not looking at all.
+    static func liveKeyframe(serial: String) -> (avcc: Data, format: CMFormatDescription)? {
+        feeds(for: serial).lazy.compactMap(\.currentKeyframe).first
+    }
+
     /// For a small picture such as the edge dock's: every message becomes "Connecting…" before the
     /// first frame or "No picture" after a failure, and a picture that goes quiet says so after a few
     /// seconds instead of freezing on its last frame until the restart.
@@ -87,6 +142,7 @@ final class CameraFeedController {
         guard !isRunning else { return }
         guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
         isRunning = true
+        startedWatching()
         receivedFrame = false
         decodeFailures = 0
         switch printer.kind {
@@ -96,6 +152,8 @@ final class CameraFeedController {
         case .anycubicKobraS1: startAnycubicCamera(printer)
         default:
             isRunning = false
+            // Nothing was opened, so nothing may stay claiming this printer's camera.
+            stoppedWatching()
             return
         }
         // If no frame arrives in time, show a helpful fallback.
@@ -150,6 +208,7 @@ final class CameraFeedController {
 
     func stop() {
         isRunning = false
+        stoppedWatching()
         timeout?.cancel()
         timeout = nil
         stream?.stop()
@@ -349,6 +408,8 @@ final class CameraView: NSView {
     /// Strumień Bambu to zakodowany H.264: obraz powstaje dopiero w warstwie wyświetlającej i nie da
     /// się go stamtąd wyjąć, więc tam „zaznacz defekt” prosi drukarkę o osobne zdjęcie.
     private var lastImage: NSImage?
+    /// The most recent H.264 keyframe and the format it was sent with, for `decodedFrameJPEG`.
+    private var lastKeyframe: (avcc: Data, format: CMFormatDescription)?
 
     /// Corner rounding of the black plate. The detail view's card wants 10; the edge dock sits inside
     /// its own silhouette and asks for a tighter radius.
@@ -469,6 +530,10 @@ final class CameraView: NSView {
 
         if displayLayer.status == .failed { displayLayer.flush() }
         displayLayer.enqueue(sampleBuffer)
+        // Kept so a still can be decoded later without asking the printer for a second stream: the
+        // display layer takes pixels and gives none back, and a keyframe is the one frame that can
+        // stand on its own.
+        if keyframe { lastKeyframe = (avcc, formatDescription) }
         lastImage = nil
         statusLabel.isHidden = true
         statusDim.isHidden = true
@@ -489,6 +554,9 @@ final class CameraView: NSView {
         guard let image = lastImage else { return nil }
         return Self.jpeg(from: image, compression: compression)
     }
+
+    /// The last H.264 keyframe, for whoever is willing to decode it off the main thread.
+    var currentKeyframe: (avcc: Data, format: CMFormatDescription)? { lastKeyframe }
 
     private static func jpeg(from image: NSImage, compression: Double) -> Data? {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }

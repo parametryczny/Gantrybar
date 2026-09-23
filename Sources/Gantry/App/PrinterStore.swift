@@ -8,7 +8,10 @@ final class PrinterStore: ObservableObject {
     @Published private(set) var telemetry: [String: PrinterTelemetry] = [:]
     @Published private(set) var connectionMessages: [String: String] = [:]
     /// Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool that was
-    /// auto-detached because an NFC roll was inserted into its slot).
+    /// auto-detached because an NFC roll was inserted into its slot, or a possible print failure).
+    ///
+    /// Named after what first used it. It is the card's notice list generally, and renaming it would
+    /// mean touching the Windows port for no gain.
     @Published private(set) var spoolNotices: [String: [String]] = [:]
     @Published private(set) var discovered: [DiscoveredPrinter] = []
     @Published var isScanning = false
@@ -752,6 +755,19 @@ final class PrinterStore: ObservableObject {
     func dismissSpoolNotices(serial: String) {
         guard spoolNotices[serial] != nil else { return }
         spoolNotices[serial] = nil
+    }
+
+    /// Leaves a message on a printer's card until the user dismisses it.
+    ///
+    /// A notification is easy to miss: it can be swiped away without reading, and quiet hours
+    /// suppress it outright. Anything worth waking somebody for is worth leaving somewhere they will
+    /// find it afterwards, so the card keeps saying it until they say OK.
+    func postCardNotice(serial: String, text: String) {
+        var notices = spoolNotices[serial] ?? []
+        // The same warning is not worth saying twice, and the card holds two lines comfortably.
+        guard !notices.contains(text) else { return }
+        notices.append(text)
+        spoolNotices[serial] = Array(notices.suffix(3))
     }
 
     func retryAfterLocalNetworkPermission() {

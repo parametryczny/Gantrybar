@@ -410,12 +410,16 @@ final class RemoteBridge {
 
     /// One frame, captured only because somebody has the page open and asked for this printer. It is
     /// sent with the next sync and then dropped: Gantry keeps no gallery and the page keeps one frame.
+    ///
+    /// Taken through `latestFrame`, so the page never pulls the camera away from a preview open on
+    /// this Mac: with one client allowed at a time, the two would otherwise take turns breaking each
+    /// other's picture.
     private func captureFrame(serial: String, store: PrinterStore) {
         guard !capturing.contains(serial), frames[serial] == nil,
               let printer = store.printers.first(where: { $0.serial == serial }) else { return }
         capturing.insert(serial)
         Task { @MainActor [weak self] in
-            let jpeg = await CameraSnapshot.capture(printer: printer, store: store)
+            let jpeg = await CameraSnapshot.latestFrame(printer: printer, store: store)
             guard let self else { return }
             capturing.remove(serial)
             if let jpeg, jpeg.count <= Self.maxFrameBytes {
