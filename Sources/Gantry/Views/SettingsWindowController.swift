@@ -215,6 +215,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let watchModelCaption = settingsCaption()
     private let watchModelButton = NSButton()
     private let watchRelearnButton = NSButton()
+    private let watchTrialButton = NSButton()
     private let watchModelName = settingsNote()
     private let watchSensitivityCaption = settingsCaption()
     private let watchSensitivityControl = SettingsScaleControl()
@@ -553,8 +554,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         watchModelButton.action = #selector(pickDefectModel)
         watchRelearnButton.target = self
         watchRelearnButton.action = #selector(relearnPrototypes)
-        for button in [watchModelButton, watchRelearnButton] { button.bezelStyle = .rounded }
-        let watchModelRow = NSStackView(views: [watchModelButton, watchRelearnButton])
+        watchTrialButton.target = self
+        watchTrialButton.action = #selector(tryDefectOnPicture)
+        for button in [watchModelButton, watchRelearnButton, watchTrialButton] { button.bezelStyle = .rounded }
+        let watchModelRow = NSStackView(views: [watchModelButton, watchRelearnButton, watchTrialButton])
         watchModelRow.orientation = .horizontal
         watchModelRow.spacing = 7
         watchSensitivityControl.onStep = { [weak self] direction in self?.changeWatchSensitivity(direction) }
@@ -923,6 +926,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         watchModelButton.title = settings.defectModelPath.isEmpty ? settings.t("Choose…") : settings.t("Change…")
         watchRelearnButton.title = settings.t("Relearn from my frames")
         watchRelearnButton.isEnabled = settings.defectWatchEnabled && settings.defectModelPath.isEmpty
+        // Zawsze czynny: sprawdzenie na zdjęciu ma sens właśnie wtedy, gdy zastanawiasz się, czy
+        // w ogóle to włączać.
+        watchTrialButton.title = settings.t("Try on a picture…")
         let status = DefectWatch.current?.status
         if let error = status?.lastError {
             setText(watchModelName, error)
@@ -967,6 +973,52 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func watchToggled() {
         AppSettings.shared.defectWatchEnabled = watchCheck.isOn
         scheduleRefresh()
+    }
+
+    /// Tries the recogniser on a picture the user already has, and shows what it would have said.
+    ///
+    /// Until now the only way to find out whether any of this works was to have a print fail, which
+    /// is a bad time to discover it does not. Point it at a photograph of spaghetti, or at an
+    /// ordinary print, and the answer comes back with the numbers behind it.
+    @objc private func tryDefectOnPicture() {
+        let settings = AppSettings.shared
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image]
+        panel.message = settings.t("Choose a photograph of a print, failed or not.")
+        guard ModalHost.run({ panel.runModal() }) == .OK, let url = panel.url else { return }
+
+        let alert = NSAlert()
+        do {
+            let verdict = try DefectTrial.judge(imageAt: url)
+            alert.messageText = DefectTrial.headline(verdict)
+            alert.informativeText = DefectTrial.detail(verdict)
+            alert.alertStyle = verdict.raisesAlarm ? .critical : .informational
+            alert.accessoryView = Self.trialPicture(verdict.jpeg)
+        } catch {
+            alert.messageText = settings.t("Could not try that picture")
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+        }
+        alert.addButton(withTitle: settings.t("Close"))
+        _ = ModalHost.run(alert)
+    }
+
+    /// The picture as the recogniser saw it, at a size that fits an alert without shouting.
+    private static func trialPicture(_ jpeg: Data) -> NSView? {
+        guard let image = NSImage(data: jpeg) else { return nil }
+        let width: CGFloat = 320
+        let ratio = image.size.height > 0 ? image.size.width / image.size.height : 4.0 / 3
+        let height = min(260, max(120, width / max(ratio, 0.2)))
+        let view = NSImageView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        view.image = image
+        view.imageScaling = .scaleProportionallyUpOrDown
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 8
+        view.layer?.masksToBounds = true
+        return view
     }
 
     /// Recomputes the prototypes from the marked frames, so newly marked pictures count from now on.

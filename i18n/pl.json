@@ -1147,5 +1147,15 @@
   "spaghetti": "spaghetti",
   "detached": "obiekt oderwany od stołu",
   "blob": "blob na dyszy",
-  "layer-shift": "przesunięcie warstw"
+  "layer-shift": "przesunięcie warstw",
+  "Try on a picture…": "Sprawdź na zdjęciu…",
+  "Choose a photograph of a print, failed or not.": "Wybierz zdjęcie wydruku, udanego albo nie.",
+  "Could not try that picture": "Nie da się sprawdzić tego zdjęcia",
+  "That file is not a picture Gantry can read.": "Tego pliku Gantry nie potrafi otworzyć jako obrazu.",
+  "There are no reference frames to compare against.": "Nie ma z czym porównać: brakuje klatek wzorcowych.",
+  "No opinion about this picture.": "Nie mam zdania o tym zdjęciu.",
+  "Looks like a print going well.": "Wygląda na wydruk, który idzie dobrze.",
+  "This would raise a warning: {0}.": "To wywołałoby ostrzeżenie: {0}.",
+  "Closest to {0}, but not sure enough to warn.": "Najbliżej do: {0}, ale za mało pewnie, żeby ostrzegać.",
+  "Sureness {0}%, warns from {1}%. Compared against {2} reference frames, {3} of them yours. This checks what the picture looks like; watching how a print changes over time cannot be tried on one photograph.": "Pewność {0}%, ostrzega od {1}%. Porównane z {2} klatkami wzorcowymi, w tym Twoich: {3}. To sprawdza, jak zdjęcie wygląda; obserwowania, jak wydruk zmienia się w czasie, nie da się sprawdzić na jednym zdjęciu."
 }
