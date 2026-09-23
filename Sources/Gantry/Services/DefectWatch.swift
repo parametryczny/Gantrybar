@@ -78,10 +78,12 @@ final class DefectWatch {
     /// każdej klatce: to przejście po katalogu, nie decyzja.
     func rebuildPrototypes() {
         prototypes = DefectPrototypes.build()
+        let tally = DefectPrototypes.tally(prototypes)
         var next = status
         next.modelName = prototypes.isEmpty
             ? AppSettings.shared.t("how the print is behaving")
-            : AppSettings.shared.t("how the print is behaving + your own frames ({0} classes)", prototypes.count)
+            : AppSettings.shared.t("how the print is behaving + {0} reference frames, {1} of them yours",
+                                   prototypes.count, tally.mine)
         next.lastError = nil
         status = next
     }

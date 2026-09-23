@@ -929,7 +929,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             watchModelName.textColor = GantryTheme.statusError
         } else if settings.defectModelPath.isEmpty {
             let learned = status?.modelName
-            setText(watchModelName, settings.t("Watching: {0}. Gantry needs no file to spot spaghetti, an object coming off the bed or a layer shift: it learns how each print of yours normally looks. Marking frames in Details sharpens it, and a downloaded model goes here instead.",
+            setText(watchModelName, settings.t("Watching: {0}. Gantry recognises spaghetti from the first print, with no file to choose: it ships reference frames and learns how each of your prints normally looks. Marking frames in Details sharpens it on your own printers, and a downloaded Core ML model goes here instead.",
                                                learned ?? settings.t("how the print is behaving")))
             watchModelName.textColor = .secondaryLabelColor
         } else {

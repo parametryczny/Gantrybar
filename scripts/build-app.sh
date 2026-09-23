@@ -90,6 +90,8 @@ fi
 # Translation catalog, shared verbatim with the Windows and Linux builds.
 mkdir -p "$APP_PATH/Contents/Resources/i18n"
 cp "i18n/pl.json" "$APP_PATH/Contents/Resources/i18n/pl.json"
+# Wzorce wpadek, z których Gantry rozpoznaje spaghetti bez żadnej nauki (patrz DefectPrototypes).
+cp "Resources/defect-starter-v1.bank" "Resources/defect-starter-v2.bank" "$APP_PATH/Contents/Resources/"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP_PATH/Contents/Info.plist"

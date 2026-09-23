@@ -1139,8 +1139,8 @@
   "Yes, it failed": "Tak, wpadka",
   "False alarm": "Fałszywy alarm",
   "how the print is behaving": "zachowanie wydruku",
-  "how the print is behaving + your own frames ({0} classes)": "zachowanie wydruku + własne klatki ({0} rodzaje)",
   "Watch my prints": "Pilnuj moich wydruków",
   "Gantry looks at a camera frame every {0} s and warns when a print stops behaving the way it has been. Works straight away, with no model file.": "Gantry zagląda do kamery co {0} s i ostrzega, gdy wydruk przestaje zachowywać się tak jak dotąd. Działa od razu, bez żadnego pliku modelu.",
-  "Watching: {0}. Gantry needs no file to spot spaghetti, an object coming off the bed or a layer shift: it learns how each print of yours normally looks. Marking frames in Details sharpens it, and a downloaded model goes here instead.": "Patrzy na: {0}. Żeby wyłapać spaghetti, oderwanie obiektu albo przesunięcie warstw, Gantry nie potrzebuje żadnego pliku: uczy się, jak normalnie wygląda każdy Twój wydruk. Oznaczanie klatek w Szczegółach to wyostrza, a pobrany model wchodzi tutaj zamiast tego."
+  "how the print is behaving + {0} reference frames, {1} of them yours": "zachowanie wydruku + {0} klatek wzorcowych, w tym Twoich: {1}",
+  "Watching: {0}. Gantry recognises spaghetti from the first print, with no file to choose: it ships reference frames and learns how each of your prints normally looks. Marking frames in Details sharpens it on your own printers, and a downloaded Core ML model goes here instead.": "Patrzy na: {0}. Gantry rozpoznaje spaghetti od pierwszego wydruku i nie trzeba niczego wybierać: wozi ze sobą klatki wzorcowe i uczy się, jak normalnie wygląda każdy Twój wydruk. Oznaczanie klatek w Szczegółach wyostrza to pod Twoje drukarki, a pobrany model Core ML wchodzi tutaj zamiast tego."
 }
