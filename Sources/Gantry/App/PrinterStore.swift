@@ -57,6 +57,7 @@ final class PrinterStore: ObservableObject {
     private let elegooDiscovery = ElegooDiscovery()
     private var clients: [String: PrinterConnection] = [:]
     private var reconnectTasks: [String: Task<Void, Never>] = [:]
+    private var offlineSweep: Timer?
     private var permissionRetryTask: Task<Void, Never>?
     private var localNetworkWasDenied = false
     private var lastAddressScan: Date?
@@ -748,6 +749,7 @@ final class PrinterStore: ObservableObject {
     }
 
     func reconnectAll() {
+        startOfflineSweep()
         for printer in printers { reconnect(printer) }
     }
 
@@ -935,26 +937,64 @@ final class PrinterStore: ObservableObject {
     }
 
     private func scheduleReconnect(serial: String) {
-        guard reconnectTasks[serial] == nil,
-              printers.contains(where: { $0.serial == serial }) else { return }
+        guard printers.contains(where: { $0.serial == serial }) else { return }
+        // Cancel and replace rather than "only schedule if nothing is pending". The pending task used
+        // to double as a lock, and every path out of it that forgot to clear the entry left that lock
+        // held for the rest of the session: the card went on promising "retrying in 20 s" while
+        // nothing ever opened a socket again. Measured on a fleet of five, all five stuck at once,
+        // every printer answering on 8883 from a shell and Gantry holding no sockets at all. With no
+        // lock there is nothing to leak, and the newest disconnect simply owns the retry.
+        reconnectTasks.removeValue(forKey: serial)?.cancel()
         reconnectTasks[serial] = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(20))
             guard let self, !Task.isCancelled,
                   self.printers.contains(where: { $0.serial == serial }),
-                  self.telemetry[serial]?.state == .offline else {
-                self?.reconnectTasks.removeValue(forKey: serial)
-                return
-            }
+                  self.telemetry[serial]?.state == .offline else { return }
             if self.lastAddressScan.map({ Date().timeIntervalSince($0) >= 300 }) ?? true {
                 self.lastAddressScan = Date()
-                self.connectionMessages[serial] = "Szukam aktualnego adresu IP…"
+                self.connectionMessages[serial] = AppSettings.shared.t("Looking for the current IP address…")
                 await self.refreshAddresses()
             }
             guard !Task.isCancelled,
                   let printer = self.printers.first(where: { $0.serial == serial }) else { return }
-            self.reconnectTasks.removeValue(forKey: serial)
             self.reconnect(printer)
         }
+    }
+
+    /// Every minute, anything that is offline and has no retry pending gets one.
+    ///
+    /// The net under the retry, not a replacement for it. A watchdog that only ever finds nothing to
+    /// do is the point; the alternative is a printer that quietly stops being watched and a person who
+    /// finds out hours later.
+    private func startOfflineSweep() {
+        offlineSweep?.invalidate()
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.reviveForgottenPrinters() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        offlineSweep = timer
+    }
+
+    func reviveForgottenPrinters() {
+        let forgotten = Self.serialsNeedingRetry(
+            printers: printers.map(\.serial),
+            offline: Set(telemetry.filter { $0.value.state == .offline }.keys),
+            pending: Set(reconnectTasks.keys),
+            networkDenied: localNetworkWasDenied)
+        for serial in forgotten { scheduleReconnect(serial: serial) }
+    }
+
+    /// Which printers are offline with nobody coming back for them.
+    ///
+    /// Pulled out of the sweep so the rule can be tested without a network, a timer or a printer: it
+    /// is the rule that decides whether a machine is watched at all, and the bug it exists to catch
+    /// left five of them unwatched with the card still promising a retry.
+    static func serialsNeedingRetry(printers: [String], offline: Set<String>,
+                                    pending: Set<String>, networkDenied: Bool) -> [String] {
+        // Local network refused is its own problem with its own retry; hammering it would only pile
+        // up refusals behind a permission the user has to grant in System Settings.
+        guard !networkDenied else { return [] }
+        return printers.filter { offline.contains($0) && !pending.contains($0) }
     }
 
     private func refreshAddresses() async {

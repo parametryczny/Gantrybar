@@ -48,6 +48,12 @@ final class DefectWatch {
     private var frameSource: [String: CameraSnapshot.Source] = [:]
     /// O czym już powiedzieliśmy przy tym wydruku, żeby karta nie zbierała tej samej wpadki w kółko.
     private var toldAbout: [String: (job: String, labels: Set<String>)] = [:]
+    /// Kiedy Gantry ostatnio otwierało własne połączenie z kamerą danej drukarki i jak długo ma teraz
+    /// czekać. Klatka z cudzego podglądu jest darmowa, własne połączenie nie jest.
+    private var ownLookAt: [String: Date] = [:]
+    private var ownLookBackoff: [String: TimeInterval] = [:]
+    private static let ownLookInterval: TimeInterval = 60
+    private static let ownLookCeiling: TimeInterval = 300
 
     private(set) var status = Status() { didSet { if status != oldValue { changed.send(status) } } }
     let changed = PassthroughSubject<Status, Never>()
@@ -111,6 +117,8 @@ final class DefectWatch {
         goodFrames.removeAll()
         frameSource.removeAll()
         toldAbout.removeAll()
+        ownLookAt.removeAll()
+        ownLookBackoff.removeAll()
         status = Status()
     }
 
@@ -144,12 +152,28 @@ final class DefectWatch {
                 toldAbout[printer.serial] = (job: job, labels: [])
             }
             guard !busy.contains(printer.serial) else { continue }
+            // A frame from a preview somebody already has open is free. A frame that needs Gantry to
+            // open its own connection is not: it is a fresh TLS session against a small embedded
+            // board, and at the watch interval that is three a minute per printer, for ever. So those
+            // are rationed, and backed off further when they keep failing.
+            if !CameraFeedController.isLive(serial: printer.serial) {
+                let wait = ownLookBackoff[printer.serial] ?? Self.ownLookInterval
+                let since = Date().timeIntervalSince(ownLookAt[printer.serial] ?? .distantPast)
+                guard since >= wait else { continue }
+                ownLookAt[printer.serial] = Date()
+            }
             busy.insert(printer.serial)
             Task { @MainActor [weak self] in
                 defer { self?.busy.remove(printer.serial) }
-                guard let self,
-                      let frame = await CameraSnapshot.latestFrame(printer: printer, store: store)
-                else { return }
+                guard let self else { return }
+                let taken = await CameraSnapshot.latestFrame(printer: printer, store: store)
+                if CameraFeedController.isLive(serial: printer.serial) == false {
+                    // A camera that keeps refusing is asked less and less often, up to five minutes.
+                    self.ownLookBackoff[printer.serial] = taken == nil
+                        ? min(Self.ownLookCeiling, (self.ownLookBackoff[printer.serial] ?? Self.ownLookInterval) * 2)
+                        : Self.ownLookInterval
+                }
+                guard let frame = taken else { return }
                 // A frame from a different stream cannot be compared with the last one, so the
                 // history starts again rather than reading the new framing as a failure.
                 if self.frameSource[printer.serial] != frame.source {
