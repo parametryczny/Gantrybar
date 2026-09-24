@@ -1153,13 +1153,15 @@
   "That file is not a picture Gantry can read.": "Tego pliku Gantry nie potrafi otworzyć jako obrazu.",
   "There are no reference frames to compare against.": "Nie ma z czym porównać: brakuje klatek wzorcowych.",
   "No opinion about this picture.": "Nie mam zdania o tym zdjęciu.",
-  "Looks like a print going well.": "Wygląda na wydruk, który idzie dobrze.",
-  "This would raise a warning: {0}.": "To wywołałoby ostrzeżenie: {0}.",
-  "Closest to {0}, but not sure enough to warn.": "Najbliżej do: {0}, ale za mało pewnie, żeby ostrzegać.",
-  "Sureness {0}%, warns from {1}%. Compared against {2} reference frames, {3} of them yours. This checks what the picture looks like; watching how a print changes over time cannot be tried on one photograph.": "Pewność {0}%, ostrzega od {1}%. Porównane z {2} klatkami wzorcowymi, w tym Twoich: {3}. To sprawdza, jak zdjęcie wygląda; obserwowania, jak wydruk zmienia się w czasie, nie da się sprawdzić na jednym zdjęciu.",
-  "Watching: {0}. No file to choose. Gantry watches how each print changes, which needs nothing at all, and carries reference frames of spaghetti. To use them it also needs to know what your printer looks like when nothing is wrong, so it keeps a few frames of its own from prints that are going well; marking frames in Details is faster. A downloaded Core ML model goes here instead.": "Patrzy na: {0}. Nie trzeba niczego wybierać. Gantry obserwuje, jak zmienia się każdy wydruk, co nie wymaga żadnych danych, i wozi ze sobą klatki wzorcowe spaghetti. Żeby ich użyć, musi jeszcze wiedzieć, jak wygląda Twoja drukarka, gdy wszystko jest w porządku, więc samo zachowuje kilka klatek z wydruków, które idą dobrze; oznaczenie klatek w Szczegółach jest szybsze. Pobrany model Core ML wchodzi tutaj zamiast tego.",
-  "{0}, which is a blemish rather than a failure: never warned about.": "{0}, czyli skaza, a nie wpadka: o tym Gantry nigdy nie ostrzega.",
-  "Sureness {0}%, warns from {1}%. Answered by {2}. This checks what the picture looks like; watching how a print changes over time cannot be tried on one photograph.": "Pewność {0}%, ostrzega od {1}%. Odpowiedział: {2}. To sprawdza, jak zdjęcie wygląda; obserwowania, jak wydruk zmienia się w czasie, nie da się sprawdzić na jednym zdjęciu.",
   "stringing": "nitkowanie",
-  "zits": "pryszcze"
+  "zits": "pryszcze",
+  "failure": "awaria wydruku",
+  "Clear. The print looks fine.": "Czysto. Wydruk wygląda dobrze.",
+  "{0}. A blemish, not a failure, so Gantry stays quiet.": "{0}. Skaza, nie wpadka, więc Gantry nie budzi.",
+  "{0}. Gantry would warn you.": "{0}. Gantry by ostrzegło.",
+  "Something like {0}, but too weak to warn about.": "Coś podobnego do: {0}, ale za słabo na ostrzeżenie.",
+  "Certainty {0}% · warns from {1}% · engine {2}": "Pewność {0}% · próg {1}% · silnik {2}",
+  "One frame judged. How a print changes over time, Gantry watches separately and live.": "Ocena jednego kadru. Jak wydruk zmienia się w czasie, Gantry pilnuje osobno i na żywo.",
+  "{0} reference frames, {1} yours": "klatki wzorcowe: {0}, w tym Twoje: {1}",
+  "Engine: {0}. Gantry Vision ships with the app and needs nothing chosen: trained on the wide chamber-camera frames your printers actually produce. Alongside it Gantry watches how each print changes over time, which catches an object coming off the bed. Your own Core ML file goes here to replace the engine.": "Silnik: {0}. Gantry Vision jest w aplikacji i nie trzeba niczego wybierać: uczony na szerokich kadrach z kamer w komorze, czyli dokładnie takich, jakie dają Twoje drukarki. Obok niego Gantry obserwuje, jak każdy wydruk zmienia się w czasie, co łapie oderwanie obiektu od stołu. Własny plik Core ML wchodzi tutaj i zastępuje silnik."
 }

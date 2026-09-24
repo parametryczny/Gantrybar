@@ -58,13 +58,13 @@ enum DefectTrial {
         let limit = threshold ?? AppSettings.shared.defectThreshold
         // A chosen Core ML file replaces the reference frames for the watcher, so it has to replace
         // them here too. Trying one thing and running another is worse than not offering the trial.
-        let path = AppSettings.shared.defectModelPath
-        if prototypes == nil, !path.isEmpty {
+        if prototypes == nil,
+           let path = DefectModel.effectivePath(chosen: AppSettings.shared.defectModelPath) {
             let guess = try DefectModel.shared.guess(jpeg: jpeg, path: path)
             let alarming = guess.map { DefectVerdict.warrantsWarning($0.label) && $0.confidence >= limit } ?? false
             return Verdict(jpeg: jpeg, label: guess?.label, confidence: guess?.confidence ?? 0,
                            raisesAlarm: alarming, threshold: limit, comparedAgainst: 0, mine: 0,
-                           modelName: (path as NSString).lastPathComponent)
+                           modelName: DefectModel.shared.displayName(for: path))
         }
         let bank = prototypes ?? DefectPrototypes.build()
         guard !bank.isEmpty else { throw Failure.nothingToCompareWith }
@@ -112,30 +112,29 @@ enum DefectTrial {
     }
 
     /// The one-line answer, in the user's language.
+    ///
+    /// Four outcomes and four different sentences, each saying what Gantry would *do*, because that
+    /// is the question somebody clicking this is actually asking.
     static func headline(_ verdict: Verdict) -> String {
         let settings = AppSettings.shared
         guard let label = verdict.label else { return settings.t("No opinion about this picture.") }
-        if DefectVerdict.isHealthy(label) { return settings.t("Looks like a print going well.") }
-        // A blemish is worth naming and not worth an alarm, and the sheet should say both.
+        if DefectVerdict.isHealthy(label) { return settings.t("Clear. The print looks fine.") }
         if DefectVerdict.isCosmetic(label) {
-            return settings.t("{0}, which is a blemish rather than a failure: never warned about.",
-                              settings.t(label))
+            return settings.t("{0}. A blemish, not a failure, so Gantry stays quiet.", settings.t(label))
         }
         return verdict.raisesAlarm
-            ? settings.t("This would raise a warning: {0}.", settings.t(label))
-            : settings.t("Closest to {0}, but not sure enough to warn.", settings.t(label))
+            ? settings.t("{0}. Gantry would warn you.", settings.t(label))
+            : settings.t("Something like {0}, but too weak to warn about.", settings.t(label))
     }
 
-    /// The line under it: the numbers behind the answer.
+    /// The line under it: the numbers behind the answer, then what this trial does and does not cover.
     static func detail(_ verdict: Verdict) -> String {
         let settings = AppSettings.shared
         let sure = Int((verdict.confidence * 100).rounded())
         let limit = Int((verdict.threshold * 100).rounded())
-        if let model = verdict.modelName {
-            return settings.t("Sureness {0}%, warns from {1}%. Answered by {2}. This checks what the picture looks like; watching how a print changes over time cannot be tried on one photograph.",
-                              sure, limit, model)
-        }
-        return settings.t("Sureness {0}%, warns from {1}%. Compared against {2} reference frames, {3} of them yours. This checks what the picture looks like; watching how a print changes over time cannot be tried on one photograph.",
-                          sure, limit, verdict.comparedAgainst, verdict.mine)
+        let source = verdict.modelName
+            ?? settings.t("{0} reference frames, {1} yours", verdict.comparedAgainst, verdict.mine)
+        return settings.t("Certainty {0}% · warns from {1}% · engine {2}", sure, limit, source)
+            + "\n" + settings.t("One frame judged. How a print changes over time, Gantry watches separately and live.")
     }
 }

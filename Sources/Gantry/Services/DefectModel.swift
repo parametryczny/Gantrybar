@@ -1,15 +1,22 @@
 import CoreML
 import Vision
 
-/// A Core ML file the user chose, loaded once and asked questions.
+/// The Core ML file that decides what a frame looks like: Gantry Vision, which ships with the app,
+/// or one the user points Gantry at instead.
 ///
-/// Gantry ships no such file and never will: the detectors people can download are good, and their
-/// licences (Ultralytics' YOLO models are AGPL-3.0, for one) forbid handing them on inside an
-/// MIT-licensed app. Pointing Gantry at a file on your own disk is a different thing entirely, and
-/// that is what this is for.
+/// Gantry Vision is Gantry's own: MobileNetV3 Small, 224x224, two answers, `no_failure_annotated`
+/// and `failure`. Measured on the wide fisheye frames a Bambu chamber camera actually produces, at
+/// the default sensitivity it found 22 failures out of 22 and called one normal frame in forty
+/// wrong. The detector that was tried before it, a downloaded YOLO trained on close-up crops, found
+/// one of those same 22: a model is only as good as the kind of picture it was shown, and these are
+/// the pictures Gantry gets.
 ///
-/// It takes whatever the model says, classification or detection, because a downloaded detector uses
-/// its own names for its own classes and that is its business. What Gantry does with those names is
+/// A file the user chooses replaces it. Ultralytics' YOLO weights are AGPL-3.0 and could never be
+/// shipped inside an MIT-licensed app, but pointing Gantry at one on your own disk is a different
+/// thing entirely, and that still works.
+///
+/// It takes whatever the model says, classification or detection, because another detector uses its
+/// own names for its own classes and that is its business. What Gantry does with those names is
 /// decided in `DefectVerdict`: some mean "fine", some mean a blemish not worth waking anybody for,
 /// and the rest are failures.
 @MainActor
@@ -18,6 +25,38 @@ final class DefectModel {
 
     private var model: VNCoreMLModel?
     private var loadedFrom: String?
+    private var loadedName: String?
+
+    /// The model Gantry ships, used whenever the user has not chosen one of their own.
+    static var bundledPath: String? {
+        let name = "GantryVisionPrintFailure.mlpackage"
+        var candidates: [URL] = []
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent(name) {
+            candidates.append(bundled)
+        }
+        // Running from `swift run` or the tests there is no bundle, so fall back to the checkout.
+        candidates.append(Bundle.main.bundleURL.deletingLastPathComponent()
+            .appendingPathComponent("Resources/\(name)"))
+        candidates.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Resources/\(name)"))
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }?.path
+    }
+
+    /// Which file is actually answering: the user's choice, or Gantry Vision.
+    static func effectivePath(chosen: String) -> String? {
+        chosen.isEmpty ? bundledPath : chosen
+    }
+
+    /// What to call it on screen.
+    ///
+    /// A model says its own name in its Core ML metadata, which beats a filename: the user can
+    /// rename the file, or keep three versions side by side, and the sheet still reads "Gantry
+    /// Vision" rather than whatever the file happens to be called today.
+    func displayName(for path: String) -> String {
+        if loadedFrom == path, let loadedName, !loadedName.isEmpty { return loadedName }
+        let fallback = (path as NSString).lastPathComponent
+        return (fallback as NSString).deletingPathExtension
+    }
 
     struct Guess {
         let label: String
@@ -47,6 +86,7 @@ final class DefectModel {
     func forget() {
         model = nil
         loadedFrom = nil
+        loadedName = nil
     }
 
     private func load(_ path: String) throws {
@@ -54,8 +94,11 @@ final class DefectModel {
         let url = URL(fileURLWithPath: path)
         // A .mlpackage has to be compiled before it can be loaded; a compiled .mlmodelc is used as is.
         let compiled = url.pathExtension == "mlmodelc" ? url : try MLModel.compileModel(at: url)
-        model = try VNCoreMLModel(for: MLModel(contentsOf: compiled))
+        let loaded = try MLModel(contentsOf: compiled)
+        model = try VNCoreMLModel(for: loaded)
         loadedFrom = path
+        let metadata = loaded.modelDescription.metadata
+        loadedName = (metadata[.author] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The strongest label a Vision request came back with, whether the model classifies whole frames

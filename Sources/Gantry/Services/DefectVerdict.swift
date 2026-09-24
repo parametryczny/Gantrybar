@@ -75,7 +75,12 @@ struct DefectVerdict {
     /// the word rather than on a fixed string from one particular model.
     static func isHealthy(_ label: String) -> Bool {
         let healthy = ["ok", "normal", "good", "healthy", "printing correctly", "no-failure", "none",
-                       "no defect", "no_defect", "no_defected", "successful print", "success"]
+                       "no defect", "no_defect", "no_defected", "successful print", "success",
+                       // Gantry Vision names its quiet class this because the pictures behind it were
+                       // only ever "nobody drew a failure box here", which is not a certificate that
+                       // the print is fine. For deciding whether to wake somebody it is the same
+                       // thing: no evidence of a failure means no warning.
+                       "no_failure_annotated", "no_failure", "nofailure"]
         return healthy.contains(label.lowercased())
     }
 

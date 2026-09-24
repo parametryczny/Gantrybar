@@ -84,4 +84,15 @@ import Testing
             #expect(DefectVerdict.warrantsWarning(fine) == false)
         }
     }
+
+
+    /// Gantry Vision print-failure answers with two words, and getting either of them wrong is the
+    /// difference between a useful watchdog and one that warns on every quiet frame.
+    @Test func theQuietClassOfAModelThatOnlyKnowsFailureIsUnderstood() {
+        #expect(DefectVerdict.isHealthy("no_failure_annotated"))
+        #expect(DefectVerdict.warrantsWarning("no_failure_annotated") == false,
+                "every calm frame would have raised a warning")
+        #expect(DefectVerdict.warrantsWarning("failure"), "a plain failure has to warn")
+        #expect(DefectVerdict.isCosmetic("failure") == false)
+    }
 }

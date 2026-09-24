@@ -12,9 +12,10 @@ import Vision
 /// 1. **How the print is behaving** (PrintBaseline). Needs nothing at all. It compares each frame
 ///    with the minutes before it on the same camera, which is what catches an object coming off the
 ///    bed and a layer shift, neither of which a single picture can show.
-/// 2. **What the frame looks like** (DefectPrototypes): reference frames Gantry ships, built from
-///    openly licensed photographs, plus every frame the user has marked in Details, which outrank
-///    them in practice. A Core ML file the user points Gantry at replaces this half entirely.
+/// 2. **What the frame looks like**: a Core ML file the user points Gantry at, if there is one, and
+///    otherwise `DefectPrototypes` (reference frames Gantry ships, plus the frames from the user's
+///    own camera). A chosen file replaces the reference frames entirely, here and in the trial, so
+///    what is tested is always what runs.
 ///
 /// The frame itself is taken through `CameraSnapshot.latestFrame`, never `capture`: a printer camera
 /// allows one client at a time, so a watcher that opens its own connection every minute takes the
@@ -66,24 +67,23 @@ final class DefectWatch {
             stop()
             return
         }
-        if settings.defectModelPath.isEmpty {
-            // Bez wskazanego pliku Gantry uczy się z tego, co sam oznaczyłeś. Nawet gdy nie oznaczyłeś
-            // jeszcze nic, zostaje obserwacja samego wydruku, więc patrzenie ma sens od razu.
-            rebuildPrototypes()
-        } else {
-            // Wskazany plik zastępuje wzorce. Ładowany od razu, żeby zły plik zgłosił się teraz,
-            // a nie dopiero przez ciszę w nocy.
+        // Gantry Vision jest podstawą; wskazany plik ją zastępuje. Ładowany od razu, żeby zły plik
+        // zgłosił się teraz, a nie dopiero przez ciszę w nocy.
+        if let path = DefectModel.effectivePath(chosen: settings.defectModelPath) {
             prototypes = []
             var next = status
             do {
-                try DefectModel.shared.prepare(path: settings.defectModelPath)
-                next.modelName = (settings.defectModelPath as NSString).lastPathComponent
+                try DefectModel.shared.prepare(path: path)
+                next.modelName = DefectModel.shared.displayName(for: path)
                 next.lastError = nil
             } catch {
                 next.modelName = nil
                 next.lastError = error.localizedDescription
             }
             status = next
+        } else {
+            // Gdyby modelu zabrakło, zostają wzorce i obserwacja zachowania wydruku.
+            rebuildPrototypes()
         }
         schedule(interval: TimeInterval(max(5, settings.defectWatchSeconds)))
     }
@@ -165,8 +165,7 @@ final class DefectWatch {
         // Zawsze, niezależnie od modelu: jak ten wydruk zachowuje się względem ostatnich minut.
         let fromBehaviour = watchBehaviour(jpeg: jpeg, printer: printer, telemetry: telemetry)
 
-        let path = AppSettings.shared.defectModelPath
-        guard !path.isEmpty else {
+        guard let path = DefectModel.effectivePath(chosen: AppSettings.shared.defectModelPath) else {
             // Bez pliku modelu zostają wzorce z własnych klatek, o ile jakieś są.
             let match = DefectPrototypes.match(jpeg: jpeg, against: prototypes)
             settle(fromBehaviour, PrintBaseline.Reading(label: match?.label, confidence: match?.confidence ?? 0),

@@ -118,7 +118,7 @@ import Foundation
 
     @Test func theHeadlineSaysWhichOfTheThreeThingsHappened() {
         let base = DefectTrial.Verdict(jpeg: Data([0xFF]), label: nil, confidence: 0, raisesAlarm: false,
-                                       threshold: 0.7, comparedAgainst: 10, mine: 0)
+                                       threshold: 0.7, comparedAgainst: 10, mine: 0, modelName: nil)
         var healthy = base; healthy.label = "ok"; healthy.confidence = 0.9
         var warning = base; warning.label = "spaghetti"; warning.confidence = 0.9; warning.raisesAlarm = true
         var unsure = base; unsure.label = "spaghetti"; unsure.confidence = 0.55
@@ -126,7 +126,8 @@ import Foundation
         let lines = [base, healthy, warning, unsure].map(DefectTrial.headline)
         #expect(Set(lines).count == 4)
         #expect(lines.allSatisfy { !$0.isEmpty })
-        #expect(DefectTrial.detail(warning).contains("90"), "the sureness belongs in the detail line")
+        #expect(DefectTrial.detail(warning).contains("90"), "the certainty belongs in the detail line")
+        #expect(DefectTrial.detail(warning).contains("\n"), "the caveat sits on its own line")
     }
 
     // MARK: The same answer wherever it is asked
@@ -154,5 +155,21 @@ import Foundation
         #expect(sheet.messageText.hasPrefix("X1"), "asked about one printer, the answer must name it")
         #expect(sheet.accessoryView != nil, "the sheet shows the frame that was judged")
         #expect(DefectTrial.sheet(for: verdict).messageText.hasPrefix("X1") == false)
+    }
+
+
+    // MARK: Gantry Vision, the engine that ships
+
+    @Test func gantryVisionIsThereAndAnswersWithoutAnybodyChoosingAFile() throws {
+        let path = try #require(DefectModel.bundledPath,
+                                "Resources/GantryVisionPrintFailure.mlpackage is missing")
+        // Nothing chosen means Gantry Vision: the whole point of shipping it.
+        #expect(DefectModel.effectivePath(chosen: "") == path)
+        #expect(DefectModel.effectivePath(chosen: "/tmp/mine.mlpackage") == "/tmp/mine.mlpackage")
+
+        let verdict = try DefectTrial.judge(jpeg: tidy(0), threshold: 0.7)
+        #expect(verdict.label != nil, "the shipped engine has to answer")
+        #expect(verdict.modelName == "Gantry Vision", "the sheet shows the model's own name")
+        #expect(verdict.comparedAgainst == 0, "a model does not compare against reference frames")
     }
 }
