@@ -170,6 +170,8 @@ import Foundation
         let verdict = try DefectTrial.judge(jpeg: tidy(0), threshold: 0.7)
         #expect(verdict.label != nil, "the shipped engine has to answer")
         #expect(verdict.modelName == "Gantry Vision", "the sheet shows the model's own name")
-        #expect(verdict.comparedAgainst == 0, "a model does not compare against reference frames")
+        // The shipped reference frames are asked too, not replaced: the engine knows the cameras it
+        // was trained on, the frames know the camera in front of you, and both get a say.
+        #expect(verdict.comparedAgainst > 0, "the reference frames must still be consulted")
     }
 }

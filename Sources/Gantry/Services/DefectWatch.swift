@@ -12,10 +12,12 @@ import Vision
 /// 1. **How the print is behaving** (PrintBaseline). Needs nothing at all. It compares each frame
 ///    with the minutes before it on the same camera, which is what catches an object coming off the
 ///    bed and a layer shift, neither of which a single picture can show.
-/// 2. **What the frame looks like**: a Core ML file the user points Gantry at, if there is one, and
-///    otherwise `DefectPrototypes` (reference frames Gantry ships, plus the frames from the user's
-///    own camera). A chosen file replaces the reference frames entirely, here and in the trial, so
-///    what is tested is always what runs.
+/// 2. **What the frame looks like**, from two directions at once: the Core ML engine (Gantry Vision,
+///    or a file the user chose instead), and `DefectPrototypes` (the reference frames Gantry ships
+///    plus every frame the user marked). Both are asked, always. The engine knows the cameras it was
+///    trained on; the user's own frames know the camera in front of them, and when the engine says
+///    "something like a failure, but too weak" about a picture the user has already named, the
+///    frames win. For a while the engine was the sole judge and marking a defect did nothing at all.
 ///
 /// The frame itself is taken through `CameraSnapshot.latestFrame`, never `capture`: a printer camera
 /// allows one client at a time, so a watcher that opens its own connection every minute takes the
@@ -73,10 +75,12 @@ final class DefectWatch {
             stop()
             return
         }
+        // Wzorce liczą się zawsze, także obok modelu: to jedyna rzecz, która zna akurat Twoją kamerę.
+        // Dopóki model był wyłącznym sędzią, oznaczanie defektów nie robiło zupełnie nic.
+        rebuildPrototypes()
         // Gantry Vision jest podstawą; wskazany plik ją zastępuje. Ładowany od razu, żeby zły plik
         // zgłosił się teraz, a nie dopiero przez ciszę w nocy.
         if let path = DefectModel.effectivePath(chosen: settings.defectModelPath) {
-            prototypes = []
             var next = status
             do {
                 try DefectModel.shared.prepare(path: path)
@@ -87,9 +91,6 @@ final class DefectWatch {
                 next.lastError = error.localizedDescription
             }
             status = next
-        } else {
-            // Gdyby modelu zabrakło, zostają wzorce i obserwacja zachowania wydruku.
-            rebuildPrototypes()
         }
         schedule(interval: TimeInterval(max(5, settings.defectWatchSeconds)))
     }
@@ -189,20 +190,22 @@ final class DefectWatch {
         // Zawsze, niezależnie od modelu: jak ten wydruk zachowuje się względem ostatnich minut.
         let fromBehaviour = watchBehaviour(jpeg: jpeg, printer: printer, telemetry: telemetry)
 
+        // Wzorce liczą się zawsze, także przy wskazanym modelu. Model zna kamery, na których był
+        // uczony; Twoje klatki znają Twoją. Gdy model mówi „coś podobnego, ale za słabo", a klatka
+        // z tej samej kamery, którą sam oznaczyłeś, mówi wprost, to ta druga ma rację.
+        let match = DefectPrototypes.match(jpeg: jpeg, against: prototypes)
+        let fromFrames = PrintBaseline.Reading(label: match?.label, confidence: match?.confidence ?? 0)
+
         guard let path = DefectModel.effectivePath(chosen: AppSettings.shared.defectModelPath) else {
-            // Bez pliku modelu zostają wzorce z własnych klatek, o ile jakieś są.
-            let match = DefectPrototypes.match(jpeg: jpeg, against: prototypes)
-            settle(fromBehaviour, PrintBaseline.Reading(label: match?.label, confidence: match?.confidence ?? 0),
-                   jpeg: jpeg, printer: printer, telemetry: telemetry)
+            settle([fromBehaviour, fromFrames], jpeg: jpeg, printer: printer, telemetry: telemetry)
             return
         }
         // Ten sam wczytany plik, którego używa „Testuj". Dwa wczytania tego samego modelu prędzej
         // czy później zaczęłyby odpowiadać inaczej, a wtedy sprawdzanie przestaje cokolwiek znaczyć.
         do {
             let guess = try DefectModel.shared.guess(jpeg: jpeg, path: path)
-            settle(fromBehaviour,
-                   PrintBaseline.Reading(label: guess?.label, confidence: guess?.confidence ?? 0),
-                   jpeg: jpeg, printer: printer, telemetry: telemetry)
+            let fromModel = PrintBaseline.Reading(label: guess?.label, confidence: guess?.confidence ?? 0)
+            settle([fromBehaviour, fromModel, fromFrames], jpeg: jpeg, printer: printer, telemetry: telemetry)
         } catch {
             var next = status
             next.lastError = error.localizedDescription
@@ -229,13 +232,14 @@ final class DefectWatch {
     /// Zgodzić się nie muszą, a wystarczy, że jedna ma naprawdę mocny powód, żeby zawołać: „wygląda
     /// normalnie" nie może zagłuszyć „przed chwilą wszystko się posypało". Dopóki jednak żadna nie
     /// przekroczyła progu, liczy się zwykłe „spokojnie", bo to ono kasuje licznik.
-    private func settle(_ first: PrintBaseline.Reading, _ second: PrintBaseline.Reading,
+    private func settle(_ readings: [PrintBaseline.Reading],
                         jpeg: Data, printer: SavedPrinter, telemetry: PrinterTelemetry) {
         let threshold = AppSettings.shared.defectThreshold
-        let alarming = [first, second]
+        let alarming = readings
             .filter { $0.confidence >= threshold && ($0.label.map(DefectVerdict.warrantsWarning) ?? false) }
             .max { $0.confidence < $1.confidence }
-        let best = alarming ?? (first.confidence >= second.confidence ? first : second)
+        let best = alarming ?? readings.max { $0.confidence < $1.confidence } ?? readings[0]
+        let first = readings[0]
         if alarming == nil, first.label == nil {
             rememberGoodFrame(jpeg: jpeg, printer: printer, telemetry: telemetry)
         }

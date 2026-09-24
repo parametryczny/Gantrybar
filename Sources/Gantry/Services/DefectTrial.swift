@@ -56,24 +56,33 @@ enum DefectTrial {
                       prototypes: [DefectPrototypes.Prototype]? = nil,
                       threshold: Double? = nil) throws -> Verdict {
         let limit = threshold ?? AppSettings.shared.defectThreshold
-        // A chosen Core ML file replaces the reference frames for the watcher, so it has to replace
-        // them here too. Trying one thing and running another is worse than not offering the trial.
+        // Exactly what the watcher asks: the engine and the reference frames, both, every time.
+        // Trying one thing and running another is worse than not offering the trial at all.
+        let bank = prototypes ?? DefectPrototypes.build()
+        let tally = DefectPrototypes.tally(bank)
+        let fromFrames = DefectPrototypes.match(jpeg: jpeg, against: bank)
+
+        var fromModel: DefectModel.Guess?
+        var engine: String?
         if prototypes == nil,
            let path = DefectModel.effectivePath(chosen: AppSettings.shared.defectModelPath) {
-            let guess = try DefectModel.shared.guess(jpeg: jpeg, path: path)
-            let alarming = guess.map { DefectVerdict.warrantsWarning($0.label) && $0.confidence >= limit } ?? false
-            return Verdict(jpeg: jpeg, label: guess?.label, confidence: guess?.confidence ?? 0,
-                           raisesAlarm: alarming, threshold: limit, comparedAgainst: 0, mine: 0,
-                           modelName: DefectModel.shared.displayName(for: path))
+            fromModel = try DefectModel.shared.guess(jpeg: jpeg, path: path)
+            engine = DefectModel.shared.displayName(for: path)
         }
-        let bank = prototypes ?? DefectPrototypes.build()
-        guard !bank.isEmpty else { throw Failure.nothingToCompareWith }
-        let match = DefectPrototypes.match(jpeg: jpeg, against: bank)
-        let tally = DefectPrototypes.tally(bank)
-        let alarming = match.map { DefectVerdict.warrantsWarning($0.label) && $0.confidence >= limit } ?? false
-        return Verdict(jpeg: jpeg, label: match?.label, confidence: match?.confidence ?? 0,
-                       raisesAlarm: alarming, threshold: limit,
-                       comparedAgainst: bank.count, mine: tally.mine, modelName: nil)
+        guard fromModel != nil || !bank.isEmpty else { throw Failure.nothingToCompareWith }
+
+        // The same rule the watcher uses: whichever of the two has a real reason to warn wins, and
+        // failing that, whichever is surer. Anything else would have the trial answer a question the
+        // watcher is not asking.
+        let readings: [(label: String?, confidence: Double)] =
+            [(fromModel?.label, fromModel?.confidence ?? 0), (fromFrames?.label, fromFrames?.confidence ?? 0)]
+        let alarming = readings
+            .filter { $0.confidence >= limit && ($0.label.map(DefectVerdict.warrantsWarning) ?? false) }
+            .max { $0.confidence < $1.confidence }
+        let best = alarming ?? readings.max { $0.confidence < $1.confidence }
+        return Verdict(jpeg: jpeg, label: best?.label, confidence: best?.confidence ?? 0,
+                       raisesAlarm: alarming != nil, threshold: limit,
+                       comparedAgainst: bank.count, mine: tally.mine, modelName: engine)
     }
 
     /// Any picture macOS can open, as the JPEG the recogniser works on. A camera frame is a JPEG, so
@@ -132,8 +141,10 @@ enum DefectTrial {
         let settings = AppSettings.shared
         let sure = Int((verdict.confidence * 100).rounded())
         let limit = Int((verdict.threshold * 100).rounded())
-        let source = verdict.modelName
-            ?? settings.t("{0} reference frames, {1} yours", verdict.comparedAgainst, verdict.mine)
+        var source = verdict.modelName ?? settings.t("your own frames")
+        if verdict.modelName != nil, verdict.mine > 0 {
+            source += settings.t(" + {0} of your frames", verdict.mine)
+        }
         return settings.t("Certainty {0}% · warns from {1}% · engine {2}", sure, limit, source)
             + "\n" + settings.t("One frame judged. How a print changes over time, Gantry watches separately and live.")
     }

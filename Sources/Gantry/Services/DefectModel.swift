@@ -26,6 +26,7 @@ final class DefectModel {
     private var model: VNCoreMLModel?
     private var loadedFrom: String?
     private var loadedName: String?
+    private var loadedRecommendation: Double?
 
     /// The model Gantry ships, used whenever the user has not chosen one of their own.
     static var bundledPath: String? {
@@ -87,6 +88,18 @@ final class DefectModel {
         model = nil
         loadedFrom = nil
         loadedName = nil
+        loadedRecommendation = nil
+    }
+
+    /// The sensitivity this engine was measured at, when it says so.
+    ///
+    /// A model's scores are its own; a slider that means "90%" to one means nothing to another.
+    /// Gantry Vision was measured at 70%, where it caught every failure in the test set; at 90% the
+    /// same test caught two out of twenty two. A number like that belongs next to the slider rather
+    /// than in a document nobody opens.
+    func recommendedThreshold(for path: String) -> Double? {
+        guard loadedFrom == path else { return nil }
+        return loadedRecommendation
     }
 
     private func load(_ path: String) throws {
@@ -99,6 +112,8 @@ final class DefectModel {
         loadedFrom = path
         let metadata = loaded.modelDescription.metadata
         loadedName = (metadata[.author] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let defined = metadata[.creatorDefinedKey] as? [String: String]
+        loadedRecommendation = (defined?["recommendedThreshold"]).flatMap(Double.init)
     }
 
     /// The strongest label a Vision request came back with, whether the model classifies whole frames

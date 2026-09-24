@@ -944,7 +944,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             setText(watchModelName, seen == nil ? name : settings.t("{0} · last look: {1}", name, seen!))
             watchModelName.textColor = .secondaryLabelColor
         }
-        setText(watchSensitivityCaption, settings.t("Sensitivity") + ":")
+        // Suwak jest wspólny dla wszystkich silników, ale skala wyników nie: „90%" u jednego modelu
+        // znaczy co innego niż u drugiego. Silnik, który zna swój zmierzony punkt pracy, mówi go tutaj,
+        // bo inaczej można go wyciszyć samym suwakiem i nigdy się nie dowiedzieć.
+        var sensitivityCaption = settings.t("Sensitivity") + ":"
+        if let path = DefectModel.effectivePath(chosen: settings.defectModelPath),
+           let advised = DefectModel.shared.recommendedThreshold(for: path),
+           settings.defectThreshold > advised + 0.001 {
+            sensitivityCaption += " " + settings.t("({0} measured at {1}%)",
+                                                   DefectModel.shared.displayName(for: path),
+                                                   Int((advised * 100).rounded()))
+        }
+        setText(watchSensitivityCaption, sensitivityCaption)
         let thresholds: [Double] = [0.5, 0.6, 0.7, 0.8, 0.9]
         let thresholdIndex = thresholds.firstIndex(of: settings.defectThreshold) ?? 2
         watchSensitivityControl.configure(text: "\(Int(settings.defectThreshold * 100))%",
