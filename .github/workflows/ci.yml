@@ -26,7 +26,12 @@ jobs:
       - name: Build
         run: swift build --disable-sandbox
       - name: Run regression tests
-        run: scripts/run-tests.sh --disable-sandbox
+        run: |
+          set -o pipefail
+          scripts/run-tests.sh --disable-sandbox 2>&1 | tee test.log || {
+            grep -E "✘|recorded an issue|Expectation failed|error:|fatal|crash" test.log | head -60 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            exit 1
+          }
       - name: Run AppKit layout regression
         run: python3 scripts/run_card_layout_test.py
       - name: Run protocol self-test
