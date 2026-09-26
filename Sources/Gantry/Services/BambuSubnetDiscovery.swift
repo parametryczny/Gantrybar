@@ -132,7 +132,9 @@ private final class ProbeBox: @unchecked Sendable {
         completed = true
         let result = serial
         let connection = connection
+        self.connection = nil
         lock.unlock()
+        connection?.stateUpdateHandler = nil
         connection?.cancel()
         completion(result)
     }

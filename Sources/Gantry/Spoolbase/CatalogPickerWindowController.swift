@@ -316,7 +316,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         }
         scannerController = scanner
         guard let scannerWindow = scanner.window else { return }
-        scannerWindow.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 3)
+        scannerWindow.level = .normal
         scannerWindow.collectionBehavior.insert(.moveToActiveSpace)
         scannerWindow.center()
         scanner.showWindow(nil)
@@ -420,7 +420,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         }
         editorController = editor
         guard let editorWindow = editor.window else { return }
-        editorWindow.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 2)
+        editorWindow.level = .normal
         editorWindow.collectionBehavior.insert(.moveToActiveSpace)
         editorWindow.center()
         editor.showWindow(nil)

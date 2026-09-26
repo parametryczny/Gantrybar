@@ -83,6 +83,8 @@ final class PrinterDetailViewController: NSViewController {
 
     // Camera. The feed itself lives in CameraFeedController; this view only hosts it.
     private lazy var cameraFeed = CameraFeedController(store: store, serial: serial)
+    private let markDefectButton = NSButton()
+    private let trialButton = NSButton()
     private var cameraCard: NSView?
     private let presentation: DashboardPresentation
     /// Reported whenever the cards change the height the panel needs, so the popover can follow.
@@ -440,6 +442,108 @@ final class PrinterDetailViewController: NSViewController {
     @objc private func backPressed() { onBack() }
     @objc private func skipObjectsPressed() { onSkipObjects() }
 
+    /// Asks what is wrong with what the camera is showing and keeps that frame under the answer.
+    @objc private func markDefect() {
+        if let jpeg = cameraFeed.currentFrameJPEG { showDefectMenu(jpeg: jpeg); return }
+        // A Bambu preview is an encoded H.264 stream: macOS turns it into a picture inside the display
+        // layer and hands no pixels back. So the printer is asked for a still instead, the same way
+        // the page and the failure watch ask for one. It takes a moment, and the button says so.
+        let settings = AppSettings.shared
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        markDefectButton.title = settings.t("Taking a picture…")
+        markDefectButton.isEnabled = false
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let jpeg = await CameraSnapshot.capture(printer: printer, store: store)
+            markDefectButton.isEnabled = true
+            markDefectButton.title = AppSettings.shared.t("Mark defect…")
+            guard let jpeg else {
+                let alert = NSAlert()
+                alert.messageText = AppSettings.shared.t("No picture to mark yet.")
+                alert.informativeText = AppSettings.shared.t("The printer sent no picture. Check the camera and try again.")
+                ModalHost.run(alert)
+                return
+            }
+            showDefectMenu(jpeg: jpeg)
+        }
+    }
+
+    /// Asks what the recogniser would say about what this printer's camera is showing right now.
+    ///
+    /// The same question Settings asks about a file, but pointed at one machine, which is the way
+    /// somebody actually wants to ask it: not "does this work in general" but "does it work on this
+    /// printer, in this light, with this camera".
+    @objc private func tryDefectHere() {
+        let settings = AppSettings.shared
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        trialButton.title = settings.t("Taking a picture…")
+        trialButton.isEnabled = false
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Through `latestFrame`, so asking does not take the camera away from the very preview
+            // sitting under the button.
+            let frame = await CameraSnapshot.latestFrame(printer: printer, store: store)
+            trialButton.isEnabled = true
+            trialButton.title = AppSettings.shared.t("Test")
+            guard let jpeg = frame?.jpeg else {
+                let alert = NSAlert()
+                alert.messageText = AppSettings.shared.t("No picture to mark yet.")
+                alert.informativeText = AppSettings.shared.t("The printer sent no picture. Check the camera and try again.")
+                ModalHost.run(alert)
+                return
+            }
+            let alert: NSAlert
+            do {
+                let mask = DefectMask.load(serial: serial)
+                alert = DefectTrial.sheet(for: try DefectTrial.judge(jpeg: mask.applying(to: jpeg), useReferences: !mask.isActive), title: printer.name)
+            } catch {
+                alert = NSAlert()
+                alert.messageText = AppSettings.shared.t("Could not try that picture")
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: AppSettings.shared.t("Close"))
+            }
+            _ = ModalHost.run(alert)
+        }
+    }
+
+    private func showDefectMenu(jpeg: Data) {
+        let settings = AppSettings.shared
+        let menu = NSMenu()
+        for label in DefectDataset.Label.allCases {
+            let item = NSMenuItem(title: settings.t(label.title), action: #selector(saveDefectFrame(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = [label.rawValue, jpeg] as [Any]
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: markDefectButton.bounds.height + 4),
+                   in: markDefectButton)
+    }
+
+    @objc private func saveDefectFrame(_ sender: NSMenuItem) {
+        let settings = AppSettings.shared
+        guard let payload = sender.representedObject as? [Any], payload.count == 2,
+              let raw = payload[0] as? String, let label = DefectDataset.Label(rawValue: raw),
+              let jpeg = payload[1] as? Data,
+              let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        do {
+            try DefectDataset.save(jpeg: jpeg, label: label, printer: printer,
+                                   telemetry: store.telemetry[serial] ?? PrinterTelemetry(),
+                                   limitBytes: settings.defectDatasetLimitMB * 1024 * 1024)
+            let stats = DefectDataset.stats()
+            markDefectButton.title = settings.t("Saved ({0})", stats.frames)
+            // Back to the plain title after a moment: the button is a control, not a counter.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                self?.markDefectButton.title = AppSettings.shared.t("Mark defect…")
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = settings.t("Could not save the frame.")
+            alert.informativeText = error.localizedDescription
+            ModalHost.run(alert)
+        }
+    }
+
     // MARK: Card builders
 
     private func card() -> NSView {
@@ -683,7 +787,7 @@ final class PrinterDetailViewController: NSViewController {
         if let window = view.window, window.windowController is FloatingDashboardWindowController {
             alert.beginSheetModal(for: window)
         } else {
-            alert.runModal()
+            ModalHost.run(alert)
         }
     }
 
@@ -727,13 +831,31 @@ final class PrinterDetailViewController: NSViewController {
         advancedButton.isBordered = false
         advancedButton.font = .systemFont(ofSize: 10, weight: .medium)
         advancedButton.contentTintColor = .controlAccentColor
-        let header = NSStackView(views: [sectionTitle(AppSettings.shared.t("CAMERA")), NSView(), advancedButton])
+        // Oznaczanie defektu wprost z podglądu: etykieta powstaje wtedy, gdy człowiek naprawdę patrzy
+        // na obraz, więc jest warta więcej niż worek klatek do przejrzenia później.
+        markDefectButton.title = AppSettings.shared.t("Mark defect…")
+        markDefectButton.target = self
+        markDefectButton.action = #selector(markDefect)
+        markDefectButton.isBordered = false
+        markDefectButton.font = .systemFont(ofSize: 10, weight: .medium)
+        markDefectButton.contentTintColor = .controlAccentColor
+        trialButton.title = AppSettings.shared.t("Test")
+        trialButton.target = self
+        trialButton.action = #selector(tryDefectHere)
+        trialButton.isBordered = false
+        trialButton.font = .systemFont(ofSize: 10, weight: .medium)
+        trialButton.contentTintColor = .controlAccentColor
+        let header = NSStackView(views: [sectionTitle(AppSettings.shared.t("CAMERA")), NSView(),
+                                         trialButton, markDefectButton, advancedButton])
         header.orientation = .horizontal
         header.alignment = .centerY
         // The card's drag grip sits in the top-right corner (8 pt in, 22 wide); the button used to
         // run underneath it.
         header.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 24)
-        let stack = NSStackView(views: [header, cameraView])
+        let areaButton = NSButton(title: "Obszar wykrywania…", target: self, action: #selector(editDefectMask))
+        areaButton.isBordered = false
+        areaButton.contentTintColor = .controlAccentColor
+        let stack = NSStackView(views: [header, cameraView, areaButton])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -741,6 +863,14 @@ final class PrinterDetailViewController: NSViewController {
         cameraView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
+    }
+
+    @objc private func editDefectMask() {
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        let store = self.store
+        DefectMaskEditor.show(serial: serial, name: printer.name) {
+            await CameraSnapshot.latestFrame(printer: printer, store: store)?.jpeg
+        }
     }
 
     @objc private func openAdvanced() { onOpenAdvanced() }
@@ -762,7 +892,13 @@ final class PrinterDetailViewController: NSViewController {
         let settings = AppSettings.shared
         let t = store.telemetry[serial] ?? .init()
         let printer = store.printers.first(where: { $0.serial == serial })
-        let supportsSkipping = printer?.kind == .bambu || printer?.kind == .klipper
+        let kind = printer?.kind
+        // A Bambu printer that only takes commands signed by Bambu Connect refuses every capsule and
+        // every skip, so it keeps the read-only view and gets one notice saying what to switch on.
+        let signingBlocked = kind == .bambu && store.requiresSignedCommands(serial: serial)
+        let supportsSkipping = kind.map {
+            ObjectSkipping.isOffered(kind: $0, signedCommandsRequired: signingBlocked)
+        } ?? false
         skipObjectsButton.isHidden = !supportsSkipping || (t.state != .printing && t.state != .paused)
 
         stateDot.layer?.backgroundColor = Self.color(for: t.state).cgColor
@@ -794,10 +930,6 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         graph.samples = store.temperatureHistory[serial] ?? []
-        let kind = printer?.kind
-        // A Bambu printer that only takes commands signed by Bambu Connect would refuse every capsule,
-        // so it keeps the read-only view and gets one notice saying what to switch on.
-        let signingBlocked = kind == .bambu && store.requiresSignedCommands(serial: serial)
         let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper) && !signingBlocked
         for chip in [nozzleChip, bedChip, chamberChip] { chip.largeReading = controlEnabled }
         nozzleChip.showsControl = controlEnabled

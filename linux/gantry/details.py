@@ -420,6 +420,13 @@ class DetailPanel(Gtk.Box):
         back.set_relief(Gtk.ReliefStyle.NONE); back.get_style_context().add_class("cardmenu")
         back.connect("clicked", lambda *_: on_back())
         header.pack_start(back, False, False, 0)
+        # Next to Back, as on macOS: the same skip the card offers, for the printers that take it.
+        self.skip_objects = Gtk.Button(label=i18n.t("Skip object…"))
+        self.skip_objects.set_relief(Gtk.ReliefStyle.NONE)
+        self.skip_objects.get_style_context().add_class("cardmenu")
+        self.skip_objects.set_no_show_all(True)
+        self.skip_objects.connect("clicked", lambda *_: app.open_skip_objects(serial))
+        header.pack_start(self.skip_objects, False, False, 0)
         header.pack_start(Gtk.Label(label=""), True, True, 0)
         self.pack_start(header, False, False, 0)
 
@@ -677,6 +684,9 @@ class DetailPanel(Gtk.Box):
 
     def update(self, tel: Telemetry) -> None:
         pl = self.app.language == "pl"
+        can_skip = (self.app.offers_object_skipping(self.serial)
+                    and tel.state in {PrinterState.PRINTING, PrinterState.PAUSED})
+        self.skip_objects.set_no_show_all(not can_skip); self.skip_objects.set_visible(can_skip)
         state = i18n.t(_STATES.get(tel.state, tel.state.value))
         colors = {PrinterState.PRINTING: "#0a84ff", PrinterState.IDLE: "#30d158",
                   PrinterState.FINISHED: "#30d158", PrinterState.PAUSED: "#ff9f0a",

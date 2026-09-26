@@ -288,7 +288,7 @@ final class PrinterDashboardViewController: NSViewController {
 
         cardsStack.orientation = .vertical
         cardsStack.alignment = .leading
-        cardsStack.spacing = 8
+        cardsStack.spacing = GantryTheme.cardGap
         cardsStack.edgeInsets = presentation == .floatingWindow
             ? NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
             : NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
@@ -403,7 +403,8 @@ final class PrinterDashboardViewController: NSViewController {
         let width = physicalWidth / cardScale
         let compact = false
         let minimumItemWidth: CGFloat = 325
-        let columns = max(1, Int(floor((width - 20 + 8) / (minimumItemWidth + 8))))
+        let gap = GantryTheme.cardGap
+        let columns = max(1, Int(floor((width - 20 + gap) / (minimumItemWidth + gap))))
         let contentWidth = width - 20
         updateFloatingChrome(width: physicalWidth, height: height)
 
@@ -426,8 +427,8 @@ final class PrinterDashboardViewController: NSViewController {
     func snappedFloatingContentSize(for proposed: NSSize) -> NSSize {
         guard presentation == .floatingWindow else { return proposed }
         let scale = cardScale
-        let columnPitch: CGFloat = 333 * scale       // card 325 + gap 8
-        let widthBase: CGFloat = 12 * scale          // 20 outer inset - trailing gap
+        let columnPitch: CGFloat = (325 + GantryTheme.cardGap) * scale   // card + gap
+        let widthBase: CGFloat = (20 - GantryTheme.cardGap) * scale     // 20 outer inset - trailing gap
         let proposedColumns = Int(((proposed.width - widthBase) / columnPitch).rounded())
         let columns = max(1, proposedColumns)
         // Height is measured from the actual rows after the width/column breakpoint settles. Fixed
@@ -582,9 +583,11 @@ final class PrinterDashboardViewController: NSViewController {
         // Cards are 40 points wider than they were: a header with a long name, the connection pill and
         // three status chips pushed the chips out of a 285-point card at any scale.
         let minimumItemWidth: CGFloat = useCompactMode ? 210 : 325
-        let responsiveColumns = max(1, Int(floor((adaptivePanelWidth - 20 + 8) / (minimumItemWidth + 8))))
+        let responsiveColumns = max(1, Int(floor((adaptivePanelWidth - 20 + GantryTheme.cardGap)
+                                                  / (minimumItemWidth + GantryTheme.cardGap))))
         let expandedColumnCount = floating ? responsiveColumns : (useCompactMode ? 1 : preferredColumns)
-        let basePanelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 420 : 643)
+        // Two columns keep the cards' own width: the wider gap between them widens the panel instead.
+        let basePanelWidth: CGFloat = useCompactMode ? 512 : (expandedColumnCount == 1 ? 420 : 645)
         let effectivePanelWidth: CGFloat = floating
             ? view.bounds.width
             : basePanelWidth * cardScale
@@ -713,14 +716,18 @@ final class PrinterDashboardViewController: NSViewController {
         for printer in visiblePrinters {
             let telemetry = store.telemetry[printer.serial] ?? .init()
             let message = store.connectionMessages[printer.serial]
+            let offersSkipping = store.offersObjectSkipping(serial: printer.serial)
             if useCompactMode {
                 compactRowsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
-                expandedCardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
+                expandedCardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading, offersObjectSkipping: offersSkipping)
             } else {
-                cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading)
+                cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading, offersObjectSkipping: offersSkipping)
             }
             let serial = printer.serial
-            cardsBySerial[serial]?.showNotices(store.spoolNotices[serial] ?? []) { [weak self] in
+            let answer: ((Bool) -> Void)? = store.defectAlarms[serial] == nil ? nil : { [weak self] confirmed in
+                self?.store.answerDefect(serial: serial, confirmed: confirmed)
+            }
+            cardsBySerial[serial]?.showNotices(store.spoolNotices[serial] ?? [], answer: answer) { [weak self] in
                 self?.store.dismissSpoolNotices(serial: serial)
             }
         }
@@ -771,8 +778,7 @@ final class PrinterDashboardViewController: NSViewController {
     private func addExpandedRows(_ cards: [PrinterCardView], printers: [SavedPrinter],
                                  contentWidth: CGFloat, columns: Int) {
         guard columns > 0 else { return }
-        let gap: CGFloat = 10
-        let effectiveGap: CGFloat = presentation == .floatingWindow ? 8 : gap
+        let effectiveGap = GantryTheme.cardGap
         var rowItems: [(card: PrinterCardView, span: Int)] = []
         var used = 0
 
@@ -1031,7 +1037,7 @@ final class PrinterDashboardViewController: NSViewController {
             alert.beginSheetModal(for: window) { [weak self] result in
                 if result == .alertFirstButtonReturn { self?.store.remove(printer) }
             }
-        } else if alert.runModal() == .alertFirstButtonReturn {
+        } else if ModalHost.run(alert) == .alertFirstButtonReturn {
             store.remove(printer)
         }
     }
@@ -1380,7 +1386,6 @@ final class PrinterCardView: NSView, NSDraggingSource {
     let serial: String
     private let onShowDetails: () -> Void
     private let onSkipObjects: () -> Void
-    private let supportsObjectSkipping: Bool
     private let onShowMaintenance: () -> Void
     private let stateEmphasisLayer = CAGradientLayer()
     private let dropIndicatorLayer = CALayer()
@@ -1438,7 +1443,11 @@ final class PrinterCardView: NSView, NSDraggingSource {
     private let noticeBanner = NSView()
     private let noticeLabel = NSTextField(labelWithString: "")
     private let noticeOKButton = NSButton()
+    // Odpowiedź na ostrzeżenie o wpadce. Pokazuje się zamiast „OK", bo tu jest o co zapytać.
+    private let noticeFailedButton = NSButton()
+    private let noticeFalseAlarmButton = NSButton()
     private var onDismissNotice: (() -> Void)?
+    private var onAnswerNotice: ((Bool) -> Void)?
     // The slot-assignment panel is its own window. Static so it survives a card rebuild: the card
     // that opened it is torn down and recreated whenever the fleet relayouts.
     private static var activeSpoolPanel: PanelWindowController?
@@ -1483,16 +1492,13 @@ final class PrinterCardView: NSView, NSDraggingSource {
         serial = printer.serial
         self.onShowDetails = onShowDetails
         self.onSkipObjects = onSkipObjects
-        supportsObjectSkipping = printer.kind == .bambu || printer.kind == .klipper
         self.onShowMaintenance = onShowMaintenance
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = GantryTheme.cardRadius
-        // Translucent card so the panel's vibrancy shows through instead of a flat black block that
-        // clashes with the see-through panel.
-        layer?.backgroundColor = GantryTheme.card.withAlphaComponent(0.5).cgColor
+        layer?.backgroundColor = GantryTheme.fleetCard.withAlphaComponent(GantryTheme.fleetCardAlpha).cgColor
         layer?.borderWidth = 1
-        layer?.borderColor = GantryTheme.line.cgColor
+        layer?.borderColor = GantryTheme.fleetCardLine.cgColor
         layer?.masksToBounds = true
         let cardContent = NSView()
         cardContent.wantsLayer = true
@@ -1886,7 +1892,24 @@ final class PrinterCardView: NSView, NSDraggingSource {
         noticeOKButton.setContentHuggingPriority(.required, for: .horizontal)
         noticeOKButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         noticeOKButton.translatesAutoresizingMaskIntoConstraints = false
-        let noticeRow = NSStackView(views: [noticeLabel, noticeOKButton])
+        for (button, title, action) in [
+            (noticeFailedButton, AppSettings.shared.t("It failed"), #selector(noticeFailedTapped)),
+            (noticeFalseAlarmButton, AppSettings.shared.t("False alarm"), #selector(noticeFalseAlarmTapped))
+        ] {
+            button.title = title
+            button.bezelStyle = .rounded
+            button.controlSize = .regular
+            button.font = .systemFont(ofSize: 11, weight: .semibold)
+            button.target = self
+            button.action = action
+            button.isHidden = true
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.translatesAutoresizingMaskIntoConstraints = false
+        }
+        noticeFailedButton.bezelColor = GantryTheme.accent
+        noticeFailedButton.contentTintColor = GantryTheme.canvas
+        let noticeRow = NSStackView(views: [noticeLabel, noticeFalseAlarmButton, noticeFailedButton, noticeOKButton])
         noticeRow.orientation = .horizontal
         noticeRow.alignment = .centerY
         noticeRow.spacing = 8
@@ -1912,6 +1935,16 @@ final class PrinterCardView: NSView, NSDraggingSource {
         onDismissNotice?()
     }
 
+    @objc private func noticeFailedTapped() {
+        noticeBanner.isHidden = true
+        onAnswerNotice?(true)
+    }
+
+    @objc private func noticeFalseAlarmTapped() {
+        noticeBanner.isHidden = true
+        onAnswerNotice?(false)
+    }
+
     @objc private func dismissPrintErrorTapped() {
         guard let currentErrorSignature else { return }
         Self.dismissedErrorSignatures[serial] = currentErrorSignature
@@ -1925,10 +1958,17 @@ final class PrinterCardView: NSView, NSDraggingSource {
     }
 
     /// Shows a dismissible notice at the bottom of the card, or hides it when there is nothing to say.
-    func showNotices(_ texts: [String], onDismiss: @escaping () -> Void) {
+    ///
+    /// Ostrzeżenie o wpadce dostaje zamiast „OK" dwa przyciski, bo tylko ten, kto spojrzy na drukarkę,
+    /// wie, czy było prawdziwe, a jego odpowiedź jest warta więcej niż samo ostrzeżenie.
+    func showNotices(_ texts: [String], answer: ((Bool) -> Void)? = nil, onDismiss: @escaping () -> Void) {
         guard !texts.isEmpty else { noticeBanner.isHidden = true; return }
         noticeLabel.stringValue = texts.joined(separator: "\n")
         onDismissNotice = onDismiss
+        onAnswerNotice = answer
+        noticeOKButton.isHidden = answer != nil
+        noticeFailedButton.isHidden = answer == nil
+        noticeFalseAlarmButton.isHidden = answer == nil
         noticeBanner.isHidden = false
     }
 
@@ -2036,8 +2076,8 @@ final class PrinterCardView: NSView, NSDraggingSource {
     }
 
     func update(printer: SavedPrinter, telemetry: PrinterTelemetry, message: String?, settings: AppSettings,
-                isStartingUp: Bool = false) {
-        skipObjectsButton.isHidden = !Build.hasExtras || !supportsObjectSkipping || isStartingUp
+                isStartingUp: Bool = false, offersObjectSkipping: Bool = false) {
+        skipObjectsButton.isHidden = !Build.hasExtras || !offersObjectSkipping || isStartingUp
             || (telemetry.state != .printing && telemetry.state != .paused)
         nameLabel.stringValue = printer.name
         nameLabel.toolTip = printer.name

@@ -26,7 +26,7 @@ enum LegacyAppCleanup {
         alert.informativeText = settings.t("Gantry replaces BambuBar. Move the old app to the Trash? Your printers and codes have already been migrated, so nothing is lost.")
         alert.addButton(withTitle: settings.t("Move to Trash"))
         alert.addButton(withTitle: settings.t("Keep"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard ModalHost.run(alert) == .alertFirstButtonReturn else { return }
 
         NSWorkspace.shared.recycle([legacyURL]) { _, _ in }
     }

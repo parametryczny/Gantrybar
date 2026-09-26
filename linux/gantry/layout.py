@@ -23,7 +23,7 @@ class Placement:
 def panel_width(compact: bool, columns: int) -> int:
     if compact:
         return 512
-    return 420 if max(1, min(2, columns)) == 1 else 643
+    return 420 if max(1, min(2, columns)) == 1 else 645
 
 
 def needs_wide(telemetry: Telemetry) -> bool:

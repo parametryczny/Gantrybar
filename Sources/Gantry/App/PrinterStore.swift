@@ -8,8 +8,13 @@ final class PrinterStore: ObservableObject {
     @Published private(set) var telemetry: [String: PrinterTelemetry] = [:]
     @Published private(set) var connectionMessages: [String: String] = [:]
     /// Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool that was
-    /// auto-detached because an NFC roll was inserted into its slot).
+    /// auto-detached because an NFC roll was inserted into its slot, or a possible print failure).
+    ///
+    /// Named after what first used it. It is the card's notice list generally, and renaming it would
+    /// mean touching the Windows port for no gain.
     @Published private(set) var spoolNotices: [String: [String]] = [:]
+    /// Ostrzeżenia o wpadce czekające na „to wpadka" albo „fałszywy alarm".
+    @Published private(set) var defectAlarms: [String: DefectAlarm] = [:]
     @Published private(set) var discovered: [DiscoveredPrinter] = []
     @Published var isScanning = false
     @Published var globalMessage: String?
@@ -35,6 +40,13 @@ final class PrinterStore: ObservableObject {
         telemetry[serial]?.commandSigningRequired ?? signingRejected.contains(serial)
     }
 
+    /// Whether the skip-object button belongs on this printer at all (see ObjectSkipping).
+    func offersObjectSkipping(serial: String) -> Bool {
+        guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return false }
+        return ObjectSkipping.isOffered(kind: kind,
+                                        signedCommandsRequired: requiresSignedCommands(serial: serial))
+    }
+
     /// Rolling temperature history per printer, drawn by the detail window's graph. Deliberately not
     /// @Published — the detail view already redraws on the store's telemetry change, so publishing it
     /// separately would only add churn to every observer.
@@ -47,6 +59,9 @@ final class PrinterStore: ObservableObject {
     private let elegooDiscovery = ElegooDiscovery()
     private var clients: [String: PrinterConnection] = [:]
     private var reconnectTasks: [String: Task<Void, Never>] = [:]
+    private var retryTokens: [String: UUID] = [:]
+    private var clientGenerations: [String: UUID] = [:]
+    private var offlineSweep: Timer?
     private var permissionRetryTask: Task<Void, Never>?
     private var localNetworkWasDenied = false
     private var lastAddressScan: Date?
@@ -122,6 +137,11 @@ final class PrinterStore: ObservableObject {
     /// pause, …). Silently ignores printers that aren't connected Bambu machines.
     func sendCommand(serial: String, json: String) {
         (clients[serial] as? MQTTClient)?.sendCommand(json)
+    }
+
+    func sendFarmCommand(serial: String, json: String) throws {
+        guard let client = clients[serial] as? MQTTClient else { throw FarmError(message: Localization.t("No MQTT connection.")) }
+        client.sendCommand(json)
     }
 
     func sendAnycubicPrint(serial: String, action: String) { (clients[serial] as? AnycubicS1Client)?.sendPrint(action) }
@@ -410,7 +430,7 @@ final class PrinterStore: ObservableObject {
                  isScript ? s.t("a script on this Mac") : s.t("a printer command"), preview)
         alert.addButton(withTitle: s.t("Allow"))
         alert.addButton(withTitle: s.t("Deny"))
-        let approved = alert.runModal() == .alertFirstButtonReturn
+        let approved = ModalHost.run(alert) == .alertFirstButtonReturn
         if approved { s.approveScriptRule(auto.id) }
         return approved
     }
@@ -662,7 +682,8 @@ final class PrinterStore: ObservableObject {
     }
 
     func remove(_ printer: SavedPrinter) {
-        reconnectTasks.removeValue(forKey: printer.serial)?.cancel()
+        cancelRetry(serial: printer.serial)
+        clientGenerations.removeValue(forKey: printer.serial)
         clients.removeValue(forKey: printer.serial)?.stop()
         sessionCodes.removeValue(forKey: printer.serial)
         printers.removeAll { $0.serial == printer.serial }
@@ -689,13 +710,19 @@ final class PrinterStore: ObservableObject {
     }
 
     func reconnect(_ printer: SavedPrinter) {
-        reconnectTasks.removeValue(forKey: printer.serial)?.cancel()
+        cancelRetry(serial: printer.serial)
+        clientGenerations.removeValue(forKey: printer.serial)
         clients.removeValue(forKey: printer.serial)?.stop()
         telemetry[printer.serial] = PrinterTelemetry()
         connectionMessages[printer.serial] = AppSettings.shared.t("Connecting…")
 
+        let generation = UUID()
+        clientGenerations[printer.serial] = generation
         let handler: @Sendable (MQTTClient.Event) -> Void = { [weak self] event in
-            Task { @MainActor [weak self] in self?.handle(event, serial: printer.serial) }
+            Task { @MainActor [weak self] in
+                guard let self, self.clientGenerations[printer.serial] == generation else { return }
+                self.handle(event, serial: printer.serial)
+            }
         }
         let client: PrinterConnection
         switch printer.kind {
@@ -738,13 +765,65 @@ final class PrinterStore: ObservableObject {
     }
 
     func reconnectAll() {
+        startOfflineSweep()
         for printer in printers { reconnect(printer) }
     }
 
     /// Clears the card notices for a printer (the user tapped "OK" on the on-card message).
     func dismissSpoolNotices(serial: String) {
+        defectAlarms[serial] = nil
         guard spoolNotices[serial] != nil else { return }
         spoolNotices[serial] = nil
+    }
+
+    /// Leaves a message on a printer's card until the user dismisses it.
+    ///
+    /// A notification is easy to miss: it can be swiped away without reading, and quiet hours
+    /// suppress it outright. Anything worth waking somebody for is worth leaving somewhere they will
+    /// find it afterwards, so the card keeps saying it until they say OK.
+    /// Ostrzeżenie o wpadce, które czeka na odpowiedź, razem z klatką, która je wywołała.
+    struct DefectAlarm: Equatable {
+        var text: String
+        var frame: String?
+    }
+
+    /// Ostrzeżenie na karcie plus to, czego potrzeba, żeby dało się na nie odpowiedzieć.
+    ///
+    /// Powiadomienie ma przyciski od dawna, ale da się je machnąć nieprzeczytane, a w godzinach ciszy
+    /// w ogóle się nie pokazuje. Karta zostaje, więc to na niej musi stać pytanie.
+    func postDefectAlarm(serial: String, text: String, frame: String?) {
+        defectAlarms[serial] = DefectAlarm(text: text, frame: frame)
+        postCardNotice(serial: serial, text: text)
+    }
+
+    /// Odpowiedź człowieka na ostrzeżenie: „to wpadka" albo „fałszywy alarm".
+    ///
+    /// Klatka idzie pod tę etykietę, którą naprawdę miała, ostrzeżenie znika z karty, a rozpoznawanie
+    /// uczy się na jednym i drugim. To jedyne miejsce, w którym pomyłka cokolwiek daje.
+    func answerDefect(serial: String, confirmed: Bool) {
+        guard let alarm = defectAlarms.removeValue(forKey: serial) else { return }
+        if let frame = alarm.frame {
+            DefectDataset.refile(frame: URL(fileURLWithPath: frame), as: confirmed ? nil : .ok)
+        }
+        let left = (spoolNotices[serial] ?? []).filter { $0 != alarm.text }
+        spoolNotices[serial] = left.isEmpty ? nil : left
+        DefectWatch.current?.answered(serial: serial, confirmed: confirmed)
+    }
+
+    /// Ta sama odpowiedź, gdy padła na powiadomieniu, żeby karta nie pytała o coś rozstrzygniętego.
+    func forgetDefectAlarm(frame: String) {
+        guard let serial = defectAlarms.first(where: { $0.value.frame == frame })?.key,
+              let alarm = defectAlarms.removeValue(forKey: serial) else { return }
+        let left = (spoolNotices[serial] ?? []).filter { $0 != alarm.text }
+        spoolNotices[serial] = left.isEmpty ? nil : left
+    }
+
+    func postCardNotice(serial: String, text: String) {
+        var notices = spoolNotices[serial] ?? []
+        // The same warning is not worth saying twice, and the card holds two lines comfortably.
+        guard !notices.contains(text) else { return }
+        notices.append(text)
+        spoolNotices[serial] = Array(notices.suffix(3))
     }
 
     func retryAfterLocalNetworkPermission() {
@@ -830,10 +909,10 @@ final class PrinterStore: ObservableObject {
             localNetworkWasDenied = false
             permissionRetryTask?.cancel()
             permissionRetryTask = nil
-            reconnectTasks.removeValue(forKey: serial)?.cancel()
+            cancelRetry(serial: serial)
             connectionMessages[serial] = nil
         case .telemetry(var value):
-            reconnectTasks.removeValue(forKey: serial)?.cancel()
+            cancelRetry(serial: serial)
             let previous = telemetry[serial]
             if value.state == .printing || value.state == .paused {
                 dismissedJobs.removeValue(forKey: serial)
@@ -879,6 +958,8 @@ final class PrinterStore: ObservableObject {
                                                              area: lastControlArea[serial] ?? .fans, date: Date())
             }
         case .disconnected(let reason):
+            clientGenerations.removeValue(forKey: serial)
+            clients.removeValue(forKey: serial)?.stop()
             var offline = telemetry[serial] ?? PrinterTelemetry()
             offline.state = .offline
             telemetry[serial] = offline
@@ -888,6 +969,8 @@ final class PrinterStore: ObservableObject {
             localNetworkWasDenied = true
             reconnectTasks.values.forEach { $0.cancel() }
             reconnectTasks.removeAll()
+            retryTokens.removeAll()
+            clientGenerations.removeAll()
             clients.values.forEach { $0.stop() }
             for printer in printers {
                 var offline = telemetry[printer.serial] ?? PrinterTelemetry()
@@ -911,27 +994,81 @@ final class PrinterStore: ObservableObject {
         }
     }
 
+    private func cancelRetry(serial: String) {
+        retryTokens.removeValue(forKey: serial)
+        reconnectTasks.removeValue(forKey: serial)?.cancel()
+    }
+
     private func scheduleReconnect(serial: String) {
-        guard reconnectTasks[serial] == nil,
-              printers.contains(where: { $0.serial == serial }) else { return }
+        guard printers.contains(where: { $0.serial == serial }) else { return }
+        cancelRetry(serial: serial)
+        let token = UUID()
+        retryTokens[serial] = token
         reconnectTasks[serial] = Task { @MainActor [weak self] in
+            // Every exit clears this task, but an old task must never clear its replacement.
+            defer {
+                if self?.retryTokens[serial] == token {
+                    self?.retryTokens.removeValue(forKey: serial)
+                    self?.reconnectTasks.removeValue(forKey: serial)
+                }
+            }
             try? await Task.sleep(for: .seconds(20))
             guard let self, !Task.isCancelled,
                   self.printers.contains(where: { $0.serial == serial }),
-                  self.telemetry[serial]?.state == .offline else {
-                self?.reconnectTasks.removeValue(forKey: serial)
-                return
-            }
+                  self.telemetry[serial]?.state == .offline else { return }
             if self.lastAddressScan.map({ Date().timeIntervalSince($0) >= 300 }) ?? true {
                 self.lastAddressScan = Date()
-                self.connectionMessages[serial] = "Szukam aktualnego adresu IP…"
+                self.connectionMessages[serial] = AppSettings.shared.t("Looking for the current IP address…")
                 await self.refreshAddresses()
             }
             guard !Task.isCancelled,
                   let printer = self.printers.first(where: { $0.serial == serial }) else { return }
-            self.reconnectTasks.removeValue(forKey: serial)
             self.reconnect(printer)
         }
+    }
+
+    /// Every minute, anything that is offline and has no retry pending gets one.
+    ///
+    /// The net under the retry, not a replacement for it. A watchdog that only ever finds nothing to
+    /// do is the point; the alternative is a printer that quietly stops being watched and a person who
+    /// finds out hours later.
+    private func startOfflineSweep() {
+        offlineSweep?.invalidate()
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.reviveForgottenPrinters() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        offlineSweep = timer
+    }
+
+    func reviveForgottenPrinters() {
+        guard !localNetworkWasDenied else { return }
+        // A socket may still answer MQTT pings while its report subscription has gone silent.
+        for printer in printers where printer.kind == .bambu && reconnectTasks[printer.serial] == nil {
+            if let value = telemetry[printer.serial], value.state != .offline,
+               let updated = value.lastUpdated, Date().timeIntervalSince(updated) > 120 {
+                handle(.disconnected(AppSettings.shared.t("Connection interrupted, retrying")), serial: printer.serial)
+            }
+        }
+        let forgotten = Self.serialsNeedingRetry(
+            printers: printers.map(\.serial),
+            offline: Set(telemetry.filter { $0.value.state == .offline }.keys),
+            pending: Set(reconnectTasks.keys),
+            networkDenied: localNetworkWasDenied)
+        for serial in forgotten { scheduleReconnect(serial: serial) }
+    }
+
+    /// Which printers are offline with nobody coming back for them.
+    ///
+    /// Pulled out of the sweep so the rule can be tested without a network, a timer or a printer: it
+    /// is the rule that decides whether a machine is watched at all, and the bug it exists to catch
+    /// left five of them unwatched with the card still promising a retry.
+    static func serialsNeedingRetry(printers: [String], offline: Set<String>,
+                                    pending: Set<String>, networkDenied: Bool) -> [String] {
+        // Local network refused is its own problem with its own retry; hammering it would only pile
+        // up refusals behind a permission the user has to grant in System Settings.
+        guard !networkDenied else { return [] }
+        return printers.filter { offline.contains($0) && !pending.contains($0) }
     }
 
     private func refreshAddresses() async {
@@ -971,6 +1108,8 @@ final class PrinterStore: ObservableObject {
 
     /// Printers already warned that their job is nearly done, so the alert fires once per print.
     private var finishingSoonWarned: Set<String> = []
+    /// Low rolls already reported, per printer (LowFilament.Slot.key).
+    private var lowFilamentWarned: [String: Set<String>] = [:]
 
     private func notifyChanges(printer: SavedPrinter, previous: PrinterTelemetry?, current: PrinterTelemetry) {
         let settings = AppSettings.shared
@@ -1006,19 +1145,35 @@ final class PrinterStore: ObservableObject {
                     ? settings.t("Diagnostic code: 0x{0}", HMSResolver.shared.formatted(errorCode: current.errorCode))
                     : settings.t("The printer reported an error."))
             push(title: settings.t("Printer error"), body: description)
+        } else if settings.notifyPaused || settings.notifyLowFilament,
+                  current.currentStage == LowFilament.runoutStage, previous?.currentStage != LowFilament.runoutStage {
+            // A pause for a reason worth naming: which roll ran out, not just that the print stopped.
+            let slot = LowFilament.feedingSlot(previous: previous?.filamentGroups, current: current.filamentGroups)
+            let feeding = slot.map { [$0.label, $0.material].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ") }
+            push(title: settings.t("Filament ran out"),
+                 body: feeding.map { settings.t("{0}: load a new roll to continue.", $0) }
+                     ?? settings.t("Load a new roll to continue."))
         } else if settings.notifyPaused, current.state == .paused, previous?.state != .paused {
             push(title: settings.t("Print paused"),
                  body: current.jobName ?? settings.t("The printer needs attention."))
         }
 
-        // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
-        // so `remainingPercent` reads as 0 and must not raise a false "low filament" alert (issue #27).
-        func lowAndTrusted(_ s: AMSSlot) -> Bool { s.remainingWeightGrams != nil && (s.remainingPercent ?? 100) <= 15 }
-        let previousLow = Set(previous?.amsSlots.filter(lowAndTrusted).map(\.id) ?? [])
-        let newLow = current.amsSlots.filter { lowAndTrusted($0) && !previousLow.contains($0.id) }
-        if settings.notifyLowFilament, let slot = newLow.first {
-            push(title: settings.t("Low filament"),
-                 body: "\(slot.label) • \(slot.material) • \(slot.remainingPercent ?? 0)%")
+        // A report without filament data (offline, a partial update) says nothing about the rolls, so it
+        // must not reset what was already reported and make every low roll warn again on reconnect.
+        if !current.filamentGroups.isEmpty {
+            let spoolbase = Build.hasExtras && settings.spoolbaseEnabled
+            let low = LowFilament.lowSlots(serial: printer.serial, groups: current.filamentGroups) { location in
+                spoolbase ? SpoolbaseShared.spools.spool(at: location) : nil
+            }
+            let warned = lowFilamentWarned[printer.serial] ?? []
+            if settings.notifyLowFilament {
+                for slot in low where !warned.contains(slot.key) {
+                    push(title: settings.t("Low filament"),
+                         body: [slot.label, slot.material, slot.amount].filter { !$0.isEmpty }.joined(separator: " • "))
+                }
+            }
+            // A slot warns once while low and again only after it has been refilled above the line.
+            lowFilamentWarned[printer.serial] = Set(low.map(\.key))
         }
 
         if settings.notifyHumidity, isHumidityHigh(current.amsHumidity), !isHumidityHigh(previous?.amsHumidity) {

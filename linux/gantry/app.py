@@ -38,6 +38,7 @@ from .http_clients import HttpConnection
 from .layout import needs_wide, place_cards
 from .mqtt import MqttConnection
 from . import i18n
+from . import objectskipping
 from .storage import Config, SecretStore, SecretStoreError, autostart_enabled, set_autostart
 from .studio import devices as studio_devices
 
@@ -300,25 +301,7 @@ from .settings import SettingsDialog as SettingsDialog  # noqa: E402
 
 class Gantry:
     def __init__(self, background: bool = False) -> None:
-        self.config, self.secrets = Config(), SecretStore()
-        from .insights import PrinterInsights
-        self.insights = PrinterInsights(self)
-        self.language = str(self.config.data.get("language", "pl"))
-        i18n.set_language(self.language)
-        self.printers = self.config.printers
-        self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
-        from .startup import StartupState
-        self.startup = StartupState([p.serial for p in self.printers])
-        self.connection_reasons: dict[str, str] = {}
-        self.connections: dict[str, object] = {}; self.cards: dict[str, PrinterCard] = {}
-        self.indicator_available = AppIndicator is not None
-        self.stages = STAGES
-        # Rolling temperature history per printer (time, nozzle, bed, chamber), drawn by the Details graph.
-        self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
-        self.detail_window: Any | None = None
-        self.expanded_compact_serial: str | None = None
-        # Set when telemetry lands on a hidden panel, cleared by the catch-up rebuild in show().
-        self._dashboard_stale = False
+        self._init_fleet_state()
         self.window = Dashboard(self); self.apply_theme(); self.rebuild_cards(); self._tray()
         GLib.timeout_add_seconds(15, self._finish_startup)
         self.reconnect_all()
@@ -350,6 +333,37 @@ class Gantry:
             GLib.timeout_add_seconds(6 * 3600, self._periodic_update_check)
         if show_window_on_start(AppIndicator is not None, self.window.tray_mode, background):
             self.show()
+
+    def _card_layout_changed(self, serial: str, first_report: bool, previous: Telemetry, current: Telemetry) -> bool:
+        """The panel lists only printers that have reported, and a card can switch to its wide form, so
+        either change needs the cards laid out again rather than updated in place."""
+        return ((first_report and serial in self.startup.received)
+                or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()))
+
+    def _init_fleet_state(self) -> None:
+        """Everything the cards, the telemetry handler and the dialogs read, shared with the kiosk
+        (KioskGantry builds its own window but must start from exactly this state)."""
+        self.config, self.secrets = Config(), SecretStore()
+        from .insights import PrinterInsights
+        self.insights = PrinterInsights(self)
+        self.language = str(self.config.data.get("language", "pl"))
+        i18n.set_language(self.language)
+        self.printers = self.config.printers
+        self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
+        from .startup import StartupState
+        self.startup = StartupState([p.serial for p in self.printers])
+        self.connection_reasons: dict[str, str] = {}
+        self.connections: dict[str, object] = {}; self.cards: dict[str, PrinterCard] = {}
+        self.indicator_available = AppIndicator is not None
+        self.stages = STAGES
+        # Rolling temperature history per printer (time, nozzle, bed, chamber), drawn by the Details graph.
+        self.temp_history: dict[str, list[tuple[float, float | None, float | None, float | None]]] = {}
+        self.detail_window: Any | None = None
+        self.expanded_compact_serial: str | None = None
+        # Set when telemetry lands on a hidden panel, cleared by the catch-up rebuild in show().
+        self._dashboard_stale = False
+        # Low rolls already reported, per printer (lowfilament.LowSlot.key).
+        self.low_filament_warned: dict[str, set[str]] = {}
 
     def _finish_startup(self) -> bool:
         self.startup.finish()
@@ -421,8 +435,11 @@ class Gantry:
             GLib.source_remove(source)
             self._transparency_animation_id = None
 
+    # The kiosk is always dark without writing that into the settings it shares with the regular app.
+    forced_theme: str | None = None
+
     def apply_theme(self, panel_transparency: object | None = None, animate: bool = False) -> None:
-        theme = str(self.config.data.get("theme", "dark"))
+        theme = self.forced_theme or str(self.config.data.get("theme", "dark"))
         settings = Gtk.Settings.get_default()
         settings.set_property("gtk-application-prefer-dark-theme", theme == "dark")
         # Background-only alpha for the frosted-glass popover (cards stay solid). Lower = more see-through:
@@ -730,6 +747,12 @@ class Gantry:
         decides when the printer reports one; otherwise a refusal already seen does."""
         flag = getattr(self.telemetry.get(serial), "command_signing_required", None)
         return flag if flag is not None else serial in self.__dict__.get("signing_rejected", set())
+
+    def offers_object_skipping(self, serial: str) -> bool:
+        """Whether the skip-object button belongs on this printer at all (see objectskipping)."""
+        printer = next((item for item in self.printers if item.serial == serial), None)
+        return printer is not None and objectskipping.is_offered(printer.kind,
+                                                                 self.requires_signed_commands(serial))
 
     def command_rejection(self, serial: str) -> dict | None:
         from .control import REJECTION_SECONDS
@@ -1219,7 +1242,7 @@ class Gantry:
         # are what the app is for while the panel is closed.
         if not self.dashboard_visible():
             self._dashboard_stale = True
-        elif (first_report and serial in self.startup.received) or (self._needs_wide(previous) != self._needs_wide(current) and not self.is_compact()):
+        elif self._card_layout_changed(serial, first_report, previous, current):
             self.rebuild_cards()
         else:
             if card := self.cards.get(serial):
@@ -1262,7 +1285,19 @@ class Gantry:
                 telegram.notify(self, printer_name, title, body)
         else:
             warned.discard(serial)
-        if current.state != previous.state:
+        from . import lowfilament
+        # A pause for a reason worth naming: which roll ran out, not just that the print stopped.
+        runout = (current.stage == lowfilament.RUNOUT_STAGE and previous.stage != lowfilament.RUNOUT_STAGE
+                  and (self.config.data.get("notify_paused") or self.config.data.get("notify_low_filament")))
+        if runout:
+            slot = lowfilament.feeding_slot(previous.filament_groups, current.filament_groups)
+            where = " • ".join(part for part in ((slot.label, slot.material) if slot else ()) if part)
+            title = i18n.t("Filament ran out")
+            detail = i18n.t("Load a new roll to continue.")
+            self.notify(printer_name, f"{title}: {where}. {detail}" if where else f"{title}. {detail}")
+            from . import telegram
+            telegram.notify(self, printer_name, title, f"{where}. {detail}" if where else detail)
+        if current.state != previous.state and not (runout and current.state == PrinterState.PAUSED):
             key = {PrinterState.FINISHED: "notify_finished", PrinterState.ERROR: "notify_error",
                    PrinterState.PAUSED: "notify_paused", PrinterState.OFFLINE: "notify_offline"}.get(current.state)
             if key and self.config.data.get(key):
@@ -1275,16 +1310,23 @@ class Gantry:
                 self.notify(printer_name, body)
                 from . import telegram
                 telegram.notify(self, printer_name, body, "")
-        previous_remaining = {slot.slot_id: slot.remaining for slot in previous.ams_slots}
-        # Only warn for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain (issue #27).
-        low = next((slot for slot in current.ams_slots if slot.remaining_weight_g is not None
-                    and slot.remaining is not None and slot.remaining <= 10
-                    and (previous_remaining.get(slot.slot_id) is None or previous_remaining[slot.slot_id] > 10)), None)
-        if low and self.config.data.get("notify_low_filament"):
-            body = i18n.t("Low filament: {0} ({1}%)").format(low.label, low.remaining)
-            self.notify(printer_name, body)
-            from . import telegram
-            telegram.notify(self, printer_name, body, "")
+        # A report without filament data (offline, a partial update) says nothing about the rolls, so it
+        # must not reset what was already reported and make every low roll warn again on reconnect.
+        if current.filament_groups:
+            spools = self.physical_spools if self._spoolbase_active() else None
+            low = lowfilament.low_slots(serial, current.filament_groups,
+                                        lambda location: spools.spool_at(location) if spools else None)
+            warned = self.low_filament_warned.get(serial, set())
+            if self.config.data.get("notify_low_filament"):
+                for slot in low:
+                    if slot.key in warned:
+                        continue
+                    title = i18n.t("Low filament")
+                    self.notify(printer_name, f"{title}: {slot.describe()}")
+                    from . import telegram
+                    telegram.notify(self, printer_name, title, slot.describe())
+            # A slot warns once while low and again only after it has been refilled above the line.
+            self.low_filament_warned[serial] = {slot.key for slot in low}
         humidity_high = current.ams_humidity is not None and current.ams_humidity >= 4
         humidity_was_high = previous.ams_humidity is not None and previous.ams_humidity >= 4
         if humidity_high and not humidity_was_high and self.config.data.get("notify_humidity"):
@@ -1393,6 +1435,13 @@ class Gantry:
         dialog.connect("response", respond)
         dialog.show_all()
         dialog.present()
+
+    def open_edge_dock_settings(self) -> None:
+        """The edge strip's settings button: the settings window, on the pane with the strip's options."""
+        self.open_settings()
+        dialog = getattr(self, "settings_dialog", None)
+        if dialog is not None:
+            dialog.stack.set_visible_child_name("windows")
 
     def switch_to_workshop(self) -> bool:
         """Hand over to Gantry Workshop, the full-screen kiosk (see workshop.enter_workshop)."""

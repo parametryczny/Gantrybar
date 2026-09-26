@@ -421,7 +421,7 @@ final class MaintenancePanelViewController: NSViewController {
         if let window = view.window, window.windowController is FloatingDashboardWindowController {
             alert.beginSheetModal(for: window)
         } else {
-            alert.runModal()
+            ModalHost.run(alert)
         }
     }
 

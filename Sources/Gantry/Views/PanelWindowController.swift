@@ -26,6 +26,18 @@ private final class PanelHeaderView: NSView {
 @MainActor
 final class PanelWindowController: NSWindowController, NSWindowDelegate {
 
+    typealias WorkspacePresenter = (NSView, String, NSSize, [NSView], @escaping () -> Void) -> PanelWindowController
+    static var workspacePresenter: WorkspacePresenter?
+    private var embeddedDismiss: (() -> Void)?
+
+    static func embedded(onDismiss: @escaping () -> Void) -> PanelWindowController {
+        PanelWindowController(embeddedDismiss: onDismiss)
+    }
+    private init(embeddedDismiss: @escaping () -> Void) {
+        self.embeddedDismiss = embeddedDismiss
+        super.init(window: nil)
+    }
+
     // MARK: The shared contract
 
     /// "Gantry · Spoolbase". The Window menu, Mission Control and the Dock menu show this string; the
@@ -86,6 +98,7 @@ final class PanelWindowController: NSWindowController, NSWindowDelegate {
     static func present(_ content: NSView, name: String, size: NSSize, minSize: NSSize? = nil,
                         accessories: [NSView] = [],
                         onDismiss: @escaping () -> Void) -> PanelWindowController {
+        if let workspacePresenter { return workspacePresenter(content, name, size, accessories, onDismiss) }
         let controller = PanelWindowController(content: content, name: name, size: size,
                                                minSize: minSize, accessories: accessories,
                                                onDismiss: onDismiss)
@@ -199,7 +212,7 @@ final class PanelWindowController: NSWindowController, NSWindowDelegate {
         // Borrowed rather than raised to a fixed level: two windows on the same level order
         // front-to-back by when they were last made key, so the panel lands in front of the fleet
         // panel that opened it and cannot be covered by it.
-        window.level = PanelWindowController.companionWindow?()?.level ?? .normal
+        window.level = .normal
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -209,6 +222,7 @@ final class PanelWindowController: NSWindowController, NSWindowDelegate {
     /// the owner that the *user* closed the window, and running it back into a dismissal the owner
     /// itself started is how you get a recursion.
     func dismiss() {
+        if let close = embeddedDismiss { embeddedDismiss = nil; close(); return }
         onDismiss = nil
         window?.close()
     }

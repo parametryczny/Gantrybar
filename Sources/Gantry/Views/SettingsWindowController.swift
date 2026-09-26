@@ -15,7 +15,7 @@ import CoreImage
 /// Six panes now, one idea each, and none of them scrolls. Only the chrome and the layout changed:
 /// every setting, every action and the whole refresh path are the ones that were already here.
 private enum SettingsPaneID: String {
-    case general, appearance, notifications, windows, integrations, advanced
+    case general, appearance, notifications, windows, integrations, remote, advanced
 
     /// LITE has no Spoolbase, no updates, no floating window, no edge dock, no Telegram, no web
     /// dashboard and no developer switches, which empties three of the six panes. It therefore shows
@@ -23,7 +23,7 @@ private enum SettingsPaneID: String {
     /// left to hold it.
     static var visible: [SettingsPaneID] {
         Build.isLite ? [.general, .appearance, .notifications]
-                     : [.general, .appearance, .notifications, .windows, .integrations, .advanced]
+                     : [.general, .appearance, .notifications, .windows, .integrations, .remote, .advanced]
     }
 
     var symbolName: String {
@@ -33,6 +33,7 @@ private enum SettingsPaneID: String {
         case .notifications: "bell"
         case .windows: "macwindow.on.rectangle"
         case .integrations: "antenna.radiowaves.left.and.right"
+        case .remote: "globe"
         case .advanced: "slider.horizontal.3"
         }
     }
@@ -54,6 +55,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// which is inside the window's constraint chain, so changing it resizes the window and nothing
     /// races it.
     private var paneHeight: NSLayoutConstraint?
+    private var embeddedInWorkspace = false
 
     // MARK: General
     /// A popup, not a two-way segment: the list is whatever catalogs i18n/ contains, so a new
@@ -133,6 +135,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var floatingWindowCheck = SettingsCheckbox(target: self, action: #selector(floatingWindowToggled))
 
     private let dockHeading = settingsHeading()
+    private lazy var dockAlwaysOnTopCheck = SettingsCheckbox(target: self, action: #selector(dockAlwaysOnTopToggled))
     private lazy var dockEnableCheck = SettingsCheckbox(target: self, action: #selector(dockEnableToggled))
     private let dockDisplayControl = NSPopUpButton(frame: .zero, pullsDown: false)
     private let dockDisplayCaption = settingsCaption()
@@ -170,6 +173,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let telegramTestStatus = settingsNote()
     private let telegramHint = settingsNote()
 
+    // The bridge to the user's own page: a mode, an address, a key, and what the bridge is doing.
+    private let remoteHeading = settingsHeading()
+    private let remoteModePopup = NSPopUpButton()
+    private let remoteModeCaption = settingsCaption()
+    private let remoteURLField = NSTextField()
+    private let remoteURLCaption = settingsCaption()
+    private let remoteKeyField = NSTextField()
+    private let remoteKeyCaption = settingsCaption()
+    private let remoteKeyButton = NSButton()
+    private let remoteTestCaption = settingsCaption()
+    private let remoteTestButton = NSButton()
+    private lazy var remoteAwakeCheck = SettingsCheckbox(target: self, action: #selector(remoteAwakeToggled))
+    private let remoteAwakeHeading = settingsHeading()
+    private let remoteLidCaption = settingsCaption()
+    private let remoteLidButton = NSButton()
+    private let remoteLidStatus = settingsNote()
+    private let remoteStatus = settingsNote()
+    private let remoteHint = settingsNote()
+    private var remoteStatusSub: AnyCancellable?
+
     private let webHeading = settingsHeading()
     private lazy var webEnableCheck = SettingsCheckbox(target: self, action: #selector(webEnabledChanged))
     private let webPrimaryURL = NSTextField(labelWithString: "")
@@ -183,6 +206,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var developerCheck = SettingsCheckbox(target: self, action: #selector(developerToggled))
     private lazy var printerControlCheck = SettingsCheckbox(target: self, action: #selector(printerControlToggled))
     private lazy var scriptActionsCheck = SettingsCheckbox(target: self, action: #selector(scriptActionsToggled))
+    // Zbiór zdjęć do nauki wykrywania wpadek: ile go jest i gdzie leży.
+    private let datasetCaption = settingsCaption()
+    private let datasetStatus = settingsNote()
+    private let datasetRevealButton = NSButton()
+    private let datasetLimitControl = SettingsScaleControl()
+    // Wykrywanie wpadek: model, czułość i co ma się stać.
+    private let watchHeading = settingsHeading()
+    private lazy var watchCheck = SettingsCheckbox(target: self, action: #selector(watchToggled))
+    private let watchModelCaption = settingsCaption()
+    private let watchModelButton = NSButton()
+    private let watchRelearnButton = NSButton()
+    private let watchTrialButton = NSButton()
+    private let watchModelName = settingsNote()
+    private let watchSensitivityCaption = settingsCaption()
+    private let watchSensitivityControl = SettingsScaleControl()
+    private lazy var watchPauseCheck = SettingsCheckbox(target: self, action: #selector(watchPauseToggled))
 
     private var settingsSubscription: AnyCancellable?
     private var refreshScheduled = false
@@ -224,17 +263,44 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    func beginEmbedding() -> NSView {
+        embeddedInWorkspace = true
+        window?.orderOut(nil)
+        window?.contentViewController = nil
+        tabController.tabStyle = .segmentedControlOnTop
+        paneHeight?.isActive = false
+        return tabController.view
+    }
+    func endEmbedding() {
+        guard embeddedInWorkspace else { return }
+        embeddedInWorkspace = false
+        tabController.view.removeFromSuperview()
+        tabController.tabStyle = .toolbar
+        window?.contentViewController = tabController
+        paneHeight?.isActive = true
+        resizeToSelectedPane()
+    }
+
     required init?(coder: NSCoder) { nil }
 
     /// Centred on the screen, always. It used to be centred on the fleet panel, which parked it
     /// straight on top of the cards the user had just come to adjust. `companion` only lends its
     /// window level, so the panel cannot end up covering the settings window they are typing in.
+    /// Brings the pane holding the edge strip's own options to the front, for the strip's settings
+    /// button: whoever clicks it came for those options, not for the pane that happened to be open.
+    func selectWindowsPane() {
+        guard let index = tabController.tabViewItems.firstIndex(where: {
+            ($0.identifier as? String) == SettingsPaneID.windows.rawValue
+        }) else { return }
+        tabController.selectedTabViewItemIndex = index
+    }
+
     func presentCentered(levelMatching companion: NSWindow? = nil) {
         webInfo = nil
         refresh()
         showWindow(nil)
         guard let window else { return }
-        window.level = companion?.level ?? .normal
+        window.level = .normal
         resizeToSelectedPane()
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -244,6 +310,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         window?.level = .normal
         onClose?()
+    }
+
+    /// The tallest this window may be: what the display can show, less the menu bar, the title bar
+    /// with its pane icons, and a margin so the window is not flush with the dock. A pane taller than
+    /// this scrolls inside the window rather than pushing it off the bottom of the screen.
+    private var maxPaneHeight: CGFloat {
+        let screen = window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        guard let visible = screen?.visibleFrame.height, visible > 1 else { return 620 }
+        return max(320, visible - 140)
+    }
+
+    /// The panes, for scripts/check_settings_height.swift: the window has to fit the screen, and a
+    /// pane with more content than that has to scroll to its end.
+    var paneItemsForTesting: [NSTabViewItem] {
+        for item in tabController.tabViewItems {
+            guard let pane = item.viewController as? SettingsPane else { continue }
+            pane.contentDirty = true
+            pane.updatePreferredSize()
+        }
+        return tabController.tabViewItems
     }
 
     // MARK: Panes
@@ -285,6 +371,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .notifications: buildNotificationsPane()
         case .windows: buildWindowsPane()
         case .integrations: buildIntegrationsPane()
+        case .remote: buildRemotePane()
         case .advanced: buildAdvancedPane()
         }
     }
@@ -359,6 +446,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.group(floatingWindowCaption, [floatingWindowCheck])
         grid.section(dockHeading)
         grid.aligned(dockEnableCheck)
+        grid.aligned(dockAlwaysOnTopCheck)
         grid.field(dockDisplayCaption, dockDisplayControl)
         grid.field(dockPositionCaption, dockPositionPicker, baseline: false)
         grid.field(dockScaleCaption, dockScaleControl, baseline: false)
@@ -431,9 +519,80 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return grid.build()
     }
 
+    /// The page the user hosts themselves, and the Mac staying awake for it. Its own pane because the
+    /// two together are taller than a settings window should be.
+    private func buildRemotePane() -> NSGridView {
+        for field in [remoteURLField, remoteKeyField] {
+            field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            field.bezelStyle = .roundedBezel
+            field.target = self
+            field.action = #selector(remoteFieldChanged)
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(equalToConstant: 250).isActive = true
+        }
+        remoteURLField.placeholderString = "https://twojastrona.pl/gantry/"
+        remoteKeyField.placeholderString = "0123456789abcdef…"
+        remoteModePopup.target = self
+        remoteModePopup.action = #selector(remoteModeChanged)
+        for button in [remoteKeyButton, remoteTestButton, remoteLidButton] { button.bezelStyle = .rounded }
+        remoteKeyButton.target = self
+        remoteKeyButton.action = #selector(remoteNewKey)
+        remoteTestButton.target = self
+        remoteTestButton.action = #selector(remoteTest)
+        remoteLidButton.target = self
+        remoteLidButton.action = #selector(remoteLidPressed)
+        let remoteKeyRow = NSStackView(views: [remoteKeyField, remoteKeyButton])
+        remoteKeyRow.orientation = .horizontal
+        remoteKeyRow.spacing = 7
+        // The bridge reports what it is doing; the label follows it while the window is open.
+        remoteStatusSub = RemoteBridge.current?.statusChanged.sink { [weak self] _ in self?.scheduleRefresh() }
+
+        let grid = SettingsGrid()
+        grid.wide(remoteHeading)
+        grid.field(remoteModeCaption, remoteModePopup)
+        grid.field(remoteURLCaption, remoteURLField)
+        grid.field(remoteKeyCaption, remoteKeyRow)
+        grid.field(remoteTestCaption, remoteTestButton)
+        grid.aligned(remoteStatus)
+        grid.aligned(remoteHint)
+        grid.section(remoteAwakeHeading)
+        grid.aligned(remoteAwakeCheck)
+        grid.field(remoteLidCaption, remoteLidButton)
+        grid.aligned(remoteLidStatus)
+        return grid.build()
+    }
+
     private func buildAdvancedPane() -> NSGridView {
+        datasetRevealButton.target = self
+        datasetRevealButton.action = #selector(revealDataset)
+        datasetRevealButton.bezelStyle = .rounded
+        datasetLimitControl.onStep = { [weak self] direction in self?.changeDatasetLimit(direction) }
+        let datasetRow = NSStackView(views: [datasetLimitControl, datasetRevealButton])
+        datasetRow.orientation = .horizontal
+        datasetRow.spacing = 7
+
+        watchModelButton.target = self
+        watchModelButton.action = #selector(pickDefectModel)
+        watchRelearnButton.target = self
+        watchRelearnButton.action = #selector(relearnPrototypes)
+        watchTrialButton.target = self
+        watchTrialButton.action = #selector(tryDefectOnPicture)
+        for button in [watchModelButton, watchRelearnButton, watchTrialButton] { button.bezelStyle = .rounded }
+        let watchModelRow = NSStackView(views: [watchModelButton, watchRelearnButton, watchTrialButton])
+        watchModelRow.orientation = .horizontal
+        watchModelRow.spacing = 7
+        watchSensitivityControl.onStep = { [weak self] direction in self?.changeWatchSensitivity(direction) }
+
         let grid = SettingsGrid()
         grid.group(featuresCaption, [printerControlCheck, developerCheck, scriptActionsCheck])
+        grid.section(watchHeading)
+        grid.aligned(watchCheck)
+        grid.field(watchModelCaption, watchModelRow)
+        grid.aligned(watchModelName)
+        grid.field(watchSensitivityCaption, watchSensitivityControl)
+        grid.aligned(watchPauseCheck)
+        grid.field(datasetCaption, datasetRow)
+        grid.aligned(datasetStatus)
         appendAbout(to: grid)
         return grid.build()
     }
@@ -489,12 +648,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// fourth's and kept it. AppKit syncs the window title from the toolbar's own selection, so a
     /// programmatic switch left it on whichever pane was selected first.
     private func resizeToPane(at index: Int) {
-        guard let window, index >= 0, index < tabController.tabViewItems.count else { return }
+        guard !embeddedInWorkspace, let window, index >= 0, index < tabController.tabViewItems.count else { return }
         let item = tabController.tabViewItems[index]
         window.title = item.label
         guard let pane = item.viewController as? SettingsPane else { return }
         pane.updatePreferredSize()
-        let target = pane.preferredContentSize.height
+        let target = min(pane.preferredContentSize.height, maxPaneHeight)
         guard target > 1, let height = paneHeight, abs(height.constant - target) > 0.5 else { return }
         height.constant = target
         // Applied in the same layout pass as the view swap, so no intermediate size is ever drawn.
@@ -579,6 +738,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .appearance: refreshAppearancePane(settings)
         case .windows: refreshWindowsPane(settings)
         case .integrations: refreshIntegrationsPane(settings)
+        case .remote: refreshRemoteSection(settings)
         case .advanced:
             refreshAdvancedPane(settings)
             refreshAbout(settings)
@@ -600,6 +760,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .notifications: settings.t("Notifications")
         case .windows: settings.t("Windows and strip")
         case .integrations: settings.t("Integrations")
+        case .remote: settings.t("Own page")
         case .advanced: settings.t("Advanced")
         }
     }
@@ -720,7 +881,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         floatingWindowCheck.isOn = settings.floatingWindowEnabled
 
         setText(dockHeading, settings.t("Edge dock"))
-        dockEnableCheck.title = settings.t("Show the strip on top")
+        dockEnableCheck.title = settings.isPolish ? "Pokaż pasek krawędziowy" : "Show edge strip"
+        dockAlwaysOnTopCheck.title = settings.isPolish ? "Widoczny zawsze" : "Always visible"
+        dockAlwaysOnTopCheck.setSubtitle(settings.isPolish ? "Pasek krawędziowy i jego rozwinięcie nad innymi oknami." : "Keep the edge strip and its expanded view above other windows.")
+        dockAlwaysOnTopCheck.isOn = settings.edgeDockAlwaysOnTop
+        dockAlwaysOnTopCheck.setEnabled(settings.edgeDockEnabled)
         dockEnableCheck.isOn = settings.edgeDockEnabled
         setText(dockDisplayCaption, settings.t("Monitor") + ":")
         let choices = EdgeDockPlacement.choices(displays: EdgeDockPlacement.connectedDisplays(),
@@ -776,6 +941,151 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         scriptActionsCheck.title = settings.t("Scripts in automations")
         scriptActionsCheck.setSubtitle(settings.t("Lets a rule run a program or a raw command. Off by default."))
         scriptActionsCheck.isOn = settings.allowScriptActions
+
+        // Wykrywanie wpadek działa bez żadnego pliku: patrzy, jak wydruk zmienia się w czasie.
+        setText(watchHeading, settings.t("Print failure detection"))
+        watchCheck.title = settings.t("Watch my prints")
+        watchCheck.setSubtitle(settings.t("Gantry looks at a camera frame every {0} s and warns when a print stops behaving the way it has been. Works straight away, with no model file.", settings.defectWatchSeconds))
+        watchCheck.isOn = settings.defectWatchEnabled
+        setText(watchModelCaption, settings.t("Model file") + ":")
+        watchModelButton.title = settings.defectModelPath.isEmpty ? settings.t("Choose…") : settings.t("Change…")
+        watchRelearnButton.title = settings.t("Relearn from my frames")
+        watchRelearnButton.isEnabled = settings.defectWatchEnabled && settings.defectModelPath.isEmpty
+        // Zawsze czynny: sprawdzenie na zdjęciu ma sens właśnie wtedy, gdy zastanawiasz się, czy
+        // w ogóle to włączać.
+        watchTrialButton.title = settings.t("Try on a picture…")
+        let status = DefectWatch.current?.status
+        if let error = status?.lastError {
+            setText(watchModelName, error)
+            watchModelName.textColor = GantryTheme.statusError
+        } else if settings.defectModelPath.isEmpty {
+            let learned = status?.modelName
+            setText(watchModelName, settings.t("Engine: {0}. Gantry Vision ships with the app and needs nothing chosen: trained on the wide chamber-camera frames your printers actually produce. Alongside it Gantry watches how each print changes over time, which catches an object coming off the bed. Your own Core ML file goes here to replace the engine.",
+                                               learned ?? settings.t("how the print is behaving")))
+            watchModelName.textColor = .secondaryLabelColor
+        } else {
+            let name = (settings.defectModelPath as NSString).lastPathComponent
+            let seen = status?.lastLabel.map { "\($0) \(Int(((status?.lastConfidence ?? 0) * 100).rounded()))%" }
+            setText(watchModelName, seen == nil ? name : settings.t("{0} · last look: {1}", name, seen!))
+            watchModelName.textColor = .secondaryLabelColor
+        }
+        // Suwak jest wspólny dla wszystkich silników, ale skala wyników nie: „90%" u jednego modelu
+        // znaczy co innego niż u drugiego. Silnik, który zna swój zmierzony punkt pracy, mówi go tutaj,
+        // bo inaczej można go wyciszyć samym suwakiem i nigdy się nie dowiedzieć.
+        var sensitivityCaption = settings.t("Sensitivity") + ":"
+        if let path = DefectModel.effectivePath(chosen: settings.defectModelPath),
+           let advised = DefectModel.shared.recommendedThreshold(for: path),
+           settings.defectThreshold > advised + 0.001 {
+            sensitivityCaption += " " + settings.t("({0} measured at {1}%)",
+                                                   DefectModel.shared.displayName(for: path),
+                                                   Int((advised * 100).rounded()))
+        }
+        setText(watchSensitivityCaption, sensitivityCaption)
+        let thresholds: [Double] = [0.5, 0.6, 0.7, 0.8, 0.9]
+        let thresholdIndex = thresholds.firstIndex(of: settings.defectThreshold) ?? 2
+        watchSensitivityControl.configure(text: "\(Int(settings.defectThreshold * 100))%",
+                                          index: thresholdIndex, count: thresholds.count,
+                                          enabled: settings.defectWatchEnabled)
+        watchPauseCheck.title = settings.t("Pause the print on a warning")
+        watchPauseCheck.setSubtitle(settings.t("Off by default: stopping a print on a guess is a bigger promise than telling you about it."))
+        watchPauseCheck.isOn = settings.defectPausesPrint
+        watchPauseCheck.checkbox.isEnabled = settings.defectWatchEnabled
+
+        // Ile zdjęć zebrałeś i ile jeszcze się zmieści; „Pokaż” otwiera katalog dla trenera.
+        setText(datasetCaption, settings.t("Defect frames") + ":")
+        datasetRevealButton.title = settings.t("Show")
+        let limitSteps: [Int64] = [100, 250, 500, 1000, 2000, 5000]
+        let limitIndex = limitSteps.firstIndex(of: settings.defectDatasetLimitMB) ?? 2
+        datasetLimitControl.configure(text: "\(settings.defectDatasetLimitMB) MB",
+                                      index: limitIndex, count: limitSteps.count)
+        let stats = DefectDataset.stats()
+        let megabytes = Double(stats.bytes) / (1024 * 1024)
+        setText(datasetStatus, stats.frames == 0
+                ? settings.t("None yet. Mark one from the camera in Details; the oldest correct frames go first when the limit is reached.")
+                : settings.t("{0} frames, {1} MB. The oldest correct frames go first when the limit is reached.",
+                             stats.frames, String(format: "%.1f", megabytes)))
+    }
+
+    @objc private func watchToggled() {
+        AppSettings.shared.defectWatchEnabled = watchCheck.isOn
+        scheduleRefresh()
+    }
+
+    /// Tries the recogniser on a picture the user already has, and shows what it would have said.
+    ///
+    /// Until now the only way to find out whether any of this works was to have a print fail, which
+    /// is a bad time to discover it does not. Point it at a photograph of spaghetti, or at an
+    /// ordinary print, and the answer comes back with the numbers behind it.
+    @objc private func tryDefectOnPicture() {
+        let settings = AppSettings.shared
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image]
+        panel.message = settings.t("Choose a photograph of a print, failed or not.")
+        guard ModalHost.run({ panel.runModal() }) == .OK, let url = panel.url else { return }
+
+        let alert: NSAlert
+        do {
+            alert = DefectTrial.sheet(for: try DefectTrial.judge(imageAt: url))
+        } catch {
+            alert = NSAlert()
+            alert.messageText = settings.t("Could not try that picture")
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: settings.t("Close"))
+        }
+        _ = ModalHost.run(alert)
+    }
+
+    /// Recomputes the prototypes from the marked frames, so newly marked pictures count from now on.
+    @objc private func relearnPrototypes() {
+        DefectWatch.current?.rebuildPrototypes()
+        scheduleRefresh()
+    }
+
+    @objc private func watchPauseToggled() {
+        AppSettings.shared.defectPausesPrint = watchPauseCheck.isOn
+    }
+
+    /// Picks the model file. Compiled (.mlmodelc) and uncompiled (.mlpackage, .mlmodel) both work;
+    /// the trainer in tools/ writes the middle one.
+    @objc private func pickDefectModel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true       // .mlpackage is a folder
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = []
+        panel.message = AppSettings.shared.t("Choose a Core ML model file (.mlpackage, .mlmodel or .mlmodelc).")
+        guard ModalHost.run({ panel.runModal() }) == .OK, let url = panel.url else { return }
+        AppSettings.shared.defectModelPath = url.path
+        DefectModel.shared.forget()
+        scheduleRefresh()
+    }
+
+    private func changeWatchSensitivity(_ direction: Int) {
+        let steps: [Double] = [0.5, 0.6, 0.7, 0.8, 0.9]
+        let current = AppSettings.shared.defectThreshold
+        let index = steps.firstIndex(of: current) ?? 2
+        AppSettings.shared.defectThreshold = steps[min(max(index + (direction > 0 ? 1 : -1), 0), steps.count - 1)]
+        scheduleRefresh()
+    }
+
+    @objc private func revealDataset() {
+        try? FileManager.default.createDirectory(at: DefectDataset.root, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([DefectDataset.root])
+    }
+
+    /// The limit moves in steps a person can hold in their head, not in arbitrary numbers.
+    private func changeDatasetLimit(_ direction: Int) {
+        let steps: [Int64] = [100, 250, 500, 1000, 2000, 5000]
+        let current = AppSettings.shared.defectDatasetLimitMB
+        let index = steps.firstIndex(of: current) ?? steps.firstIndex(where: { $0 >= current }) ?? 2
+        let next = min(max(index + (direction > 0 ? 1 : -1), 0), steps.count - 1)
+        AppSettings.shared.defectDatasetLimitMB = steps[next]
+        DefectDataset.prune(to: steps[next] * 1024 * 1024)
+        scheduleRefresh()
     }
 
     private func refreshIntegrationsPane(_ settings: AppSettings) {
@@ -797,8 +1107,139 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
 
         refreshWebSection(settings)
+    }
 
-        refreshWebSection(settings)
+    /// The bridge to the user's own page: the mode switch, where it dials and what came of it.
+    private func refreshRemoteSection(_ settings: AppSettings) {
+        setText(remoteHeading, settings.t("Own page on the internet"))
+        setText(remoteModeCaption, settings.t("Page can") + ":")
+        setText(remoteURLCaption, settings.t("Address of api.php") + ":")
+        setText(remoteKeyCaption, settings.t("Bridge key") + ":")
+        setText(remoteTestCaption, settings.t("Connection test") + ":")
+        remoteKeyButton.title = settings.t("New key")
+        remoteTestButton.title = settings.t("Check")
+        setText(remoteHint, settings.t("Gantry dials out to your page, so nothing is opened on the router. Upload the web/ folder, paste this key into its config.php, and the page shows the fleet."))
+
+        let titles = [settings.t("Nothing (off)"), settings.t("Only show the fleet"), settings.t("Show and control")]
+        if remoteModePopup.itemTitles != titles {
+            // Filling the menu moves the selection, and a popup that still has its target would send
+            // its action for that move — a refresh would quietly rewrite the very setting it is only
+            // meant to display. The target comes back once the items are in place.
+            remoteModePopup.target = nil
+            remoteModePopup.removeAllItems()
+            remoteModePopup.addItems(withTitles: titles)
+            remoteModePopup.target = self
+        }
+        let mode = RemoteBridge.mode(settings)
+        remoteModePopup.selectItem(at: [.off, .view, .control].firstIndex(of: mode) ?? 0)
+        setText(remoteURLField, settings.remoteBridgeURL)
+        setText(remoteKeyField, settings.remoteBridgeKey)
+        let live = mode != .off
+        remoteURLField.isEnabled = live
+        remoteKeyField.isEnabled = live
+        remoteKeyButton.isEnabled = live
+        remoteTestButton.isEnabled = live && !settings.remoteBridgeURL.isEmpty && !settings.remoteBridgeKey.isEmpty
+        remoteAwakeCheck.title = settings.t("Don't let this Mac sleep while the bridge runs")
+        setText(remoteAwakeHeading, settings.t("Sleep"))
+        remoteAwakeCheck.setSubtitle(settings.t("A sleeping Mac stops answering. Same switch: {0}.", GlobalHotKey.defaultLabel))
+
+        // The closed lid: a permission the user grants once, with their own password, or does not.
+        setText(remoteLidCaption, settings.t("With the lid shut") + ":")
+        let granted = LidSleepControl.isInstalled
+        remoteLidButton.title = granted ? settings.t("Take the permission away") : settings.t("Allow…")
+        setText(remoteLidStatus, granted
+                ? settings.t("Allowed. Gantry turns it off again when the switch goes off and when it quits.")
+                : settings.t("A shut MacBook sleeps anyway. This installs one rule for exactly {0}, and asks for your administrator password once.", KeepAwake.lidSleepCommand))
+        remoteLidStatus.textColor = .secondaryLabelColor
+        remoteAwakeCheck.isOn = settings.keepAwakeWithBridge
+        remoteAwakeCheck.checkbox.isEnabled = live
+        for caption in [remoteURLCaption, remoteKeyCaption, remoteTestCaption] {
+            caption.textColor = live ? .labelColor : .tertiaryLabelColor
+        }
+
+        guard live, let status = RemoteBridge.current?.status else {
+            setText(remoteStatus, "")
+            return
+        }
+        if let error = status.lastError {
+            setText(remoteStatus, settings.t("Last attempt failed: {0}", error))
+            remoteStatus.textColor = GantryTheme.statusError
+        } else if let last = status.lastSync {
+            let watchers = status.watchers > 0
+                ? settings.t("someone is watching")
+                : settings.t("nobody is watching")
+            setText(remoteStatus, settings.t("Sent {0} printers at {1} · {2}",
+                                             status.printersSent, Self.clockFormatter.string(from: last), watchers))
+            remoteStatus.textColor = .secondaryLabelColor
+        } else {
+            setText(remoteStatus, settings.t("Waiting for the first connection…"))
+            remoteStatus.textColor = .secondaryLabelColor
+        }
+    }
+
+    private static let clockFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    @objc private func remoteModeChanged() {
+        let modes: [RemoteBridge.Mode] = [.off, .view, .control]
+        let mode = modes[min(max(remoteModePopup.indexOfSelectedItem, 0), modes.count - 1)]
+        guard mode != RemoteBridge.mode() else { return }
+        // A first switch-on with nothing configured writes a key straight away: one less thing to do
+        // by hand, and the page needs exactly this value in its config.php.
+        if mode != .off, AppSettings.shared.remoteBridgeKey.isEmpty {
+            AppSettings.shared.remoteBridgeKey = RemoteBridge.freshKey()
+        }
+        AppSettings.shared.remoteBridgeMode = mode.rawValue
+        scheduleRefresh()
+    }
+
+    @objc private func remoteFieldChanged() {
+        AppSettings.shared.remoteBridgeURL = remoteURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppSettings.shared.remoteBridgeKey = remoteKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @objc private func remoteLidPressed() {
+        let settings = AppSettings.shared
+        do {
+            if LidSleepControl.isInstalled {
+                try LidSleepControl.remove()
+            } else {
+                try LidSleepControl.install()
+                // If the Mac is already being held awake, the new permission applies to it right away
+                // rather than at the next toggle.
+                if KeepAwake.shared.isOn { LidSleepControl.setDisabled(true) }
+            }
+            setText(remoteLidStatus, "")
+        } catch {
+            setText(remoteLidStatus, (error as? LidSleepControl.Failure)?.message
+                    ?? settings.t("Cancelled."))
+            remoteLidStatus.textColor = GantryTheme.statusError
+            return
+        }
+        scheduleRefresh()
+    }
+
+    @objc private func remoteAwakeToggled() {
+        AppSettings.shared.keepAwakeWithBridge = remoteAwakeCheck.isOn
+    }
+
+    @objc private func remoteNewKey() {
+        AppSettings.shared.remoteBridgeKey = RemoteBridge.freshKey()
+        scheduleRefresh()
+    }
+
+    @objc private func remoteTest() {
+        remoteFieldChanged()
+        setText(remoteStatus, AppSettings.shared.t("Connecting…"))
+        remoteStatus.textColor = .secondaryLabelColor
+        Task { @MainActor in
+            await RemoteBridge.current?.syncNow()
+            scheduleRefresh()
+        }
     }
 
 
@@ -973,6 +1414,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: Edge dock
+
+    @objc private func dockAlwaysOnTopToggled() {
+        AppSettings.shared.edgeDockAlwaysOnTop = dockAlwaysOnTopCheck.isOn
+    }
 
     @objc private func dockEnableToggled() {
         AppSettings.shared.edgeDockEnabled = dockEnableCheck.isOn
@@ -1179,7 +1624,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         if let window { alert.beginSheetModal(for: window, completionHandler: handle) }
-        else { handle(alert.runModal()) }
+        else { handle(ModalHost.run(alert)) }
     }
 
     private func installUpdate(_ release: UpdateService.Release) {
@@ -1203,7 +1648,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                     if response == .alertFirstButtonReturn { NSWorkspace.shared.open(release.pageURL) }
                 }
                 if let window { alert.beginSheetModal(for: window, completionHandler: openPage) }
-                else { openPage(alert.runModal()) }
+                else { openPage(ModalHost.run(alert)) }
             }
         }
     }
@@ -1214,7 +1659,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
         if let window { alert.beginSheetModal(for: window, completionHandler: nil) }
-        else { alert.runModal() }
+        else { ModalHost.run(alert) }
     }
 
     @objc private func openSupport() {

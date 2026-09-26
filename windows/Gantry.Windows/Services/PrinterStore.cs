@@ -37,6 +37,14 @@ public sealed class PrinterStore
         Telemetry.TryGetValue(serial, out var current) && current.CommandSigningRequired is { } required
             ? required
             : SigningRejected.Contains(serial);
+
+    /// <summary>Whether the skip-object button belongs on this printer at all (see ObjectSkipping).</summary>
+    public bool OffersObjectSkipping(string serial)
+    {
+        var printer = Printers.FirstOrDefault(value => value.Serial == serial);
+        return printer is not null && ObjectSkipping.IsOffered(printer.Kind, RequiresSignedCommands(serial));
+    }
+
     /// <summary>Transient per-printer notices shown on the card until dismissed (e.g. a Spoolbase spool
     /// auto-detached because an NFC roll was inserted into its slot).</summary>
     public Dictionary<string, List<string>> SpoolNotices { get; } = new();
@@ -914,6 +922,8 @@ public sealed class PrinterStore
     private readonly Dictionary<string, HashSet<string>> _firedAutomations = new();
     /// Printers already warned that their job is nearly done, so the alert fires once per print.
     private readonly HashSet<string> _finishingSoonWarned = new();
+    /// <summary>Low rolls already reported, per printer (LowFilament.Slot.Key).</summary>
+    private readonly Dictionary<string, HashSet<string>> _lowFilamentWarned = new();
 
     // Fires conditional automations once per print; re-arms only at a clear end-of-print state so
     // Bambu's partial reports (which drop the job name) don't retrigger a rule mid-print.
@@ -987,20 +997,36 @@ public sealed class PrinterStore
                     : AppSettings.T("The printer reported an error."));
             Push(AppSettings.T("Printer error"), description);
         }
+        else if ((AppSettings.NotifyPrintPaused || AppSettings.NotifyLowFilament)
+                 && current.CurrentStage == LowFilament.RunoutStage && previous?.CurrentStage != LowFilament.RunoutStage)
+        {
+            // A pause for a reason worth naming: which roll ran out, not just that the print stopped.
+            var feeding = LowFilament.FeedingSlot(previous?.FilamentGroups, current.FilamentGroups);
+            string where = feeding is null ? "" : string.Join(" • ", new[] { feeding.Label, feeding.Material }.Where(p => !string.IsNullOrEmpty(p)));
+            Push(AppSettings.T("Filament ran out"), where.Length > 0
+                ? string.Format(AppSettings.T("{0}: load a new roll to continue."), where)
+                : AppSettings.T("Load a new roll to continue."));
+        }
         else if (AppSettings.NotifyPrintPaused && current.State == PrinterState.Paused && previous?.State != PrinterState.Paused)
         {
             Push(AppSettings.T("Print paused"),
                 current.JobName ?? AppSettings.T("The printer needs attention."));
         }
 
-        // Only trust the level for a chipped (RFID/NFC) spool: a chipless spool has no reliable remain,
-        // so RemainingPercent reads as 0 and must not raise a false "low filament" alert (issue #27).
-        bool LowAndTrusted(AmsSlot s) => s.RemainingWeightGrams != null && (s.RemainingPercent ?? 100) <= 15;
-        var previousLow = new HashSet<string>((previous?.AmsSlots ?? new()).Where(LowAndTrusted).Select(s => s.Id));
-        var newLow = current.AmsSlots.Where(s => LowAndTrusted(s) && !previousLow.Contains(s.Id)).ToList();
-        if (AppSettings.NotifyLowFilament && newLow.FirstOrDefault() is { } slot)
-            Push(AppSettings.T("Low filament"),
-                $"{slot.Label} • {slot.Material} • {slot.RemainingPercent ?? 0}%");
+        // A report without filament data (offline, a partial update) says nothing about the rolls, so it
+        // must not reset what was already reported and make every low roll warn again on reconnect.
+        if (current.FilamentGroups.Count > 0)
+        {
+            bool spoolbase = Build.HasExtras && AppSettings.SpoolbaseEnabled;
+            var low = LowFilament.LowSlots(printer.Serial, current.FilamentGroups,
+                location => spoolbase ? SpoolbaseShared.Spools.SpoolAt(location) : null);
+            var warned = _lowFilamentWarned.TryGetValue(printer.Serial, out var known) ? known : new HashSet<string>();
+            if (AppSettings.NotifyLowFilament)
+                foreach (var slot in low.Where(s => !warned.Contains(s.Key)))
+                    Push(AppSettings.T("Low filament"), slot.Describe());
+            // A slot warns once while low and again only after it has been refilled above the line.
+            _lowFilamentWarned[printer.Serial] = low.Select(s => s.Key).ToHashSet();
+        }
 
         if (AppSettings.NotifyHighAmsHumidity && IsHumidityHigh(current.AmsHumidity) && !IsHumidityHigh(previous?.AmsHumidity))
             Push(AppSettings.T("High AMS humidity"),

@@ -15,8 +15,9 @@ internal static class GTheme
     public const double CardRadius = 16;
     public const double TileRadius = 10.5;
     public const double Gap = 8;
-    public const double FleetColumnGap = 10;
-    public const double FleetRowGap = 8;
+    /// <summary>Between printer cards, across and down: wide enough that a big fleet reads as separate cards.</summary>
+    public const double FleetColumnGap = 12;
+    public const double FleetRowGap = 12;
 
     // Surfaces.
     public static bool IsLight => Gantry.Services.AppSettings.Theme == "light";
@@ -57,6 +58,10 @@ internal static class GTheme
         ? Color.FromRgb(0xF2, 0xF2, 0xF2)
         : Color.FromRgb(0x21, 0x23, 0x25);
     public static Color CardTranslucent => With(Card, 0.5);
+    /// <summary>A printer card: one step lighter than Card and nearly opaque, with a firmer edge than Line,
+    /// so cards stand apart from the canvas instead of melting into it (a fleet of eleven, 2026-09-18).</summary>
+    public static Color FleetCard => IsLight ? Color.FromArgb(A(0.86), 0xFF, 0xFF, 0xFF) : Color.FromArgb(A(0.86), 0x1B, 0x1E, 0x21);
+    public static Color FleetCardLine => IsLight ? Color.FromArgb(A(0.12), 0x00, 0x00, 0x00) : W(0.16);
 
     public static Brush Brush(Color c) => new SolidColorBrush(c);
 

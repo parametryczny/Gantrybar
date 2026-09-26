@@ -35,7 +35,7 @@ final class EdgeDockWindowController {
     /// When the running unfold animation is due to finish, so a routine refresh can keep its hands off.
     private var unfoldingUntil: Date?
 
-    init(store: PrinterStore, onSelect: @escaping (String) -> Void) {
+    init(store: PrinterStore, onSelect: @escaping (String) -> Void, onSettings: @escaping () -> Void) {
         self.store = store
         dockView = EdgeDockView()
         panel = EdgeDockPanel(contentRect: NSRect(x: 0, y: 0, width: 22, height: 120),
@@ -49,8 +49,8 @@ final class EdgeDockWindowController {
         panel.hidesOnDeactivate = false
         // Above ordinary windows and above a full-screen app's own space, and present on every Space
         // so it does not vanish when the user switches desktops.
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        panel.level = .normal
+        panel.collectionBehavior = [.managed, .ignoresCycle]
         // Frosted glass under the silhouette. `.behindWindow` blurs the desktop, and the strip's own
         // fill sits on top of it as a dark floor, so the blur is visible without the rows losing
         // their contrast to whatever happens to be behind the strip.
@@ -58,15 +58,24 @@ final class EdgeDockWindowController {
         backdrop.state = .active
         backdrop.material = .hudWindow
         backdrop.wantsLayer = true
-        panel.contentView = backdrop
+        // The backdrop's mask clips its subviews to the silhouette too, so the settings button, which
+        // sits under the silhouette, is drawn by a sibling above it rather than inside it.
+        let container = NSView()
+        panel.contentView = container
+        backdrop.frame = container.bounds
+        backdrop.autoresizingMask = [.width, .height]
+        container.addSubview(backdrop)
         dockView.frame = backdrop.bounds
         dockView.autoresizingMask = [.width, .height]
         backdrop.addSubview(dockView)
+        dockView.settingsButtonView.frame = container.bounds
+        container.addSubview(dockView.settingsButtonView)
         // The view that knows the silhouette also keeps the blur clipped to it, on every layout pass,
         // so the frost follows the shape while the panel is still animating open.
         dockView.backdrop = backdrop
 
         dockView.onSelect = onSelect
+        dockView.onSettings = onSettings
         dockView.onLayoutChange = { [weak self] animated in self?.reposition(animated: animated) }
         // Pinning and releasing belong on the strip: reaching Settings for something you can see is
         // the long way round. It used to be release-only, and pinning meant a trip to Settings.
@@ -93,6 +102,10 @@ final class EdgeDockWindowController {
 
     func refresh() {
         let settings = AppSettings.shared
+        panel.level = settings.edgeDockAlwaysOnTop ? .statusBar : .normal
+        panel.collectionBehavior = settings.edgeDockAlwaysOnTop
+            ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+            : [.managed, .ignoresCycle]
         guard settings.edgeDockEnabled else {
             hide()
             return
@@ -112,8 +125,15 @@ final class EdgeDockWindowController {
         dockView.edge = settings.edgeDockEdge
         dockView.scale = CGFloat(settings.edgeDockScalePercent) / 100
         dockView.pinned = settings.edgeDockPinned
-        dockView.entries = entries
         syncCameras(entries: entries, settings: settings)
+        let described = entries.map { entry in
+            var entry = entry
+            entry.camera = cameraState(for: entry.serial)
+            return entry
+        }
+        // Printers with a live picture first, the rest under them, each group in fleet order. A stable
+        // split rather than a sort, so two printers never swap places within a group.
+        dockView.entries = described.filter { $0.camera == .live } + described.filter { $0.camera != .live }
         reposition()
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
@@ -157,11 +177,20 @@ final class EdgeDockWindowController {
         }
         for serial in wanted where cameraFeeds[serial] == nil {
             let feed = CameraFeedController(store: store, serial: serial)
-            feed.view.cornerRadius = 8
+            feed.view.cornerRadius = EdgeDockView.pictureRadius
+            // The strip has room for two words on a plate, not for the detail view's instructions.
+            feed.compactStatus = true
             cameraFeeds[serial] = feed
             feed.start()
         }
         dockView.cameraViews = cameraFeeds.mapValues(\.view)
+    }
+
+    private func cameraState(for serial: String) -> EdgeDockCamera {
+        guard Build.hasExtras else { return .hidden }
+        if cameraFeeds[serial] != nil { return .live }
+        let kind = store.printers.first(where: { $0.serial == serial })?.kind
+        return CameraFeedController.supportsCamera(kind) ? .previewOff : .noCamera
     }
 
     /// The printer worth watching when the user has not named one: printing beats paused, and with a
@@ -186,6 +215,8 @@ final class EdgeDockWindowController {
         else { return }
         rememberDisplay(resolved.display, matched: resolved.matched)
         dockView.dwellBeforeUnfold = EdgeDockPlacement.isInnerEdge(resolved.display, edge: dockView.edge, among: displays)
+        // The open strip fits itself to this height rather than running off the display.
+        dockView.availableHeight = resolved.display.visibleFrame.height
         let size = dockView.preferredSize()
         let origin = EdgeDockPlacement.origin(size: size, frame: resolved.display.frame,
                                               visibleFrame: resolved.display.visibleFrame,
@@ -239,6 +270,20 @@ struct EdgeDockEntry: Equatable {
     let state: PrinterState
     let progress: Int
     let remainingMinutes: Int?
+    var camera: EdgeDockCamera = .hidden
+}
+
+/// What an open printer block shows besides its caption (contract edgeDock.captions).
+enum EdgeDockCamera: Equatable {
+    /// A live picture, with the caption under it. A picture that stops arriving keeps its place and
+    /// says so on its own plate, while the caption keeps following telemetry.
+    case live
+    /// The printer has a camera Gantry can show, but its preview is not on in the strip.
+    case previewOff
+    /// A brand without a stream Gantry can decode.
+    case noCamera
+    /// No camera features in this edition, so nothing to say about one.
+    case hidden
 }
 
 private final class EdgeDockView: NSView {
@@ -288,6 +333,25 @@ private final class EdgeDockView: NSView {
                 view.translatesAutoresizingMaskIntoConstraints = true
                 addSubview(view)
             }
+            // One frosted band per picture, directly above it and under the caption.
+            for (serial, blur) in captionBlurs where cameraViews[serial] == nil {
+                blur.removeFromSuperview()
+                captionBlurs[serial] = nil
+            }
+            for (serial, view) in cameraViews where captionBlurs[serial] == nil {
+                let blur = NSVisualEffectView()
+                blur.blendingMode = .withinWindow
+                blur.material = .hudWindow
+                blur.state = .active
+                blur.wantsLayer = true
+                blur.layer?.masksToBounds = true
+                blur.isHidden = true
+                addSubview(blur, positioned: .above, relativeTo: view)
+                captionBlurs[serial] = blur
+            }
+            // The captions over the pictures stay above every picture added since.
+            overlayView.frame = bounds
+            addSubview(overlayView, positioned: .above, relativeTo: nil)
             invalidateMeasurements()
             onLayoutChange?(false)
             needsLayout = true
@@ -298,6 +362,7 @@ private final class EdgeDockView: NSView {
     /// `true` asks the host to animate the size change rather than snap to it.
     var onLayoutChange: ((Bool) -> Void)?
     var onTogglePin: (() -> Void)?
+    var onSettings: (() -> Void)?
     /// The frosted backdrop this strip clips to its own silhouette.
     weak var backdrop: NSVisualEffectView?
 
@@ -319,6 +384,20 @@ private final class EdgeDockView: NSView {
     private var unfoldProgress: CGFloat = 0 {
         didSet { updateTransitionBlur() }
     }
+    private var captionBlurs: [String: NSVisualEffectView] = [:]
+    private lazy var overlayView: EdgeDockOverlayView = {
+        let view = EdgeDockOverlayView()
+        view.owner = self
+        view.autoresizingMask = [.width, .height]
+        return view
+    }()
+    /// Draws the settings button outside the backdrop's mask; see the controller's init.
+    lazy var settingsButtonView: NSView = {
+        let view = EdgeDockSettingsView()
+        view.owner = self
+        view.autoresizingMask = [.width, .height]
+        return view
+    }()
     private lazy var rowsView: EdgeDockRowsView = {
         let view = EdgeDockRowsView()
         view.owner = self
@@ -347,17 +426,27 @@ private final class EdgeDockView: NSView {
     private static let ringStroke: CGFloat = 2
     private static let collapsedWidth: CGFloat = 22
     private static let collapsedGap: CGFloat = 8
-    private static let rowHeight: CGFloat = 20
-    private static let rowGap: CGFloat = 2
     private static let padY: CGFloat = 8
     private static let notch: CGFloat = 11
-    private static let expandedTextGap: CGFloat = 8
-    private static let expandedPadX: CGFloat = 11
     /// Band above the rows holding the pin. Present whenever the strip is open, pinned or not, because
     /// it is also where a hovering user pins it; a folded strip keeps exactly the height it had.
     private static let pinRow: CGFloat = 14
-    private static let pinGap: CGFloat = 4
+    private static let pinGap: CGFloat = 10
+    /// Extra room under the last printer of an open strip, so its note clears the rounded bottom corner.
+    private static let expandedBottomPad: CGFloat = 8
     private static let pinGlyph: CGFloat = 10
+    /// The settings button under the strip. At rest it is only a quarter arc tucked into the pocket the
+    /// bottom fillet makes, running parallel to it, so it says "there is something here" without
+    /// competing with the rings. On hover the same circle fills in and takes a gear: one object waking
+    /// up rather than one icon swapped for another. The circle is the fillet's own, so the disc exactly
+    /// fills the pocket and, on a folded strip, the strip's whole width. (After codenotch's orb, MIT.)
+    private static let orbArcGap: CGFloat = 2
+    private static let orbStroke: CGFloat = 3
+    private static let orbGlyph: CGFloat = 12
+    /// Room under the bottom fillet for the lower half of the disc.
+    private static let orbBand: CGFloat = 14
+    private static let orbHoverDuration: TimeInterval = 0.18
+    private static let orbSpinDuration: TimeInterval = 0.5
     /// The pin, in a 16x16 design box, upright with the needle down: a flat head, a shaft, a flared
     /// collar and the needle. The same points on Windows and Linux (contract edgeDock.pinControl).
     static let pinPoints: [(CGFloat, CGFloat)] = [
@@ -371,13 +460,44 @@ private final class EdgeDockView: NSView {
     static let unfoldDuration: TimeInterval = 0.42
     /// Grace period before folding, long enough to outlast the unfold animation's own leave event.
     private static let collapseDelay: TimeInterval = 0.44
-    private static let cameraGap: CGFloat = 8
+    /// Open, every printer is one block in a single column. A printer with a picture is just the picture,
+    /// with the name on the leading side and the percentage, time and ring at the end laid over its bottom
+    /// edge on a soft dark fade, so a camera costs no more height than its image. A printer without one is
+    /// its caption on the strip's dark floor plus one line saying why. A hairline separates neighbours
+    /// (contract edgeDock.captions).
+    fileprivate static let pictureRadius: CGFloat = 8
+    private static let insetX: CGFloat = 10
+    private static let captionMinHeight: CGFloat = 28
+    private static let captionPadY: CGFloat = 4
+    private static let captionInnerGap: CGFloat = 5
+    private static let wrappedLineGap: CGFloat = 1
+    private static let statusRow: CGFloat = 16
+    private static let statusIcon: CGFloat = 12
+    private static let printerGap: CGFloat = 8
+    private static let overlayShade: CGFloat = 44
+    private static let overlayShadeAlpha: CGFloat = 0.38
+    /// A band of frosted glass under the caption that fades in from its top edge, so the text reads on a
+    /// bright bed as well as a dark one while the picture above it stays uncovered.
+    private static let captionBlurHeight: CGFloat = 40
+    private static let overlayPadX: CGFloat = 8
+    private static let separatorAlpha: CGFloat = 0.12
+    /// A long name gives the strip at most this much of its width before it wraps instead.
+    private static let nameWidthCap: CGFloat = 120
+    /// Pictures shrink to no less than this share of the strip before they give way to a note.
+    private static let minimumPictureShare: CGFloat = 0.55
+    private static let pictureShareStep: CGFloat = 0.02
+    /// Room kept free above and below an open strip on its display.
+    private static let screenMargin: CGFloat = 16
+    /// The camera glyph in a 12x12 design box, y down: body rectangle, then the lens.
+    static let cameraGlyphBody = NSRect(x: 1, y: 3, width: 7.5, height: 6)
+    static let cameraGlyphLens: [(CGFloat, CGFloat)] = [(8.5, 5), (11, 3.5), (11, 8.5), (8.5, 7)]
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private static let cameraMinStripWidth: CGFloat = 236
     private static let cameraMaxStripWidth: CGFloat = 300
 
-    private var nameFont: NSFont { .systemFont(ofSize: 11 * scale, weight: .semibold) }
+    private var nameFont: NSFont { .systemFont(ofSize: 13 * scale, weight: .semibold) }
     private var valueFont: NSFont { .monospacedDigitSystemFont(ofSize: 11 * scale, weight: .regular) }
+    private var statusFont: NSFont { .systemFont(ofSize: 11 * scale) }
     /// The dark floor over the blur, at full strength. How much of it is actually used comes from the
     /// panel-transparency setting, because that is the only honest place for this trade-off: a thick
     /// floor hides the frost, a thin one costs text contrast. The labels carry a shadow so the thin
@@ -419,13 +539,13 @@ private final class EdgeDockView: NSView {
         if isExpanded {
             let width = expandedWidth()
             return NSSize(width: width,
-                          height: Self.padY * 2 * scale + pinBandHeight
+                          height: (Self.padY * 2 + Self.expandedBottomPad) * scale + pinBandHeight
                                   + expandedContentHeight(stripWidth: width)
-                                  + Self.notch * 2 * scale)
+                                  + Self.notch * 2 * scale + orbBandHeight)
         }
         let body = (Self.padY * 2 + CGFloat(count) * Self.ring
                     + CGFloat(count - 1) * Self.collapsedGap) * scale
-        return NSSize(width: Self.collapsedWidth * scale, height: body + Self.notch * 2 * scale)
+        return NSSize(width: Self.collapsedWidth * scale, height: body + Self.notch * 2 * scale + orbBandHeight)
     }
 
     /// Measuring text is the one genuinely slow thing the strip does, and the unfold now asks for this
@@ -440,6 +560,7 @@ private final class EdgeDockView: NSView {
     fileprivate func invalidateMeasurements() {
         expandedWidthCache = nil
         shadowCache = nil
+        planCache = nil
     }
 
     private func expandedWidth() -> CGFloat {
@@ -453,15 +574,18 @@ private final class EdgeDockView: NSView {
         var widest: CGFloat = 0
         let nameFont = self.nameFont, valueFont = self.valueFont
         for entry in entries {
-            let name = (entry.name as NSString).size(withAttributes: [.font: nameFont]).width
+            // A long name wraps rather than widening the strip, so only its first stretch counts.
+            let name = min((entry.name as NSString).size(withAttributes: [.font: nameFont]).width,
+                           Self.nameWidthCap * scale)
             let value = (valueText(entry) as NSString).size(withAttributes: [.font: valueFont]).width
             widest = max(widest, name + value)
         }
-        let content = (Self.expandedPadX * 2 + Self.ring + Self.expandedTextGap + 14) * scale + widest
-        // With a picture the strip stops being sized by its longest printer name: the image needs a
-        // usable width of its own, so it raises the floor and lifts the ceiling.
+        let content = (Self.insetX * 2 + Self.captionInnerGap * 2 + Self.ring) * scale + widest
+        // With a picture the strip stops being sized by its printer names: the image needs a usable
+        // width of its own, so it raises the floor and lifts the ceiling. Without one it still keeps
+        // room for a one-line note such as "Preview off".
         let showsAny = entries.contains { cameraViews[$0.serial] != nil }
-        let minimum = (showsAny ? Self.cameraMinStripWidth : 150) * scale
+        let minimum = (showsAny ? Self.cameraMinStripWidth : 180) * scale
         let maximum = (showsAny ? Self.cameraMaxStripWidth : 260) * scale
         return min(max(content, minimum), maximum)
     }
@@ -470,29 +594,124 @@ private final class EdgeDockView: NSView {
     /// pictures and hit-testing clicks cannot drift apart. Offsets run downward from the content top.
     private struct RowMetric {
         let entry: EdgeDockEntry
-        let top: CGFloat            // distance from the content top to the top of the text row
-        let height: CGFloat         // the text row itself
-        let cameraHeight: CGFloat   // 0 when this printer has no picture
+        let blockTop: CGFloat
+        let blockHeight: CGFloat
+        let pictureWidth: CGFloat     // 0 when no picture is shown
+        let pictureHeight: CGFloat
+        let captionTop: CGFloat
+        let captionHeight: CGFloat
+        let wraps: Bool               // name on its own lines, the metrics under it
+        let overlay: Bool             // the caption is laid over the bottom of the picture
+        let nameHeight: CGFloat
+        let note: String?             // the line under the caption, when there is no picture
+    }
+
+    private struct Plan {
+        let rows: [RowMetric]
+        let height: CGFloat
+    }
+
+    /// Height of the display the strip sits on, set by the controller before it asks for a size.
+    var availableHeight: CGFloat = .greatestFiniteMagnitude {
+        didSet { if abs(availableHeight - oldValue) > 0.5 { planCache = nil } }
+    }
+    private var planCache: (key: PlanKey, plan: Plan)?
+    private struct PlanKey: Equatable {
+        let entries: [EdgeDockEntry], cameras: Set<String>, width: CGFloat, scale: CGFloat,
+            available: CGFloat, edge: EdgeDockEdge
     }
 
     private func rowMetrics(stripWidth: CGFloat) -> (rows: [RowMetric], height: CGFloat) {
-        let pictureWidth = cameraWidth(stripWidth: stripWidth)
+        let key = PlanKey(entries: entries, cameras: Set(cameraViews.keys), width: stripWidth, scale: scale,
+                          available: availableHeight, edge: edge)
+        if let planCache, planCache.key == key { return (planCache.plan.rows, planCache.plan.height) }
+        let plan = fittedPlan(stripWidth: stripWidth)
+        planCache = (key, plan)
+        return (plan.rows, plan.height)
+    }
+
+    /// The column at full size when it fits the display; otherwise, in this order, smaller pictures,
+    /// pictures replaced by a note, the notes dropped, and last the strip cut at the display's height.
+    /// The order of the printers never changes.
+    private func fittedPlan(stripWidth: CGFloat) -> Plan {
+        let chrome = (Self.notch * 2 + Self.padY * 2 + Self.expandedBottomPad + Self.pinRow + Self.pinGap
+                      + Self.orbBand + Self.screenMargin * 2) * scale
+        let limit = max(Self.captionMinHeight * scale, availableHeight - chrome)
+        let full = plan(stripWidth: stripWidth, pictureShare: 1, pictures: true, notes: true)
+        guard full.height > limit else { return full }
+        let pictureTotal = full.rows.reduce(0) { $0 + $1.pictureHeight }
+        if pictureTotal > 0 {
+            // Pictures are whole points, so the first estimate can land a point or two over; step down.
+            var share = 1 - (full.height - limit) / pictureTotal
+            while share >= Self.minimumPictureShare {
+                let smaller = plan(stripWidth: stripWidth, pictureShare: share, pictures: true, notes: true)
+                if smaller.height <= limit { return smaller }
+                share -= Self.pictureShareStep
+            }
+        }
+        let noPictures = plan(stripWidth: stripWidth, pictureShare: 1, pictures: false, notes: true)
+        if noPictures.height <= limit { return noPictures }
+        let bare = plan(stripWidth: stripWidth, pictureShare: 1, pictures: false, notes: false)
+        return Plan(rows: bare.rows, height: min(bare.height, limit))
+    }
+
+    private func plan(stripWidth: CGFloat, pictureShare: CGFloat, pictures: Bool, notes: Bool) -> Plan {
+        let content = max(0, stripWidth - Self.insetX * 2 * scale)
+        let pictureWidth = (content * pictureShare).rounded()
         let pictureHeight = (pictureWidth * 9 / 16).rounded()
+        let textWidth = max(0, content - (Self.ring + Self.captionInnerGap) * scale)
+        let nameLine = lineHeight(nameFont), valueLine = lineHeight(valueFont)
         var rows: [RowMetric] = []
         var offset: CGFloat = 0
         for (index, entry) in entries.enumerated() {
-            let camera = cameraViews[entry.serial] != nil && pictureWidth > 0 ? pictureHeight : 0
-            rows.append(RowMetric(entry: entry, top: offset, height: Self.rowHeight * scale,
-                                  cameraHeight: camera))
-            offset += Self.rowHeight * scale
-            if camera > 0 { offset += Self.cameraGap * scale + camera }
-            if index < entries.count - 1 { offset += Self.rowGap * scale }
+            let showsPicture = pictures && entry.camera == .live && cameraViews[entry.serial] != nil && content > 0
+            var note: String?
+            if notes, !showsPicture {
+                switch entry.camera {
+                case .live: note = AppSettings.shared.t("Not enough room for the preview")
+                case .previewOff: note = AppSettings.shared.t("Preview off")
+                case .noCamera: note = AppSettings.shared.t("No camera")
+                case .hidden: note = nil
+                }
+            }
+            if showsPicture {
+                // Over a picture the caption is one line: a long name is cut with an ellipsis instead.
+                let caption = Self.captionMinHeight * scale
+                rows.append(RowMetric(entry: entry, blockTop: offset, blockHeight: pictureHeight,
+                                      pictureWidth: pictureWidth, pictureHeight: pictureHeight,
+                                      captionTop: offset + pictureHeight - caption, captionHeight: caption,
+                                      wraps: false, overlay: true, nameHeight: nameLine, note: nil))
+                offset += pictureHeight
+                if index < entries.count - 1 { offset += (Self.printerGap * 2 * scale + 1) }
+                continue
+            }
+            let nameWidth = (entry.name as NSString).size(withAttributes: [.font: nameFont]).width
+            let valueWidth = (valueText(entry) as NSString).size(withAttributes: [.font: valueFont]).width
+            let wraps = nameWidth + Self.captionInnerGap * scale + valueWidth > textWidth
+            let nameHeight = wraps
+                ? ceil((entry.name as NSString).boundingRect(
+                    with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin], attributes: [.font: nameFont]).height)
+                : nameLine
+            let textHeight = wraps ? nameHeight + Self.wrappedLineGap * scale + valueLine : max(nameLine, valueLine)
+            let caption = max(Self.captionMinHeight * scale, textHeight + Self.captionPadY * 2 * scale)
+            let block = caption + (note != nil ? Self.statusRow * scale : 0)
+            rows.append(RowMetric(entry: entry, blockTop: offset, blockHeight: block,
+                                  pictureWidth: 0, pictureHeight: 0,
+                                  captionTop: offset, captionHeight: caption,
+                                  wraps: wraps, overlay: false, nameHeight: nameHeight, note: note))
+            offset += block
+            if index < entries.count - 1 { offset += (Self.printerGap * 2 * scale + 1) }
         }
-        return (rows, offset)
+        return Plan(rows: rows, height: offset)
+    }
+
+    private func lineHeight(_ font: NSFont) -> CGFloat {
+        ceil(font.ascender - font.descender + font.leading)
     }
 
     private func expandedContentHeight(stripWidth: CGFloat) -> CGFloat {
-        guard !entries.isEmpty else { return Self.rowHeight * scale }
+        guard !entries.isEmpty else { return Self.captionMinHeight * scale }
         return rowMetrics(stripWidth: stripWidth).height
     }
 
@@ -506,14 +725,162 @@ private final class EdgeDockView: NSView {
         isExpanded ? (Self.pinRow + Self.pinGap) * scale : 0
     }
 
+    /// Height of the band under the silhouette that holds the settings button, folded or open.
+    private var orbBandHeight: CGFloat { Self.orbBand * scale }
+
+    /// The bottom fillet's centre, on the screen edge's side: the circle the button is drawn on.
+    private var orbCenter: NSPoint {
+        let r = Self.notch * scale
+        return NSPoint(x: edge == .right ? bounds.width - r : r, y: orbBandHeight)
+    }
+
+    private func orbContains(_ point: NSPoint) -> Bool {
+        let c = orbCenter
+        return hypot(point.x - c.x, point.y - c.y) <= Self.notch * scale + 2
+    }
+
+    /// Below the body: the fillet's pocket and the band under it. The pointer here is on its way to
+    /// the button, so it must not unfold a folded strip.
+    private func isBelowBody(_ point: NSPoint) -> Bool {
+        point.y < orbBandHeight + Self.notch * scale
+    }
+
+    private var orbHover: CGFloat = 0
+    private var orbHoverTarget: CGFloat = 0
+    private var orbSpin: CGFloat = 0
+    private var orbSpinStarted: Date?
+    private var orbTimer: Timer?
+
+    private func setOrbHovered(_ hovered: Bool) {
+        let target: CGFloat = hovered ? 1 : 0
+        guard target != orbHoverTarget else { return }
+        orbHoverTarget = target
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            orbHover = target
+            needsDisplay = true
+            return
+        }
+        startOrbTimer()
+    }
+
+    private func spinOrb() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        orbSpinStarted = Date()
+        startOrbTimer()
+    }
+
+    private func startOrbTimer() {
+        guard orbTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stepOrb() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        orbTimer = timer
+    }
+
+    private func stepOrb() {
+        let step = CGFloat(1.0 / 60 / Self.orbHoverDuration)
+        if orbHover < orbHoverTarget { orbHover = min(orbHoverTarget, orbHover + step) }
+        else if orbHover > orbHoverTarget { orbHover = max(orbHoverTarget, orbHover - step) }
+        if let started = orbSpinStarted {
+            let t = min(1, Date().timeIntervalSince(started) / Self.orbSpinDuration)
+            orbSpin = 360 * CGFloat(1 - pow(1 - t, 3))
+            if t >= 1 { orbSpin = 0; orbSpinStarted = nil }
+        }
+        needsDisplay = true
+        if orbHover == orbHoverTarget && orbSpinStarted == nil {
+            orbTimer?.invalidate()
+            orbTimer = nil
+        }
+    }
+
+    /// Resting: the quarter of the circle that faces back along the strip and out to the screen edge,
+    /// in the strip's own colour. Hovered: the whole disc with a gear that turns into place.
+    fileprivate func drawSettingsOrb() {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let center = orbCenter
+        let radius = Self.notch * scale
+        let eased = orbHover * orbHover * (3 - 2 * orbHover)
+        let color = Self.shapeColor.withAlphaComponent(Self.foldedFloorAlpha)
+        if eased < 1 {
+            context.saveGState()
+            context.setAlpha(1 - eased)
+            let shrink = 1 - 0.14 * eased
+            context.translateBy(x: center.x, y: center.y)
+            context.scaleBy(x: shrink, y: shrink)
+            let arcRadius = radius - (Self.orbArcGap + Self.orbStroke / 2) * scale
+            let arc = NSBezierPath()
+            // Twelve o'clock round to the screen edge.
+            if edge == .right {
+                arc.appendArc(withCenter: .zero, radius: arcRadius, startAngle: 90, endAngle: 0, clockwise: true)
+            } else {
+                arc.appendArc(withCenter: .zero, radius: arcRadius, startAngle: 90, endAngle: 180, clockwise: false)
+            }
+            arc.lineWidth = Self.orbStroke * scale
+            arc.lineCapStyle = .round
+            color.setStroke()
+            arc.stroke()
+            context.restoreGState()
+        }
+        guard eased > 0 else { return }
+        context.saveGState()
+        context.setAlpha(eased)
+        let discRadius = radius * (1.1 - 0.1 * eased)
+        color.setFill()
+        NSBezierPath(ovalIn: NSRect(x: center.x - discRadius, y: center.y - discRadius,
+                                    width: discRadius * 2, height: discRadius * 2)).fill()
+        NSColor.white.withAlphaComponent(0.14).setStroke()
+        let rim = NSBezierPath(ovalIn: NSRect(x: center.x - discRadius + 0.5, y: center.y - discRadius + 0.5,
+                                              width: discRadius * 2 - 1, height: discRadius * 2 - 1))
+        rim.lineWidth = 1
+        rim.stroke()
+        // Arrives from sixty degrees back, and a click adds a full turn on top.
+        let size = Self.orbGlyph * scale * (0.5 + 0.5 * eased)
+        let gear = Self.gearPath(center: center, size: size, angleDegrees: -60 * (1 - eased) + orbSpin)
+        gear.lineWidth = 1.2 * scale
+        gear.lineJoinStyle = .round
+        GantryTheme.text.setStroke()
+        gear.stroke()
+        context.restoreGState()
+    }
+
+    /// The gear on the settings button, in a box `size` wide: eight teeth, the root circle at 72 % of the
+    /// tip, each tooth 34 % of its period wide at the tip and 60 % at the root, and a hole of 32 %. Drawn
+    /// rather than an SF Symbol, so it is the same shape on Windows and GNU/Linux (contract
+    /// edgeDock.settingsButton). Turned clockwise as seen on screen.
+    static let gearTeeth = 8
+    static let gearRoot: CGFloat = 0.72
+    static let gearTipSpan: CGFloat = 0.17
+    static let gearRootSpan: CGFloat = 0.30
+    static let gearHole: CGFloat = 0.32
+
+    static func gearPath(center: NSPoint, size: CGFloat, angleDegrees: CGFloat) -> NSBezierPath {
+        let tip = size / 2, root = size / 2 * gearRoot
+        let period = 2 * CGFloat.pi / CGFloat(gearTeeth)
+        let turn = angleDegrees * .pi / 180
+        let path = NSBezierPath()
+        var first = true
+        for tooth in 0..<gearTeeth {
+            let middle = CGFloat(tooth) * period + turn
+            for (radius, offset) in [(root, -gearRootSpan), (tip, -gearTipSpan), (tip, gearTipSpan), (root, gearRootSpan)] {
+                let angle = middle + offset * period
+                // y-down design angle, flipped onto AppKit's y-up canvas.
+                let point = NSPoint(x: center.x + radius * cos(angle), y: center.y - radius * sin(angle))
+                if first { path.move(to: point); first = false } else { path.line(to: point) }
+            }
+        }
+        path.close()
+        let hole = size / 2 * gearHole
+        path.appendOval(in: NSRect(x: center.x - hole, y: center.y - hole, width: hole * 2, height: hole * 2))
+        return path
+    }
+
     /// The pin control: a disc with the pin on it, sitting in the ring column so it can never collide
     /// with a printer name, whatever the name's length.
     private func pinButtonRect() -> NSRect? {
         guard isExpanded else { return nil }
         let side = Self.pinRow * scale
-        let centerX = edge == .right
-            ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
-            : (Self.expandedPadX + Self.ring / 2) * scale
+        let centerX = ringX
         let centerY = bounds.height - (Self.notch + Self.padY) * scale - side / 2
         return NSRect(x: centerX - side / 2, y: centerY - side / 2, width: side, height: side)
     }
@@ -557,8 +924,10 @@ private final class EdgeDockView: NSView {
         return path
     }
 
-    private func cameraWidth(stripWidth: CGFloat) -> CGFloat {
-        max(0, stripWidth - Self.expandedPadX * 2 * scale)
+    /// Ring column: at the end of the caption, on the physical screen edge's side, and the pin above it.
+    private var ringX: CGFloat {
+        let inset = (Self.insetX + Self.ring / 2) * scale
+        return edge == .right ? bounds.width - inset : inset
     }
 
     /// The pictures are real subviews inside a hand-drawn silhouette, so they get framed here rather
@@ -619,45 +988,72 @@ private final class EdgeDockView: NSView {
         super.layout()
         clipBackdropToSilhouette()
         rowsView.frame = bounds
+        overlayView.frame = bounds
         removeAllToolTips()
         if let pin = pinButtonRect() {
             addToolTip(pin, owner: AppSettings.shared.t("Keep the strip open") as NSString, userData: nil)
         }
+        let r = Self.notch * scale
+        addToolTip(NSRect(x: orbCenter.x - r, y: orbCenter.y - r, width: r * 2, height: r * 2),
+                   owner: AppSettings.shared.t("Strip settings") as NSString, userData: nil)
         guard !cameraViews.isEmpty else { return }
         guard isExpanded else {
             cameraViews.values.forEach { $0.isHidden = true }
+            captionBlurs.values.forEach { $0.isHidden = true }
             return
         }
-        let width = cameraWidth(stripWidth: bounds.width)
-        let x = ((bounds.width - width) / 2).rounded()
         var placed: Set<String> = []
         for metric in rowMetrics(stripWidth: bounds.width).rows {
             guard let view = cameraViews[metric.entry.serial] else { continue }
-            guard metric.cameraHeight > 0, width > 0 else {
+            guard metric.pictureHeight > 0, contentTop - metric.blockTop - metric.pictureHeight >= orbBandHeight else {
                 view.isHidden = true
+                captionBlurs[metric.entry.serial]?.isHidden = true
                 continue
             }
             view.isHidden = false
-            let frame = NSRect(x: x,
-                               y: contentTop - metric.top - metric.height
-                                  - Self.cameraGap * scale - metric.cameraHeight,
-                               width: width, height: metric.cameraHeight)
+            // Centred in the column, so a picture shrunk to fit a small display stays under its caption.
+            let frame = NSRect(x: ((bounds.width - metric.pictureWidth) / 2).rounded(),
+                               y: contentTop - metric.blockTop - metric.pictureHeight,
+                               width: metric.pictureWidth, height: metric.pictureHeight)
             // A live picture is a layer that reflows when its frame is set, so setting the same frame
             // again on every layout pass is pure cost. Most passes during an unfold move it, but the
             // ones telemetry and camera frames cause do not.
             if view.frame != frame { view.frame = frame }
+            if let blur = captionBlurs[metric.entry.serial] {
+                let band = NSRect(x: frame.minX, y: frame.minY, width: frame.width,
+                                  height: min(frame.height, Self.captionBlurHeight * scale))
+                if blur.frame != band {
+                    blur.frame = band
+                    blur.maskImage = Self.captionBandMask(size: band.size, radius: Self.pictureRadius * scale)
+                }
+                blur.isHidden = false
+            }
             placed.insert(metric.entry.serial)
         }
         // A picture whose printer dropped out of the strip this refresh has no row to sit under.
-        for (serial, view) in cameraViews where !placed.contains(serial) { view.isHidden = true }
+        for (serial, view) in cameraViews where !placed.contains(serial) {
+            view.isHidden = true
+            captionBlurs[serial]?.isHidden = true
+        }
     }
+
+    private static let finishTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short   // respects the system 12/24-hour setting
+        formatter.dateStyle = .none
+        return formatter
+    }()
 
     private func valueText(_ entry: EdgeDockEntry) -> String {
         let settings = AppSettings.shared
         switch entry.state {
         case .printing, .paused:
+            // Both halves, as on the fleet cards: how long is left and the clock time it ends. "1:16"
+            // on its own read as a time of day.
             if let minutes = entry.remainingMinutes, minutes > 0 {
-                return "\(entry.progress)% · \(minutes / 60):\(String(format: "%02d", minutes % 60))"
+                let left = minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h \(minutes % 60)m"
+                let finish = Self.finishTimeFormatter.string(from: Date().addingTimeInterval(Double(minutes) * 60))
+                return "\(entry.progress)% · \(left) · \(finish)"
             }
             return "\(entry.progress)%"
         case .finished: return settings.t("done")
@@ -672,9 +1068,15 @@ private final class EdgeDockView: NSView {
     /// The silhouette: a rounded body flush against the screen edge, plus a concave fillet at each end
     /// so the strip appears to flow out of the edge rather than sit next to it.
     private func shapePath() -> NSBezierPath { shapePath(in: bounds.size) }
+    #if GANTRY_RENDER
+    func silhouetteForRender() -> NSBezierPath { shapePath() }
+    func settingsHoverForRender(_ value: CGFloat) { orbHover = value; orbHoverTarget = value }
+    #endif
 
     private func shapePath(in size: NSSize) -> NSBezierPath {
-        let w = size.width, h = size.height
+        // Drawn on the window above the settings band, then lifted onto it.
+        let band = orbBandHeight
+        let w = size.width, h = size.height - band
         let r = min(Self.notch * scale, w)
         let bodyRadius = min(w / 2, 12 * scale)
         let top = h - r, bottom = r
@@ -690,6 +1092,7 @@ private final class EdgeDockView: NSView {
         path.line(to: NSPoint(x: w - r, y: bottom))
         path.appendArc(withCenter: NSPoint(x: w - r, y: 0), radius: r, startAngle: 90, endAngle: 0, clockwise: true)
         path.close()
+        path.transform(using: AffineTransform(translationByX: 0, byY: band))
         if edge == .left {
             var mirror = AffineTransform(translationByX: w, byY: 0)
             mirror.scale(x: -1, y: 1)
@@ -761,43 +1164,160 @@ private final class EdgeDockView: NSView {
     }
 
     private func drawExpanded() {
-        // Keep the ring beside the physical screen edge while the text unfolds inward.
-        let ringX = edge == .right
-            ? bounds.width - (Self.expandedPadX + Self.ring / 2) * scale
-            : (Self.expandedPadX + Self.ring / 2) * scale
-        for metric in rowMetrics(stripWidth: bounds.width).rows {
-            let entry = metric.entry
-            let centerY = contentTop - metric.top - metric.height / 2
-            drawRing(center: NSPoint(x: ringX, y: centerY), entry: entry)
+        let fade = max(0, min(1, unfoldProgress))
+        let rows = rowMetrics(stripWidth: bounds.width).rows
+        let bottomLimit = (Self.notch + Self.padY) * scale + orbBandHeight
+        for (index, metric) in rows.enumerated() {
+            // A strip cut at the display's height draws only what is inside it.
+            guard contentTop - metric.captionTop - metric.captionHeight >= bottomLimit - 1 else { break }
+            // Captions over pictures are drawn by `overlayView`, above the pictures.
+            if !metric.overlay { drawCaption(metric, fade: fade) }
+            if let note = metric.note { drawNote(note, metric: metric, fade: fade) }
+            guard index < rows.count - 1 else { continue }
+            let y = (contentTop - metric.blockTop - metric.blockHeight - Self.printerGap * scale).rounded() - 0.5
+            let inset = Self.insetX * scale
+            NSColor.white.withAlphaComponent(Self.separatorAlpha * fade).setFill()
+            NSRect(x: inset, y: y, width: max(0, bounds.width - inset * 2), height: 1).fill()
+        }
+    }
 
-            let dim = entry.state == .idle || entry.state == .offline || entry.state == .finished
-            let nameColor = entry.state == .error || entry.state == .offline ? GantryTheme.statusError
-                          : (dim ? GantryTheme.secondary : GantryTheme.text)
-            let halo = labelShadow
-            // The labels arrive with the strip rather than before it.
-            let fade = max(0, min(1, unfoldProgress))
-            let name = NSAttributedString(string: entry.name,
-                                          attributes: [.font: nameFont,
-                                                       .foregroundColor: nameColor.withAlphaComponent(fade),
-                                                       .shadow: halo])
-            let value = NSAttributedString(string: valueText(entry),
-                                           attributes: [.font: valueFont,
-                                                        .foregroundColor: GantryTheme.secondary.withAlphaComponent(fade),
-                                                        .shadow: halo])
-            let textLeft = edge == .right
-                ? Self.expandedPadX * scale
-                : ringX + (Self.ring / 2 + Self.expandedTextGap) * scale
-            let textRight = edge == .right
-                ? ringX - (Self.ring / 2 + Self.expandedTextGap) * scale
-                : bounds.width - Self.expandedPadX * scale
-            let valueSize = value.size()
-            // Clip the name so a long one never runs under the value on the right.
-            let nameBox = NSRect(x: textLeft, y: centerY - name.size().height / 2,
-                                 width: max(0, textRight - valueSize.width - 8 * scale - textLeft),
-                                 height: name.size().height)
-            name.draw(with: nameBox, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
+    /// Transparent at the top, solid at the bottom, with the picture's own rounded bottom corners.
+    private static func captionBandMask(size: NSSize, radius: CGFloat) -> NSImage {
+        NSImage(size: size, flipped: false) { rect in
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: rect.minX, y: rect.maxY))
+            path.line(to: NSPoint(x: rect.minX, y: rect.minY + radius))
+            path.appendArc(withCenter: NSPoint(x: rect.minX + radius, y: rect.minY + radius), radius: radius,
+                           startAngle: 180, endAngle: 270)
+            path.line(to: NSPoint(x: rect.maxX - radius, y: rect.minY))
+            path.appendArc(withCenter: NSPoint(x: rect.maxX - radius, y: rect.minY + radius), radius: radius,
+                           startAngle: 270, endAngle: 360)
+            path.line(to: NSPoint(x: rect.maxX, y: rect.maxY))
+            path.close()
+            path.addClip()
+            NSGradient(colors: [.black, .black, NSColor.black.withAlphaComponent(0)],
+                       atLocations: [0, 0.45, 1], colorSpace: .deviceRGB)?.draw(in: rect, angle: 90)
+            return true
+        }
+    }
+
+    /// The fade and caption over the bottom of each picture. Called by `overlayView`, which sits above
+    /// the pictures.
+    fileprivate func drawPictureCaptions() {
+        guard isExpanded else { return }
+        NSGraphicsContext.current?.cgContext.setShouldAntialias(true)
+        let fade = max(0, min(1, unfoldProgress))
+        for metric in rowMetrics(stripWidth: bounds.width).rows where metric.overlay {
+            guard let view = cameraViews[metric.entry.serial], !view.isHidden else { continue }
+            let picture = view.frame
+            let shade = NSRect(x: picture.minX, y: picture.minY, width: picture.width,
+                               height: min(picture.height, Self.overlayShade * scale))
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(roundedRect: picture, xRadius: Self.pictureRadius * scale,
+                         yRadius: Self.pictureRadius * scale).addClip()
+            NSGradient(starting: NSColor.black.withAlphaComponent(Self.overlayShadeAlpha * fade),
+                       ending: NSColor.black.withAlphaComponent(0))?.draw(in: shade, angle: 90)
+            NSGraphicsContext.restoreGraphicsState()
+            drawCaption(metric, fade: fade)
+        }
+    }
+
+    /// Name on the leading side, then the percentage and time, then the ring at the end. A name that
+    /// does not fit next to its metrics wraps onto as many lines as it needs, and the metrics move to
+    /// the line under it. On a left-edge strip the order is mirrored, so the ring stays by the edge.
+    private func drawCaption(_ metric: RowMetric, fade: CGFloat) {
+        let entry = metric.entry
+        let top = contentTop - metric.captionTop
+        let centerY = top - metric.captionHeight / 2
+        // Over a picture the caption keeps to the picture's own edges, which move when it shrinks to fit.
+        let left: CGFloat, right: CGFloat
+        if metric.overlay {
+            let pictureLeft = ((bounds.width - metric.pictureWidth) / 2).rounded()
+            left = pictureLeft + Self.overlayPadX * scale
+            right = pictureLeft + metric.pictureWidth - Self.overlayPadX * scale
+        } else {
+            left = Self.insetX * scale
+            right = bounds.width - Self.insetX * scale
+        }
+        let ringX = edge == .right ? right - Self.ring / 2 * scale : left + Self.ring / 2 * scale
+        drawRing(center: NSPoint(x: ringX, y: centerY), entry: entry)
+
+        let dim = entry.state == .idle || entry.state == .offline || entry.state == .finished
+        let nameColor = entry.state == .error || entry.state == .offline ? GantryTheme.statusError
+                      : (dim ? GantryTheme.secondary : GantryTheme.text)
+        let halo = labelShadow
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let name = NSAttributedString(string: entry.name,
+                                      attributes: [.font: nameFont, .paragraphStyle: paragraph,
+                                                   .foregroundColor: nameColor.withAlphaComponent(fade),
+                                                   .shadow: halo])
+        let value = NSAttributedString(string: valueText(entry),
+                                       attributes: [.font: valueFont,
+                                                    .foregroundColor: (metric.overlay ? GantryTheme.text : GantryTheme.secondary)
+                                                        .withAlphaComponent(fade),
+                                                    .shadow: halo])
+        let ringSpan = (Self.ring + Self.captionInnerGap) * scale
+        let textLeft = edge == .right ? left : left + ringSpan
+        let textRight = edge == .right ? right - ringSpan : right
+        let valueSize = value.size()
+        if metric.wraps {
+            let valueLine = lineHeight(valueFont)
+            let block = metric.nameHeight + Self.wrappedLineGap * scale + valueLine
+            let blockTop = centerY + block / 2
+            name.draw(with: NSRect(x: textLeft, y: blockTop - metric.nameHeight,
+                                   width: max(0, textRight - textLeft), height: metric.nameHeight),
+                      options: [.usesLineFragmentOrigin])
+            value.draw(at: NSPoint(x: textLeft, y: blockTop - block))
+        } else {
+            let nameHeight = lineHeight(nameFont)
+            name.draw(with: NSRect(x: textLeft, y: centerY - nameHeight / 2,
+                                   width: max(0, textRight - valueSize.width - Self.captionInnerGap * scale - textLeft),
+                                   height: nameHeight),
+                      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             value.draw(at: NSPoint(x: textRight - valueSize.width, y: centerY - valueSize.height / 2))
         }
+    }
+
+    /// The line under a caption that has no picture: a camera glyph, struck through when the printer
+    /// has none, and a few words.
+    private func drawNote(_ note: String, metric: RowMetric, fade: CGFloat) {
+        let top = contentTop - metric.captionTop - metric.captionHeight
+        let centerY = top - Self.statusRow * scale / 2 + 1 * scale
+        let ringSpan = (Self.ring + Self.captionInnerGap) * scale
+        let left = edge == .right ? Self.insetX * scale : Self.insetX * scale + ringSpan
+        let color = GantryTheme.secondary.withAlphaComponent(fade)
+        drawCameraGlyph(origin: NSPoint(x: left, y: centerY + Self.statusIcon * scale / 2),
+                        struck: metric.entry.camera == .noCamera, color: color)
+        let text = NSAttributedString(string: note, attributes: [.font: statusFont, .foregroundColor: color,
+                                                                 .shadow: labelShadow])
+        let size = text.size()
+        text.draw(at: NSPoint(x: left + (Self.statusIcon + Self.captionInnerGap) * scale, y: centerY - size.height / 2))
+    }
+
+    /// `origin` is the glyph box's top-left corner; the design box is y-down, so y is flipped here.
+    private func drawCameraGlyph(origin: NSPoint, struck: Bool, color: NSColor) {
+        let unit = Self.statusIcon * scale / 12
+        func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: origin.x + x * unit, y: origin.y - y * unit) }
+        let body = Self.cameraGlyphBody
+        let bodyRect = NSRect(x: origin.x + body.minX * unit, y: origin.y - body.maxY * unit,
+                              width: body.width * unit, height: body.height * unit)
+        let path = NSBezierPath(roundedRect: bodyRect, xRadius: 1.5 * unit, yRadius: 1.5 * unit)
+        let lens = NSBezierPath()
+        for (index, corner) in Self.cameraGlyphLens.enumerated() {
+            if index == 0 { lens.move(to: point(corner.0, corner.1)) } else { lens.line(to: point(corner.0, corner.1)) }
+        }
+        lens.close()
+        path.append(lens)
+        if struck {
+            path.move(to: point(1, 1.5))
+            path.line(to: point(11, 10.5))
+        }
+        path.lineWidth = 1.1 * unit
+        path.lineJoinStyle = .round
+        path.lineCapStyle = .round
+        color.setStroke()
+        path.stroke()
     }
 
     /// One progress ring: a dim track plus an arc that starts at twelve o'clock and runs clockwise.
@@ -857,6 +1377,8 @@ private final class EdgeDockView: NSView {
     override func setNeedsDisplay(_ invalidRect: NSRect) {
         super.setNeedsDisplay(invalidRect)
         rowsView.needsDisplay = true
+        overlayView.needsDisplay = true
+        settingsButtonView.needsDisplay = true
     }
 
     override func updateTrackingAreas() {
@@ -872,7 +1394,14 @@ private final class EdgeDockView: NSView {
     override func mouseEntered(with event: NSEvent) {
         collapseTimer?.invalidate()
         collapseTimer = nil
-        guard !isHovering else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        setOrbHovered(orbContains(point))
+        guard !isBelowBody(point) else { return }
+        pointerReachedBody()
+    }
+
+    private func pointerReachedBody() {
+        guard !isHovering, dwellTimer == nil else { return }
         guard dwellBeforeUnfold, !pinned else {
             beginHover()
             return
@@ -903,6 +1432,8 @@ private final class EdgeDockView: NSView {
     /// the Windows port hit in issue #32, where it showed up as flicker.
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        setOrbHovered(orbContains(point))
+        if !isBelowBody(point) { pointerReachedBody() }
         let over = pinButtonRect()?.contains(point) ?? false
         guard over != pinHovered else { return }
         pinHovered = over
@@ -912,6 +1443,7 @@ private final class EdgeDockView: NSView {
     override func mouseExited(with event: NSEvent) {
         dwellTimer?.invalidate()
         dwellTimer = nil
+        setOrbHovered(false)
         if pinHovered {
             pinHovered = false
             needsDisplay = true
@@ -937,6 +1469,11 @@ private final class EdgeDockView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if orbContains(point) {
+            spinOrb()
+            onSettings?()
+            return
+        }
         // The pin wins over the row beneath it.
         if let pin = pinButtonRect(), pin.contains(point) {
             onTogglePin?()
@@ -947,8 +1484,9 @@ private final class EdgeDockView: NSView {
     }
 
     private func rowIndex(at point: NSPoint) -> Int? {
-        // A click on a picture is not a click on the row above it.
-        for view in cameraViews.values where !view.isHidden && view.frame.contains(point) { return nil }
+        // A click on a picture is not a click on its printer, except on the caption over its bottom.
+        for view in cameraViews.values where !view.isHidden && view.frame.contains(point)
+            && point.y > view.frame.minY + Self.captionMinHeight * scale { return nil }
         guard isExpanded else {
             let step = (Self.ring + Self.collapsedGap) * scale
             let offset = bounds.height - (Self.notch + Self.padY) * scale - point.y
@@ -956,15 +1494,15 @@ private final class EdgeDockView: NSView {
             let index = Int(offset / step)
             return index >= 0 && index < entries.count ? index : nil
         }
-        // Expanded rows are no longer a fixed pitch, because a picture may sit between two of them.
-        // Walk the same metrics the drawing uses, and let each row own the gap below it so a click
-        // between rows still lands somewhere sensible.
+        // Expanded, a printer is its block: the caption and its note open it, and so does the gap
+        // around its hairline, so a click between two printers still lands somewhere sensible. Its
+        // picture does not, which the check at the top already settled.
         let rows = rowMetrics(stripWidth: bounds.width).rows
+        let gap = Self.printerGap * scale
         for (index, metric) in rows.enumerated() {
-            let rowTop = contentTop - metric.top
-            let claimed = metric.height + (metric.cameraHeight > 0
-                ? Self.cameraGap * scale + metric.cameraHeight : 0) + Self.rowGap * scale
-            if point.y <= rowTop && point.y > rowTop - claimed { return index }
+            let blockTop = contentTop - metric.blockTop + (index == 0 ? 0 : gap)
+            let claimed = metric.blockHeight + gap * (index == 0 ? 1 : 2) + 1
+            if point.y <= blockTop && point.y > blockTop - claimed { return index }
         }
         return nil
     }
@@ -973,6 +1511,23 @@ private final class EdgeDockView: NSView {
 /// The strip's contents on their own layer. Split from `EdgeDockView` for one reason: the transition
 /// blur has to apply to the rings, labels and pin without touching the silhouette, whose edges would
 /// otherwise soften and bleed outside the shape. It draws nothing of its own and takes no clicks.
+/// The captions over the pictures: above every picture, drawing nothing else and taking no clicks.
+private final class EdgeDockOverlayView: NSView {
+    weak var owner: EdgeDockView?
+
+    override func draw(_ dirtyRect: NSRect) { owner?.drawPictureCaptions() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var isOpaque: Bool { false }
+}
+
+private final class EdgeDockSettingsView: NSView {
+    weak var owner: EdgeDockView?
+
+    override func draw(_ dirtyRect: NSRect) { owner?.drawSettingsOrb() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var isOpaque: Bool { false }
+}
+
 private final class EdgeDockRowsView: NSView {
     weak var owner: EdgeDockView?
 
@@ -980,3 +1535,46 @@ private final class EdgeDockRowsView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override var isOpaque: Bool { false }
 }
+
+#if GANTRY_RENDER
+/// Offscreen picture of the open strip for design review: silhouette, tiles, rows and stand-in
+/// pictures over a sample desktop, at the panel-transparency setting in the defaults. The window
+/// server's behind-window blur cannot be captured, so the desktop shows through unblurred.
+@MainActor enum EdgeDockRender {
+    static func image(entries: [EdgeDockEntry], pictures: [String: NSImage], edge: EdgeDockEdge,
+                      desktop: NSImage, expanded: Bool = true, settingsHover: CGFloat = 0) -> NSImage? {
+        let view = EdgeDockView(frame: .zero)
+        view.edge = edge
+        view.pinned = expanded
+        view.settingsHoverForRender(settingsHover)
+        view.entries = entries
+        view.cameraViews = pictures.mapValues { _ in NSView() }
+        let size = view.preferredSize()
+        view.frame = NSRect(origin: .zero, size: size)
+        view.viewDidMoveToSuperview()
+        view.layoutSubtreeIfNeeded()
+        view.layout()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let result = NSImage(size: size)
+        result.lockFocus()
+        NSGraphicsContext.saveGraphicsState()
+        view.silhouetteForRender().addClip()   // the desktop shows through only inside the strip
+        desktop.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)
+        NSGraphicsContext.restoreGraphicsState()
+        rep.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .sourceOver, fraction: 1,
+                 respectFlipped: false, hints: nil)
+        for (serial, picture) in pictures {
+            guard let frame = view.cameraViews[serial]?.frame, !(view.cameraViews[serial]?.isHidden ?? true) else { continue }
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(roundedRect: frame, xRadius: EdgeDockView.pictureRadius, yRadius: EdgeDockView.pictureRadius).addClip()
+            picture.draw(in: frame, from: .zero, operation: .sourceOver, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        view.drawPictureCaptions()
+        view.drawSettingsOrb()
+        result.unlockFocus()
+        return result
+    }
+}
+#endif

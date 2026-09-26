@@ -6,6 +6,11 @@ from . import i18n
 from .core import PrinterState
 
 
+# The window snaps to whole cards: a 325-point card plus the gap between cards (CARD_GAP in dashboard.py),
+# and 20 points of outer inset less the gap after the last column.
+TILE_PITCH = 325 + 12
+TILE_WIDTH_BASE = 20 - 12
+
 class DesktopPresentation:
     def setup_desktop(self):
         self._panel_layer = None
@@ -71,10 +76,10 @@ class DesktopPresentation:
 
     def layout_columns(self):
         scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
-        pitch = 333 * scale
+        pitch = TILE_PITCH * scale
         if self.tray_mode:
             return max(1, min(2, int(self.app.config.data.get("dashboard_columns", 2))))
-        return max(1, round((self.get_size()[0] - 12) / pitch))
+        return max(1, round((self.get_size()[0] - TILE_WIDTH_BASE) / pitch))
 
     def _snapped_tile_size(self, proposed_width, proposed_height):
         """Snap width to card columns; derive height from every complete, measured card row."""
@@ -84,10 +89,10 @@ class DesktopPresentation:
         max_width = workarea.width if workarea else 1800
         max_height = workarea.height if workarea else 1200
         scale = max(.75, min(1.5, int(self.app.config.data.get("card_scale_percent", 100)) / 100))
-        pitch = 333 * scale
-        columns = max(1, min(int((max_width - 12) // pitch),
-                             round((proposed_width - 12) / pitch)))
-        snapped_width = int(12 + columns * pitch)
+        pitch = TILE_PITCH * scale
+        columns = max(1, min(int((max_width - TILE_WIDTH_BASE) // pitch),
+                             round((proposed_width - TILE_WIDTH_BASE) / pitch)))
+        snapped_width = int(TILE_WIDTH_BASE + columns * pitch)
         content_height = self.content_height_for_width(snapped_width)
         return snapped_width, min(max_height - 24, max(290, content_height))
 

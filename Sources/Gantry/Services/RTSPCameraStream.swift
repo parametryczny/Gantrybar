@@ -67,7 +67,10 @@ final class RTSPCameraStream: @unchecked Sendable {
         self.onAccessUnit = onAccessUnit
     }
 
-    func start() {
+    func start() { queue.async { [self] in startConnection() } }
+
+    private func startConnection() {
+        guard !stopped else { return }
         onState(.connecting)
         let tls = NWProtocolTLS.Options()
         sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, _, complete in
@@ -77,13 +80,13 @@ final class RTSPCameraStream: @unchecked Sendable {
         let conn = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: params)
         connection = conn
         conn.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
+            guard let self, !self.stopped else { return }
             switch state {
             case .ready:
                 self.sendDescribe(auth: false)
                 self.receiveLoop()
-            case .failed(let error):
-                self.onState(.failed(error.localizedDescription))
+            case .failed(let error), .waiting(let error):
+                self.fail(error.localizedDescription)
             default:
                 break
             }
@@ -112,14 +115,33 @@ final class RTSPCameraStream: @unchecked Sendable {
     }
 
     func stop() {
-        stopped = true
-        keepAlive?.cancel()
-        keepAlive = nil
-        if !controlURL.isEmpty || !sessionID.isEmpty {
-            sendRaw("TEARDOWN \(requestURL) RTSP/1.0\r\nCSeq: \(cseq)\r\n\(authHeader("TEARDOWN"))\(sessionLine())\r\n")
+        queue.async { [self] in
+            guard !stopped else { return }
+            stopped = true
+            if !controlURL.isEmpty || !sessionID.isEmpty {
+                sendRaw("TEARDOWN \(requestURL) RTSP/1.0\r\nCSeq: \(cseq)\r\n\(authHeader("TEARDOWN"))\(sessionLine())\r\n")
+            }
+            closeConnection()
         }
+    }
+
+    private func closeConnection() {
+        keepAlive?.cancel(); keepAlive = nil
+        connection?.stateUpdateHandler = nil
+        connection?.cancel(); connection = nil
+    }
+
+    private func fail(_ reason: String) {
+        guard !stopped else { return }
+        stopped = true
+        closeConnection()
+        onState(.failed(reason))
+    }
+
+    deinit {
+        keepAlive?.cancel()
+        connection?.stateUpdateHandler = nil
         connection?.cancel()
-        connection = nil
     }
 
     // MARK: RTSP requests
@@ -167,8 +189,9 @@ final class RTSPCameraStream: @unchecked Sendable {
         connection?.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) { [weak self] data, _, isComplete, error in
             guard let self, !self.stopped else { return }
             if let data, !data.isEmpty { self.ingest(data) }
-            if let error { self.onState(.failed(error.localizedDescription)); return }
-            if isComplete { self.onState(.failed(Localization.t("Connection closed"))); return }
+            guard !self.stopped else { return }
+            if let error { self.fail(error.localizedDescription); return }
+            if isComplete { self.fail(Localization.t("Connection closed")); return }
             self.receiveLoop()
         }
     }
@@ -222,15 +245,15 @@ final class RTSPCameraStream: @unchecked Sendable {
             if is401 { sendDescribe(auth: true) } else if isOK { parseSDP(body); sendSetup() }
         case .describeAuth:
             if isOK { parseSDP(body); sendSetup() }
-            else { onState(.failed("DESCRIBE: \(statusLine)")) }
+            else { fail("DESCRIBE: \(statusLine)") }
         case .setup:
-            if isOK { sendPlay() } else { onState(.failed("SETUP: \(statusLine)")) }
+            if isOK { sendPlay() } else { fail("SETUP: \(statusLine)") }
         case .play:
             if isOK {
                 phase = .streaming
                 startKeepAlive()
                 onState(.playing)
-            } else { onState(.failed("PLAY: \(statusLine)")) }
+            } else { fail("PLAY: \(statusLine)") }
         default:
             break
         }

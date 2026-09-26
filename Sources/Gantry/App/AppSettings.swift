@@ -86,6 +86,37 @@ final class AppSettings: ObservableObject {
     /// pure desktop app with no listening socket.
     @Published var webDashboardEnabled: Bool { didSet { defaults.set(webDashboardEnabled, forKey: "web-dashboard-enabled") } }
 
+    /// The bridge to a page the user hosts themselves: Gantry dials out over HTTPS, leaves the fleet
+    /// there and picks up whatever the page queued. Three positions, and the middle one is the default
+    /// the moment an address is entered: off, view only, control. See RemoteBridge.
+    @Published var remoteBridgeMode: String { didSet { defaults.set(remoteBridgeMode, forKey: "remote-bridge-mode") } }
+    /// Full address of api.php on the user's server, e.g. https://example.com/gantry/api.php.
+    @Published var remoteBridgeURL: String { didSet { defaults.set(remoteBridgeURL, forKey: "remote-bridge-url") } }
+    /// The shared secret both ends sign with. Written into the page's config.php by the user.
+    @Published var remoteBridgeKey: String { didSet { defaults.set(remoteBridgeKey, forKey: "remote-bridge-key") } }
+    /// Hold the Mac awake for as long as the bridge is running, because a sleeping Mac is a page that
+    /// shows yesterday's fleet. The shortcut still works on its own, for everything else.
+    @Published var keepAwakeWithBridge: Bool { didSet { defaults.set(keepAwakeWithBridge, forKey: "keep-awake-with-bridge") } }
+
+    /// Watching prints for failures with a model the user supplies (see DefectWatch). Off until there
+    /// is a model to use, because a watchdog with no model would only pretend to watch.
+    @Published var defectWatchEnabled: Bool { didSet { defaults.set(defectWatchEnabled, forKey: "defect-watch-enabled") } }
+    /// The Core ML file Gantry asks. Gantry ships none: the ready-made ones cannot be handed on, and
+    /// a model trained on these cameras beats a general one.
+    @Published var defectModelPath: String { didSet { defaults.set(defectModelPath, forKey: "defect-model-path") } }
+    /// Seconds between looks. Rare enough to cost nothing, often enough to catch a failure early.
+    @Published var defectWatchSeconds: Int { didSet { defaults.set(defectWatchSeconds, forKey: "defect-watch-seconds") } }
+    /// How sure the model must be, and how many times in a row, before Gantry says anything.
+    @Published var defectThreshold: Double { didSet { defaults.set(defectThreshold, forKey: "defect-threshold") } }
+    @Published var defectHitsNeeded: Int { didSet { defaults.set(defectHitsNeeded, forKey: "defect-hits") } }
+    /// Whether a verdict also pauses the print. Off by default: stopping somebody's print on a guess
+    /// is a bigger promise than telling them about it.
+    @Published var defectPausesPrint: Bool { didSet { defaults.set(defectPausesPrint, forKey: "defect-pauses-print") } }
+
+    /// How much room the marked camera frames may take before the oldest ones are dropped. In
+    /// megabytes, because that is how the user thinks about a disk (see DefectDataset).
+    @Published var defectDatasetLimitMB: Int64 { didSet { defaults.set(Int(defectDatasetLimitMB), forKey: "defect-dataset-limit-mb") } }
+
     /// Download and install new releases automatically (verifying the signature) instead of only
     /// notifying that one is available.
     @Published var autoUpdate: Bool { didSet { defaults.set(autoUpdate, forKey: "auto-update") } }
@@ -192,6 +223,7 @@ final class AppSettings: ObservableObject {
 
     // Edge dock: the narrow always-on-top strip pinned to a screen edge. Off by default — it is an
     // opt-in second surface, not a replacement for the menu-bar popover.
+    @Published var edgeDockAlwaysOnTop: Bool { didSet { defaults.set(edgeDockAlwaysOnTop, forKey: "edge-dock-always-on-top") } }
     @Published var edgeDockEnabled: Bool { didSet { defaults.set(edgeDockEnabled, forKey: "edge-dock-enabled") } }
     @Published var edgeDockEdge: EdgeDockEdge { didSet { defaults.set(edgeDockEdge.rawValue, forKey: "edge-dock-edge") } }
     @Published var edgeDockRow: EdgeDockRow { didSet { defaults.set(edgeDockRow.rawValue, forKey: "edge-dock-row") } }
@@ -253,6 +285,17 @@ final class AppSettings: ObservableObject {
         panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
         spoolbaseEnabled = defaults.object(forKey: "spoolbase-enabled") as? Bool ?? true
         webDashboardEnabled = defaults.object(forKey: "web-dashboard-enabled") as? Bool ?? true
+        remoteBridgeMode = defaults.string(forKey: "remote-bridge-mode") ?? "off"
+        remoteBridgeURL = defaults.string(forKey: "remote-bridge-url") ?? ""
+        remoteBridgeKey = defaults.string(forKey: "remote-bridge-key") ?? ""
+        keepAwakeWithBridge = defaults.object(forKey: "keep-awake-with-bridge") as? Bool ?? false
+        defectWatchEnabled = defaults.object(forKey: "defect-watch-enabled") as? Bool ?? false
+        defectModelPath = defaults.string(forKey: "defect-model-path") ?? ""
+        defectWatchSeconds = defaults.object(forKey: "defect-watch-seconds") as? Int ?? 20
+        defectThreshold = defaults.object(forKey: "defect-threshold") as? Double ?? 0.7
+        defectHitsNeeded = defaults.object(forKey: "defect-hits") as? Int ?? 3
+        defectPausesPrint = defaults.object(forKey: "defect-pauses-print") as? Bool ?? false
+        defectDatasetLimitMB = Int64(defaults.object(forKey: "defect-dataset-limit-mb") as? Int ?? 500)
         autoUpdate = defaults.object(forKey: "auto-update") as? Bool ?? false
         developerMode = defaults.object(forKey: "developer-mode") as? Bool ?? false
         printerControlEnabled = defaults.object(forKey: "printer-control-enabled") as? Bool ?? false
@@ -277,7 +320,22 @@ final class AppSettings: ObservableObject {
         finishingSoonMinutes = defaults.object(forKey: "notify-finishing-soon-minutes") as? Int ?? 10
         notifyHumidity = defaults.object(forKey: "notify-humidity") as? Bool ?? true
         floatingWindowEnabled = defaults.object(forKey: "floating-window-enabled") as? Bool ?? false
-        floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? true
+        // Zgłoszone 2026-09-22: okno floty przykrywało wszystko, także alerty, i nie dawało się
+        // zasłonić. Zwykłe okno to domyślny stan; pinezka na karcie dalej je podnosi. Zapisane „na
+        // górze” z poprzednich wersji jest jednorazowo czyszczone, bo prawie nikt tego nie wybierał
+        // świadomie: taka była fabryczna wartość.
+        let pinMigrated = "gantry.floating-pin-default-migrated"
+        if !defaults.bool(forKey: pinMigrated) {
+            defaults.set(true, forKey: pinMigrated)
+            defaults.removeObject(forKey: "floating-window-always-on-top")
+        }
+        // Reset the old raised-window preference once; pinning remains an explicit user choice.
+        if !defaults.bool(forKey: "ordinary-windows-v1") {
+            defaults.set(false, forKey: "floating-window-always-on-top")
+            defaults.set(true, forKey: "ordinary-windows-v1")
+        }
+        floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? false
+        edgeDockAlwaysOnTop = defaults.object(forKey: "edge-dock-always-on-top") as? Bool ?? true
         edgeDockEnabled = defaults.object(forKey: "edge-dock-enabled") as? Bool ?? false
         edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
         edgeDockRow = EdgeDockRow(rawValue: defaults.string(forKey: "edge-dock-row") ?? "") ?? .middle
@@ -310,6 +368,8 @@ final class AppSettings: ObservableObject {
     private func forceLiteDefaults() {
         spoolbaseEnabled = false
         webDashboardEnabled = false
+        remoteBridgeMode = "off"
+        keepAwakeWithBridge = false
         telegramEnabled = false
         floatingWindowEnabled = false
         edgeDockEnabled = false

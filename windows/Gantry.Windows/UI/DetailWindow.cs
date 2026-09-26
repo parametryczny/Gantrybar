@@ -75,12 +75,15 @@ public sealed class DetailView : UserControl
     private static readonly Brush ChamberBrush = new SolidColorBrush(Color.FromRgb(0xBB, 0xA5, 0xEF));
 
     private readonly Action _onBack;
+    private readonly Action? _onSkipObjects;
+    private readonly Button _skipObjects;
 
-    public DetailView(PrinterStore store, string serial, Action onBack)
+    public DetailView(PrinterStore store, string serial, Action onBack, Action? onSkipObjects = null)
     {
         _store = store;
         _serial = serial;
         _onBack = onBack;
+        _onSkipObjects = onSkipObjects;
         _pl = AppSettings.Polish;
         var printer = store.Printers.FirstOrDefault(p => p.Serial == serial);
         _kind = printer?.Kind ?? PrinterKind.Bambu;
@@ -312,7 +315,17 @@ public sealed class DetailView : UserControl
             Background = System.Windows.Media.Brushes.Transparent, Foreground = White(), BorderThickness = new Thickness(0)
         };
         back.Click += (_, _) => _onBack();
-        var backBar = new Border { Padding = new Thickness(8, 8, 8, 2), Child = back };
+        // Next to Back, as on macOS: the same skip the card offers, for the printers that take it.
+        _skipObjects = new Button
+        {
+            Content = AppSettings.T("Skip object…"), Padding = new Thickness(10, 4, 12, 5), FontSize = 12,
+            Cursor = Cursors.Hand, Background = System.Windows.Media.Brushes.Transparent,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)), BorderThickness = new Thickness(0),
+            Visibility = Visibility.Collapsed
+        };
+        _skipObjects.Click += (_, _) => _onSkipObjects?.Invoke();
+        var navigation = new StackPanel { Orientation = Orientation.Horizontal, Children = { back, _skipObjects } };
+        var backBar = new Border { Padding = new Thickness(8, 8, 8, 2), Child = navigation };
         DockPanel.SetDock(backBar, Dock.Top);
 
         var root = new DockPanel();
@@ -454,6 +467,9 @@ public sealed class DetailView : UserControl
     {
         var t = _store.Telemetry.TryGetValue(_serial, out var tel) ? tel : new PrinterTelemetry();
         var printer = _store.Printers.FirstOrDefault(p => p.Serial == _serial);
+        _skipObjects.Visibility = _onSkipObjects is not null && _store.OffersObjectSkipping(_serial)
+            && t.State is PrinterState.Printing or PrinterState.Paused
+            ? Visibility.Visible : Visibility.Collapsed;
         // Neutral status contract: state is read from the text, colour stays neutral.
         var accent = GTheme.Accent;
 

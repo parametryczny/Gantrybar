@@ -202,6 +202,9 @@ public partial class SettingsWindow : Window
         "General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Advanced",
     };
 
+    /// <summary>For the edge strip's settings button: whoever clicks it came for the strip's options.</summary>
+    public void SelectWindowsPane() => PaneList.SelectedItem = PaneItemWindows;
+
     private void ShowPane(int index)
     {
         var panes = Panes;

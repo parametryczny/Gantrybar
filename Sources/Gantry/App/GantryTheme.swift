@@ -9,11 +9,18 @@ enum GantryTheme {
     static let cardRadius: CGFloat = 16
     static let tileRadius: CGFloat = 10.5
     static let gap: CGFloat = 8
+    /// Between printer cards, across and down. Wider than `gap` so a big fleet reads as separate cards.
+    static let cardGap: CGFloat = 12
 
     // MARK: Surfaces
     static let canvas    = NSColor(hex: 0x0C0D0E)
     static let card      = NSColor(hex: 0x151719)
     static let line      = NSColor.white.withAlphaComponent(0.09)
+    /// A printer card: one step lighter than `card` and nearly opaque, with a firmer edge than `line`,
+    /// so cards stand apart from the canvas instead of melting into it (a fleet of eleven, 2026-09-18).
+    static let fleetCard     = NSColor(hex: 0x1B1E21)
+    static let fleetCardAlpha: CGFloat = 0.86
+    static let fleetCardLine = NSColor.white.withAlphaComponent(0.16)
     static let surface   = NSColor.white.withAlphaComponent(0.052)
     /// `surface` with the card's dark fill already blended in. A bento tile borrows its contrast from
     /// the opaque card underneath it, but the fleet header sits straight on the window backdrop, and

@@ -60,15 +60,15 @@ final class BambuJPEGCameraStream: @unchecked Sendable {
             guard let port = NWEndpoint.Port(rawValue: 6000) else { return }
             let connection = NWConnection(host: NWEndpoint.Host(self.host), port: port, using: parameters)
             self.connection = connection
-            connection.stateUpdateHandler = { [weak self] state in
-                guard let self else { return }
+            connection.stateUpdateHandler = { [weak self, weak connection] state in
+                guard let self, !self.stopped else { return }
                 switch state {
                 case .ready:
-                    connection.send(content: Self.authPacket(accessCode: self.accessCode),
+                    connection?.send(content: Self.authPacket(accessCode: self.accessCode),
                                     completion: .contentProcessed { _ in })
                     self.receive()
-                case .failed(let error):
-                    self.onState(.failed(error.localizedDescription))
+                case .failed(let error), .waiting(let error):
+                    self.fail(error.localizedDescription)
                 case .cancelled:
                     break
                 default:
@@ -80,13 +80,28 @@ final class BambuJPEGCameraStream: @unchecked Sendable {
     }
 
     func stop() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            self.stopped = true
-            self.connection?.cancel()
-            self.connection = nil
-            self.buffer.removeAll()
+        queue.async { [self] in
+            stopped = true
+            closeConnection()
         }
+    }
+
+    private func closeConnection() {
+        connection?.stateUpdateHandler = nil
+        connection?.cancel(); connection = nil
+        buffer.removeAll()
+    }
+
+    private func fail(_ reason: String) {
+        guard !stopped else { return }
+        stopped = true
+        closeConnection()
+        onState(.failed(reason))
+    }
+
+    deinit {
+        connection?.stateUpdateHandler = nil
+        connection?.cancel()
     }
 
     private func receive() {
@@ -101,8 +116,7 @@ final class BambuJPEGCameraStream: @unchecked Sendable {
                 }
             }
             if isComplete || error != nil {
-                self.onState(.failed(error?.localizedDescription
-                                     ?? Localization.t("Connection closed")))
+                self.fail(error?.localizedDescription ?? Localization.t("Connection closed"))
                 return
             }
             self.receive()

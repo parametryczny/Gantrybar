@@ -270,6 +270,33 @@ Console.WriteLine("Windows Elegoo camera OK — Cmd 386 reply, shared stream slo
 }
 Console.WriteLine("Windows edge dock placement OK — display lookup, rows, inner edges, saved frames, monitor list");
 
+// Low rolls: a tagged roll by its percentage, a Spoolbase roll by its grams, a chipless roll never, and the
+// roll named when the printer pauses for a runout. Same cases as LowFilamentTests.swift and test_low_filament.py.
+{
+    static Gantry.Models.FilamentSlot Slot(string label, int? percent = null, double? tagGrams = null, bool active = false) =>
+        new() { Id = label, Label = label, Material = "PLA", ColorHex = "FFFFFF", RemainingPercent = percent,
+                RemainingWeightGrams = tagGrams, IsActive = active };
+    static List<Gantry.Models.FilamentGroup> Groups(params Gantry.Models.FilamentSlot[] slots) =>
+        new() { new() { Id = "0", DisplayName = "AMS", DeclaredCapacity = slots.Length, Slots = slots.ToList() } };
+    static Gantry.Models.PhysicalSpool Roll(double grams) =>
+        new() { Id = "SP-00007", NominalWeightGrams = 1000, RemainingWeightGrams = grams };
+
+    var tagged = LowFilament.LowSlots("X1", Groups(Slot("A1", 15, 150), Slot("A2", 16, 160)), _ => null);
+    if (tagged.Count != 1 || tagged[0] != new LowFilament.Slot("0-0", "A1", "PLA", "15%"))
+        throw new Exception("A tagged roll at 15% was not low, or one at 16% was");
+    if (LowFilament.LowSlots("X1", Groups(Slot("A1", 0)), _ => null).Count != 0)
+        throw new Exception("A chipless roll without Spoolbase was reported low");
+    var counted = LowFilament.LowSlots("X1", Groups(Slot("A1", 0), Slot("A2", 0)), l => l.Slot == 0 ? Roll(85.4) : Roll(101));
+    if (counted.Count != 1 || counted[0] != new LowFilament.Slot("0-0", "A1", "PLA", "85 g"))
+        throw new Exception("A Spoolbase roll was not judged by its grams");
+    if (LowFilament.LowSlots("X1", Groups(Slot("A1", 90, 900)), _ => Roll(40)).SingleOrDefault()?.Amount != "40 g")
+        throw new Exception("Spoolbase did not outrank a full-looking tag");
+    if (LowFilament.FeedingSlot(Groups(Slot("A1"), Slot("A3", active: true)), Groups(Slot("A1"), Slot("A3")))?.Label != "A3"
+        || LowFilament.FeedingSlot(null, Groups(Slot("A1"), Slot("A3"))) is not null)
+        throw new Exception("The roll that ran out was not the one feeding before the pause");
+}
+Console.WriteLine("Windows low filament OK — tags by percent, Spoolbase by grams, chipless never, runout names the roll");
+
 // Helper processes end with Gantry: a process in the job dies when the job's last handle closes, which is
 // what Windows does to Gantry's handle when Gantry ends from outside (an installer, Task Manager, a crash).
 if (OperatingSystem.IsWindows())
@@ -292,3 +319,20 @@ if (OperatingSystem.IsWindows())
     }
     Console.WriteLine("Windows helper processes OK — a closed job ends the ffmpeg-style child it holds");
 }
+
+// Who gets the skip-object button: a Bambu printer only in LAN Only mode with Developer Mode on,
+// because a cloud-bound one refuses every command Bambu Connect did not sign.
+{
+    if (ObjectSkipping.IsOffered(Gantry.Models.PrinterKind.Bambu, signedCommandsRequired: true))
+        throw new Exception("A Bambu printer that wants signed commands was offered object skipping");
+    if (!ObjectSkipping.IsOffered(Gantry.Models.PrinterKind.Bambu, signedCommandsRequired: false))
+        throw new Exception("A LAN-only Bambu printer was not offered object skipping");
+    if (!ObjectSkipping.IsOffered(Gantry.Models.PrinterKind.Klipper, signedCommandsRequired: true))
+        throw new Exception("Klipper was refused object skipping");
+    foreach (var kind in new[] { Gantry.Models.PrinterKind.Prusa, Gantry.Models.PrinterKind.Snapmaker,
+                                 Gantry.Models.PrinterKind.ElegooCc1, Gantry.Models.PrinterKind.ElegooCc2,
+                                 Gantry.Models.PrinterKind.AnycubicKobraS1 })
+        if (ObjectSkipping.IsOffered(kind, signedCommandsRequired: false))
+            throw new Exception($"{kind} was offered object skipping it cannot do");
+}
+Console.WriteLine("Windows object skipping OK — Bambu only in LAN Only + Developer Mode, Klipper always");

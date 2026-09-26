@@ -204,11 +204,11 @@ public partial class DashboardWindow : Window
     {
         if (WindowMode)
         {
-            ShowPanel(new DetailView(_store, serial, ClosePanel), 500, 720);
+            ShowPanel(new DetailView(_store, serial, ClosePanel, () => ShowSkipObjects(serial)), 500, 720);
             return;
         }
         HideCardMenu();
-        DetailLayer.Child = new DetailView(_store, serial, HideDetail);
+        DetailLayer.Child = new DetailView(_store, serial, HideDetail, () => ShowSkipObjects(serial));
         DetailLayer.Visibility = Visibility.Visible;
         FitHeightToContent();
     }
@@ -653,7 +653,8 @@ public partial class DashboardWindow : Window
                 // macOS contract: multi-nozzle printers remain freely placeable one-cell cards.
                 // Only multi-AMS cards are wide; an odd final card stretches in popover mode only.
                 int cols = layoutColumns;
-                if (!WindowMode) Width = (cols == 1 ? 420 : 643) * AppSettings.CardScalePercent / 100.0;
+                // Two columns keep the cards' own width: the wider gap between them widens the panel instead.
+                if (!WindowMode) Width = (cols == 1 ? 420 : 645) * AppSettings.CardScalePercent / 100.0;
                 for (int i = 0; i < cols; i++)
                     CardsPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 int row = 0, column = 0;
@@ -1073,9 +1074,9 @@ public partial class DashboardWindow : Window
 
             Root = new Border
             {
-                Background = GTheme.Brush(GTheme.CardTranslucent),
+                Background = GTheme.Brush(GTheme.FleetCard),
                 CornerRadius = new CornerRadius(GTheme.CardRadius),
-                BorderBrush = GTheme.Brush(GTheme.Line),
+                BorderBrush = GTheme.Brush(GTheme.FleetCardLine),
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(10, 6, 10, 6),
                 Margin = new Thickness(GTheme.FleetColumnGap / 2, GTheme.FleetRowGap / 2,
@@ -1171,9 +1172,8 @@ public partial class DashboardWindow : Window
             _printerAlert.Visibility = hasPrinterAlert ? Visibility.Visible : Visibility.Collapsed;
             _printerAlert.Content = actionable.Count > 1 ? $"! {actionable.Count}" : "!";
             _printerAlert.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x4E));
-            var currentPrinter = _owner._store.Printers.FirstOrDefault(value => value.Serial == Serial);
             _skipObjects.Visibility = Build.HasExtras && (t.State is PrinterState.Printing or PrinterState.Paused)
-                && (currentPrinter?.Kind is PrinterKind.Bambu or PrinterKind.Klipper)
+                && _owner._store.OffersObjectSkipping(Serial)
                 ? Visibility.Visible : Visibility.Collapsed;
             _connection.Text = printer.Kind switch
             {
@@ -1202,8 +1202,8 @@ public partial class DashboardWindow : Window
             _percent.Foreground = GTheme.Brush(accent);
             _eta.Text = FormatEtaWithFinish(t.RemainingMinutes);
             _layers.Text = t.CurrentLayer is { } cl && t.TotalLayers is { } tl ? $"{cl}/{tl}" : "—";
-            Root.BorderBrush = GTheme.Brush(GTheme.Line);
-            Root.Background = GTheme.Brush(GTheme.CardTranslucent);
+            Root.BorderBrush = GTheme.Brush(GTheme.FleetCardLine);
+            Root.Background = GTheme.Brush(GTheme.FleetCard);
 
             // Temperature row: icons + current/target stay on one line, matching macOS.
             // Neutral tiles — the hue lives ONLY on the value (nozzle warm, bed gold, chamber violet).
@@ -1900,7 +1900,7 @@ public partial class DashboardWindow : Window
         // LITE keeps the menu to what a monitor needs: reconnect, copy IP, edit, remove. No detail
         // view, no slicer hand-offs.
         if (Build.HasExtras) Item(AppSettings.T("Details"), () => ShowDetail(serial));
-        if (Build.HasExtras && (printer.Kind is PrinterKind.Bambu or PrinterKind.Klipper))
+        if (Build.HasExtras && _store.OffersObjectSkipping(serial))
             Item(AppSettings.T("Skip object"), () => ShowSkipObjects(serial));
         Item(AppSettings.T("Reconnect"), () => { if (Current() is { } p) _store.Reconnect(p); });
 

@@ -24,6 +24,7 @@ except (ImportError, ValueError):
     Gst = None  # type: ignore[assignment]
 
 from . import i18n
+from .barcodescan import ScannerSession
 from .panelwindow import panel_header
 from .filamentstore import Filament, FilamentStore, TYPES, load_catalog, normalized_hex, save_catalog
 
@@ -465,7 +466,6 @@ class BarcodeScannerDialog(Gtk.Dialog):
                          transient_for=parent, modal=True)
         self.on_code = on_code
         self.pl = pl
-        self.pipeline: Any | None = None
         self.handled = False
         self.set_default_size(520, 380)
         content = self.get_content_area()
@@ -490,66 +490,35 @@ class BarcodeScannerDialog(Gtk.Dialog):
         frame.add_overlay(guide)
         content.pack_start(frame, True, True, 0)
         self.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
-        self.connect("destroy", self._stop)
+        # The camera lives in a ScannerSession: its state changes run off the main thread, so a camera
+        # that fails or hangs can never freeze the dialog or the rest of Gantry.
+        self.session = ScannerSession(Gst, on_frame=self._show_frame, on_code=self._found,
+                                      on_error=self._error, dispatch=GLib.idle_add)
+        self.connect("response", lambda *_args: self.session.stop())
+        self.connect("destroy", lambda *_args: self.session.stop())
         self.show_all()
         GLib.idle_add(self._start)
 
     def _start(self) -> bool:
-        if Gst is None:
-            self._error(i18n.t("GStreamer support is unavailable."))
-            return False
-        if Gst.ElementFactory.find("zbar") is None:
-            self._error((i18n.t("Barcode decoder missing. Install gstreamer1.0-plugins-bad.")))
-            return False
-        try:
-            self.pipeline = Gst.parse_launch(
-                "autovideosrc ! videoconvert ! tee name=t "
-                "t. ! queue ! videoconvert ! video/x-raw,format=RGB ! "
-                "appsink name=preview emit-signals=true max-buffers=1 drop=true sync=false "
-                "t. ! queue ! videoconvert ! zbar message=true ! fakesink sync=false")
-            sink = self.pipeline.get_by_name("preview")
-            sink.connect("new-sample", self._new_sample)
-            bus = self.pipeline.get_bus(); bus.add_signal_watch(); bus.connect("message", self._message)
-            if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-                self._error(i18n.t("Could not start the camera."))
-        except Exception as exc:
-            self._error(str(exc))
+        message = self.session.start()
+        if message:
+            self._error(message)
         return False
 
-    def _new_sample(self, sink: Any) -> Any:
-        sample = sink.emit("pull-sample")
-        if sample is None: return Gst.FlowReturn.ERROR
-        caps = sample.get_caps().get_structure(0)
-        width, height = caps.get_value("width"), caps.get_value("height")
-        buffer = sample.get_buffer()
-        data = buffer.extract_dup(0, buffer.get_size())
-        pixels = GLib.Bytes.new(data)
-        pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(pixels, GdkPixbuf.Colorspace.RGB, False, 8,
-                                                  width, height, width * 3)
-        scaled = pixbuf.scale_simple(480, 270, GdkPixbuf.InterpType.BILINEAR)
-        GLib.idle_add(self.preview.set_from_pixbuf, scaled)
-        return Gst.FlowReturn.OK
+    def _show_frame(self, data: bytes, width: int, height: int) -> None:
+        pixbuf = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(data), GdkPixbuf.Colorspace.RGB, False, 8,
+                                                 width, height, width * 3)
+        self.preview.set_from_pixbuf(pixbuf.scale_simple(480, 270, GdkPixbuf.InterpType.BILINEAR))
 
-    def _message(self, _bus: Any, message: Any) -> None:
-        if message.type == Gst.MessageType.ELEMENT:
-            structure = message.get_structure()
-            if structure is not None and structure.get_name() == "barcode":
-                code = str(structure.get_value("symbol") or "").strip()
-                if code and not self.handled:
-                    self.handled = True
-                    self.response(Gtk.ResponseType.OK)
-                    GLib.idle_add(self.on_code, code)
-        elif message.type == Gst.MessageType.ERROR:
-            error, _debug = message.parse_error()
-            self._error(str(error))
+    def _found(self, code: str) -> None:
+        if self.handled:
+            return
+        self.handled = True
+        self.response(Gtk.ResponseType.OK)
+        GLib.idle_add(self.on_code, code)
 
     def _error(self, message: str) -> None:
-        self.status.set_text((i18n.t("Could not start scanner: ")) + message)
-
-    def _stop(self, *_args: Any) -> None:
-        if self.pipeline is not None and Gst is not None:
-            self.pipeline.set_state(Gst.State.NULL)
-            self.pipeline = None
+        self.status.set_text(i18n.t("Could not start scanner: ") + i18n.t(message))
 
 
 class CatalogDialog(Gtk.Dialog):
@@ -625,7 +594,7 @@ class CatalogDialog(Gtk.Dialog):
 
         self.add_button(i18n.t("Add manually…"), 100)
         self.add_button(i18n.t("Cancel"), Gtk.ResponseType.CANCEL)
-        add_btn = self.add_button(i18n.t("Add printer"), Gtk.ResponseType.OK)
+        add_btn = self.add_button(i18n.t("Add filament"), Gtk.ResponseType.OK)
         add_btn.get_style_context().add_class("suggested-action")
         self.connect("response", self._on_response)
         self.show_all()

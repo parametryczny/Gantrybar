@@ -38,11 +38,19 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
 
     required init?(coder: NSCoder) { nil }
 
+    private var filamentColumns = 2
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let columns = max(1, Int(max(1, view.bounds.width - 56) / 235))
+        guard columns != filamentColumns else { return }
+        filamentColumns = columns
+        DispatchQueue.main.async { [weak self] in self?.renderList() }
+    }
+
     override func loadView() {
-        let background = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 500, height: 560))
-        background.material = .popover
-        background.blendingMode = .behindWindow
-        background.state = .active
+        let background = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 560))
+        background.wantsLayer = true
+        background.layer?.backgroundColor = GantryTheme.card.cgColor
         view = background
 
         // The name lives in the shared window header now ("GANTRY · Spoolbase"), and so does the add
@@ -252,6 +260,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
                 type: type,
                 filaments: grouped[type] ?? [],
                 drawsSeparator: index > 0,
+                columns: filamentColumns,
                 onQuick: { [weak self] item, anchor in self?.presentQuickStock(item, from: anchor) },
                 onEdit: { [weak self] item in self?.presentEditor(item) },
                 onDelete: { [weak self] item in self?.confirmDelete(item) },
@@ -281,7 +290,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             + "\n" + spools.accountingWarnings.values.sorted().joined(separator: "\n")
         alert.addButton(withTitle: AppSettings.shared.t("Close"))
         if !spools.accountingWarnings.isEmpty { alert.addButton(withTitle: AppSettings.shared.t("Mark as reviewed")) }
-        if alert.runModal() == .alertSecondButtonReturn { spools.clearAccountingWarnings() }
+        if ModalHost.run(alert) == .alertSecondButtonReturn { spools.clearAccountingWarnings() }
     }
 
     private func updateSummary() {
@@ -298,7 +307,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         let screenHeight = view.window?.screen?.visibleFrame.height ?? 900
         let chrome: CGFloat = chipsStack.arrangedSubviews.isEmpty ? 125 : 154
         let target = min(screenHeight * 0.75, max(300, chrome + listStack.fittingSize.height))
-        preferredContentSize = NSSize(width: 500, height: target)
+        preferredContentSize = NSSize(width: max(360, view.bounds.width), height: target)
     }
 
     private func renderChips() {
@@ -554,7 +563,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
                 self?.auxiliaryCloseObserver = nil
             }
         }
-        window.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
+        window.level = .normal
         window.collectionBehavior.insert(.moveToActiveSpace)
         window.center()
         controller.showWindow(nil)
@@ -573,6 +582,7 @@ private final class MinimalFilamentSectionView: NSView {
         type: String,
         filaments: [Filament],
         drawsSeparator: Bool,
+        columns: Int,
         onQuick: @escaping (Filament, NSView) -> Void,
         onEdit: @escaping (Filament) -> Void,
         onDelete: @escaping (Filament) -> Void,
@@ -593,13 +603,13 @@ private final class MinimalFilamentSectionView: NSView {
         rows.orientation = .vertical
         rows.alignment = .leading
         rows.spacing = 4
-        for start in stride(from: 0, to: filaments.count, by: 2) {
+        for start in stride(from: 0, to: filaments.count, by: columns) {
             let row = NSStackView()
             row.orientation = .horizontal
             row.alignment = .centerY
             row.distribution = .fillEqually
             row.spacing = 5
-            for offset in 0..<2 {
+            for offset in 0..<columns {
                 let index = start + offset
                 if index < filaments.count {
                     let tile = MinimalFilamentTileView(

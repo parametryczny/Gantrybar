@@ -16,3 +16,7 @@ linux/gantry/data/web-dashboard.html
 
 # Local Windows test installers belong to CI artifacts and releases, not the source tree.
 dist-windows-test/
+
+# The remote page's own settings and its data directory stay on the user's server.
+web/config.php
+web/data/

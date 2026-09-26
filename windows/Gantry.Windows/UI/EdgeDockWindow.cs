@@ -18,8 +18,8 @@ namespace Gantry.UI;
 /// opens that printer's details. Mirrors the macOS EdgeDockWindowController.
 ///
 /// Issue #34, ported from macOS: the strip can be pinned open, and pinned or released from the strip
-/// itself; and any printer can be given a live picture hung directly under its own row. The two are
-/// independent: a picture works on a strip that still folds, it is simply hidden while folded, and
+/// itself; and any printer can be given a live picture, shown whole with its caption laid over its bottom
+/// (contract edgeDock.captions). Under the strip sits its settings button (edgeDock.settingsButton). The two are independent: a picture works on a strip that still folds, it is simply hidden while folded, and
 /// its stream keeps running so unfolding shows a live image at once instead of a reconnect.
 ///
 /// The "grows out of the edge" look comes from the two concave fillets where the strip meets the
@@ -33,6 +33,7 @@ public sealed class EdgeDockWindow : Window
 
     private readonly PrinterStore _store;
     private readonly Action<string> _onSelect;
+    private readonly Action _onSettings;
     private readonly Canvas _canvas = new();
     private readonly Path _shape = new();
     private List<Entry> _entries = new();
@@ -48,16 +49,46 @@ public sealed class EdgeDockWindow : Window
     /// rebuild, so a new frame only swaps a Source and never redraws the strip.
     private readonly Dictionary<string, DockCameraFeed> _cameraFeeds = new();
     private readonly Dictionary<string, Image> _cameraImages = new();
-    /// Click targets from the last draw. Rows are not a fixed pitch once a picture sits between two
-    /// of them, so hit-testing uses exactly what was drawn.
+    /// When each picture last sent a frame and when its stream started, so a camera that goes quiet can
+    /// say so; and a once-a-second look, because a quiet camera sends nothing to redraw on.
+    private readonly Dictionary<string, DateTime> _frameTimes = new();
+    private readonly Dictionary<string, DateTime> _cameraStarted = new();
+    private readonly DispatcherTimer _pictureStatusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private string _pictureStatuses = "";
+    /// Height of the chosen display's work area in device-independent units, so the open strip fits it.
+    private double _availableHeight = double.PositiveInfinity;
+    /// Click targets from the last draw. Blocks are not a fixed pitch once pictures are involved, so
+    /// hit-testing uses exactly what was drawn.
     private readonly List<(Rect Area, string Serial)> _rowHits = new();
+    /// Pictures take no clicks: a click on one is not a click on its printer.
+    private readonly List<Rect> _pictureHits = new();
     private Rect? _pinHit;
+    private bool _orbHovered;
+    /// The gear's turn on the last click, animated by the gear's own transform.
+    private RotateTransform? _gearSpin;
 
     private const double Ring = 18, RingStroke = 2.2, CollapsedWidth = 30, CollapsedGap = 10;
-    private const double RowHeight = 26, RowGap = 3, PadY = 10, Notch = 13;
-    private const double ExpandedPadX = 13, ExpandedTextGap = 9;
-    /// Band above the rows holding the pin control, shown whenever the strip is open.
-    private const double PinRow = 18, PinGap = 4, PinGlyph = 12;
+    private const double PadY = 10, Notch = 13;
+    /// Open, every printer is one block in a single column. A printer with a picture is just the picture,
+    /// with the name on the leading side and the percentage, time and ring at the end laid over its bottom
+    /// edge on a soft dark fade, so a camera costs no more height than its image. A printer without one is
+    /// its caption plus a note saying why. A hairline separates neighbours. Contract edgeDock.captions, in
+    /// the Windows dock's own larger units.
+    private const double InsetX = 12, PictureRadius = 9, CaptionMinHeight = 34, CaptionPadY = 5,
+                         CaptionInnerGap = 6, WrappedLineGap = 1, StatusRow = 20, StatusIcon = 14, PrinterGap = 10,
+                         OverlayShade = 52, OverlayShadeAlpha = 0.72, OverlayPadX = 10,
+                         NameSize = 14, ValueSize = 12, StatusSize = 12, NameWidthCap = 140, ScreenMargin = 16,
+                         ExpandedBottomPad = 8, MinimumPictureShare = 0.55, PictureShareStep = 0.02;
+    private const byte SeparatorAlpha = 31;   // 12 % white
+    private const double PlainMinStripWidth = 180, PlainMaxStripWidth = 260;
+    /// A picture that has not sent a frame for this long says "No picture"; before its first frame it says
+    /// "Connecting…" for this long.
+    private const double PictureSilenceSeconds = 4, PictureFirstFrameSeconds = 12;
+    /// The camera glyph in a 12x12 design box, y down: body, lens, and the strike when there is none.
+    private static readonly Rect CameraGlyphBody = new(1, 3, 7.5, 6);
+    private static readonly (double X, double Y)[] CameraGlyphLens = { (8.5, 5), (11, 3.5), (11, 8.5), (8.5, 7) };
+    /// Band above the printers holding the pin control, shown whenever the strip is open.
+    private const double PinRow = 18, PinGap = 12, PinGlyph = 12;
     /// The pin, in a 16x16 design box, upright with the needle down: a flat head, a shaft, a flared
     /// collar and the needle. The same points on macOS and Linux (contract edgeDock.pinControl).
     private static readonly (double X, double Y)[] PinPoints =
@@ -67,8 +98,16 @@ public sealed class EdgeDockWindow : Window
     };
     /// Released, the pin leans over; pinned, it stands straight in.
     private const double PinReleasedAngle = 45;
+    /// The settings button under the strip. At rest only a quarter arc tucked into the pocket the bottom
+    /// fillet makes, running parallel to it; on hover the same circle fills in and takes a gear. The circle
+    /// is the fillet's own, so the disc exactly fills the pocket and, folded, the strip's whole width.
+    /// OrbBand is the room under the fillet for the disc's lower half.
+    private const double OrbBand = 16, OrbArcGap = 2.5, OrbStroke = 3.5, OrbGlyph = 14;
+    /// The gear, in a box OrbGlyph wide: eight teeth, the root circle at 72 % of the tip, each tooth 34 %
+    /// of its period wide at the tip and 60 % at the root, and a hole of 32 %. The same shape as macOS and Linux.
+    private const int GearTeeth = 8;
+    private const double GearRoot = 0.72, GearTipSpan = 0.17, GearRootSpan = 0.30, GearHole = 0.32;
     private bool _pinHovered;
-    private const double CameraGap = 8, CameraRadius = 8;
     /// A 16:9 picture this narrow is already a squint; below this the strip is not worth the pixels.
     private const double CameraMinStripWidth = 236, CameraMaxStripWidth = 300;
     private static double UiScale => AppSettings.EdgeDockScalePercent / 100.0;
@@ -101,12 +140,19 @@ public sealed class EdgeDockWindow : Window
     [DllImport("shcore.dll")]
     private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 
-    private sealed record Entry(string Serial, string Name, PrinterState State, int Progress, int? RemainingMinutes);
+    private enum DockCamera { Live, PreviewOff, NoCamera, Hidden }
 
-    public EdgeDockWindow(PrinterStore store, Action<string> onSelect)
+    private sealed record Entry(string Serial, string Name, PrinterState State, int Progress, int? RemainingMinutes,
+                                DockCamera Camera = DockCamera.Hidden);
+
+    private sealed record Row(double BlockTop, double BlockHeight, double PictureWidth, double PictureHeight,
+                              double CaptionTop, double CaptionHeight, bool Wraps, bool Overlay, double NameHeight, string? Note);
+
+    public EdgeDockWindow(PrinterStore store, Action<string> onSelect, Action onSettings)
     {
         _store = store;
         _onSelect = onSelect;
+        _onSettings = onSettings;
 
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -137,12 +183,13 @@ public sealed class EdgeDockWindow : Window
             _hovering = false;
             if (!AppSettings.EdgeDockPinned) Rebuild();
         };
-        MouseEnter += (_, _) =>
+        MouseEnter += (_, e) =>
         {
             _collapseTimer.Stop();
-            if (_hovering) return;
-            if (_innerEdge && !AppSettings.EdgeDockPinned) { _dwellTimer.Stop(); _dwellTimer.Start(); return; }
-            BeginHover();
+            var point = e.GetPosition(_canvas);
+            SetOrbHovered(OrbContains(point));
+            // Reaching for the settings button under the strip must not unfold a folded strip.
+            if (!IsBelowBody(point)) PointerReachedBody();
         };
         // Still over the strip after the dwell: a stop, not a pass on the way to the next display.
         _dwellTimer.Tick += (_, _) => { _dwellTimer.Stop(); if (IsMouseOver) BeginHover(); };
@@ -151,6 +198,7 @@ public sealed class EdgeDockWindow : Window
         MouseLeave += (_, _) =>
         {
             _dwellTimer.Stop();
+            SetOrbHovered(false);
             if (_pinHovered) { _pinHovered = false; Cursor = null; Rebuild(); }
             _collapseTimer.Stop();
             _collapseTimer.Start();
@@ -158,14 +206,25 @@ public sealed class EdgeDockWindow : Window
         // Hover over the pin lifts its disc and shows a hand, so it reads as a control and not a label.
         MouseMove += (_, e) =>
         {
-            bool over = _pinHit is { } pin && pin.Contains(e.GetPosition(_canvas));
+            var point = e.GetPosition(_canvas);
+            SetOrbHovered(OrbContains(point));
+            if (!IsBelowBody(point)) PointerReachedBody();
+            bool over = _pinHit is { } pin && pin.Contains(point);
             if (over == _pinHovered) return;
             _pinHovered = over;
-            Cursor = over ? Cursors.Hand : null;
+            Cursor = over || _orbHovered ? Cursors.Hand : null;
             Rebuild();
         };
         MouseLeftButtonDown += OnClick;
         _displayChangeTimer.Tick += (_, _) => { _displayChangeTimer.Stop(); if (IsVisible) Rebuild(); };
+        _pictureStatusTimer.Tick += (_, _) =>
+        {
+            if (_cameraFeeds.Count == 0) { _pictureStatusTimer.Stop(); _pictureStatuses = ""; return; }
+            var statuses = string.Join("|", _cameraFeeds.Keys.OrderBy(k => k).Select(k => k + "=" + PictureStatus(k)));
+            if (statuses == _pictureStatuses) return;
+            _pictureStatuses = statuses;
+            if (Expanded && IsVisible) Rebuild();
+        };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         // Landing on a display with another scale changes the pixel size the placement was worked out for.
         DpiChanged += (_, _) => Dispatcher.BeginInvoke(new Action(() => { if (IsVisible) Rebuild(); }));
@@ -174,6 +233,7 @@ public sealed class EdgeDockWindow : Window
             _collapseTimer.Stop();
             _dwellTimer.Stop();
             _displayChangeTimer.Stop();
+            _pictureStatusTimer.Stop();
             // A static event: left subscribed, it would keep this window alive after it closed.
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
             DetachCameras();
@@ -201,8 +261,44 @@ public sealed class EdgeDockWindow : Window
         _entries = entries;
         if (_entries.Count == 0) { HideStrip(); return; }
         SyncCameras();
+        var described = _entries.Select(entry => entry with { Camera = CameraState(entry.Serial) }).ToList();
+        // Printers with a live picture first, the rest under them, each group in fleet order.
+        _entries = described.Where(entry => entry.Camera == DockCamera.Live)
+            .Concat(described.Where(entry => entry.Camera != DockCamera.Live)).ToList();
         Rebuild();
         if (!IsVisible) Show();
+    }
+
+    private void PointerReachedBody()
+    {
+        if (_hovering || _dwellTimer.IsEnabled) return;
+        if (_innerEdge && !AppSettings.EdgeDockPinned) { _dwellTimer.Start(); return; }
+        BeginHover();
+    }
+
+    /// The bottom fillet's centre, on the screen edge's side: the circle the settings button is drawn on.
+    private Point OrbCenter()
+    {
+        double scale = UiScale, r = Notch * scale;
+        bool left = AppSettings.EdgeDockEdge == "left";
+        return new Point(left ? r : Width - r, Height - OrbBand * scale);
+    }
+
+    private bool OrbContains(Point point)
+    {
+        var c = OrbCenter();
+        return Math.Sqrt((point.X - c.X) * (point.X - c.X) + (point.Y - c.Y) * (point.Y - c.Y)) <= (Notch + 2) * UiScale;
+    }
+
+    /// Below the body: the fillet's pocket and the band under it.
+    private bool IsBelowBody(Point point) => point.Y > OrbCenter().Y - Notch * UiScale;
+
+    private void SetOrbHovered(bool hovered)
+    {
+        if (hovered == _orbHovered) return;
+        _orbHovered = hovered;
+        Cursor = hovered || _pinHovered ? Cursors.Hand : null;
+        Rebuild();
     }
 
     private void BeginHover()
@@ -299,6 +395,29 @@ public sealed class EdgeDockWindow : Window
         foreach (var feed in _cameraFeeds.Values) feed.Stop();
         _cameraFeeds.Clear();
         _cameraImages.Clear();
+        _frameTimes.Clear();
+        _cameraStarted.Clear();
+        _pictureStatusTimer.Stop();
+    }
+
+    private DockCamera CameraState(string serial)
+    {
+        if (!Build.HasExtras) return DockCamera.Hidden;
+        if (_cameraFeeds.ContainsKey(serial)) return DockCamera.Live;
+        var kind = _store.Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
+        return DockCameraFeed.SupportsCamera(kind) ? DockCamera.PreviewOff : DockCamera.NoCamera;
+    }
+
+    /// <summary>Null while frames flow; otherwise the catalogue key of the few words the plate shows.</summary>
+    private string? PictureStatus(string serial)
+    {
+        var now = DateTime.UtcNow;
+        if (!_frameTimes.TryGetValue(serial, out var last))
+        {
+            var started = _cameraStarted.TryGetValue(serial, out var value) ? value : now;
+            return (now - started).TotalSeconds < PictureFirstFrameSeconds ? "Connecting…" : "No picture";
+        }
+        return (now - last).TotalSeconds > PictureSilenceSeconds ? "No picture" : null;
     }
 
     /// Starts and drops feeds so the running set matches what the user ticked. Membership is the only
@@ -327,20 +446,27 @@ public sealed class EdgeDockWindow : Window
             _cameraFeeds[serial].Stop();
             _cameraFeeds.Remove(serial);
             _cameraImages.Remove(serial);
+            _frameTimes.Remove(serial);
+            _cameraStarted.Remove(serial);
         }
         foreach (var serial in wanted.Where(serial => !_cameraFeeds.ContainsKey(serial)).ToList())
         {
-            var image = new Image { Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
+            // Uniform: the whole frame, never cropped or stretched, letterboxed on the plate.
+            var image = new Image { Stretch = Stretch.Uniform, IsHitTestVisible = false };
             _cameraImages[serial] = image;
             var feed = new DockCameraFeed(_store, serial);
             var target = serial;
             feed.FrameReady += frame => Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (_cameraImages.TryGetValue(target, out var shown)) shown.Source = frame;
+                if (!_cameraImages.TryGetValue(target, out var shown)) return;
+                shown.Source = frame;
+                _frameTimes[target] = DateTime.UtcNow;
             }));
             _cameraFeeds[serial] = feed;
+            _cameraStarted[serial] = DateTime.UtcNow;
             feed.Start();
         }
+        if (_cameraFeeds.Count > 0 && !_pictureStatusTimer.IsEnabled) _pictureStatusTimer.Start();
     }
 
     /// The printer worth watching when the user has not named one: printing beats paused, and with a
@@ -355,10 +481,12 @@ public sealed class EdgeDockWindow : Window
         return live.Count == 1 ? live[0].Serial : null;
     }
 
+    /// How long is left and the clock time it ends, as on the fleet cards: "75% · 1h 16m · 15:42". "1:16" on
+    /// its own read as a time of day.
     private string ValueText(Entry entry) => entry.State switch
     {
-        PrinterState.Printing or PrinterState.Paused => entry.RemainingMinutes is > 0
-            ? $"{entry.Progress}% · {entry.RemainingMinutes / 60}:{entry.RemainingMinutes % 60:00}"
+        PrinterState.Printing or PrinterState.Paused => entry.RemainingMinutes is int minutes && minutes > 0
+            ? $"{entry.Progress}% · {(minutes < 60 ? $"{minutes}m" : $"{minutes / 60}h {minutes % 60}m")} · {DateTime.Now.AddMinutes(minutes):t}"
             : $"{entry.Progress}%",
         PrinterState.Finished => AppSettings.T("done"),
         PrinterState.Idle => AppSettings.T("idle"),
@@ -366,47 +494,117 @@ public sealed class EdgeDockWindow : Window
         _ => AppSettings.T("offline"),
     };
 
-    private bool HasPicture(Entry entry) => _cameraImages.ContainsKey(entry.Serial);
+    private bool HasPicture(Entry entry) => entry.Camera == DockCamera.Live && _cameraImages.ContainsKey(entry.Serial);
 
+    /// Sized by the widest caption, but a long name wraps instead of widening the strip.
     private double ExpandedWidth()
     {
         double scale = UiScale;
         double widest = 0;
         foreach (var entry in _entries)
         {
-            widest = Math.Max(widest, MeasureText(entry.Name, 12 * scale, FontWeights.SemiBold)
-                                      + MeasureText(ValueText(entry), 12 * scale, FontWeights.Normal));
+            widest = Math.Max(widest, Math.Min(MeasureText(entry.Name, NameSize * scale, FontWeights.SemiBold), NameWidthCap * scale)
+                                      + MeasureText(ValueText(entry), ValueSize * scale, FontWeights.Normal));
         }
-        // With a picture the strip stops being sized by its longest printer name: the image needs a
-        // usable width of its own, so it raises the floor.
-        double minimum = (_entries.Any(HasPicture) ? CameraMinStripWidth : 180) * scale;
-        double maximum = CameraMaxStripWidth * scale;
-        return Math.Min(Math.Max((ExpandedPadX * 2 + Ring + ExpandedTextGap + 16) * scale + widest, minimum), maximum);
+        bool pictures = _entries.Any(HasPicture);
+        double minimum = (pictures ? CameraMinStripWidth : PlainMinStripWidth) * scale;
+        double maximum = (pictures ? CameraMaxStripWidth : PlainMaxStripWidth) * scale;
+        return Math.Min(Math.Max((InsetX * 2 + CaptionInnerGap * 2 + Ring) * scale + widest, minimum), maximum);
     }
 
-    private static double MeasureText(string text, double size, FontWeight weight)
+    private static double MeasureText(string text, double size, FontWeight weight, double maxWidth = double.PositiveInfinity)
     {
-        var block = new TextBlock { Text = text, FontSize = size, FontWeight = weight };
-        block.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        return block.DesiredSize.Width;
+        var block = new TextBlock { Text = text, FontSize = size, FontWeight = weight,
+                                    TextWrapping = double.IsInfinity(maxWidth) ? TextWrapping.NoWrap : TextWrapping.Wrap };
+        block.Measure(new Size(maxWidth, double.PositiveInfinity));
+        return double.IsInfinity(maxWidth) ? block.DesiredSize.Width : block.DesiredSize.Height;
     }
 
-    private static double CameraWidth(double stripWidth) => Math.Max(0, stripWidth - ExpandedPadX * 2 * UiScale);
+    private static double LineHeight(double size, FontWeight weight) =>
+        MeasureText("Ag", size, weight, 10_000);
 
-    /// Height of the open strip's rows, pictures included. The same arithmetic DrawExpanded walks.
-    private double ExpandedRowsHeight(double stripWidth)
+    /// <summary>The column at full size when it fits the display; otherwise, in this order, smaller pictures,
+    /// pictures replaced by a note, the notes dropped, and last the strip cut at the display's height. The
+    /// order of the printers never changes. The same arithmetic as dockcaptions.py and macOS.</summary>
+    private (List<Row> Rows, double Height) FittedPlan(double stripWidth)
     {
         double scale = UiScale;
-        if (_entries.Count == 0) return RowHeight * scale;
-        double pictureHeight = Math.Round(CameraWidth(stripWidth) * 9 / 16);
-        double height = 0;
+        double chrome = (Notch * 2 + PadY * 2 + ExpandedBottomPad + PinRow + PinGap + OrbBand + ScreenMargin * 2) * scale;
+        double limit = Math.Max(CaptionMinHeight * scale, _availableHeight - chrome);
+        var full = Plan(stripWidth, 1, true, true);
+        if (full.Height <= limit) return full;
+        double pictureTotal = full.Rows.Sum(row => row.PictureHeight);
+        if (pictureTotal > 0)
+        {
+            // Pictures are whole units, so the first estimate can land one or two over; step down.
+            for (double share = 1 - (full.Height - limit) / pictureTotal; share >= MinimumPictureShare; share -= PictureShareStep)
+            {
+                var smaller = Plan(stripWidth, share, true, true);
+                if (smaller.Height <= limit) return smaller;
+            }
+        }
+        var noPictures = Plan(stripWidth, 1, false, true);
+        if (noPictures.Height <= limit) return noPictures;
+        var bare = Plan(stripWidth, 1, false, false);
+        return (bare.Rows, Math.Min(bare.Height, limit));
+    }
+
+    private (List<Row> Rows, double Height) Plan(double stripWidth, double pictureShare, bool pictures, bool notes)
+    {
+        double scale = UiScale;
+        double content = Math.Max(0, stripWidth - InsetX * 2 * scale);
+        double pictureWidth = Math.Round(content * pictureShare);
+        double pictureHeight = Math.Round(pictureWidth * 9 / 16);
+        double textWidth = Math.Max(0, content - (Ring + CaptionInnerGap) * scale);
+        double nameLine = LineHeight(NameSize * scale, FontWeights.SemiBold);
+        double valueLine = LineHeight(ValueSize * scale, FontWeights.Normal);
+        var rows = new List<Row>();
+        double offset = 0;
         for (int i = 0; i < _entries.Count; i++)
         {
-            height += RowHeight * scale;
-            if (HasPicture(_entries[i]) && pictureHeight > 0) height += CameraGap * scale + pictureHeight;
-            if (i < _entries.Count - 1) height += RowGap * scale;
+            var entry = _entries[i];
+            bool showsPicture = pictures && HasPicture(entry) && content > 0;
+            string? note = !notes || showsPicture ? null : entry.Camera switch
+            {
+                DockCamera.Live => "Not enough room for the preview",
+                DockCamera.PreviewOff => "Preview off",
+                DockCamera.NoCamera => "No camera",
+                _ => null,
+            };
+            if (showsPicture)
+            {
+                // Over a picture the caption is one line: a long name is cut with an ellipsis instead.
+                double overlayCaption = CaptionMinHeight * scale;
+                rows.Add(new Row(offset, pictureHeight, pictureWidth, pictureHeight, offset + pictureHeight - overlayCaption,
+                                 overlayCaption, false, true, nameLine, null));
+                offset += pictureHeight;
+                if (i < _entries.Count - 1) offset += PrinterGap * 2 * scale + 1;
+                continue;
+            }
+            double nameWidth = MeasureText(entry.Name, NameSize * scale, FontWeights.SemiBold);
+            double valueWidth = MeasureText(ValueText(entry), ValueSize * scale, FontWeights.Normal);
+            bool wraps = nameWidth + CaptionInnerGap * scale + valueWidth > textWidth;
+            double nameHeight = wraps ? MeasureText(entry.Name, NameSize * scale, FontWeights.SemiBold, textWidth) : nameLine;
+            double textHeight = wraps ? nameHeight + WrappedLineGap * scale + valueLine : Math.Max(nameLine, valueLine);
+            double caption = Math.Max(CaptionMinHeight * scale, textHeight + CaptionPadY * 2 * scale);
+            double block = caption + (note is null ? 0 : StatusRow * scale);
+            rows.Add(new Row(offset, block, 0, 0, offset, caption, wraps, false, nameHeight, note));
+            offset += block;
+            if (i < _entries.Count - 1) offset += PrinterGap * 2 * scale + 1;
         }
-        return height;
+        return (rows, offset);
+    }
+
+    private (List<Row> Rows, double Height) _plan = (new List<Row>(), 0);
+
+    /// <summary>The chosen display's work area height in device-independent units.</summary>
+    private double AvailableHeight()
+    {
+        var displays = ConnectedDisplays();
+        if (EdgeDockPlacement.Resolve(displays, AppSettings.EdgeDockDisplay,
+                EdgeDockPlacement.ParseFrame(AppSettings.EdgeDockDisplayFrame)) is not { } resolved)
+            return double.PositiveInfinity;
+        return resolved.Display.WorkArea.Height / DpiScale(resolved.Display.Frame);
     }
 
     private void Rebuild()
@@ -418,14 +616,16 @@ public sealed class EdgeDockWindow : Window
         if (expanded)
         {
             width = ExpandedWidth();
-            bodyHeight = PadY * 2 * scale + (PinRow + PinGap) * scale + ExpandedRowsHeight(width);
+            _availableHeight = AvailableHeight();
+            _plan = _entries.Count == 0 ? (new List<Row>(), CaptionMinHeight * scale) : FittedPlan(width);
+            bodyHeight = (PadY * 2 + ExpandedBottomPad) * scale + (PinRow + PinGap) * scale + _plan.Height;
         }
         else
         {
             width = CollapsedWidth * scale;
             bodyHeight = (PadY * 2 + count * Ring + (count - 1) * CollapsedGap) * scale;
         }
-        double height = bodyHeight + Notch * 2 * scale;
+        double height = bodyHeight + Notch * 2 * scale + OrbBand * scale;
 
         bool left = AppSettings.EdgeDockEdge == "left";
         Width = width;
@@ -436,7 +636,8 @@ public sealed class EdgeDockWindow : Window
 
         _canvas.Width = width;
         _canvas.Height = height;
-        _shape.Data = BuildSilhouette(width, height, left, Notch * scale);
+        // The silhouette sits above the band that holds the settings button.
+        _shape.Data = BuildSilhouette(width, height - OrbBand * scale, left, Notch * scale);
 
         // Everything except the silhouette is redrawn on each pass; the shape itself is reused, and so
         // are the camera images, which are only re-parented.
@@ -445,8 +646,78 @@ public sealed class EdgeDockWindow : Window
             if (!ReferenceEquals(_canvas.Children[i], _shape)) _canvas.Children.RemoveAt(i);
         }
         _rowHits.Clear();
+        _pictureHits.Clear();
         _pinHit = null;
         if (expanded) DrawExpanded(width, left); else DrawCollapsed(width);
+        DrawSettingsOrb(left);
+    }
+
+    /// Resting: the quarter of the fillet's circle that faces up and out to the screen edge, in the strip's
+    /// own colour. Hovered: the whole disc with the gear.
+    private void DrawSettingsOrb(bool left)
+    {
+        double scale = UiScale, r = Notch * scale;
+        var center = OrbCenter();
+        var color = Color.FromArgb(0xF5, 0x08, 0x09, 0x0B);
+        if (!_orbHovered)
+        {
+            double arcRadius = r - (OrbArcGap + OrbStroke / 2) * scale;
+            var start = new Point(center.X, center.Y - arcRadius);
+            var end = new Point(center.X + (left ? -arcRadius : arcRadius), center.Y);
+            var figure = new PathFigure { StartPoint = start, IsClosed = false, IsFilled = false };
+            figure.Segments.Add(new ArcSegment(end, new Size(arcRadius, arcRadius), 0, false,
+                                               left ? SweepDirection.Counterclockwise : SweepDirection.Clockwise, true));
+            var arc = new PathGeometry();
+            arc.Figures.Add(figure);
+            _canvas.Children.Add(new Path
+            {
+                Data = arc, Stroke = new SolidColorBrush(color), StrokeThickness = OrbStroke * scale,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, IsHitTestVisible = false,
+            });
+            return;
+        }
+        var disc = new Ellipse
+        {
+            Width = r * 2, Height = r * 2, Fill = new SolidColorBrush(color),
+            Stroke = new SolidColorBrush(Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF)), StrokeThickness = 1,
+            ToolTip = AppSettings.T("Strip settings"),
+        };
+        Canvas.SetLeft(disc, center.X - r);
+        Canvas.SetTop(disc, center.Y - r);
+        _canvas.Children.Add(disc);
+        _gearSpin = new RotateTransform(0, center.X, center.Y);
+        _canvas.Children.Add(new Path
+        {
+            Data = GearGeometry(center, OrbGlyph * scale), Stroke = GTheme.Brush(GTheme.Text), StrokeThickness = 1.2 * scale,
+            StrokeLineJoin = PenLineJoin.Round, IsHitTestVisible = false, RenderTransform = _gearSpin,
+        });
+    }
+
+    /// <summary>The gear's outer edge and its hole, <paramref name="size"/> wide around <paramref name="center"/>.</summary>
+    private static Geometry GearGeometry(Point center, double size)
+    {
+        double tip = size / 2, root = size / 2 * GearRoot, period = 2 * Math.PI / GearTeeth;
+        var figure = new PathFigure { IsClosed = true, IsFilled = false };
+        bool first = true;
+        for (int tooth = 0; tooth < GearTeeth; tooth++)
+        {
+            double middle = tooth * period;
+            foreach (var (radius, offset) in new[] { (root, -GearRootSpan), (tip, -GearTipSpan), (tip, GearTipSpan), (root, GearRootSpan) })
+            {
+                double angle = middle + offset * period;
+                var point = new Point(center.X + radius * Math.Cos(angle), center.Y + radius * Math.Sin(angle));
+                if (first) { figure.StartPoint = point; first = false; }
+                else figure.Segments.Add(new LineSegment(point, true));
+            }
+        }
+        var geometry = new GeometryGroup();
+        var outline = new PathGeometry();
+        outline.Figures.Add(figure);
+        geometry.Children.Add(outline);
+        double hole = size / 2 * GearHole;
+        geometry.Children.Add(new EllipseGeometry(center, hole, hole));
+        geometry.Freeze();
+        return geometry;
     }
 
     /// The silhouette: a rounded body flush against the screen edge, plus a concave fillet at each end
@@ -494,81 +765,203 @@ public sealed class EdgeDockWindow : Window
     {
         double scale = UiScale;
         double top = (Notch + PadY) * scale;
-        // The progress ring stays at the physical screen edge in both orientations. Previously it
-        // jumped across the expanded window and left the cursor, causing an enter/leave loop.
-        double ringX = left ? (ExpandedPadX + Ring / 2) * scale : width - (ExpandedPadX + Ring / 2) * scale;
+        // The progress ring stays at the physical screen edge in both orientations, at the end of each
+        // caption. Previously it jumped across the expanded window and left the cursor, causing an
+        // enter/leave loop.
+        double ringX = left ? (InsetX + Ring / 2) * scale : width - (InsetX + Ring / 2) * scale;
 
-        // The pin sits in the ring column, above the first row, so it can never collide with a name.
+        // The pin sits in the ring column, above the first printer, so it can never collide with a name.
         DrawPinButton(new Point(ringX, top + PinRow * scale / 2));
-        top += (PinRow + PinGap) * scale;
-
-        double pictureWidth = CameraWidth(width);
-        double pictureHeight = Math.Round(pictureWidth * 9 / 16);
-        foreach (var entry in _entries)
+        double contentTop = top + (PinRow + PinGap) * scale;
+        double bottomLimit = contentTop + _plan.Height;
+        double gap = PrinterGap * scale;
+        for (int i = 0; i < _plan.Rows.Count && i < _entries.Count; i++)
         {
-            double rowTop = top;
-            double centerY = top + RowHeight * scale / 2;
-            DrawRing(new Point(ringX, centerY), entry);
-
-            bool dim = entry.State is PrinterState.Idle or PrinterState.Offline or PrinterState.Finished;
-            var nameColor = entry.State is PrinterState.Error or PrinterState.Offline
-                ? GTheme.StatusPrinting
-                : (dim ? GTheme.Secondary : GTheme.Text);
-            double textLeft = left ? ringX + (Ring / 2 + ExpandedTextGap) * scale : ExpandedPadX * scale;
-            double textRight = left ? width - ExpandedPadX * scale : ringX - (Ring / 2 + ExpandedTextGap) * scale;
-
-            var value = new TextBlock
+            var entry = _entries[i];
+            var row = _plan.Rows[i];
+            double captionTop = contentTop + row.CaptionTop;
+            // A strip cut at the display's height draws only what is inside it.
+            if (captionTop + row.CaptionHeight > bottomLimit + 1) break;
+            double blockTop = contentTop + row.BlockTop;
+            double pictureLeft = Math.Round((width - row.PictureWidth) / 2);
+            if (row.PictureHeight > 0 && _cameraImages.TryGetValue(entry.Serial, out var image))
             {
-                Text = ValueText(entry), FontSize = 12 * scale, Foreground = GTheme.Brush(GTheme.Muted),
-            };
-            value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            var name = new TextBlock
+                DrawPicture(image, entry.Serial, pictureLeft, blockTop, row.PictureWidth, row.PictureHeight);
+                if (row.Overlay) DrawShade(pictureLeft, blockTop, row.PictureWidth, row.PictureHeight);
+            }
+            DrawCaption(entry, row, captionTop, width, left, ringX);
+            if (row.Note is not null) DrawNote(entry, row.Note, captionTop + row.CaptionHeight, left);
+            // The caption, its note and the room around its hairline open the printer; its picture does
+            // not: OnClick checks the pictures first.
+            double hitTop = blockTop - (i == 0 ? 0 : gap);
+            _rowHits.Add((new Rect(0, hitTop, width, blockTop + row.BlockHeight + gap + 1 - hitTop), entry.Serial));
+            if (i < _plan.Rows.Count - 1)
             {
-                Text = entry.Name, FontSize = 12 * scale, FontWeight = FontWeights.SemiBold,
-                Foreground = GTheme.Brush(nameColor), TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = Math.Max(0, textRight - value.DesiredSize.Width - 8 * scale - textLeft),
-            };
-            name.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var line = new Rectangle
+                {
+                    Width = Math.Max(0, width - InsetX * 2 * scale), Height = 1, IsHitTestVisible = false,
+                    Fill = new SolidColorBrush(Color.FromArgb(SeparatorAlpha, 0xFF, 0xFF, 0xFF)),
+                };
+                Canvas.SetLeft(line, InsetX * scale);
+                Canvas.SetTop(line, Math.Round(blockTop + row.BlockHeight + gap));
+                _canvas.Children.Add(line);
+            }
+        }
+    }
 
+    /// <summary>The whole frame on a dark rounded plate; a dimmed plate with a few words while connecting
+    /// or once frames stop arriving.</summary>
+    private void DrawPicture(Image image, string serial, double left, double top, double width, double height)
+    {
+        double scale = UiScale;
+        var plate = new Rectangle
+        {
+            Width = width, Height = height, RadiusX = PictureRadius * scale, RadiusY = PictureRadius * scale,
+            Fill = new SolidColorBrush(Color.FromArgb(0xFF, 0x10, 0x16, 0x13)), IsHitTestVisible = false,
+        };
+        Canvas.SetLeft(plate, left);
+        Canvas.SetTop(plate, top);
+        _canvas.Children.Add(plate);
+        image.Width = width;
+        image.Height = height;
+        image.Clip = new RectangleGeometry(new Rect(0, 0, width, height), PictureRadius * scale, PictureRadius * scale);
+        Canvas.SetLeft(image, left);
+        Canvas.SetTop(image, top);
+        _canvas.Children.Add(image);
+        // A click on the picture is not a click on its printer, except on the caption over its bottom.
+        _pictureHits.Add(new Rect(left, top, width, Math.Max(0, height - CaptionMinHeight * scale)));
+        if (PictureStatus(serial) is not { } status) return;
+        if (image.Source is not null)
+        {
+            var dim = new Rectangle
+            {
+                Width = width, Height = height, RadiusX = PictureRadius * scale, RadiusY = PictureRadius * scale,
+                Fill = new SolidColorBrush(Color.FromArgb(0x9E, 0, 0, 0)), IsHitTestVisible = false,
+            };
+            Canvas.SetLeft(dim, left);
+            Canvas.SetTop(dim, top);
+            _canvas.Children.Add(dim);
+        }
+        var text = new TextBlock
+        {
+            Text = AppSettings.T(status), FontSize = StatusSize * scale, IsHitTestVisible = false,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xE3, 0xE8, 0xE3)),
+        };
+        text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(text, left + (width - text.DesiredSize.Width) / 2);
+        Canvas.SetTop(text, top + (height - text.DesiredSize.Height) / 2);
+        _canvas.Children.Add(text);
+    }
+
+    /// <summary>A soft dark fade over the bottom of a picture, so the caption on it reads on any image.</summary>
+    private void DrawShade(double left, double top, double width, double height)
+    {
+        double scale = UiScale;
+        double band = Math.Min(height, OverlayShade * scale);
+        var shade = new Rectangle
+        {
+            Width = width, Height = band, IsHitTestVisible = false,
+            Fill = new LinearGradientBrush(Color.FromArgb(0, 0, 0, 0),
+                                           Color.FromArgb((byte)Math.Round(255 * OverlayShadeAlpha), 0, 0, 0), 90),
+            // Only the picture's own bottom corners are rounded.
+            Clip = new RectangleGeometry(new Rect(0, band - height, width, height), PictureRadius * scale, PictureRadius * scale),
+        };
+        Canvas.SetLeft(shade, left);
+        Canvas.SetTop(shade, top + height - band);
+        _canvas.Children.Add(shade);
+    }
+
+    /// <summary>Name on the leading side, then the percentage and time, then the ring. A name that does not
+    /// fit beside its metrics wraps, and the metrics move to the line under it. Over a picture the caption
+    /// keeps to the picture's own edges and stays on one line, a long name cut with an ellipsis.</summary>
+    private void DrawCaption(Entry entry, Row row, double top, double width, bool left, double ringX)
+    {
+        double scale = UiScale;
+        double centerY = top + row.CaptionHeight / 2;
+        double edgeLeft = InsetX * scale, edgeRight = width - InsetX * scale;
+        if (row.Overlay)
+        {
+            double pictureLeft = Math.Round((width - row.PictureWidth) / 2);
+            edgeLeft = pictureLeft + OverlayPadX * scale;
+            edgeRight = pictureLeft + row.PictureWidth - OverlayPadX * scale;
+            ringX = left ? edgeLeft + Ring / 2 * scale : edgeRight - Ring / 2 * scale;
+        }
+        DrawRing(new Point(ringX, centerY), entry);
+        bool dim = entry.State is PrinterState.Idle or PrinterState.Offline or PrinterState.Finished;
+        var nameColor = entry.State is PrinterState.Error or PrinterState.Offline
+            ? GTheme.StatusPrinting
+            : (dim ? GTheme.Secondary : GTheme.Text);
+        double ringSpan = (Ring + CaptionInnerGap) * scale;
+        double textLeft = edgeLeft + (left ? ringSpan : 0);
+        double textRight = edgeRight - (left ? 0 : ringSpan);
+        var value = new TextBlock
+        {
+            Text = ValueText(entry), FontSize = ValueSize * scale,
+            Foreground = GTheme.Brush(row.Overlay ? GTheme.Text : GTheme.Secondary),
+        };
+        value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double nameRoom = row.Wraps ? Math.Max(0, textRight - textLeft)
+                                    : Math.Max(0, textRight - value.DesiredSize.Width - CaptionInnerGap * scale - textLeft);
+        var name = new TextBlock
+        {
+            Text = entry.Name, FontSize = NameSize * scale, FontWeight = FontWeights.SemiBold,
+            Foreground = GTheme.Brush(nameColor), TextWrapping = row.Wraps ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            TextTrimming = row.Wraps ? TextTrimming.None : TextTrimming.CharacterEllipsis,
+            Width = nameRoom,
+        };
+        name.Measure(new Size(nameRoom, double.PositiveInfinity));
+        if (row.Wraps)
+        {
+            double block = row.NameHeight + WrappedLineGap * scale + value.DesiredSize.Height;
+            double y = centerY - block / 2;
+            Canvas.SetLeft(name, textLeft);
+            Canvas.SetTop(name, y);
+            Canvas.SetLeft(value, textLeft);
+            Canvas.SetTop(value, y + row.NameHeight + WrappedLineGap * scale);
+        }
+        else
+        {
             Canvas.SetLeft(name, textLeft);
             Canvas.SetTop(name, centerY - name.DesiredSize.Height / 2);
             Canvas.SetLeft(value, textRight - value.DesiredSize.Width);
             Canvas.SetTop(value, centerY - value.DesiredSize.Height / 2);
-            _canvas.Children.Add(name);
-            _canvas.Children.Add(value);
-            top += RowHeight * scale;
-
-            // The picture hangs directly under its own row, so which machine it shows needs no caption.
-            if (_cameraImages.TryGetValue(entry.Serial, out var image) && pictureWidth > 0)
-            {
-                top += CameraGap * scale;
-                double pictureLeft = (width - pictureWidth) / 2;
-                // A dark plate until the first frame arrives, so the space reads as a picture loading
-                // rather than as a hole in the strip.
-                var plate = new Rectangle
-                {
-                    Width = pictureWidth, Height = pictureHeight,
-                    RadiusX = CameraRadius * scale, RadiusY = CameraRadius * scale,
-                    Fill = new SolidColorBrush(Color.FromArgb(0xFF, 0x15, 0x17, 0x1A)), IsHitTestVisible = false,
-                };
-                Canvas.SetLeft(plate, pictureLeft);
-                Canvas.SetTop(plate, top);
-                _canvas.Children.Add(plate);
-                image.Width = pictureWidth;
-                image.Height = pictureHeight;
-                image.Clip = new RectangleGeometry(new Rect(0, 0, pictureWidth, pictureHeight),
-                                                   CameraRadius * scale, CameraRadius * scale);
-                Canvas.SetLeft(image, pictureLeft);
-                Canvas.SetTop(image, top);
-                _canvas.Children.Add(image);
-                top += pictureHeight;
-            }
-
-            // A click on the row, or in the gap below it, opens that printer. A click on its picture does
-            // not: the picture is not part of the hit area.
-            _rowHits.Add((new Rect(0, rowTop, width, RowHeight * scale + RowGap * scale), entry.Serial));
-            top += RowGap * scale;
         }
+        _canvas.Children.Add(name);
+        _canvas.Children.Add(value);
+    }
+
+    /// <summary>The line under a caption without a picture: a camera glyph, struck through when the printer
+    /// has none, and a few words.</summary>
+    private void DrawNote(Entry entry, string note, double top, bool left)
+    {
+        double scale = UiScale;
+        double x = InsetX * scale + (left ? (Ring + CaptionInnerGap) * scale : 0);
+        double centerY = top + StatusRow * scale / 2 - scale;
+        double unit = StatusIcon * scale / 12;
+        double originY = centerY - StatusIcon * scale / 2;
+        var brush = GTheme.Brush(GTheme.Secondary);
+        var geometry = new GeometryGroup();
+        geometry.Children.Add(new RectangleGeometry(
+            new Rect(x + CameraGlyphBody.X * unit, originY + CameraGlyphBody.Y * unit,
+                     CameraGlyphBody.Width * unit, CameraGlyphBody.Height * unit), 1.5 * unit, 1.5 * unit));
+        var lens = new PathFigure { StartPoint = new Point(x + CameraGlyphLens[0].X * unit, originY + CameraGlyphLens[0].Y * unit), IsClosed = true };
+        for (int i = 1; i < CameraGlyphLens.Length; i++)
+            lens.Segments.Add(new LineSegment(new Point(x + CameraGlyphLens[i].X * unit, originY + CameraGlyphLens[i].Y * unit), true));
+        var lensGeometry = new PathGeometry();
+        lensGeometry.Figures.Add(lens);
+        geometry.Children.Add(lensGeometry);
+        if (entry.Camera == DockCamera.NoCamera)
+            geometry.Children.Add(new LineGeometry(new Point(x + 1 * unit, originY + 1.5 * unit), new Point(x + 11 * unit, originY + 10.5 * unit)));
+        _canvas.Children.Add(new Path
+        {
+            Data = geometry, Stroke = brush, StrokeThickness = 1.1 * unit, IsHitTestVisible = false,
+            StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+        });
+        var text = new TextBlock { Text = AppSettings.T(note), FontSize = StatusSize * scale, Foreground = brush, IsHitTestVisible = false };
+        text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(text, x + (StatusIcon + CaptionInnerGap) * scale);
+        Canvas.SetTop(text, centerY - text.DesiredSize.Height / 2);
+        _canvas.Children.Add(text);
     }
 
     /// Pin and release, on the strip itself. Released: a faint disc and a hollow pin leaning over.
@@ -683,6 +1076,16 @@ public sealed class EdgeDockWindow : Window
     private void OnClick(object sender, MouseButtonEventArgs e)
     {
         var point = e.GetPosition(_canvas);
+        if (OrbContains(point))
+        {
+            // A full turn of the gear, then the settings window on the strip's pane.
+            _gearSpin?.BeginAnimation(RotateTransform.AngleProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(500))
+                { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
+            _onSettings();
+            e.Handled = true;
+            return;
+        }
         // The pin wins over the row beneath it.
         if (_pinHit is { } pin && pin.Contains(point))
         {
@@ -692,6 +1095,7 @@ public sealed class EdgeDockWindow : Window
             e.Handled = true;
             return;
         }
+        if (_pictureHits.Any(picture => picture.Contains(point))) return;
         foreach (var (area, serial) in _rowHits)
         {
             if (!area.Contains(point)) continue;

@@ -10,6 +10,10 @@ final class GantryApp: NSObject, NSApplicationDelegate {
     private var webServerSub: AnyCancellable?
     private var telegramBot: TelegramBot?
     private var telegramSub: AnyCancellable?
+    private var remoteBridge: RemoteBridge?
+    private var defectWatch: DefectWatch?
+    private var defectSubs: [AnyCancellable] = []
+    private var remoteBridgeSubs: [AnyCancellable] = []
     private var activationPolicySub: AnyCancellable?
     private var mainMenuSub: AnyCancellable?
 
@@ -124,6 +128,7 @@ final class GantryApp: NSObject, NSApplicationDelegate {
             appMenu.addItem(action("Reconnect (all)", symbol: "arrow.clockwise",
                                    selector: "appMenuReconnectAll:"))
             if Build.hasExtras {
+                appMenu.addItem(action("Farma · pliki i wydruki…", symbol: "tray.and.arrow.up", selector: "appMenuFarm:", shortcut: "u"))
                 appMenu.addItem(action("Diagnostic Center…", symbol: "stethoscope",
                                        selector: "appMenuDiagnostics:"))
                 appMenu.addItem(action("Fleet statistics…", symbol: "chart.bar",
@@ -230,6 +235,26 @@ final class GantryApp: NSObject, NSApplicationDelegate {
             telegramBot = bot
             bot.syncWithSettings()
             telegramSub = AppSettings.shared.$telegramEnabled.removeDuplicates().sink { _ in bot.syncWithSettings() }
+            // The bridge to the user's own page. It only ever dials out, and only once Settings has an
+            // address, a key and a mode that is not "off".
+            // Wykrywanie wpadek: patrzy tylko wtedy, gdy jest model i użytkownik to włączył.
+            let watch = DefectWatch(store: store)
+            defectWatch = watch
+            watch.syncWithSettings()
+            defectSubs = [
+                AppSettings.shared.$defectWatchEnabled.removeDuplicates().sink { _ in watch.syncWithSettings() },
+                AppSettings.shared.$defectModelPath.removeDuplicates().sink { _ in watch.syncWithSettings() },
+                AppSettings.shared.$defectWatchSeconds.removeDuplicates().sink { _ in watch.syncWithSettings() }
+            ]
+            let bridge = RemoteBridge(store: store)
+            remoteBridge = bridge
+            bridge.syncWithSettings()
+            remoteBridgeSubs = [
+                AppSettings.shared.$remoteBridgeMode.removeDuplicates().sink { _ in bridge.syncWithSettings() },
+                AppSettings.shared.$remoteBridgeURL.removeDuplicates().sink { _ in bridge.syncWithSettings() },
+                AppSettings.shared.$remoteBridgeKey.removeDuplicates().sink { _ in bridge.syncWithSettings() },
+                AppSettings.shared.$keepAwakeWithBridge.removeDuplicates().sink { _ in bridge.syncWithSettings() }
+            ]
         }
         let prompter = LocalNetworkPermissionPrompter {
             Task { @MainActor in store.retryAfterLocalNetworkPermission() }
@@ -242,6 +267,11 @@ final class GantryApp: NSObject, NSApplicationDelegate {
         // Only the full edition does this: LITE may well be installed next to another Gantry, and it is
         // not its place to propose removing the app the user already had.
         if Build.hasExtras { LegacyAppCleanup.offerRemovalIfNeeded() }
+    }
+
+    /// A Mac held awake by Gantry goes back to its own habits when Gantry goes away.
+    func applicationWillTerminate(_ notification: Notification) {
+        KeepAwake.shared.releaseAll()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

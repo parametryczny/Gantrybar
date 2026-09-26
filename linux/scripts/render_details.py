@@ -19,6 +19,7 @@ from gi.repository import Gdk, Gtk  # noqa: E402
 
 from gantry import app as gapp  # noqa: E402
 from gantry import i18n
+from gantry import objectskipping  # noqa: E402
 from gantry.details import DetailPanel  # noqa: E402
 from gantry.core import (  # noqa: E402
     FilamentGroup, FilamentSlot, NozzleTelemetry, Printer, PrinterKind, PrinterState, Telemetry,
@@ -48,6 +49,13 @@ class StubApp:
 
     def open_automations(self, *a): ...
     def open_camera(self, *a): ...
+    def open_skip_objects(self, *a): ...
+
+    def offers_object_skipping(self, serial: str) -> bool:
+        """The render shows the skip, the same answer the app gives a Bambu printer in LAN Only mode
+        with Developer Mode on."""
+        printer = next((item for item in self.printers if item.serial == serial), None)
+        return printer is not None and objectskipping.is_offered(printer.kind, False)
 
 
 def slot(label, material, color, remaining, active):
