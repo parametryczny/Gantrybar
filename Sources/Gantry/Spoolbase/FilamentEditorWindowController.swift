@@ -13,6 +13,8 @@ final class FilamentEditorWindowController: NSWindowController {
     private let colorWell = NSColorWell()
     private let hexField = NSTextField()
     private let codeField = NSTextField()
+    private let eanField = NSTextField()
+    private let priceField = NSTextField()
     private let spoolsField = NSTextField()
     private let notesField = NSTextField()
 
@@ -27,7 +29,7 @@ final class FilamentEditorWindowController: NSWindowController {
         self.prefilledManufacturerCode = prefilledManufacturerCode
         self.onSave = onSave
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: catalogMode ? 440 : 500),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: catalogMode ? 480 : 580),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -55,11 +57,13 @@ final class FilamentEditorWindowController: NSWindowController {
         brandField.addItems(withObjectValues: FilamentCatalog.brands)
         typeField.addItems(withObjectValues: FilamentCatalog.types)
         [brandField, typeField].forEach { $0.completes = true }
-        [nameField, colorNameField, hexField, codeField, spoolsField, notesField].forEach {
+        [nameField, colorNameField, hexField, codeField, eanField, priceField, spoolsField, notesField].forEach {
             $0.bezelStyle = .roundedBezel
         }
         hexField.placeholderString = AppSettings.shared.t("e.g. FF6A13")
         codeField.placeholderString = AppSettings.shared.t("SKU / EAN / manufacturer code")
+        eanField.placeholderString = AppSettings.shared.t("13 digits under the barcode")
+        priceField.placeholderString = PrintCostSettings.current.currency
         notesField.placeholderString = AppSettings.shared.t("Optional note")
         spoolsField.formatter = integerFormatter()
         colorWell.target = self
@@ -76,9 +80,11 @@ final class FilamentEditorWindowController: NSWindowController {
             [label(AppSettings.shared.t("Material type")), typeField],
             [label(AppSettings.shared.t("Colour name")), colorNameField],
             [label(AppSettings.shared.t("Colour")), colorRow],
-            [label(AppSettings.shared.t("Manufacturer code")), codeField]
+            [label(AppSettings.shared.t("Manufacturer code")), codeField],
+            [label(AppSettings.shared.t("EAN code")), eanField]
         ]
         if !catalogMode {
+            rows.append([label(AppSettings.shared.t("Roll price ({0})", PrintCostSettings.current.currency)), priceField])
             rows.append([label(AppSettings.shared.t("Number of spools")), spoolsField])
             rows.append([label(AppSettings.shared.t("Notes")), notesField])
         }
@@ -124,6 +130,8 @@ final class FilamentEditorWindowController: NSWindowController {
         codeField.stringValue = original?.manufacturerCode ?? prefilledManufacturerCode ?? item.manufacturerCode
         spoolsField.integerValue = item.spoolCount
         notesField.stringValue = item.notes
+        eanField.stringValue = item.ean ?? ""
+        priceField.stringValue = item.pricePerRoll.map { String(format: "%g", $0) } ?? ""
     }
 
     @objc private func colorChanged() {
@@ -137,6 +145,25 @@ final class FilamentEditorWindowController: NSWindowController {
         let name = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let type = typeField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let colorName = colorNameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ean = eanField.stringValue.filter { !$0.isWhitespace && $0 != "-" }
+        let priceText = priceField.stringValue.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        let price = priceText.isEmpty ? nil : Double(priceText)
+        if !priceText.isEmpty, price == nil || price! < 0 {
+            let alert = NSAlert()
+            alert.messageText = AppSettings.shared.t("Check the roll price")
+            alert.informativeText = AppSettings.shared.t("Enter a number, e.g. 89.90, or leave it empty.")
+            if let window { alert.beginSheetModal(for: window) }
+            return
+        }
+        if !ean.isEmpty, !EANCode.isPlausible(ean), !eanWarningShown {
+            eanWarningShown = true
+            let alert = NSAlert()
+            alert.messageText = AppSettings.shared.t("This does not look like a valid EAN")
+            alert.informativeText = AppSettings.shared.t("Code {0}: the check digit does not match. Check the digits, or continue anyway.", ean)
+                + "\n" + AppSettings.shared.t("Press Save again to keep it as entered.")
+            if let window { alert.beginSheetModal(for: window) }
+            return
+        }
         guard !brand.isEmpty, !name.isEmpty, !type.isEmpty, !colorName.isEmpty else {
             let alert = NSAlert()
             alert.messageText = AppSettings.shared.t("Required details are missing")
@@ -157,9 +184,13 @@ final class FilamentEditorWindowController: NSWindowController {
             notes: notesField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         item.updatedAt = .now
+        item.ean = ean.isEmpty ? nil : ean
+        item.pricePerRoll = catalogMode ? original?.pricePerRoll : price
         onSave(item)
         closeSheet()
     }
+
+    private var eanWarningShown = false
 
     private func closeSheet() {
         if let window, let parent = window.sheetParent { parent.endSheet(window) }

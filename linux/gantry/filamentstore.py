@@ -52,6 +52,9 @@ class Filament:
     spoolCount: int = 0
     notes: str = ""
     updatedAt: str = field(default_factory=_now)
+    # Entered on macOS; kept so saving on Linux does not drop them.
+    ean: str | None = None
+    pricePerRoll: float | None = None
 
     def __post_init__(self) -> None:
         self.colorHex = normalized_hex(self.colorHex)
@@ -65,6 +68,7 @@ class Filament:
             id=data.get("id", str(uuid.uuid4())), catalogID=data.get("catalogID"),
             manufacturerCode=data.get("manufacturerCode", ""), spoolCount=data.get("spoolCount", 0),
             notes=data.get("notes", ""), updatedAt=data.get("updatedAt", _now()),
+            ean=data.get("ean"), pricePerRoll=data.get("pricePerRoll"),
         )
 
     def to_dict(self) -> dict[str, Any]:

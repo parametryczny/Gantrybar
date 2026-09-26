@@ -226,7 +226,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             old.id == new.id && old.catalogID == new.catalogID && old.brand == new.brand
                 && old.name == new.name && old.type == new.type && old.colorName == new.colorName
                 && old.colorHex == new.colorHex && old.manufacturerCode == new.manufacturerCode
-                && old.notes == new.notes
+                && old.notes == new.notes && old.ean == new.ean && old.pricePerRoll == new.pricePerRoll
         }
     }
 
@@ -237,7 +237,7 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             if let selectedBrand, item.brand != selectedBrand { return false }
             if lowStockOnly, item.spoolCount > StockLevelSettings.redMaximum { return false }
             if !query.isEmpty {
-                let text = [item.brand, item.name, item.type, item.colorName, item.colorHex, item.manufacturerCode]
+                let text = [item.brand, item.name, item.type, item.colorName, item.colorHex, item.manufacturerCode, item.ean ?? ""]
                     .joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
                 if !text.contains(query) { return false }
             }
@@ -503,8 +503,11 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
             // Each declared spool becomes a real physical roll (SP-xxxxx) in storage, so the roll — and
             // its weight — exists from the moment the filament is added (spec §1). Match the definition
             // by catalog id, since `add` may have merged into an existing entry.
-            if let def = self.store.filaments.first(where: { $0.catalogID == item.id }) {
-                SpoolbaseShared.spools.createRolls(definitionID: def.id, count: quantity, weight: weight, price: price)
+            if var def = self.store.filaments.first(where: { $0.catalogID == item.id }) {
+                // A price typed here becomes the product's price for the next rolls too.
+                if let price, def.pricePerRoll != price { def.pricePerRoll = price; self.store.update(def) }
+                SpoolbaseShared.spools.createRolls(definitionID: def.id, count: quantity, weight: weight,
+                                                   price: price ?? def.pricePerRoll)
             }
         }
         catalogController = controller

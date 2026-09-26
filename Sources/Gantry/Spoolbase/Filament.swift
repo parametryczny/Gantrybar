@@ -13,6 +13,10 @@ struct Filament: Codable, Identifiable, Hashable, Sendable {
     var spoolCount: Int
     var notes: String
     var updatedAt: Date
+    /// EAN/GTIN from the barcode, kept apart from the manufacturer's SKU. Optional so older files decode.
+    var ean: String?
+    /// What one roll of this product costs; new rolls start with it and print costs fall back to it.
+    var pricePerRoll: Double?
 
     init(
         id: UUID = UUID(),

@@ -1210,5 +1210,10 @@
   "Mark a valid area: at least three points.": "Zaznacz poprawny obszar: co najmniej trzy punkty.",
   "Could not prepare the image for analysis.": "Nie udało się przygotować obrazu do analizy.",
   "The camera image proportions changed. Adjust the detection area for this printer.": "Zmieniły się proporcje obrazu kamery. Popraw obszar wykrywania dla tej drukarki.",
-  "No MQTT connection.": "Brak połączenia MQTT."
+  "No MQTT connection.": "Brak połączenia MQTT.",
+  "13 digits under the barcode": "13 cyfr pod kodem kreskowym",
+  "Check the roll price": "Sprawdź cenę rolki",
+  "EAN code": "Kod EAN",
+  "Enter a number, e.g. 89.90, or leave it empty.": "Wpisz liczbę, np. 89,90, albo zostaw puste.",
+  "Press Save again to keep it as entered.": "Naciśnij Zapisz ponownie, aby zostawić go tak, jak jest."
 }

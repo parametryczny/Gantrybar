@@ -19,6 +19,9 @@ public sealed class Filament
     [JsonPropertyName("spoolCount")] public int SpoolCount { get; set; }
     [JsonPropertyName("notes")] public string Notes { get; set; } = "";
     [JsonPropertyName("updatedAt")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    // Entered on macOS; kept here so saving on Windows does not drop them.
+    [JsonPropertyName("ean")] public string? Ean { get; set; }
+    [JsonPropertyName("pricePerRoll")] public double? PricePerRoll { get; set; }
 
     public static string NormalizedHex(string value)
     {

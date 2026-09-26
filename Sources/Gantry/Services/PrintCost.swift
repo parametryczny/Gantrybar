@@ -103,8 +103,14 @@ struct PrintCost: Equatable, Sendable {
             .filter { $0.printerSerial == serial && $0.timestamp >= from && $0.timestamp <= to }
             .map { event in
                 let spool = spools.spools.first { $0.id == event.spoolID }
-                let material = spool.flatMap { s in filaments.first { $0.id == s.filamentDefinitionID }?.type }
-                return Use(grams: event.consumedGrams, material: material, pricePerKg: spool?.pricePerKg)
+                let definition = spool.flatMap { s in filaments.first { $0.id == s.filamentDefinitionID } }
+                // The roll's own price first, then the product's price per roll over that roll's size.
+                let productPerKg = definition?.pricePerRoll.flatMap { price -> Double? in
+                    guard let full = spool?.nominalWeightGrams, full > 0 else { return nil }
+                    return price / full * 1000
+                }
+                return Use(grams: event.consumedGrams, material: definition?.type,
+                           pricePerKg: spool?.pricePerKg ?? productPerKg)
             }
     }
 }

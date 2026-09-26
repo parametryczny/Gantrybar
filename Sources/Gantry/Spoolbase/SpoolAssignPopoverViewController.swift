@@ -283,7 +283,7 @@ final class SpoolAssignPopoverViewController: NSViewController {
                                 subtitle: "\(def.brand) \(def.name) · \(def.type)".trimmingCharacters(in: .whitespaces),
                                 back: { [weak self] in self?.showPickFilament() })
 
-        let priceField = NSTextField(string: spools.lastPrice(definitionID: def.id).map { String(format: "%g", $0) } ?? "")
+        let priceField = NSTextField(string: (spools.lastPrice(definitionID: def.id) ?? def.pricePerRoll).map { String(format: "%g", $0) } ?? "")
         priceField.placeholderString = PrintCostSettings.current.currency
         func price() -> Double? {
             Double(priceField.stringValue.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces))
