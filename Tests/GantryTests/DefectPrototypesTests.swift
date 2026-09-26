@@ -48,6 +48,11 @@ import Foundation
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             for (index, frame) in frames.enumerated() {
                 try frame.write(to: folder.appendingPathComponent("frame-\(index).jpg"))
+                let row = try JSONSerialization.data(withJSONObject: ["file": "\(label)/frame-\(index).jpg", "labelSource": "user"])
+                let indexFile = root.appendingPathComponent("index.jsonl")
+                var lines = (try? Data(contentsOf: indexFile)) ?? Data()
+                lines.append(row); lines.append(0x0a)
+                try lines.write(to: indexFile)
             }
         }
     }

@@ -70,9 +70,11 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate, @un
            response.actionIdentifier == Self.confirmAction || response.actionIdentifier == Self.rejectAction {
             let confirmed = response.actionIdentifier == Self.confirmAction
             await MainActor.run {
-                DefectDataset.refile(frame: URL(fileURLWithPath: frame),
-                                     as: confirmed ? nil : .ok)
-                DefectWatch.current?.rebuildPrototypes()
+                if let watch = DefectWatch.current {
+                    watch.answeredOnNotification(frame: frame, confirmed: confirmed)
+                } else {
+                    DefectDataset.refile(frame: URL(fileURLWithPath: frame), as: confirmed ? nil : .ok)
+                }
             }
             return
         }

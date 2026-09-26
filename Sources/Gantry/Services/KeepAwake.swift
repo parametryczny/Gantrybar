@@ -21,6 +21,7 @@ final class KeepAwake {
     private var assertion = IOPMAssertionID(0)
     private var bridgeHold = false
     private var manualHold = false
+    private var operationHolds: Set<UUID> = []
     /// The shortcut pressed while the bridge was the one holding the Mac awake. The setting in
     /// Settings stays as it is; its hold is simply silenced until the user asks for it again or the
     /// bridge stops and starts. A switch that does nothing when pressed is a broken switch, and
@@ -97,7 +98,11 @@ final class KeepAwake {
 
     /// Releases the promise. Called when the app quits, so a crashed or quit Gantry never leaves a Mac
     /// awake for good.
+    func beginOperation() -> UUID { let id = UUID(); operationHolds.insert(id); apply(); return id }
+    func endOperation(_ id: UUID) { operationHolds.remove(id); apply() }
+
     func releaseAll() {
+        operationHolds.removeAll()
         manualHold = false
         bridgeHold = false
         bridgeHoldSilenced = false
@@ -105,7 +110,7 @@ final class KeepAwake {
     }
 
     private func apply() {
-        let wanted = manualHold || (bridgeHold && !bridgeHoldSilenced)
+        let wanted = !operationHolds.isEmpty || manualHold || (bridgeHold && !bridgeHoldSilenced)
         guard wanted != isOn else { return }
         if wanted {
             var created = IOPMAssertionID(0)

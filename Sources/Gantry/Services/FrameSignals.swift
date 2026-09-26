@@ -58,6 +58,22 @@ enum FrameSignals {
         return frame.reduce(0, +) / Float(frame.count)
     }
 
+    /// Poniżej tyle faktury w klatce nie ma już nic do oglądania.
+    ///
+    /// Zmierzone na prawdziwych klatkach: najciemniejsza używalna klatka z floty ma 0,0063, a klatka
+    /// z komory bez światła 0,0001. Próg leży trzy razy poniżej pierwszej i dwadzieścia razy powyżej
+    /// drugiej, więc nie odrzuca niczego, co da się obejrzeć.
+    static let legibleTexture: Float = 0.002
+
+    /// Czy w tej klatce w ogóle jest co oglądać.
+    ///
+    /// Kamera w komorze bez światła zwraca czarny prostokąt. Żaden model ani wzorzec nie powie o nim
+    /// prawdy, a każdy powie coś: MINI oddała dziewięć takich klatek i wszystkie dostały etykietę
+    /// spaghetti. Lepiej przyznać, że nie widać, niż zgadywać po ciemku.
+    static func legible(_ frame: [Float], side: Int = side) -> Bool {
+        texture(frame, side: side) >= legibleTexture
+    }
+
     /// How much fine detail the frame holds: the average step between neighbouring pixels. A bare
     /// plate is smooth, a finished print has edges, a bed full of loose filament is nothing but edges.
     static func texture(_ frame: [Float], side: Int = side) -> Float {

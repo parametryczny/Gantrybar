@@ -52,6 +52,28 @@ import Testing
         return frame
     }
 
+    /// Komora bez światła: czarny prostokąt z odrobiną szumu matrycy i jedną diodą w rogu.
+    private func unlit() -> [Float] {
+        var frame = [Float](repeating: 0, count: side * side)
+        for y in 0..<side {
+            for x in 0..<side { frame[y * side + x] = speckle(x, y, 3) * 0.0008 }
+        }
+        frame[5 * side + 5] = 0.9
+        return frame
+    }
+
+    /// Klatka, na której nic nie widać, musi być rozpoznana jako nieczytelna, zanim ktokolwiek
+    /// zacznie o niej cokolwiek twierdzić. Na prawdziwej flocie MINI oddała dziewięć takich i
+    /// wszystkie zostały zapisane jako spaghetti.
+    @Test func anUnlitChamberIsNotSomethingToHaveAnOpinionAbout() {
+        #expect(!FrameSignals.legible(unlit()))
+        #expect(FrameSignals.legible(printing(step: 10)))
+        #expect(FrameSignals.legible(spaghetti(step: 10)))
+        // Zmierzone na flocie: najciemniejsza używalna klatka ma fakturę 0,0063, czarna 0,0001,
+        // więc próg stoi między nimi, nie przy żadnej z nich.
+        #expect(FrameSignals.texture(spaghetti(step: 10)) > FrameSignals.legibleTexture * 10)
+    }
+
     /// The print with everything on it slid sideways, as a layer shift leaves it.
     private func slid(_ frame: [Float], by offset: Int) -> [Float] {
         var moved = [Float](repeating: 0.30, count: side * side)

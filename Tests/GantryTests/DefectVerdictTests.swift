@@ -53,6 +53,27 @@ import Testing
         #expect(verdict.observe(label: "spaghetti", confidence: 0.8) == .failure(label: "spaghetti", confidence: 0.8))
     }
 
+    @Test func isolatedFalsePositivesNeverAccumulateIntoAnAlarm() {
+        var verdict = DefectVerdict(threshold: 0.7, hitsNeeded: 3)
+        for _ in 0..<20 {
+            #expect(verdict.observe(label: "spaghetti", confidence: 1) == .quiet)
+            #expect(verdict.observe(label: "ok", confidence: 0.99) == .quiet)
+        }
+        #expect(verdict.hits < 3)
+    }
+
+    @Test func healthyModelIsNotOverriddenBySaturatedSimilarity() {
+        let decision = DefectAppearance.select(model: ("no_failure_annotated", 0.92),
+                                              reference: ("spaghetti", 1), threshold: 0.7)
+        #expect(decision?.label == "no_failure_annotated")
+    }
+
+    @Test func genuineModelFailureIsRetained() {
+        let decision = DefectAppearance.select(model: ("failure", 0.92),
+                                              reference: ("ok", 1), threshold: 0.7)
+        #expect(decision?.label == "failure")
+    }
+
     @Test func aDifferentFailureIsANewQuestion() {
         var verdict = DefectVerdict(threshold: 0.7, hitsNeeded: 2, calmNeeded: 3)
         _ = verdict.observe(label: "spaghetti", confidence: 0.8)

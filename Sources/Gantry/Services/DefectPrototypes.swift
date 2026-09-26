@@ -69,14 +69,20 @@ enum DefectPrototypes {
     static func build(from root: URL = DefectDataset.root, perLabelLimit: Int = perLabelLimit,
                       starter: [Prototype]? = nil) -> [Prototype] {
         var prototypes = starter ?? self.starter().prototypes
+        let reviewed = DefectDataset.trustedFiles(from: root)
         for label in DefectDataset.Label.allCases {
             let folder = root.appendingPathComponent(label.rawValue, isDirectory: true)
             let files = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
-                .filter { $0.pathExtension.lowercased() == "jpg" }
+                .filter { $0.pathExtension.lowercased() == "jpg" && reviewed.contains("\(label.rawValue)/\($0.lastPathComponent)") }
                 .sorted { $0.lastPathComponent > $1.lastPathComponent }   // newest first
                 .prefix(perLabelLimit)
             for file in files {
-                if let data = try? Data(contentsOf: file), let vector = featureVector(of: data) {
+                guard let data = try? Data(contentsOf: file) else { continue }
+                // Klatka, na której nic nie widać, opisuje tylko ciemność. Wpuszczona do banku pod
+                // etykietą wpadki sprawia, że każda następna ciemna klatka, z dowolnej drukarki,
+                // ląduje najbliżej niej. Jedna zgaszona komora wystarczyłaby, żeby popsuć flotę.
+                guard let grey = FrameSignals.grey(from: data), FrameSignals.legible(grey) else { continue }
+                if let vector = featureVector(of: data) {
                     prototypes.append(Prototype(label: label.rawValue, mine: true, vector: vector))
                 }
             }

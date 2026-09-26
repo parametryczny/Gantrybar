@@ -24,6 +24,7 @@ struct DefectVerdict {
         self.calmNeeded = max(1, calmNeeded)
     }
 
+    private var recent: [Bool] = []
     private(set) var hits = 0
     private(set) var calm = 0
     /// True once a verdict has been given, so the same failure is reported once and not every frame.
@@ -41,10 +42,14 @@ struct DefectVerdict {
     mutating func observe(label: String?, confidence: Double) -> Outcome {
         let suspicious = label != nil && !isHealthy(label!) && confidence >= threshold
         guard suspicious else {
+            recent.append(false)
+            recent = Array(recent.suffix(max(1, hitsNeeded) + 1))
+            hits = recent.filter { $0 }.count
             calm += 1
             if calm >= calmNeeded {
                 // The print looks right again: forget the count and allow a future warning.
                 hits = 0
+                recent.removeAll()
                 reported = false
                 self.label = nil
             }
@@ -54,10 +59,13 @@ struct DefectVerdict {
         // A different kind of failure is a new question, not a continuation of the old one.
         if let previous = self.label, previous != label {
             hits = 0
+            recent.removeAll()
             reported = false
         }
         self.label = label
-        hits += 1
+        recent.append(true)
+        recent = Array(recent.suffix(max(1, hitsNeeded) + 1))
+        hits = recent.filter { $0 }.count
         guard hits >= hitsNeeded, !reported else { return .quiet }
         reported = true
         return .failure(label: label!, confidence: confidence)
@@ -65,6 +73,7 @@ struct DefectVerdict {
 
     /// A new print starts with a clean slate.
     mutating func reset() {
+        recent.removeAll()
         hits = 0
         calm = 0
         reported = false
@@ -98,4 +107,16 @@ struct DefectVerdict {
     static func warrantsWarning(_ label: String) -> Bool { !isHealthy(label) && !isCosmetic(label) }
 
     private func isHealthy(_ label: String) -> Bool { !Self.warrantsWarning(label) }
+}
+
+/// A confident healthy model result must not be replaced by an uncalibrated similarity score.
+enum DefectAppearance {
+    static func select(model: (label: String, confidence: Double)?,
+                       reference: (label: String, confidence: Double)?, threshold: Double)
+        -> (label: String, confidence: Double)? {
+        if let model, DefectVerdict.isHealthy(model.label), model.confidence >= threshold { return model }
+        let readings = [model, reference].compactMap { $0 }
+        return readings.filter { DefectVerdict.warrantsWarning($0.label) && $0.confidence >= threshold }
+            .max { $0.confidence < $1.confidence } ?? readings.max { $0.confidence < $1.confidence }
+    }
 }

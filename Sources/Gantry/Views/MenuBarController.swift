@@ -18,6 +18,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var subscription: AnyCancellable?
     private var settingsSubscription: AnyCancellable?
     private var outsideClickMonitor: Any?
+    private var localClickMonitor: Any?
     private var addWindow: AddPrinterWindowController?
     private var settingsWindow: SettingsWindowController?
     private let spoolbase = SpoolbaseController()
@@ -67,7 +68,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // Detached panels are opened from deep inside the cards, which know nothing about the menu
         // bar. These two hooks are how they reach the one object that knows whether the fleet is
         // currently a popover or a window.
-        PanelWindowController.onHoldChanged = { [weak self] held in self?.holdFleetPanel(held) }
+        // Auxiliary windows must not pin the menu-bar popover open.
+        PanelWindowController.onHoldChanged = nil
         PanelWindowController.companionWindow = { [weak self] in self?.fleetPanelWindow() }
 
         if let button = statusItem.button {
@@ -117,7 +119,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 onReconnect: { [weak store] printer in store?.reconnect(printer) },
                 onShowDetails: { [weak self] serial in self?.revealDetails(serial: serial) },
                 onSkipObjects: { [weak self] serial in self?.showSkipObjects(serial: serial) },
-                onShowSettings: { [weak self] in self?.showSettings() }
+                onShowSettings: { [weak self] in self?.showSettings() },
+                onNavigate: { [weak self] section in self?.navigateWorkspace(section) }
             )
         }
         notificationObserver = NotificationCenter.default.addObserver(
@@ -175,6 +178,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc func appMenuAddPrinter(_ sender: Any?) { showAddPrinter() }
     @objc func appMenuReconnectAll(_ sender: Any?) { store.reconnectAll() }
     @objc func appMenuDiagnostics(_ sender: Any?) { showDiagnostics() }
+    @objc func appMenuFarm(_ sender: Any?) { FarmWindowController.show(store: store) }
+
     @objc func appMenuFleetStats(_ sender: Any?) { showFleetStats() }
     @objc func appMenuCycleLanguage(_ sender: Any?) {
         let codes = Localization.available().map(\.code)
@@ -377,6 +382,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             self?.store.reconnectAll()
         })
         if Build.hasExtras {
+            menu.addItem(row(icon: "tray.and.arrow.up", title: "Farma · pliki i wydruki…") { [weak self] in
+                guard let self else { return }; FarmWindowController.show(store: self.store)
+            })
             menu.addItem(row(icon: "stethoscope",
                              title: settings.t("Diagnostic Center…")) { [weak self] in
                 self?.showDiagnostics()
@@ -547,6 +555,22 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         installOutsideClickMonitor()
     }
 
+    private var workspaceMaintenance: WorkspaceMaintenanceController?
+    private func navigateWorkspace(_ section: WorkspaceSection) {
+        switch section {
+        case .printers: floatingDashboard?.dismissEmbeddedPanel()
+        case .jobs: FarmWindowController.show(store: store)
+        case .settings: showSettings()
+        case .diagnostics: showDiagnostics()
+        case .stats: showFleetStats()
+        case .spools: showSpoolbase()
+        case .maintenance:
+            let controller = WorkspaceMaintenanceController(store: store)
+            workspaceMaintenance = controller
+            floatingDashboard?.presentWorkspace(controller.view, name: "Konserwacja", size: NSSize(width: 580, height: 580))
+        }
+    }
+
     @objc private func showSettings() {
         if settingsWindow == nil {
             let controller = SettingsWindowController(store: store)
@@ -557,6 +581,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             settingsWindow = controller
         }
 
+        if AppSettings.shared.floatingWindowEnabled, let settingsWindow {
+            floatingDashboard?.dismissEmbeddedPanel()
+            floatingDashboard?.presentWorkspace(settingsWindow.beginEmbedding(), name: "Ustawienia", size: NSSize(width: 720, height: 620), onDismiss: { [weak settingsWindow] in settingsWindow?.endEmbedding() })
+            return
+        }
+        settingsWindow?.endEmbedding()
         // The panel stays where it is, next to the menu bar, and settings open centred on the screen
         // instead of on top of it. Only the window level is borrowed, so the panel cannot cover them.
         if AppSettings.shared.floatingWindowEnabled { floatingDashboard?.restoreFromDock() }
@@ -570,16 +600,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private func showEdgeDockSettings() {
         showSettings()
         settingsWindow?.selectWindowsPane()
-    }
-
-    /// While anything is open over the fleet panel it stops behaving like a menu. AppKit closes a
-    /// transient popover the moment another window of the app becomes key, and the global click
-    /// monitor closes it on the next click outside; either one would take the fleet away the instant
-    /// a panel appeared.
-    private func holdFleetPanel(_ held: Bool) {
-        popover.behavior = held ? .applicationDefined : .transient
-        if held { removeOutsideClickMonitor() }
-        else if popover.isShown { installOutsideClickMonitor() }
     }
 
     /// The window a panel borrows its level from, resolved at the moment it opens so an action from
@@ -605,12 +625,29 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func installOutsideClickMonitor() {
         removeOutsideClickMonitor()
-        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
             DispatchQueue.main.async { self?.closePopover() }
+        }
+        // Global monitors do not receive clicks delivered to Gantry itself.
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            guard let self, self.popover.isShown else { return event }
+            let window = event.window
+            let popoverWindow = self.popover.contentViewController?.view.window
+            // Let the status button handle its own toggle, and keep controls in the popover usable.
+            if window === popoverWindow || window === self.statusItem.button?.window
+                || self.progressItems.values.contains(where: { $0.button?.window === window }) {
+                return event
+            }
+            self.closePopover()
+            return event
         }
     }
 
     private func removeOutsideClickMonitor() {
+        if let localClickMonitor {
+            NSEvent.removeMonitor(localClickMonitor)
+            self.localClickMonitor = nil
+        }
         if let outsideClickMonitor {
             NSEvent.removeMonitor(outsideClickMonitor)
             self.outsideClickMonitor = nil
@@ -635,6 +672,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     // Applied on every show (and on settings change): the vibrancy material plus, for "high", a lower
     // window alpha so the panel is genuinely more see-through than the plain glass material allows.
     func popoverDidShow(_ notification: Notification) {
+        installOutsideClickMonitor()
+        popover.contentViewController?.view.window?.level = .normal
         applyPanelStyle()
     }
 

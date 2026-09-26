@@ -44,7 +44,16 @@ enum DefectDataset {
     /// far more than hand-marking produces, and small enough to never be the reason a disk fills up.
     static let defaultLimitBytes: Int64 = 500 * 1024 * 1024
 
+    /// Dokąd naprawdę trafiają klatki. Nadpisywane wyłącznie przez testy.
+    ///
+    /// Bez tego testy tego katalogu kasowały prawdziwy katalog użytkownika, bo `save`, `prune` i
+    /// sprzątanie po teście wszystkie pytały o tę jedną ścieżkę. Jedno uruchomienie zestawu testów
+    /// zabrało komuś sto szesnaście zebranych klatek. Ścieżka, której nie da się podmienić, to nie
+    /// jest bezpieczna stała, tylko mina.
+    nonisolated(unsafe) static var rootOverride: URL?
+
     nonisolated static var root: URL {
+        if let rootOverride { return rootOverride }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("Gantry/dataset", isDirectory: true)
     }
@@ -54,7 +63,7 @@ enum DefectDataset {
     /// Saves one frame under its label, with everything a trainer would want to know about it.
     @discardableResult
     static func save(jpeg: Data, label: Label, printer: SavedPrinter, telemetry: PrinterTelemetry,
-                     limitBytes: Int64 = defaultLimitBytes, automatic: Bool = false) throws -> URL {
+                     limitBytes: Int64 = defaultLimitBytes, automatic: Bool = false, prediction: Bool = false) throws -> URL {
         let folder = root.appendingPathComponent(label.rawValue, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
@@ -77,6 +86,7 @@ enum DefectDataset {
             // Frames Gantry kept by itself are marked, so a trainer can tell them from the ones a
             // person looked at and named. A human's label is worth more and should stay countable.
             "automatic": automatic,
+            "labelSource": prediction ? "prediction" : (automatic ? "automatic" : "user"),
             "at": ISO8601DateFormatter().string(from: Date())
         ])
         prune(to: limitBytes)
@@ -111,6 +121,35 @@ enum DefectDataset {
             "wasGuessed": was,
             "at": ISO8601DateFormatter().string(from: Date())
         ])
+    }
+
+    /// Klatki, na których wolno oprzeć rozpoznawanie.
+    ///
+    /// Nazwa katalogu nie jest dowodem. Stare zapisy sprzed pola `labelSource` też nie: ostrzeżenia
+    /// zapisywały wtedy swoją własną zgadywankę tym samym znacznikiem co ręczne oznaczenie, więc nie
+    /// da się ich odróżnić i żadne z nich nie wchodzi do banku. Widać po czym: na tej flocie dziewięć
+    /// takich „spaghetti" to czarne klatki z MINI, na które ostrzeżenie samo się nabrało.
+    ///
+    /// Wchodzą dwie rzeczy: to, co człowiek nazwał lub potwierdził, i to, co Gantry zebrało samo jako
+    /// „idzie dobrze" (`automatic`). To drugie nie jest zgadywaniem o wpadce, tylko cichą obserwacją
+    /// spokojnego wydruku, a bez niego bank nie ma się z czym porównywać i nie potrafi nikogo oskarżyć.
+    /// Przez jakiś czas było wykluczone razem z resztą i wtedy ze stu szesnastu klatek użytkownika do
+    /// banku nie trafiała ani jedna.
+    static func trustedFiles(from root: URL) -> Set<String> {
+        guard let data = try? String(contentsOf: root.appendingPathComponent("index.jsonl"), encoding: .utf8) else { return [] }
+        var reviewed = Set<String>()
+        for line in data.split(separator: "\n") {
+            guard let bytes = String(line).data(using: .utf8),
+                  let row = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any],
+                  let file = row["file"] as? String else { continue }
+            let source = row["labelSource"] as? String
+            if row["confirmedBy"] as? String == "user" || source == "user" || source == "automatic" {
+                reviewed.insert(file)
+            } else {
+                reviewed.remove(file)
+            }
+        }
+        return reviewed
     }
 
     static func stats() -> Stats {

@@ -55,6 +55,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// which is inside the window's constraint chain, so changing it resizes the window and nothing
     /// races it.
     private var paneHeight: NSLayoutConstraint?
+    private var embeddedInWorkspace = false
 
     // MARK: General
     /// A popup, not a two-way segment: the list is whatever catalogs i18n/ contains, so a new
@@ -134,6 +135,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var floatingWindowCheck = SettingsCheckbox(target: self, action: #selector(floatingWindowToggled))
 
     private let dockHeading = settingsHeading()
+    private lazy var dockAlwaysOnTopCheck = SettingsCheckbox(target: self, action: #selector(dockAlwaysOnTopToggled))
     private lazy var dockEnableCheck = SettingsCheckbox(target: self, action: #selector(dockEnableToggled))
     private let dockDisplayControl = NSPopUpButton(frame: .zero, pullsDown: false)
     private let dockDisplayCaption = settingsCaption()
@@ -261,6 +263,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    func beginEmbedding() -> NSView {
+        embeddedInWorkspace = true
+        window?.orderOut(nil)
+        window?.contentViewController = nil
+        tabController.tabStyle = .segmentedControlOnTop
+        paneHeight?.isActive = false
+        return tabController.view
+    }
+    func endEmbedding() {
+        guard embeddedInWorkspace else { return }
+        embeddedInWorkspace = false
+        tabController.view.removeFromSuperview()
+        tabController.tabStyle = .toolbar
+        window?.contentViewController = tabController
+        paneHeight?.isActive = true
+        resizeToSelectedPane()
+    }
+
     required init?(coder: NSCoder) { nil }
 
     /// Centred on the screen, always. It used to be centred on the fleet panel, which parked it
@@ -280,7 +300,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         refresh()
         showWindow(nil)
         guard let window else { return }
-        window.level = companion?.level ?? .normal
+        window.level = .normal
         resizeToSelectedPane()
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -426,6 +446,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         grid.group(floatingWindowCaption, [floatingWindowCheck])
         grid.section(dockHeading)
         grid.aligned(dockEnableCheck)
+        grid.aligned(dockAlwaysOnTopCheck)
         grid.field(dockDisplayCaption, dockDisplayControl)
         grid.field(dockPositionCaption, dockPositionPicker, baseline: false)
         grid.field(dockScaleCaption, dockScaleControl, baseline: false)
@@ -627,7 +648,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// fourth's and kept it. AppKit syncs the window title from the toolbar's own selection, so a
     /// programmatic switch left it on whichever pane was selected first.
     private func resizeToPane(at index: Int) {
-        guard let window, index >= 0, index < tabController.tabViewItems.count else { return }
+        guard !embeddedInWorkspace, let window, index >= 0, index < tabController.tabViewItems.count else { return }
         let item = tabController.tabViewItems[index]
         window.title = item.label
         guard let pane = item.viewController as? SettingsPane else { return }
@@ -860,7 +881,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         floatingWindowCheck.isOn = settings.floatingWindowEnabled
 
         setText(dockHeading, settings.t("Edge dock"))
-        dockEnableCheck.title = settings.t("Show the strip on top")
+        dockEnableCheck.title = settings.isPolish ? "Pokaż pasek krawędziowy" : "Show edge strip"
+        dockAlwaysOnTopCheck.title = settings.isPolish ? "Widoczny zawsze" : "Always visible"
+        dockAlwaysOnTopCheck.setSubtitle(settings.isPolish ? "Pasek krawędziowy i jego rozwinięcie nad innymi oknami." : "Keep the edge strip and its expanded view above other windows.")
+        dockAlwaysOnTopCheck.isOn = settings.edgeDockAlwaysOnTop
+        dockAlwaysOnTopCheck.setEnabled(settings.edgeDockEnabled)
         dockEnableCheck.isOn = settings.edgeDockEnabled
         setText(dockDisplayCaption, settings.t("Monitor") + ":")
         let choices = EdgeDockPlacement.choices(displays: EdgeDockPlacement.connectedDisplays(),
@@ -1389,6 +1414,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: Edge dock
+
+    @objc private func dockAlwaysOnTopToggled() {
+        AppSettings.shared.edgeDockAlwaysOnTop = dockAlwaysOnTopCheck.isOn
+    }
 
     @objc private func dockEnableToggled() {
         AppSettings.shared.edgeDockEnabled = dockEnableCheck.isOn

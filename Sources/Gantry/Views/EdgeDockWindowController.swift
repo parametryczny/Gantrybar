@@ -49,8 +49,8 @@ final class EdgeDockWindowController {
         panel.hidesOnDeactivate = false
         // Above ordinary windows and above a full-screen app's own space, and present on every Space
         // so it does not vanish when the user switches desktops.
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        panel.level = .normal
+        panel.collectionBehavior = [.managed, .ignoresCycle]
         // Frosted glass under the silhouette. `.behindWindow` blurs the desktop, and the strip's own
         // fill sits on top of it as a dark floor, so the blur is visible without the rows losing
         // their contrast to whatever happens to be behind the strip.
@@ -102,6 +102,10 @@ final class EdgeDockWindowController {
 
     func refresh() {
         let settings = AppSettings.shared
+        panel.level = settings.edgeDockAlwaysOnTop ? .statusBar : .normal
+        panel.collectionBehavior = settings.edgeDockAlwaysOnTop
+            ? [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+            : [.managed, .ignoresCycle]
         guard settings.edgeDockEnabled else {
             hide()
             return

@@ -244,6 +244,10 @@ final class SettingsGrid {
 /// grow and shrink around each pane the way a system settings window does. Every wrapping label in
 /// here has a definite width for the same reason: without one the pane has no determinate height and
 /// the window would settle on whatever AppKit guessed first.
+private final class SettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 @MainActor
 final class SettingsPane: NSViewController {
     let paneIdentifier: String
@@ -278,7 +282,7 @@ final class SettingsPane: NSViewController {
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.scrollerStyle = .overlay
-        let document = NSView()
+        let document = SettingsDocumentView()
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(content)
         scroll.documentView = document
@@ -289,7 +293,7 @@ final class SettingsPane: NSViewController {
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            document.widthAnchor.constraint(equalTo: scroll.widthAnchor),
+            document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
             content.topAnchor.constraint(equalTo: document.topAnchor, constant: inset),
             content.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -inset),
             content.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: inset),

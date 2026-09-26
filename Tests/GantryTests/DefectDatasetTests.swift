@@ -19,7 +19,15 @@ import AppKit
         return NSBitmapImageRep(cgImage: cgImage).representation(using: .jpeg, properties: [:])!
     }
 
+    /// Katalog tylko na czas testu. Dopóki go nie było, `clean()` kasowało prawdziwy katalog
+    /// użytkownika, a testy tego pliku uruchamia się przy każdej zmianie.
+    init() {
+        DefectDataset.rootOverride = FileManager.default.temporaryDirectory
+            .appendingPathComponent("gantry-dataset-tests/\(UUID().uuidString)", isDirectory: true)
+    }
+
     private func clean() {
+        guard DefectDataset.rootOverride != nil else { return }
         try? FileManager.default.removeItem(at: DefectDataset.root)
     }
 

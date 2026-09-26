@@ -200,6 +200,73 @@ actor BambuFileClient {
         return paths
     }
 
+    /// Serializes uploads with existing snapshot downloads; completes only after the FTP 226 reply.
+    func upload(file: URL, remoteName: String, progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard remoteName.range(of: #"^gantry-[A-Fa-f0-9-]+\.3mf$"#, options: .regularExpression) != nil else {
+            throw FTPError(message: "Invalid upload name")
+        }
+        await BambuFTPBroker.shared.acquire(host: host)
+        do {
+            try Task.checkCancellation()
+            try await withTaskCancellationHandler {
+                try await uploadUncoordinated(file: file, remoteName: remoteName, progress: progress)
+            } onCancel: { Task { await self.expireTransfer() } }
+            await BambuFTPBroker.shared.release(host: host)
+        } catch {
+            await BambuFTPBroker.shared.release(host: host)
+            throw error
+        }
+    }
+
+    private func uploadUncoordinated(file: URL, remoteName: String, progress: @escaping @Sendable (Double) -> Void) async throws {
+        didTimeout = false
+        let watchdog = Task { [weak self] in
+            try await Task.sleep(for: .seconds(600))
+            await self?.expireTransfer()
+        }
+        defer { watchdog.cancel(); close() }
+        try await open(port: 990)
+        _ = try await expect(220)
+        try await send("USER bblp"); _ = try await expect(331)
+        try await send("PASS \(accessCode)"); _ = try await expect(230)
+        try await send("PBSZ 0"); _ = try await expect(200)
+        try await send("PROT P"); _ = try await expect(200)
+        try await send("TYPE I"); _ = try await expect(200)
+        try await send("PASV")
+        let pasv = try await expect(227)
+        guard let port = parsePASV(pasv.text) else { throw FTPError(message: "Invalid PASV reply") }
+        let conn = makeDataConnection(port: port)
+        async let ready: Void = start(conn)
+        try await send("STOR \(remoteName)")
+        let response = try await readResponse()
+        guard response.code == 150 || response.code == 125 else {
+            conn.cancel(); throw FTPError(message: "STOR rejected: \(response.code)")
+        }
+        try await ready
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        let total = try handle.seekToEnd(); try handle.seek(toOffset: 0)
+        var sent: UInt64 = 0
+        while let chunk = try handle.read(upToCount: 256 * 1024), !chunk.isEmpty {
+            try Task.checkCancellation()
+            try await write(chunk, to: conn, final: false)
+            sent += UInt64(chunk.count); progress(Double(sent) / Double(max(1, total)))
+        }
+        try await write(nil, to: conn, final: true)
+        _ = try await expect(226)
+        try Task.checkCancellation()
+        conn.cancel(); dataConnection = nil
+    }
+
+    private func write(_ data: Data?, to conn: NWConnection, final: Bool) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            conn.send(content: data, contentContext: final ? .finalMessage : .defaultMessage,
+                      isComplete: true, completion: .contentProcessed { error in
+                if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+            })
+        }
+    }
+
     // MARK: FTP verbs
 
     private func retr(_ path: String) async throws -> Data {
@@ -254,11 +321,12 @@ actor BambuFileClient {
 
     private func start(_ conn: NWConnection) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            let latch = FTPOpenLatch()
             conn.stateUpdateHandler = { state in
                 switch state {
-                case .ready: cont.resume()
-                case .failed(let e): cont.resume(throwing: e)
-                case .cancelled: cont.resume(throwing: FTPError(message: "cancelled"))
+                case .ready: if latch.claim() { cont.resume() }
+                case .failed(let e): if latch.claim() { cont.resume(throwing: e) }
+                case .cancelled: if latch.claim() { cont.resume(throwing: FTPError(message: "cancelled")) }
                 default: break
                 }
             }
@@ -346,5 +414,14 @@ actor BambuFileClient {
             out.append(chunk)
             if done { return out }
         }
+    }
+}
+
+private final class FTPOpenLatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !finished else { return false }; finished = true; return true
     }
 }

@@ -121,7 +121,8 @@ final class PrinterInsightsStore {
             if !duplicate {
                 record.history.append(.init(id: UUID(), job: job, startedAt: start, endedAt: now,
                                             result: result, durationSeconds: duration))
-                if record.history.count > 100 { record.history.removeFirst(record.history.count - 100) }
+                // Enough for a year of production statistics and cost reports on a busy printer.
+                if record.history.count > 1000 { record.history.removeFirst(record.history.count - 1000) }
             }
             record.activeStartedAt = nil
             record.activeJob = nil

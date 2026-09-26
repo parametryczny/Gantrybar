@@ -26,6 +26,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
     private var certificateMismatch = false
     private var disconnectReported = false
     private var telemetryLogged = false
+    private var keepAlive = MQTTKeepAlive()
 
     init(printer: SavedPrinter, accessCode: String, onEvent: @escaping @Sendable (Event) -> Void) {
         self.printer = printer
@@ -48,20 +49,30 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
     }
 
     func stop() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            self.stopped = true
-            self.pingTimer?.cancel()
-            self.pingTimer = nil
-            self.connectTimeout?.cancel()
-            self.connectTimeout = nil
-            self.connection?.cancel()
-            self.connection = nil
+        // Owners remove their last reference immediately after stop(). Retain until cleanup runs.
+        queue.async { [self] in
+            stopped = true
+            closeConnection()
         }
     }
 
+    private func closeConnection() {
+        pingTimer?.cancel(); pingTimer = nil
+        connectTimeout?.cancel(); connectTimeout = nil
+        connection?.stateUpdateHandler = nil
+        connection?.cancel(); connection = nil
+        buffer.removeAll()
+    }
+
+    deinit {
+        pingTimer?.cancel()
+        connectTimeout?.cancel()
+        connection?.stateUpdateHandler = nil
+        connection?.cancel()
+    }
+
     private func connect() {
-        stopped = false
+        guard !stopped else { return }
         certificateMismatch = false
         disconnectReported = false
         telemetryLogged = false
@@ -96,6 +107,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
         connection.start(queue: queue)
         let timeout = DispatchWorkItem { [weak self] in
             guard let self, !self.stopped else { return }
+            Self.logger.error("MQTT connect timeout [\(self.printer.serial.suffix(4), privacy: .public)]")
             self.reportDisconnected(Localization.t("Connection to the printer timed out"))
             self.connection?.cancel()
         }
@@ -104,6 +116,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
     }
 
     private func handle(_ state: NWConnection.State) {
+        guard !stopped, !disconnectReported else { return }
         switch state {
         case .ready:
             Self.logger.notice("TLS ready")
@@ -111,6 +124,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
             send(MQTTCodec.connect(clientID: clientID, username: "bblp", password: accessCode))
             receiveNext()
         case .failed(let error):
+            Self.logger.error("MQTT transport failed: \(String(describing: error), privacy: .public)")
             connectTimeout?.cancel()
             reportDisconnected(certificateMismatch ? certificateMismatchMessage : Self.friendlyMessage(for: error))
         case .waiting(let error):
@@ -118,6 +132,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
             if connection?.currentPath?.unsatisfiedReason == .localNetworkDenied {
                 Self.logger.error("Local network permission denied")
                 disconnectReported = true
+                closeConnection()
                 onEvent(.localNetworkDenied)
             } else {
                 reportDisconnected(certificateMismatch ? certificateMismatchMessage : Self.friendlyMessage(for: error))
@@ -132,8 +147,9 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
 
     private func receiveNext() {
         connection?.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, complete, error in
-            guard let self else { return }
+            guard let self, !self.stopped, !self.disconnectReported else { return }
             if let data { self.buffer.append(data); self.handlePackets() }
+            guard !self.stopped, !self.disconnectReported else { return }
             if let error {
                 self.reportDisconnected(error.localizedDescription)
                 return
@@ -148,6 +164,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
 
     private func handlePackets() {
         for packet in MQTTCodec.extractPackets(from: &buffer) {
+            guard !stopped, !disconnectReported else { return }
             switch packet.type >> 4 {
             case 2: // CONNACK
                 guard packet.body.count >= 2, packet.body[1] == 0 else {
@@ -160,7 +177,7 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
                 }
                 connectTimeout?.cancel()
                 connectTimeout = nil
-                Self.logger.notice("MQTT connected")
+                Self.logger.notice("MQTT connected [\(self.printer.serial.suffix(4), privacy: .public)]")
                 onEvent(.connected)
                 let reportTopic = "device/\(printer.serial)/report"
                 let requestTopic = "device/\(printer.serial)/request"
@@ -176,9 +193,11 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
                 telemetry = updated
                 if !telemetryLogged {
                     telemetryLogged = true
-                    Self.logger.notice("Printer telemetry received")
+                    Self.logger.notice("Printer telemetry received [\(self.printer.serial.suffix(4), privacy: .public)]")
                 }
                 onEvent(.telemetry(updated))
+            case 13: // PINGRESP
+                keepAlive.receivedPong()
             default:
                 break
             }
@@ -188,21 +207,35 @@ final class MQTTClient: PrinterConnection, @unchecked Sendable {
     private func startPingTimer() {
         pingTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 30, repeating: 30)
-        timer.setEventHandler { [weak self] in self?.send(MQTTCodec.ping()) }
+        keepAlive = MQTTKeepAlive()
+        timer.schedule(deadline: .now() + 5, repeating: 5)
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.stopped, !self.disconnectReported else { return }
+            switch self.keepAlive.tick(now: Date()) {
+            case .ping: self.send(MQTTCodec.ping())
+            case .timedOut:
+                Self.logger.error("MQTT PINGRESP timed out")
+                self.reportDisconnected(Localization.t("Connection interrupted, retrying"))
+            case .none: break
+            }
+        }
         timer.resume()
         pingTimer = timer
     }
 
     private func send(_ data: Data) {
         connection?.send(content: data, completion: .contentProcessed { [weak self] error in
-            if let error { self?.reportDisconnected(error.localizedDescription) }
+            if let error {
+                Self.logger.error("MQTT send failed: \(String(describing: error), privacy: .public)")
+                self?.reportDisconnected(error.localizedDescription)
+            }
         })
     }
 
     private func reportDisconnected(_ reason: String?) {
-        guard !disconnectReported else { return }
+        guard !stopped, !disconnectReported else { return }
         disconnectReported = true
+        closeConnection()
         Self.logger.error("MQTT disconnected: \(reason ?? "connection closed", privacy: .private)")
         onEvent(.disconnected(reason))
     }

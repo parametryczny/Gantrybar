@@ -494,7 +494,8 @@ final class PrinterDetailViewController: NSViewController {
             }
             let alert: NSAlert
             do {
-                alert = DefectTrial.sheet(for: try DefectTrial.judge(jpeg: jpeg), title: printer.name)
+                let mask = DefectMask.load(serial: serial)
+                alert = DefectTrial.sheet(for: try DefectTrial.judge(jpeg: mask.applying(to: jpeg), useReferences: !mask.isActive), title: printer.name)
             } catch {
                 alert = NSAlert()
                 alert.messageText = AppSettings.shared.t("Could not try that picture")
@@ -851,7 +852,10 @@ final class PrinterDetailViewController: NSViewController {
         // The card's drag grip sits in the top-right corner (8 pt in, 22 wide); the button used to
         // run underneath it.
         header.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 24)
-        let stack = NSStackView(views: [header, cameraView])
+        let areaButton = NSButton(title: "Obszar wykrywania…", target: self, action: #selector(editDefectMask))
+        areaButton.isBordered = false
+        areaButton.contentTintColor = .controlAccentColor
+        let stack = NSStackView(views: [header, cameraView, areaButton])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -859,6 +863,14 @@ final class PrinterDetailViewController: NSViewController {
         cameraView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return box
+    }
+
+    @objc private func editDefectMask() {
+        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
+        let store = self.store
+        DefectMaskEditor.show(serial: serial, name: printer.name) {
+            await CameraSnapshot.latestFrame(printer: printer, store: store)?.jpeg
+        }
     }
 
     @objc private func openAdvanced() { onOpenAdvanced() }

@@ -13,6 +13,8 @@ final class PrinterStore: ObservableObject {
     /// Named after what first used it. It is the card's notice list generally, and renaming it would
     /// mean touching the Windows port for no gain.
     @Published private(set) var spoolNotices: [String: [String]] = [:]
+    /// Ostrzeżenia o wpadce czekające na „to wpadka" albo „fałszywy alarm".
+    @Published private(set) var defectAlarms: [String: DefectAlarm] = [:]
     @Published private(set) var discovered: [DiscoveredPrinter] = []
     @Published var isScanning = false
     @Published var globalMessage: String?
@@ -57,6 +59,8 @@ final class PrinterStore: ObservableObject {
     private let elegooDiscovery = ElegooDiscovery()
     private var clients: [String: PrinterConnection] = [:]
     private var reconnectTasks: [String: Task<Void, Never>] = [:]
+    private var retryTokens: [String: UUID] = [:]
+    private var clientGenerations: [String: UUID] = [:]
     private var offlineSweep: Timer?
     private var permissionRetryTask: Task<Void, Never>?
     private var localNetworkWasDenied = false
@@ -133,6 +137,11 @@ final class PrinterStore: ObservableObject {
     /// pause, …). Silently ignores printers that aren't connected Bambu machines.
     func sendCommand(serial: String, json: String) {
         (clients[serial] as? MQTTClient)?.sendCommand(json)
+    }
+
+    func sendFarmCommand(serial: String, json: String) throws {
+        guard let client = clients[serial] as? MQTTClient else { throw FarmError(message: "Brak połączenia MQTT.") }
+        client.sendCommand(json)
     }
 
     func sendAnycubicPrint(serial: String, action: String) { (clients[serial] as? AnycubicS1Client)?.sendPrint(action) }
@@ -673,7 +682,8 @@ final class PrinterStore: ObservableObject {
     }
 
     func remove(_ printer: SavedPrinter) {
-        reconnectTasks.removeValue(forKey: printer.serial)?.cancel()
+        cancelRetry(serial: printer.serial)
+        clientGenerations.removeValue(forKey: printer.serial)
         clients.removeValue(forKey: printer.serial)?.stop()
         sessionCodes.removeValue(forKey: printer.serial)
         printers.removeAll { $0.serial == printer.serial }
@@ -700,13 +710,19 @@ final class PrinterStore: ObservableObject {
     }
 
     func reconnect(_ printer: SavedPrinter) {
-        reconnectTasks.removeValue(forKey: printer.serial)?.cancel()
+        cancelRetry(serial: printer.serial)
+        clientGenerations.removeValue(forKey: printer.serial)
         clients.removeValue(forKey: printer.serial)?.stop()
         telemetry[printer.serial] = PrinterTelemetry()
         connectionMessages[printer.serial] = AppSettings.shared.t("Connecting…")
 
+        let generation = UUID()
+        clientGenerations[printer.serial] = generation
         let handler: @Sendable (MQTTClient.Event) -> Void = { [weak self] event in
-            Task { @MainActor [weak self] in self?.handle(event, serial: printer.serial) }
+            Task { @MainActor [weak self] in
+                guard let self, self.clientGenerations[printer.serial] == generation else { return }
+                self.handle(event, serial: printer.serial)
+            }
         }
         let client: PrinterConnection
         switch printer.kind {
@@ -755,6 +771,7 @@ final class PrinterStore: ObservableObject {
 
     /// Clears the card notices for a printer (the user tapped "OK" on the on-card message).
     func dismissSpoolNotices(serial: String) {
+        defectAlarms[serial] = nil
         guard spoolNotices[serial] != nil else { return }
         spoolNotices[serial] = nil
     }
@@ -764,6 +781,43 @@ final class PrinterStore: ObservableObject {
     /// A notification is easy to miss: it can be swiped away without reading, and quiet hours
     /// suppress it outright. Anything worth waking somebody for is worth leaving somewhere they will
     /// find it afterwards, so the card keeps saying it until they say OK.
+    /// Ostrzeżenie o wpadce, które czeka na odpowiedź, razem z klatką, która je wywołała.
+    struct DefectAlarm: Equatable {
+        var text: String
+        var frame: String?
+    }
+
+    /// Ostrzeżenie na karcie plus to, czego potrzeba, żeby dało się na nie odpowiedzieć.
+    ///
+    /// Powiadomienie ma przyciski od dawna, ale da się je machnąć nieprzeczytane, a w godzinach ciszy
+    /// w ogóle się nie pokazuje. Karta zostaje, więc to na niej musi stać pytanie.
+    func postDefectAlarm(serial: String, text: String, frame: String?) {
+        defectAlarms[serial] = DefectAlarm(text: text, frame: frame)
+        postCardNotice(serial: serial, text: text)
+    }
+
+    /// Odpowiedź człowieka na ostrzeżenie: „to wpadka" albo „fałszywy alarm".
+    ///
+    /// Klatka idzie pod tę etykietę, którą naprawdę miała, ostrzeżenie znika z karty, a rozpoznawanie
+    /// uczy się na jednym i drugim. To jedyne miejsce, w którym pomyłka cokolwiek daje.
+    func answerDefect(serial: String, confirmed: Bool) {
+        guard let alarm = defectAlarms.removeValue(forKey: serial) else { return }
+        if let frame = alarm.frame {
+            DefectDataset.refile(frame: URL(fileURLWithPath: frame), as: confirmed ? nil : .ok)
+        }
+        let left = (spoolNotices[serial] ?? []).filter { $0 != alarm.text }
+        spoolNotices[serial] = left.isEmpty ? nil : left
+        DefectWatch.current?.answered(serial: serial, confirmed: confirmed)
+    }
+
+    /// Ta sama odpowiedź, gdy padła na powiadomieniu, żeby karta nie pytała o coś rozstrzygniętego.
+    func forgetDefectAlarm(frame: String) {
+        guard let serial = defectAlarms.first(where: { $0.value.frame == frame })?.key,
+              let alarm = defectAlarms.removeValue(forKey: serial) else { return }
+        let left = (spoolNotices[serial] ?? []).filter { $0 != alarm.text }
+        spoolNotices[serial] = left.isEmpty ? nil : left
+    }
+
     func postCardNotice(serial: String, text: String) {
         var notices = spoolNotices[serial] ?? []
         // The same warning is not worth saying twice, and the card holds two lines comfortably.
@@ -855,10 +909,10 @@ final class PrinterStore: ObservableObject {
             localNetworkWasDenied = false
             permissionRetryTask?.cancel()
             permissionRetryTask = nil
-            reconnectTasks.removeValue(forKey: serial)?.cancel()
+            cancelRetry(serial: serial)
             connectionMessages[serial] = nil
         case .telemetry(var value):
-            reconnectTasks.removeValue(forKey: serial)?.cancel()
+            cancelRetry(serial: serial)
             let previous = telemetry[serial]
             if value.state == .printing || value.state == .paused {
                 dismissedJobs.removeValue(forKey: serial)
@@ -904,6 +958,8 @@ final class PrinterStore: ObservableObject {
                                                              area: lastControlArea[serial] ?? .fans, date: Date())
             }
         case .disconnected(let reason):
+            clientGenerations.removeValue(forKey: serial)
+            clients.removeValue(forKey: serial)?.stop()
             var offline = telemetry[serial] ?? PrinterTelemetry()
             offline.state = .offline
             telemetry[serial] = offline
@@ -913,6 +969,8 @@ final class PrinterStore: ObservableObject {
             localNetworkWasDenied = true
             reconnectTasks.values.forEach { $0.cancel() }
             reconnectTasks.removeAll()
+            retryTokens.removeAll()
+            clientGenerations.removeAll()
             clients.values.forEach { $0.stop() }
             for printer in printers {
                 var offline = telemetry[printer.serial] ?? PrinterTelemetry()
@@ -936,16 +994,24 @@ final class PrinterStore: ObservableObject {
         }
     }
 
+    private func cancelRetry(serial: String) {
+        retryTokens.removeValue(forKey: serial)
+        reconnectTasks.removeValue(forKey: serial)?.cancel()
+    }
+
     private func scheduleReconnect(serial: String) {
         guard printers.contains(where: { $0.serial == serial }) else { return }
-        // Cancel and replace rather than "only schedule if nothing is pending". The pending task used
-        // to double as a lock, and every path out of it that forgot to clear the entry left that lock
-        // held for the rest of the session: the card went on promising "retrying in 20 s" while
-        // nothing ever opened a socket again. Measured on a fleet of five, all five stuck at once,
-        // every printer answering on 8883 from a shell and Gantry holding no sockets at all. With no
-        // lock there is nothing to leak, and the newest disconnect simply owns the retry.
-        reconnectTasks.removeValue(forKey: serial)?.cancel()
+        cancelRetry(serial: serial)
+        let token = UUID()
+        retryTokens[serial] = token
         reconnectTasks[serial] = Task { @MainActor [weak self] in
+            // Every exit clears this task, but an old task must never clear its replacement.
+            defer {
+                if self?.retryTokens[serial] == token {
+                    self?.retryTokens.removeValue(forKey: serial)
+                    self?.reconnectTasks.removeValue(forKey: serial)
+                }
+            }
             try? await Task.sleep(for: .seconds(20))
             guard let self, !Task.isCancelled,
                   self.printers.contains(where: { $0.serial == serial }),
@@ -976,6 +1042,14 @@ final class PrinterStore: ObservableObject {
     }
 
     func reviveForgottenPrinters() {
+        guard !localNetworkWasDenied else { return }
+        // A socket may still answer MQTT pings while its report subscription has gone silent.
+        for printer in printers where printer.kind == .bambu && reconnectTasks[printer.serial] == nil {
+            if let value = telemetry[printer.serial], value.state != .offline,
+               let updated = value.lastUpdated, Date().timeIntervalSince(updated) > 120 {
+                handle(.disconnected(AppSettings.shared.t("Connection interrupted, retrying")), serial: printer.serial)
+            }
+        }
         let forgotten = Self.serialsNeedingRetry(
             printers: printers.map(\.serial),
             offline: Set(telemetry.filter { $0.value.state == .offline }.keys),

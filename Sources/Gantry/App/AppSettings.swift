@@ -223,6 +223,7 @@ final class AppSettings: ObservableObject {
 
     // Edge dock: the narrow always-on-top strip pinned to a screen edge. Off by default — it is an
     // opt-in second surface, not a replacement for the menu-bar popover.
+    @Published var edgeDockAlwaysOnTop: Bool { didSet { defaults.set(edgeDockAlwaysOnTop, forKey: "edge-dock-always-on-top") } }
     @Published var edgeDockEnabled: Bool { didSet { defaults.set(edgeDockEnabled, forKey: "edge-dock-enabled") } }
     @Published var edgeDockEdge: EdgeDockEdge { didSet { defaults.set(edgeDockEdge.rawValue, forKey: "edge-dock-edge") } }
     @Published var edgeDockRow: EdgeDockRow { didSet { defaults.set(edgeDockRow.rawValue, forKey: "edge-dock-row") } }
@@ -328,7 +329,13 @@ final class AppSettings: ObservableObject {
             defaults.set(true, forKey: pinMigrated)
             defaults.removeObject(forKey: "floating-window-always-on-top")
         }
+        // Reset the old raised-window preference once; pinning remains an explicit user choice.
+        if !defaults.bool(forKey: "ordinary-windows-v1") {
+            defaults.set(false, forKey: "floating-window-always-on-top")
+            defaults.set(true, forKey: "ordinary-windows-v1")
+        }
         floatingWindowAlwaysOnTop = defaults.object(forKey: "floating-window-always-on-top") as? Bool ?? false
+        edgeDockAlwaysOnTop = defaults.object(forKey: "edge-dock-always-on-top") as? Bool ?? true
         edgeDockEnabled = defaults.object(forKey: "edge-dock-enabled") as? Bool ?? false
         edgeDockEdge = EdgeDockEdge(rawValue: defaults.string(forKey: "edge-dock-edge") ?? "") ?? .right
         edgeDockRow = EdgeDockRow(rawValue: defaults.string(forKey: "edge-dock-row") ?? "") ?? .middle

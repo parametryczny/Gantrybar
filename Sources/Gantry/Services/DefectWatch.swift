@@ -42,6 +42,9 @@ final class DefectWatch {
     /// Jak zachowuje się każdy wydruk z osobna. Nie wymaga żadnych danych, więc działa od pierwszego
     /// uruchomienia i jest jedyną drogą, którą ma nowy użytkownik (patrz PrintBaseline).
     private var baselines: [String: PrintBaseline] = [:]
+    private var lastFrame: [String: Data] = [:]
+    private var masks: [String: DefectMask] = [:]
+    private var lastInspection: [String: Date] = [:]
     private var lastJob: [String: String] = [:]
     /// Ile klatek „idzie dobrze" Gantry zapisało samo dla bieżącego wydruku i kiedy ostatnio.
     private var goodFrames: [String: (job: String, count: Int, at: Date)] = [:]
@@ -50,6 +53,8 @@ final class DefectWatch {
     private var frameSource: [String: CameraSnapshot.Source] = [:]
     /// O czym już powiedzieliśmy przy tym wydruku, żeby karta nie zbierała tej samej wpadki w kółko.
     private var toldAbout: [String: (job: String, labels: Set<String>)] = [:]
+    /// Przy którym wydruku powiedzieliśmy już, że kamera nic nie widzi. Raz na wydruk wystarczy.
+    private var toldBlind: [String: String] = [:]
     /// Kiedy Gantry ostatnio otwierało własne połączenie z kamerą danej drukarki i jak długo ma teraz
     /// czekać. Klatka z cudzego podglądu jest darmowa, własne połączenie nie jest.
     private var ownLookAt: [String: Date] = [:]
@@ -114,10 +119,13 @@ final class DefectWatch {
         timer = nil
         prototypes = []
         verdicts.removeAll()
+        lastFrame.removeAll()
+        lastInspection.removeAll()
         baselines.removeAll()
         goodFrames.removeAll()
         frameSource.removeAll()
         toldAbout.removeAll()
+        toldBlind.removeAll()
         ownLookAt.removeAll()
         ownLookBackoff.removeAll()
         status = Status()
@@ -147,10 +155,13 @@ final class DefectWatch {
             // A new job starts with a clean slate: yesterday's spaghetti says nothing about today's.
             let job = telemetry.jobName ?? ""
             if lastJob[printer.serial] != job {
+                lastFrame[printer.serial] = nil
+                lastInspection[printer.serial] = nil
                 lastJob[printer.serial] = job
                 verdicts[printer.serial]?.reset()
                 baselines[printer.serial]?.reset()
                 toldAbout[printer.serial] = (job: job, labels: [])
+                toldBlind[printer.serial] = nil
             }
             guard !busy.contains(printer.serial) else { continue }
             // A frame from a preview somebody already has open is free. A frame that needs Gantry to
@@ -174,26 +185,60 @@ final class DefectWatch {
                         ? min(Self.ownLookCeiling, (self.ownLookBackoff[printer.serial] ?? Self.ownLookInterval) * 2)
                         : Self.ownLookInterval
                 }
-                guard let frame = taken else { return }
+                guard AppSettings.shared.defectWatchEnabled,
+                      let current = store.telemetry[printer.serial], current.state == .printing,
+                      (current.jobName ?? "") == job, let frame = taken else { return }
+                guard self.lastFrame[printer.serial] != frame.jpeg else { return }
+                let now = Date()
+                if now.timeIntervalSince(self.lastInspection[printer.serial] ?? now) > max(180, Double(AppSettings.shared.defectWatchSeconds) * 3) {
+                    self.verdicts[printer.serial]?.reset()
+                }
+                self.lastFrame[printer.serial] = frame.jpeg
+                self.lastInspection[printer.serial] = now
                 // A frame from a different stream cannot be compared with the last one, so the
                 // history starts again rather than reading the new framing as a failure.
                 if self.frameSource[printer.serial] != frame.source {
                     self.frameSource[printer.serial] = frame.source
                     self.baselines[printer.serial]?.reset()
+                    self.verdicts[printer.serial]?.reset()
                 }
-                self.inspect(jpeg: frame.jpeg, printer: printer, telemetry: telemetry)
+                self.inspect(jpeg: frame.jpeg, printer: printer, telemetry: current)
             }
         }
     }
 
     private func inspect(jpeg: Data, printer: SavedPrinter, telemetry: PrinterTelemetry) {
-        // Zawsze, niezależnie od modelu: jak ten wydruk zachowuje się względem ostatnich minut.
-        let fromBehaviour = watchBehaviour(jpeg: jpeg, printer: printer, telemetry: telemetry)
+        let mask = DefectMask.load(serial: printer.serial)
+        if masks[printer.serial] != mask {
+            masks[printer.serial] = mask
+            baselines[printer.serial]?.reset()
+            verdicts[printer.serial]?.reset()
+        }
+        let analysis: Data
+        do { analysis = try mask.applying(to: jpeg) }
+        catch {
+            baselines[printer.serial]?.reset()
+            verdicts[printer.serial]?.reset()
+            var next = status; next.lastError = error.localizedDescription; status = next
+            return
+        }
+        // Klatka, na której nic nie widać, nie jest klatką o wydruku. Kamera w komorze bez światła
+        // oddaje czarny prostokąt, a każda z trzech dróg ma o nim jakieś zdanie i każde jest zmyślone.
+        // Na tej flocie MINI oddała dziewięć takich i wszystkie skończyły z etykietą spaghetti.
+        guard let frame = FrameSignals.grey(from: analysis) else { return }
+        guard FrameSignals.legible(frame) else {
+            baselines[printer.serial]?.reset()
+            verdicts[printer.serial]?.reset()
+            reportBlindCamera(printer: printer, telemetry: telemetry)
+            return
+        }
+        // Store raw camera frames, but use the selected area for both analysis paths.
+        let fromBehaviour = watchBehaviour(frame: frame, printer: printer, telemetry: telemetry)
 
         // Wzorce liczą się zawsze, także przy wskazanym modelu. Model zna kamery, na których był
         // uczony; Twoje klatki znają Twoją. Gdy model mówi „coś podobnego, ale za słabo", a klatka
         // z tej samej kamery, którą sam oznaczyłeś, mówi wprost, to ta druga ma rację.
-        let match = DefectPrototypes.match(jpeg: jpeg, against: prototypes)
+        let match = mask.isActive ? nil : DefectPrototypes.match(jpeg: analysis, against: prototypes)
         let fromFrames = PrintBaseline.Reading(label: match?.label, confidence: match?.confidence ?? 0)
 
         guard let path = DefectModel.effectivePath(chosen: AppSettings.shared.defectModelPath) else {
@@ -203,9 +248,13 @@ final class DefectWatch {
         // Ten sam wczytany plik, którego używa „Testuj". Dwa wczytania tego samego modelu prędzej
         // czy później zaczęłyby odpowiadać inaczej, a wtedy sprawdzanie przestaje cokolwiek znaczyć.
         do {
-            let guess = try DefectModel.shared.guess(jpeg: jpeg, path: path)
-            let fromModel = PrintBaseline.Reading(label: guess?.label, confidence: guess?.confidence ?? 0)
-            settle([fromBehaviour, fromModel, fromFrames], jpeg: jpeg, printer: printer, telemetry: telemetry)
+            let guess = try DefectModel.shared.guess(jpeg: analysis, path: path)
+            let appearance = DefectAppearance.select(
+                model: guess.map { ($0.label, $0.confidence) },
+                reference: match.map { ($0.label, $0.confidence) },
+                threshold: AppSettings.shared.defectThreshold)
+            let fromModel = PrintBaseline.Reading(label: appearance?.label, confidence: appearance?.confidence ?? 0)
+            settle([fromBehaviour, fromModel], jpeg: jpeg, printer: printer, telemetry: telemetry)
         } catch {
             var next = status
             next.lastError = error.localizedDescription
@@ -215,11 +264,8 @@ final class DefectWatch {
 
     /// Co o tej klatce mówi samo zachowanie wydruku. Historia jest osobna dla każdej drukarki, bo
     /// każda ma własną kamerę, własne światło i własny kadr.
-    private func watchBehaviour(jpeg: Data, printer: SavedPrinter,
+    private func watchBehaviour(frame: [Float], printer: SavedPrinter,
                                 telemetry: PrinterTelemetry) -> PrintBaseline.Reading {
-        guard let frame = FrameSignals.grey(from: jpeg) else {
-            return PrintBaseline.Reading(label: nil, confidence: 0)
-        }
         var baseline = baselines[printer.serial] ?? PrintBaseline()
         let reading = baseline.observe(frame: frame, progress: Double(telemetry.progress) / 100)
         baselines[printer.serial] = baseline
@@ -252,6 +298,50 @@ final class DefectWatch {
               jpeg: jpeg, printer: printer, telemetry: telemetry)
     }
 
+
+    /// Co zrobić, gdy człowiek odpowie na ostrzeżenie.
+    ///
+    /// „Fałszywy alarm" jest wart więcej niż samo ostrzeżenie: klatka trafia do „idzie dobrze" i od
+    /// tej chwili jest tym, z czym porównywane są następne, a licznik wraca do zera, żeby ta sama
+    /// wpadka mogła zostać zgłoszona jeszcze raz, gdyby wydarzyła się naprawdę. Bez tego pomyłka była
+    /// czystą stratą: nic się z niej nie brało, a karta powtarzała ją aż do końca wydruku.
+    /// Ta sama odpowiedź, gdy padła na przycisku powiadomienia. Wtedy znany jest plik, nie drukarka,
+    /// więc drukarkę odnajduje się po tym pliku, żeby karta przestała pytać o rzecz już rozstrzygniętą.
+    func answeredOnNotification(frame: String, confirmed: Bool) {
+        if let store, let serial = store.defectAlarms.first(where: { $0.value.frame == frame })?.key {
+            store.answerDefect(serial: serial, confirmed: confirmed)
+            return
+        }
+        DefectDataset.refile(frame: URL(fileURLWithPath: frame), as: confirmed ? nil : .ok)
+        rebuildPrototypes()
+    }
+
+    func answered(serial: String, confirmed: Bool) {
+        if !confirmed {
+            verdicts[serial]?.reset()
+            baselines[serial]?.reset()
+            toldAbout[serial] = nil
+        }
+        rebuildPrototypes()
+    }
+
+    /// Mówi raz na wydruk, że z tej kamery nic nie da się wyczytać.
+    ///
+    /// Cisza znaczy tu dwie zupełnie różne rzeczy: „wszystko w porządku" i „patrzę w ciemność". Do
+    /// tej pory wyglądały tak samo, więc drukarka z zgaszoną komorą sprawiała wrażenie pilnowanej.
+    private func reportBlindCamera(printer: SavedPrinter, telemetry: PrinterTelemetry) {
+        let job = telemetry.jobName ?? ""
+        guard toldBlind[printer.serial] != job else { return }
+        toldBlind[printer.serial] = job
+        let settings = AppSettings.shared
+        var next = status
+        next.lastLabel = nil
+        next.lastConfidence = 0
+        next.lastLookedAt = Date()
+        status = next
+        store?.postCardNotice(serial: printer.serial,
+                              text: settings.t("Nothing to see from this camera: the chamber light is off, so the print is not being watched."))
+    }
 
     /// Keeps a few frames of a print that is going well, from the user's own camera.
     ///
@@ -311,7 +401,7 @@ final class DefectWatch {
         // exactly the picture the recogniser should learn from, whether the call was right or wrong.
         let frame = try? DefectDataset.save(jpeg: jpeg, label: DefectDataset.Label(rawValue: failed) ?? .other,
                                             printer: printer, telemetry: telemetry,
-                                            limitBytes: settings.defectDatasetLimitMB * 1024 * 1024)
+                                            limitBytes: settings.defectDatasetLimitMB * 1024 * 1024, prediction: true)
         // Two buttons on the warning, because only the person who looks at the printer knows whether
         // the guess was right, and their answer both settles it and teaches the recogniser.
         NotificationService.post(title: settings.t("Possible print failure"), body: body,
@@ -322,9 +412,10 @@ final class DefectWatch {
         // quiet hours suppress it altogether, so it cannot be the only place a warning ever appears.
         let clock = DateFormatter()
         clock.dateFormat = "HH:mm"
-        store?.postCardNotice(serial: printer.serial,
-                              text: settings.t("Possible print failure at {0}: {1} ({2}%)",
-                                               clock.string(from: Date()), settings.t(failed), percent))
+        store?.postDefectAlarm(serial: printer.serial,
+                               text: settings.t("Possible print failure at {0}: {1} ({2}%)",
+                                                clock.string(from: Date()), settings.t(failed), percent),
+                               frame: frame?.path)
         if settings.defectPausesPrint, let store {
             store.runAutomation(PrinterAutomation(name: "defect", trigger: .manual, action: .pause),
                                 serial: printer.serial)

@@ -1,0 +1,45 @@
+import Foundation
+import Testing
+@testable import Gantry
+
+@Suite struct PrintCostTests {
+    @Test func splitsFilamentEnergyAndMachineTime() {
+        var settings = PrintCostSettings()
+        settings.filamentPerKg = 80; settings.materialPerKg = ["PETG": 100]
+        settings.electricityPerKWh = 1.2; settings.printerWatts = 200; settings.machinePerHour = 2
+        let cost = PrintCost.compute(durationSeconds: 3 * 3600,
+                                     uses: [.init(grams: 250, material: "pla"), .init(grams: 100, material: "PETG")],
+                                     serial: "X", settings: settings)
+        #expect(abs((cost.filament ?? 0) - 30) < 0.0001)     // 0.25 kg × 80 + 0.1 kg × 100
+        #expect(abs(cost.kWh - 0.6) < 0.0001)                // 3 h × 200 W
+        #expect(abs(cost.energy - 0.72) < 0.0001)
+        #expect(abs(cost.machine - 6) < 0.0001)
+        #expect(abs(cost.total - 36.72) < 0.0001)
+        #expect(cost.grams == 350)
+    }
+
+    @Test func unknownFilamentStaysUnknown() {
+        let cost = PrintCost.compute(durationSeconds: 3600, uses: [], serial: "X", settings: PrintCostSettings())
+        #expect(cost.filament == nil)
+        #expect(cost.grams == nil)
+        #expect(cost.total == cost.energy + cost.machine)
+    }
+
+    @Test func perPrinterPowerOverridesDefault() {
+        var settings = PrintCostSettings(); settings.printerWatts = 100; settings.watts = ["BIG": 400]
+        #expect(PrintCost.compute(durationSeconds: 3600, uses: [], serial: "BIG", settings: settings).kWh == 0.4)
+        #expect(PrintCost.compute(durationSeconds: 3600, uses: [], serial: "SMALL", settings: settings).kWh == 0.1)
+    }
+
+    @Test func partialStoredSettingsKeepDefaults() throws {
+        let decoded = try JSONDecoder().decode(PrintCostSettings.self, from: Data(#"{"filamentPerKg": 95}"#.utf8))
+        #expect(decoded.filamentPerKg == 95)
+        #expect(decoded.electricityPerKWh == PrintCostSettings().electricityPerKWh)
+        #expect(decoded.currency == PrintCostSettings().currency)
+    }
+
+    @Test func parsesMaterialPricesWithDecimalComma() {
+        #expect(PrintCostSettings.parseMaterialPrices("petg=90, ASA = 119,50; TPU=140\nbroken") ==
+                ["PETG": 90, "ASA": 119.5, "TPU": 140])
+    }
+}

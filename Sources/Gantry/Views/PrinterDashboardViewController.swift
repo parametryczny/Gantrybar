@@ -724,7 +724,10 @@ final class PrinterDashboardViewController: NSViewController {
                 cardsBySerial[printer.serial]?.update(printer: printer, telemetry: telemetry, message: message, settings: settings, isStartingUp: store.startupProgress.isLoading, offersObjectSkipping: offersSkipping)
             }
             let serial = printer.serial
-            cardsBySerial[serial]?.showNotices(store.spoolNotices[serial] ?? []) { [weak self] in
+            let answer: ((Bool) -> Void)? = store.defectAlarms[serial] == nil ? nil : { [weak self] confirmed in
+                self?.store.answerDefect(serial: serial, confirmed: confirmed)
+            }
+            cardsBySerial[serial]?.showNotices(store.spoolNotices[serial] ?? [], answer: answer) { [weak self] in
                 self?.store.dismissSpoolNotices(serial: serial)
             }
         }
@@ -1440,7 +1443,11 @@ final class PrinterCardView: NSView, NSDraggingSource {
     private let noticeBanner = NSView()
     private let noticeLabel = NSTextField(labelWithString: "")
     private let noticeOKButton = NSButton()
+    // Odpowiedź na ostrzeżenie o wpadce. Pokazuje się zamiast „OK", bo tu jest o co zapytać.
+    private let noticeFailedButton = NSButton()
+    private let noticeFalseAlarmButton = NSButton()
     private var onDismissNotice: (() -> Void)?
+    private var onAnswerNotice: ((Bool) -> Void)?
     // The slot-assignment panel is its own window. Static so it survives a card rebuild: the card
     // that opened it is torn down and recreated whenever the fleet relayouts.
     private static var activeSpoolPanel: PanelWindowController?
@@ -1885,7 +1892,24 @@ final class PrinterCardView: NSView, NSDraggingSource {
         noticeOKButton.setContentHuggingPriority(.required, for: .horizontal)
         noticeOKButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         noticeOKButton.translatesAutoresizingMaskIntoConstraints = false
-        let noticeRow = NSStackView(views: [noticeLabel, noticeOKButton])
+        for (button, title, action) in [
+            (noticeFailedButton, AppSettings.shared.t("It failed"), #selector(noticeFailedTapped)),
+            (noticeFalseAlarmButton, AppSettings.shared.t("False alarm"), #selector(noticeFalseAlarmTapped))
+        ] {
+            button.title = title
+            button.bezelStyle = .rounded
+            button.controlSize = .regular
+            button.font = .systemFont(ofSize: 11, weight: .semibold)
+            button.target = self
+            button.action = action
+            button.isHidden = true
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.translatesAutoresizingMaskIntoConstraints = false
+        }
+        noticeFailedButton.bezelColor = GantryTheme.accent
+        noticeFailedButton.contentTintColor = GantryTheme.canvas
+        let noticeRow = NSStackView(views: [noticeLabel, noticeFalseAlarmButton, noticeFailedButton, noticeOKButton])
         noticeRow.orientation = .horizontal
         noticeRow.alignment = .centerY
         noticeRow.spacing = 8
@@ -1911,6 +1935,16 @@ final class PrinterCardView: NSView, NSDraggingSource {
         onDismissNotice?()
     }
 
+    @objc private func noticeFailedTapped() {
+        noticeBanner.isHidden = true
+        onAnswerNotice?(true)
+    }
+
+    @objc private func noticeFalseAlarmTapped() {
+        noticeBanner.isHidden = true
+        onAnswerNotice?(false)
+    }
+
     @objc private func dismissPrintErrorTapped() {
         guard let currentErrorSignature else { return }
         Self.dismissedErrorSignatures[serial] = currentErrorSignature
@@ -1924,10 +1958,17 @@ final class PrinterCardView: NSView, NSDraggingSource {
     }
 
     /// Shows a dismissible notice at the bottom of the card, or hides it when there is nothing to say.
-    func showNotices(_ texts: [String], onDismiss: @escaping () -> Void) {
+    ///
+    /// Ostrzeżenie o wpadce dostaje zamiast „OK" dwa przyciski, bo tylko ten, kto spojrzy na drukarkę,
+    /// wie, czy było prawdziwe, a jego odpowiedź jest warta więcej niż samo ostrzeżenie.
+    func showNotices(_ texts: [String], answer: ((Bool) -> Void)? = nil, onDismiss: @escaping () -> Void) {
         guard !texts.isEmpty else { noticeBanner.isHidden = true; return }
         noticeLabel.stringValue = texts.joined(separator: "\n")
         onDismissNotice = onDismiss
+        onAnswerNotice = answer
+        noticeOKButton.isHidden = answer != nil
+        noticeFailedButton.isHidden = answer == nil
+        noticeFalseAlarmButton.isHidden = answer == nil
         noticeBanner.isHidden = false
     }
 

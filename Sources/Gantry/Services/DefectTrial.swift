@@ -41,6 +41,9 @@ enum DefectTrial {
         @MainActor static var nothingToCompareWith: Failure {
             Failure(message: AppSettings.shared.t("There are no reference frames to compare against."))
         }
+        @MainActor static var tooDark: Failure {
+            Failure(message: AppSettings.shared.t("Nothing to see in this picture: turn the chamber light on and try again."))
+        }
     }
 
     static func judge(imageAt url: URL,
@@ -53,12 +56,16 @@ enum DefectTrial {
     /// The same question about a frame already in hand, such as the one a printer's camera is showing
     /// right now.
     static func judge(jpeg: Data,
+                      useReferences: Bool = true,
                       prototypes: [DefectPrototypes.Prototype]? = nil,
                       threshold: Double? = nil) throws -> Verdict {
+        // Czarna klatka nie jest pytaniem, na które da się odpowiedzieć. Powiedzieć to wprost jest
+        // uczciwsze niż odpowiedzieć „wygląda dobrze" na zgaszoną komorę.
+        if let grey = FrameSignals.grey(from: jpeg), !FrameSignals.legible(grey) { throw Failure.tooDark }
         let limit = threshold ?? AppSettings.shared.defectThreshold
         // Exactly what the watcher asks: the engine and the reference frames, both, every time.
         // Trying one thing and running another is worse than not offering the trial at all.
-        let bank = prototypes ?? DefectPrototypes.build()
+        let bank = useReferences ? (prototypes ?? DefectPrototypes.build()) : []
         let tally = DefectPrototypes.tally(bank)
         let fromFrames = DefectPrototypes.match(jpeg: jpeg, against: bank)
 
@@ -74,14 +81,11 @@ enum DefectTrial {
         // The same rule the watcher uses: whichever of the two has a real reason to warn wins, and
         // failing that, whichever is surer. Anything else would have the trial answer a question the
         // watcher is not asking.
-        let readings: [(label: String?, confidence: Double)] =
-            [(fromModel?.label, fromModel?.confidence ?? 0), (fromFrames?.label, fromFrames?.confidence ?? 0)]
-        let alarming = readings
-            .filter { $0.confidence >= limit && ($0.label.map(DefectVerdict.warrantsWarning) ?? false) }
-            .max { $0.confidence < $1.confidence }
-        let best = alarming ?? readings.max { $0.confidence < $1.confidence }
+        let best = DefectAppearance.select(model: fromModel.map { ($0.label, $0.confidence) },
+                                          reference: fromFrames.map { ($0.label, $0.confidence) }, threshold: limit)
+        let alarming = best.map { $0.confidence >= limit && DefectVerdict.warrantsWarning($0.label) } ?? false
         return Verdict(jpeg: jpeg, label: best?.label, confidence: best?.confidence ?? 0,
-                       raisesAlarm: alarming != nil, threshold: limit,
+                       raisesAlarm: alarming, threshold: limit,
                        comparedAgainst: bank.count, mine: tally.mine, modelName: engine)
     }
 

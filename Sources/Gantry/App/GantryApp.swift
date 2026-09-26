@@ -128,6 +128,7 @@ final class GantryApp: NSObject, NSApplicationDelegate {
             appMenu.addItem(action("Reconnect (all)", symbol: "arrow.clockwise",
                                    selector: "appMenuReconnectAll:"))
             if Build.hasExtras {
+                appMenu.addItem(action("Farma · pliki i wydruki…", symbol: "tray.and.arrow.up", selector: "appMenuFarm:", shortcut: "u"))
                 appMenu.addItem(action("Diagnostic Center…", symbol: "stethoscope",
                                        selector: "appMenuDiagnostics:"))
                 appMenu.addItem(action("Fleet statistics…", symbol: "chart.bar",

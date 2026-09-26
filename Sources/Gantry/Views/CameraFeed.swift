@@ -122,7 +122,7 @@ final class CameraFeedController {
         self.serial = serial
     }
 
-    deinit { stream?.stop() }
+    deinit { stream?.stop(); jpegStream?.stop(); klipperStream?.stop(); elegooStream?.stop(); anycubicStream?.stop() }
 
     static var unavailableText: String {
         AppSettings.shared.t("No camera preview.\nEnable “LAN Only Mode” on the printer — the local stream\nis unavailable while the printer is cloud-connected.")
@@ -189,13 +189,13 @@ final class CameraFeedController {
         }
     }
 
-    /// Restarts a feed that was working and then stopped, backing off so a camera that is genuinely
-    /// gone is not hammered. A feed that never produced a frame is left to the 12 second message.
+    /// Retry stalled streams and attempts with no first frame, allowing 30 seconds for the handshake.
     private func checkForSilence() {
         if compactStatus, receivedFrame, Date().timeIntervalSince(lastFrameAt) > Self.compactSilence {
             view.showStatus(AppSettings.shared.t("No picture"))
         }
-        guard receivedFrame, Date().timeIntervalSince(lastFrameAt) > restartDelay else {
+        guard CameraRecovery.shouldRestart(receivedFrame: receivedFrame,
+            silence: Date().timeIntervalSince(lastFrameAt), delay: restartDelay) else {
             armWatchdog()
             return
         }
@@ -208,6 +208,7 @@ final class CameraFeedController {
 
     func stop() {
         isRunning = false
+        watchdogGeneration += 1
         stoppedWatching()
         timeout?.cancel()
         timeout = nil
@@ -233,6 +234,7 @@ final class CameraFeedController {
     }
 
     private func startBambuCamera(_ printer: SavedPrinter) {
+        let generation = feedGeneration
         guard stream == nil, let code = store.accessCode(for: serial), !code.isEmpty else {
             showStatus(AppSettings.shared.t("Camera unavailable (no access code)"))
             return
@@ -241,23 +243,24 @@ final class CameraFeedController {
         let stream = RTSPCameraStream(
             host: cameraHost(for: printer),
             accessCode: code,
-            onState: { state in Task { @MainActor [weak self] in self?.handleCameraState(state) } },
-            onParameterSets: { sps, pps in Task { @MainActor [weak self] in self?.view.setParameterSets(sps: sps, pps: pps) } },
-            onAccessUnit: { avcc, keyframe in Task { @MainActor [weak self] in self?.handleAccessUnit(avcc, keyframe: keyframe) } }
+            onState: { state in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleCameraState(state) } } },
+            onParameterSets: { sps, pps in Task { @MainActor [weak self] in self?.receive(generation) { $0.view.setParameterSets(sps: sps, pps: pps) } } },
+            onAccessUnit: { avcc, keyframe in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleAccessUnit(avcc, keyframe: keyframe) } } }
         )
         self.stream = stream
         stream.start()
     }
 
     private func startKlipperCamera(_ printer: SavedPrinter) {
+        let generation = feedGeneration
         guard klipperStream == nil else { return }
         showStatus(AppSettings.shared.t("Connecting to camera…"))
         let stream = KlipperCameraStream(
             host: cameraHost(for: printer),
             port: printer.port ?? 7125,
             apiKey: store.accessCode(for: serial),
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } },
-            onState: { state in Task { @MainActor [weak self] in self?.handleKlipperState(state) } }
+            onFrame: { data in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleImageFrame(data) } } },
+            onState: { state in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleKlipperState(state) } } }
         )
         klipperStream = stream
         stream.start()
@@ -292,23 +295,32 @@ final class CameraFeedController {
     }
 
     private func openElegooStream(_ url: URL) {
+        let generation = feedGeneration
         let stream = ElegooCameraStream(url: url,
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } },
+            onFrame: { data in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleImageFrame(data) } } },
             onState: { state in Task { @MainActor [weak self] in
-                if case .failed = state, self?.receivedFrame == false { self?.showStatus(Self.unavailableText) }
+                guard let self, self.isRunning, self.feedGeneration == generation else { return }
+                if case .failed = state, self.receivedFrame == false { self.showStatus(Self.unavailableText) }
             } })
         elegooStream = stream; stream.start()
     }
 
     private func startAnycubicCamera(_ printer: SavedPrinter) {
+        let generation = feedGeneration
         guard anycubicStream == nil, let url = URL(string: "http://\(cameraHost(for: printer)):18088/flv") else { return }
         showStatus(AppSettings.shared.t("Connecting to FLV camera…"))
         let stream = AnycubicCameraStream(url: url,
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } },
+            onFrame: { data in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleImageFrame(data) } } },
             onState: { state in Task { @MainActor [weak self] in
-                if case .failed(let message) = state, self?.receivedFrame == false { self?.showStatus(message) }
+                guard let self, self.isRunning, self.feedGeneration == generation else { return }
+                if case .failed(let message) = state, self.receivedFrame == false { self.showStatus(message) }
             } })
         anycubicStream = stream; stream.start()
+    }
+
+    private func receive(_ generation: Int, update: (CameraFeedController) -> Void) {
+        guard isRunning, generation == feedGeneration else { return }
+        update(self)
     }
 
     private func handleAccessUnit(_ avcc: Data, keyframe: Bool) {
@@ -349,6 +361,7 @@ final class CameraFeedController {
     /// on port 6000 instead. So a failed RTSP attempt is not the end of the road, it is the cue to try
     /// the other protocol before telling the user anything is wrong.
     private func startBambuJPEGFallback(_ printer: SavedPrinter) {
+        let generation = feedGeneration
         guard jpegStream == nil, !receivedFrame,
               let code = store.accessCode(for: serial), !code.isEmpty else { return }
         showStatus(AppSettings.shared.t("Connecting to the P1/A1 camera…"))
@@ -356,12 +369,12 @@ final class CameraFeedController {
             host: cameraHost(for: printer),
             accessCode: code,
             onState: { state in Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.isRunning, self.feedGeneration == generation else { return }
                 if case .failed = state, !self.receivedFrame {
                     self.showStatus(Self.unavailableText)
                 }
             } },
-            onFrame: { data in Task { @MainActor [weak self] in self?.handleImageFrame(data) } })
+            onFrame: { data in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleImageFrame(data) } } })
         jpegStream = stream
         stream.start()
     }
