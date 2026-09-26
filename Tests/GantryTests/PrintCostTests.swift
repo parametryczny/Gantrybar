@@ -49,6 +49,17 @@ import Testing
         #expect(abs((cost.filament ?? 0) - 20) < 0.0001)   // 0.1 × 120 + 0.1 × 80
     }
 
+    @Test func filamentWithoutNewFieldsStillDecodes() throws {
+        let old = #"{"id":"7F0C8C1E-3C77-4A60-9B7E-0E1B1E2B3C4D","brand":"Polymaker","name":"PolyTerra PLA","type":"PLA","colorName":"Cotton White","colorHex":"EDE8E0","manufacturerCode":"PA04001","spoolCount":6,"notes":"","updatedAt":0}"#
+        var filament = try JSONDecoder().decode(Filament.self, from: Data(old.utf8))
+        #expect(filament.ean == nil && filament.pricePerRoll == nil)
+        filament.ean = "5901234123457"; filament.pricePerRoll = 89.9
+        let back = try JSONDecoder().decode(Filament.self, from: JSONEncoder().encode(filament))
+        #expect(back.ean == "5901234123457" && back.pricePerRoll == 89.9)
+        let fromLinux = old.replacingOccurrences(of: #""notes":"""#, with: #""ean":null,"pricePerRoll":null,"notes":"""#)
+        #expect(try JSONDecoder().decode(Filament.self, from: Data(fromLinux.utf8)).pricePerRoll == nil)
+    }
+
     @Test func eanCheckDigit() {
         #expect(EANCode.isPlausible("5901234123457"))      // EAN-13
         #expect(!EANCode.isPlausible("5901234123458"))
