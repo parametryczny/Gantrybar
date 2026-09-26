@@ -85,14 +85,15 @@ final class PhysicalSpoolStore {
     /// into storage (spec §1: adding a filament to Spoolbase creates one physical roll per spool). A
     /// full roll has remaining == nominal == `weight`; an opened roll passes a smaller `remaining`.
     @discardableResult
-    func createRolls(definitionID: UUID, count: Int, weight: Double, remaining: Double? = nil) -> [PhysicalSpool] {
+    func createRolls(definitionID: UUID, count: Int, weight: Double, remaining: Double? = nil,
+                     price: Double? = nil) -> [PhysicalSpool] {
         var created: [PhysicalSpool] = []
         for _ in 0..<max(0, count) {
             let rest = remaining ?? weight
             let spool = PhysicalSpool(id: nextSpoolID(), filamentDefinitionID: definitionID,
                                       nominalWeightGrams: weight, remainingWeightGrams: rest,
                                       status: rest < weight ? .active : .new, location: .storage,
-                                      openedAt: rest < weight ? .now : nil)
+                                      openedAt: rest < weight ? .now : nil, price: price)
             spools.append(spool)
             created.append(spool)
         }
@@ -106,6 +107,20 @@ final class PhysicalSpoolStore {
         updated.updatedAt = .now
         spools[index] = updated
         changed()
+    }
+
+    /// Price paid for one roll; nil clears it.
+    func setPrice(id: String, price: Double?) {
+        guard let index = spools.firstIndex(where: { $0.id == id }) else { return }
+        spools[index].price = price.map { max(0, $0) }
+        spools[index].updatedAt = .now
+        changed()
+    }
+
+    /// The price of the most recently added roll of this product, to suggest for the next one.
+    func lastPrice(definitionID: UUID) -> Double? {
+        spools.filter { $0.filamentDefinitionID == definitionID && $0.price != nil }
+            .max { $0.createdAt < $1.createdAt }?.price
     }
 
     func delete(id: String) {

@@ -4,7 +4,7 @@ import AppKit
 final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
     private var catalog: [CatalogFilament]
     private let existingCatalogIDs: Set<String>
-    private let onAdd: (CatalogFilament, Int, Double) -> Void
+    private let onAdd: (CatalogFilament, Int, Double, Double?) -> Void
     private let searchField = NSSearchField()
     private let brandPopup = NSPopUpButton()
     private let typePopup = NSPopUpButton()
@@ -14,6 +14,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
     private let deleteButton = NSButton()
     private let quantityField = NSTextField()
     private let weightField = NSTextField()
+    private let priceField = NSTextField()
     private let countLabel = NSTextField(labelWithString: "")
     private var visible: [CatalogFilament] = []
     private var editorController: FilamentEditorWindowController?
@@ -22,7 +23,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
     init(
         catalog: [CatalogFilament],
         existingCatalogIDs: Set<String>,
-        onAdd: @escaping (CatalogFilament, Int, Double) -> Void
+        onAdd: @escaping (CatalogFilament, Int, Double, Double?) -> Void
     ) {
         self.catalog = catalog
         self.existingCatalogIDs = existingCatalogIDs
@@ -97,7 +98,13 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         scanButton.controlSize = .small
         scanButton.bezelStyle = .rounded
         scanButton.widthAnchor.constraint(equalToConstant: 112).isActive = true
-        let filters = NSStackView(views: [searchField, brandPopup, typePopup, scanButton])
+        let typeButton = NSButton(title: AppSettings.shared.t("Enter code…"), target: self, action: #selector(enterCodePressed))
+        typeButton.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: AppSettings.shared.t("Enter code"))
+        typeButton.imagePosition = .imageLeading
+        typeButton.controlSize = .small
+        typeButton.bezelStyle = .rounded
+        typeButton.toolTip = AppSettings.shared.t("Type the EAN from the label, or use a USB barcode scanner.")
+        let filters = NSStackView(views: [searchField, brandPopup, typePopup, typeButton, scanButton])
         filters.orientation = .horizontal
         filters.spacing = 8
 
@@ -152,6 +159,12 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         weightField.alignment = .center
         weightField.formatter = integerFormatter()
         weightField.widthAnchor.constraint(equalToConstant: 62).isActive = true
+        let priceTitle = NSTextField(labelWithString: AppSettings.shared.t("Price per roll"))
+        priceTitle.textColor = .secondaryLabelColor
+        priceTitle.toolTip = AppSettings.shared.t("Optional. Used to price the filament in each print's cost.")
+        priceField.alignment = .center
+        priceField.placeholderString = PrintCostSettings.current.currency
+        priceField.widthAnchor.constraint(equalToConstant: 62).isActive = true
         let cancel = NSButton(title: AppSettings.shared.t("Cancel"), target: self, action: #selector(cancelPressed))
         cancel.keyEquivalent = "\u{1b}"
         let custom = NSButton(title: AppSettings.shared.t("Add your own…"), target: self, action: #selector(addCustomPressed))
@@ -178,7 +191,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         addButton.keyEquivalent = "\r"
         addButton.bezelStyle = .rounded
         [custom, editButton, deleteButton, cancel, addButton].forEach { $0.controlSize = .small }
-        let footer = NSStackView(views: [custom, editButton, deleteButton, NSView(), weightTitle, weightField, quantityTitle, quantityField, cancel, addButton])
+        let footer = NSStackView(views: [custom, editButton, deleteButton, NSView(), weightTitle, weightField, priceTitle, priceField, quantityTitle, quantityField, cancel, addButton])
         footer.orientation = .horizontal
         footer.alignment = .centerY
         footer.spacing = 9
@@ -311,6 +324,39 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         NSApp.activate(ignoringOtherApps: true)
         scanner.startScanning()
     }
+    /// Manual entry of the code printed under the barcode, for when there is no camera or the label
+    /// will not scan. A USB scanner types into the field and presses Return, so it works here too.
+    @objc private func enterCodePressed() {
+        let s = AppSettings.shared
+        let field = NSTextField(string: "")
+        field.placeholderString = "5901234123457"
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+        let alert = NSAlert()
+        alert.messageText = s.t("Enter the EAN code")
+        alert.informativeText = s.t("The digits under the barcode on the spool or the box.")
+        alert.accessoryView = field
+        alert.addButton(withTitle: s.t("Find"))
+        alert.addButton(withTitle: s.t("Cancel"))
+        alert.window.initialFirstResponder = field
+        guard let window else { return }
+        alert.beginSheetModal(for: window) { [weak self] result in
+            guard result == .alertFirstButtonReturn, let self else { return }
+            let code = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else { return }
+            if !EANCode.isPlausible(code) {
+                let warning = NSAlert()
+                warning.messageText = s.t("This does not look like a valid EAN")
+                warning.informativeText = s.t("Code {0}: the check digit does not match. Check the digits, or continue anyway.", code)
+                warning.addButton(withTitle: s.t("Continue"))
+                warning.addButton(withTitle: s.t("Cancel"))
+                warning.beginSheetModal(for: window) { [weak self] answer in
+                    if answer == .alertFirstButtonReturn { self?.handleScannedCode(code) }
+                }
+                return
+            }
+            self.handleScannedCode(code)
+        }
+    }
     @objc private func cancelPressed() { closeSheet() }
     @objc private func addCustomPressed() {
         presentEditor(nil)
@@ -337,7 +383,9 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
     }
     @objc private func addPressed() {
         guard let selected else { return }
-        onAdd(selected, max(1, quantityField.integerValue), max(1, Double(weightField.integerValue)))
+        let price = Double(priceField.stringValue.replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespaces)).flatMap { $0 >= 0 ? $0 : nil }
+        onAdd(selected, max(1, quantityField.integerValue), max(1, Double(weightField.integerValue)), price)
         closeSheet()
     }
 
@@ -415,7 +463,7 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         applyFilters()
         let alert = NSAlert()
         alert.messageText = AppSettings.shared.t("The code is not in the catalogue")
-        alert.informativeText = AppSettings.shared.t("Scanned code: {0}", code) + "\n" + AppSettings.shared.t("You can add this filament as your own and enter the manufacturer code.")
+        alert.informativeText = AppSettings.shared.t("Code: {0}", code) + "\n" + AppSettings.shared.t("You can add this filament as your own and enter the manufacturer code.")
         alert.addButton(withTitle: AppSettings.shared.t("Add your own"))
         alert.addButton(withTitle: "OK")
         if let window {
@@ -451,6 +499,19 @@ final class CatalogPickerWindowController: NSWindowController, NSTableViewDataSo
         formatter.minimum = 1
         formatter.maximum = 100_000
         return formatter
+    }
+}
+
+/// EAN-8 / UPC-A / EAN-13 / GTIN-14 check digit. Other code types (Code 128, QR) are left alone.
+enum EANCode {
+    static func isPlausible(_ value: String) -> Bool {
+        let digits = value.filter { !$0.isWhitespace && $0 != "-" }
+        guard digits.allSatisfy(\.isASCII), digits.allSatisfy(\.isNumber) else { return true }
+        guard [8, 12, 13, 14].contains(digits.count) else { return false }
+        let numbers = digits.compactMap { $0.wholeNumberValue }
+        let body = numbers.dropLast().reversed()
+        let sum = body.enumerated().reduce(0) { $0 + $1.element * ($1.offset % 2 == 0 ? 3 : 1) }
+        return (10 - sum % 10) % 10 == numbers.last
     }
 }
 

@@ -38,6 +38,26 @@ import Testing
         #expect(decoded.currency == PrintCostSettings().currency)
     }
 
+    @Test func rollPriceWinsOverMaterialPrice() {
+        var settings = PrintCostSettings(); settings.filamentPerKg = 80
+        let roll = PhysicalSpool(id: "SP-1", filamentDefinitionID: UUID(), nominalWeightGrams: 750, price: 90)
+        #expect(roll.pricePerKg == 120)
+        let cost = PrintCost.compute(durationSeconds: 0,
+                                     uses: [.init(grams: 100, material: "PLA", pricePerKg: roll.pricePerKg),
+                                            .init(grams: 100, material: "PLA")],
+                                     serial: "X", settings: settings)
+        #expect(abs((cost.filament ?? 0) - 20) < 0.0001)   // 0.1 × 120 + 0.1 × 80
+    }
+
+    @Test func eanCheckDigit() {
+        #expect(EANCode.isPlausible("5901234123457"))      // EAN-13
+        #expect(!EANCode.isPlausible("5901234123458"))
+        #expect(EANCode.isPlausible("96385074"))           // EAN-8
+        #expect(EANCode.isPlausible("036000291452"))       // UPC-A
+        #expect(!EANCode.isPlausible("12345"))
+        #expect(EANCode.isPlausible("BL-PLA-1001"))        // not an EAN, left alone
+    }
+
     @Test func parsesMaterialPricesWithDecimalComma() {
         #expect(PrintCostSettings.parseMaterialPrices("petg=90, ASA = 119,50; TPU=140\nbroken") ==
                 ["PETG": 90, "ASA": 119.5, "TPU": 140])

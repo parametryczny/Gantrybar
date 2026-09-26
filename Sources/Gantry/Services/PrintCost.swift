@@ -67,6 +67,8 @@ struct PrintCost: Equatable, Sendable {
     struct Use: Equatable, Sendable {
         var grams: Double
         var material: String?
+        /// From the price entered for the roll that was used; wins over the material price list.
+        var pricePerKg: Double? = nil
     }
 
     /// Nil when Gantry does not know how much filament the print used (no Spoolbase roll assigned).
@@ -84,7 +86,7 @@ struct PrintCost: Equatable, Sendable {
         let kWh = hours * max(0, settings.power(for: serial)) / 1000
         let grams = uses.isEmpty ? nil : uses.reduce(0) { $0 + max(0, $1.grams) }
         let filament = uses.isEmpty ? nil
-            : uses.reduce(0) { $0 + max(0, $1.grams) / 1000 * max(0, settings.pricePerKg($1.material)) }
+            : uses.reduce(0) { $0 + max(0, $1.grams) / 1000 * max(0, $1.pricePerKg ?? settings.pricePerKg($1.material)) }
         return PrintCost(filament: filament, grams: grams,
                          energy: kWh * max(0, settings.electricityPerKWh),
                          machine: hours * max(0, settings.machinePerHour), kWh: kWh)
@@ -100,9 +102,9 @@ struct PrintCost: Equatable, Sendable {
         return spools.usageEvents
             .filter { $0.printerSerial == serial && $0.timestamp >= from && $0.timestamp <= to }
             .map { event in
-                let definition = spools.spools.first { $0.id == event.spoolID }?.filamentDefinitionID
-                let material = definition.flatMap { id in filaments.first { $0.id == id }?.type }
-                return Use(grams: event.consumedGrams, material: material)
+                let spool = spools.spools.first { $0.id == event.spoolID }
+                let material = spool.flatMap { s in filaments.first { $0.id == s.filamentDefinitionID }?.type }
+                return Use(grams: event.consumedGrams, material: material, pricePerKg: spool?.pricePerKg)
             }
     }
 }

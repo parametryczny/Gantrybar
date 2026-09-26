@@ -488,14 +488,14 @@ final class MinimalFilamentPopoverViewController: NSViewController, NSTextFieldD
         let controller = CatalogPickerWindowController(
             catalog: CatalogFile.filaments,
             existingCatalogIDs: Set(store.filaments.compactMap(\.catalogID))
-        ) { [weak self] item, quantity, weight in
+        ) { [weak self] item, quantity, weight, price in
             guard let self else { return }
             self.store.add(item.inventoryItem(spoolCount: quantity))
             // Each declared spool becomes a real physical roll (SP-xxxxx) in storage, so the roll — and
             // its weight — exists from the moment the filament is added (spec §1). Match the definition
             // by catalog id, since `add` may have merged into an existing entry.
             if let def = self.store.filaments.first(where: { $0.catalogID == item.id }) {
-                SpoolbaseShared.spools.createRolls(definitionID: def.id, count: quantity, weight: weight)
+                SpoolbaseShared.spools.createRolls(definitionID: def.id, count: quantity, weight: weight, price: price)
             }
         }
         catalogController = controller

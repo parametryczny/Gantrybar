@@ -27,6 +27,15 @@ struct PhysicalSpool: Codable, Identifiable, Hashable, Sendable {
     // (so a gross reading can be turned into net filament). Both optional; nil until first weighed.
     var weighedAt: Date?
     var tareGrams: Double?
+    /// What this roll cost (in the currency set under print-cost prices), nil when not entered.
+    /// Optional and additive, so older files and the Windows/Linux readers keep working.
+    var price: Double?
+
+    /// Price of one kilogram of this roll's filament, from what the roll cost and its full weight.
+    var pricePerKg: Double? {
+        guard let price, price >= 0, nominalWeightGrams > 0 else { return nil }
+        return price / nominalWeightGrams * 1000
+    }
 
     init(
         id: String,
@@ -43,7 +52,8 @@ struct PhysicalSpool: Codable, Identifiable, Hashable, Sendable {
         lastUsedAt: Date? = nil,
         totalConsumedGrams: Double = 0,
         weighedAt: Date? = nil,
-        tareGrams: Double? = nil
+        tareGrams: Double? = nil,
+        price: Double? = nil
     ) {
         self.id = id
         self.filamentDefinitionID = filamentDefinitionID
@@ -60,6 +70,7 @@ struct PhysicalSpool: Codable, Identifiable, Hashable, Sendable {
         self.totalConsumedGrams = totalConsumedGrams
         self.weighedAt = weighedAt
         self.tareGrams = tareGrams
+        self.price = price.map { max(0, $0) }
     }
 
     /// Locally computed fill level (no RFID): remaining / nominal. Never pushed back to firmware.

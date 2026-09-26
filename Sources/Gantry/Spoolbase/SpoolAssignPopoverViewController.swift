@@ -133,7 +133,8 @@ final class SpoolAssignPopoverViewController: NSViewController {
                 rollsSection.addArrangedSubview(row(
                     dot: def.map { NSColor(filamentHex: $0.colorHex) },
                     title: name.isEmpty ? spool.id : name,
-                    subtitle: "\(spool.id) · \(Int(spool.remainingWeightGrams)) g · \(placeLabel(spool.location))",
+                    subtitle: "\(spool.id) · \(Int(spool.remainingWeightGrams)) g · \(placeLabel(spool.location))"
+                        + (spool.price.map { " · " + Self.money($0) } ?? ""),
                     highlight: matchesSpool(spool),
                     onDelete: { [weak self] in
                         guard let self else { return }
@@ -199,6 +200,8 @@ final class SpoolAssignPopoverViewController: NSViewController {
         let netField = NSTextField(string: String(Int(spool.remainingWeightGrams)))
         let grossField = NSTextField(string: "")
         let tareField = NSTextField(string: spool.tareGrams.map { String(Int($0)) } ?? "")
+        let priceField = NSTextField(string: spool.price.map { String(format: "%g", $0) } ?? "")
+        priceField.placeholderString = PrintCostSettings.current.currency
 
         let hint = note(t("Enter the net weight, or gross plus the empty-spool tare (the app subtracts it)."))
         let save = pill(t("Save"), filled: true) { [weak self] in
@@ -208,6 +211,9 @@ final class SpoolAssignPopoverViewController: NSViewController {
             let net: Double?
             if let gross = num(grossField), let tare { net = max(0, gross - tare) } else { net = num(netField) }
             guard let net else { return }
+            let priceText = priceField.stringValue.trimmingCharacters(in: .whitespaces)
+            let price = priceText.isEmpty ? nil : num(priceField).flatMap { $0 >= 0 ? $0 : nil }
+            if priceText.isEmpty || price != nil, price != spool.price { self.spools.setPrice(id: spool.id, price: price) }
             self.spools.correctWeight(id: spool.id, netGrams: net, tare: tareField.stringValue.isEmpty ? nil : tare)
             self.onChange(); self.showMain()
         }
@@ -217,6 +223,8 @@ final class SpoolAssignPopoverViewController: NSViewController {
                  divider(),
                  labeledField(t("Gross (g)"), grossField),
                  labeledField(t("Spool tare (g)"), tareField),
+                 divider(),
+                 labeledField(t("Roll price ({0})", PrintCostSettings.current.currency), priceField),
                  hint, save], scrollFrom: nil)
     }
 
@@ -275,7 +283,13 @@ final class SpoolAssignPopoverViewController: NSViewController {
                                 subtitle: "\(def.brand) \(def.name) · \(def.type)".trimmingCharacters(in: .whitespaces),
                                 back: { [weak self] in self?.showPickFilament() })
 
-        func preset(_ g: Double) -> NSView { pill("\(Int(g)) g", filled: false) { [weak self] in self?.createAndAssign(def: def, grams: g) } }
+        let priceField = NSTextField(string: spools.lastPrice(definitionID: def.id).map { String(format: "%g", $0) } ?? "")
+        priceField.placeholderString = PrintCostSettings.current.currency
+        func price() -> Double? {
+            Double(priceField.stringValue.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces))
+                .flatMap { $0 >= 0 ? $0 : nil }
+        }
+        func preset(_ g: Double) -> NSView { pill("\(Int(g)) g", filled: false) { [weak self] in self?.createAndAssign(def: def, grams: g, price: price()) } }
         let presets = NSStackView(views: [preset(1000), preset(750), preset(500)])
         presets.orientation = .horizontal
         presets.spacing = 6
@@ -285,13 +299,14 @@ final class SpoolAssignPopoverViewController: NSViewController {
         field.widthAnchor.constraint(equalToConstant: 100).isActive = true
         let create = pill(t("Create"), filled: true) { [weak self] in
             guard let self, let g = Double(field.stringValue.replacingOccurrences(of: ",", with: ".")), g > 0 else { return }
-            self.createAndAssign(def: def, grams: g)
+            self.createAndAssign(def: def, grams: g, price: price())
         }
         let customRow = NSStackView(views: [field, create])
         customRow.orientation = .horizontal
         customRow.spacing = 6
 
-        present([header, presets, customRow], scrollFrom: nil)
+        present([header, labeledField(t("Roll price ({0})", PrintCostSettings.current.currency), priceField),
+                 presets, customRow], scrollFrom: nil)
     }
 
     // MARK: Actions
@@ -309,12 +324,16 @@ final class SpoolAssignPopoverViewController: NSViewController {
         onChange(); onClose?()
     }
 
-    private func createAndAssign(def: Filament, grams: Double) {
+    private func createAndAssign(def: Filament, grams: Double, price: Double? = nil) {
         let spool = PhysicalSpool(id: spools.nextSpoolID(), filamentDefinitionID: def.id,
                                   nominalWeightGrams: grams, remainingWeightGrams: grams,
-                                  status: .active, location: location)
+                                  status: .active, location: location, price: price)
         spools.add(spool)
         onChange(); onClose?()
+    }
+
+    static func money(_ value: Double) -> String {
+        String(format: "%.2f %@", value, PrintCostSettings.current.currency)
     }
 
     private func ensureDefinition() -> Filament {

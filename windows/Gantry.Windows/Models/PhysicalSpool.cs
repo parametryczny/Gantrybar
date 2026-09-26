@@ -27,6 +27,8 @@ public sealed class PhysicalSpool
     // turned into net filament). Both nullable; unset until first weighed.
     [JsonPropertyName("weighedAt")] public DateTime? WeighedAt { get; set; }
     [JsonPropertyName("tareGrams")] public double? TareGrams { get; set; }
+    // What the roll cost; entered on macOS. Kept here so saving on Windows does not drop it.
+    [JsonPropertyName("price")] public double? Price { get; set; }
 
     /// <summary>Locally computed fill level (no RFID). Never pushed back to firmware.</summary>
     [JsonIgnore]

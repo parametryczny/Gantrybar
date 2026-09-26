@@ -1086,5 +1086,18 @@
   "Unsuccessful: {0} errors · {1} cancelled": "Nieudane: {0} błędów · {1} przerwanych",
   "{0} prints without filament data — assign rolls in Spoolbase to count it.": "{0} wydruków bez danych o filamencie — przypisz rolki w Spoolbase, by go liczyć.",
   "utilization {0}%": "wykorzystanie {0}%",
-  "Used to price every print: filament from Spoolbase usage, electricity and machine time from its duration.": "Służą do wyceny każdego wydruku: filament z rozliczeń Spoolbase, prąd i czas maszyny z czasu druku."
+  "Used to price every print: filament from Spoolbase usage, electricity and machine time from its duration.": "Służą do wyceny każdego wydruku: filament z rozliczeń Spoolbase, prąd i czas maszyny z czasu druku.",
+  "Code {0}: the check digit does not match. Check the digits, or continue anyway.": "Kod {0}: cyfra kontrolna się nie zgadza. Sprawdź cyfry albo kontynuuj mimo to.",
+  "Code: {0}": "Kod: {0}",
+  "Continue": "Kontynuuj",
+  "Enter code": "Wpisz kod",
+  "Enter code…": "Wpisz kod…",
+  "Enter the EAN code": "Wpisz kod EAN",
+  "Find": "Szukaj",
+  "Optional. Used to price the filament in each print's cost.": "Opcjonalnie. Służy do wyceny filamentu w koszcie każdego wydruku.",
+  "Price per roll": "Cena rolki",
+  "Roll price ({0})": "Cena rolki ({0})",
+  "The digits under the barcode on the spool or the box.": "Cyfry pod kodem kreskowym na szpuli albo pudełku.",
+  "This does not look like a valid EAN": "To nie wygląda na poprawny EAN",
+  "Type the EAN from the label, or use a USB barcode scanner.": "Wpisz EAN z etykiety albo użyj czytnika kodów na USB."
 }
