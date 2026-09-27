@@ -97,7 +97,8 @@ public static class PrinterInsights
             {
                 record.History.Add(new HistoryEntry { Job = job, StartedAt = start, EndedAt = now,
                     Result = terminal, DurationSeconds = Math.Max(0, (now - start).TotalSeconds) });
-                if (record.History.Count > 100) record.History.RemoveRange(0, record.History.Count - 100);
+                // Enough for a year of production statistics and cost reports on a busy printer.
+                if (record.History.Count > 1000) record.History.RemoveRange(0, record.History.Count - 1000);
             }
             record.ActiveStartedAt = null; record.ActiveJob = null;
         }

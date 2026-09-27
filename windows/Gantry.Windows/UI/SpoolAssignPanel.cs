@@ -298,7 +298,9 @@ internal sealed class SpoolAssignPanel
         {
             Id = _spools.NextSpoolId(), FilamentDefinitionId = def.Id,
             NominalWeightGrams = grams, RemainingWeightGrams = grams,
-            Status = SpoolStatus.Active, Location = _loc
+            Status = SpoolStatus.Active, Location = _loc,
+            // The product's price per roll, when Spoolbase has one, so the print cost counts it.
+            Price = def.PricePerRoll
         });
         _onClose();
     }

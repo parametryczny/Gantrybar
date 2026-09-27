@@ -114,6 +114,7 @@ public sealed class SpoolbaseCatalogWindow : Window
     private readonly TextBox _search = new();
     private readonly TextBox _qty = new() { Text = "1", Width = 48, TextAlignment = TextAlignment.Center };
     private readonly TextBox _weight = new() { Text = "1000", Width = 60, TextAlignment = TextAlignment.Center };
+    private readonly TextBox _price = new() { Text = "", Width = 60, TextAlignment = TextAlignment.Center };
 
     private static Brush Ink => GTheme.Brush(GTheme.Text);
     private static bool Pl => AppSettings.Polish;
@@ -142,10 +143,20 @@ public sealed class SpoolbaseCatalogWindow : Window
             Content = AppSettings.T("▣  Scan code…"), MinWidth = 105, Margin = new Thickness(8, 0, 0, 0)
         };
         codeButton.Click += (_, _) => ScanManufacturerCode();
+        // For a label that will not scan, no camera, or a USB scanner that types the code and Enter.
+        var typeButton = new Button
+        {
+            Content = AppSettings.T("Enter code…"), MinWidth = 90, Margin = new Thickness(8, 0, 0, 0),
+            ToolTip = AppSettings.T("Type the EAN from the label, or use a USB barcode scanner."),
+        };
+        typeButton.Click += (_, _) => EnterCode();
         var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        searchRow.Children.Add(_search); Grid.SetColumn(codeButton, 1); searchRow.Children.Add(codeButton);
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchRow.Children.Add(_search);
+        Grid.SetColumn(typeButton, 1); searchRow.Children.Add(typeButton);
+        Grid.SetColumn(codeButton, 2); searchRow.Children.Add(codeButton);
         DockPanel.SetDock(searchRow, Dock.Top); root.Children.Add(searchRow);
 
         var addManual = new Button { Content = AppSettings.T("Add manually…"), Height = 32, Margin = new Thickness(0, 10, 0, 0) };
@@ -155,7 +166,7 @@ public sealed class SpoolbaseCatalogWindow : Window
 
         // Quantity + per-roll weight: each spool added becomes a real physical roll (SP-xxxxx) in storage
         // with this weight from the moment the filament is added (spec §1-2). Full roll = 1000 g.
-        foreach (var box in new[] { _qty, _weight })
+        foreach (var box in new[] { _qty, _weight, _price })
         {
             box.FontSize = 13; box.Padding = new Thickness(6, 4, 6, 4);
             box.Background = GTheme.Brush(GTheme.Surface);
@@ -168,6 +179,9 @@ public sealed class SpoolbaseCatalogWindow : Window
         footer.Children.Add(_qty);
         footer.Children.Add(new TextBlock { Text = AppSettings.T("Weight (g)"), Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
         footer.Children.Add(_weight);
+        footer.Children.Add(new TextBlock { Text = AppSettings.T("Price per roll"), Foreground = GTheme.Brush(GTheme.Secondary), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0),
+                                            ToolTip = AppSettings.T("Optional. Used to price the filament in each print's cost.") });
+        footer.Children.Add(_price);
         footer.Children.Add(addBtn);
         DockPanel.SetDock(footer, Dock.Bottom);
         root.Children.Add(footer);
@@ -205,8 +219,48 @@ public sealed class SpoolbaseCatalogWindow : Window
         // Match the definition by catalog id (Add may have merged into an existing entry) and mint the
         // physical rolls, so the roll and its weight exist from the moment the filament is added.
         var def = _store.Filaments.FirstOrDefault(f => f.CatalogId == item.Id);
-        if (def is not null) SpoolbaseShared.Spools.CreateRolls(def.Id, qty, weight);
+        double? price = PrintCostSettings.ParseAmount(_price.Text);
+        if (def is not null)
+        {
+            // A price typed here becomes the product's price for the next rolls too.
+            if (price is { } value && def.PricePerRoll != value) { def.PricePerRoll = value; _store.Update(def); }
+            SpoolbaseShared.Spools.CreateRolls(def.Id, qty, weight, price: price ?? def.PricePerRoll);
+        }
         Close();
+    }
+
+    private void EnterCode()
+    {
+        var box = new TextBox { Width = 260, FontSize = 14, Margin = new Thickness(0, 8, 0, 12) };
+        var dialog = new Window
+        {
+            Title = AppSettings.T("Enter the EAN code"), SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = this,
+            Background = GTheme.Brush(GTheme.Canvas), Foreground = Ink,
+        };
+        var ok = new Button { Content = AppSettings.T("Find"), IsDefault = true, Width = 90 };
+        var cancel = new Button { Content = AppSettings.T("Cancel"), IsCancel = true, Width = 90, Margin = new Thickness(8, 0, 0, 0) };
+        ok.Click += (_, _) => dialog.DialogResult = true;
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        buttons.Children.Add(ok); buttons.Children.Add(cancel);
+        var stack = new StackPanel { Margin = new Thickness(16) };
+        stack.Children.Add(new TextBlock { Text = AppSettings.T("The digits under the barcode on the spool or the box."), Foreground = GTheme.Brush(GTheme.Secondary) });
+        stack.Children.Add(box);
+        stack.Children.Add(buttons);
+        dialog.Content = stack;
+        dialog.Loaded += (_, _) => box.Focus();
+        dialog.SourceInitialized += (_, _) => SpoolbaseChrome.ApplyDark(dialog);
+        if (dialog.ShowDialog() != true) return;
+        string code = box.Text.Trim();
+        if (code.Length == 0) return;
+        if (!EanCode.IsPlausible(code))
+        {
+            var answer = MessageBox.Show(this,
+                AppSettings.T("Code {0}: the check digit does not match. Check the digits, or continue anyway.").Replace("{0}", code),
+                AppSettings.T("This does not look like a valid EAN"), MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.OK) return;
+        }
+        HandleManufacturerCode(code);
     }
 
     private void ScanManufacturerCode()
@@ -225,6 +279,9 @@ public sealed class SpoolbaseCatalogWindow : Window
         var normalized = NormalizeBarcode(code);
         var exact = _catalog.FirstOrDefault(item =>
             NormalizeBarcode(item.ManufacturerCode) == normalized);
+        // A filament already in stock may carry the EAN in its own field.
+        if (exact is null && _store.Filaments.FirstOrDefault(f => NormalizeBarcode(f.Ean ?? "") == normalized) is { CatalogId: { } id })
+            exact = _catalog.FirstOrDefault(item => item.Id == id);
         _search.Text = exact?.ManufacturerCode ?? code;
         if (exact is not null)
         {
@@ -276,6 +333,8 @@ public sealed class SpoolbaseEditWindow : Window
     private readonly TextBox _code = new();
     private readonly TextBox _count = new();
     private readonly TextBox _weight = new();
+    private readonly TextBox _ean = new();
+    private readonly TextBox _price = new();
 
     private static Brush Ink => GTheme.Brush(GTheme.Text);
     private static bool Pl => AppSettings.Polish;
@@ -326,6 +385,9 @@ public sealed class SpoolbaseEditWindow : Window
             stack.Children.Add(Field(AppSettings.T("Colour"), _colorName, _original.ColorName));
             stack.Children.Add(Field("Hex", _colorHex, _original.ColorHex));
             stack.Children.Add(Field(AppSettings.T("Manufacturer code"), _code, _original.ManufacturerCode));
+            stack.Children.Add(Field(AppSettings.T("EAN code"), _ean, _original.Ean ?? ""));
+            stack.Children.Add(Field(AppSettings.T("Roll price ({0})").Replace("{0}", PrintCostSettings.Current.Currency), _price,
+                _original.PricePerRoll?.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) ?? ""));
             stack.Children.Add(Field(AppSettings.T("Spool count"), _count, _original.SpoolCount.ToString()));
             if (_isNew) stack.Children.Add(Field(AppSettings.T("Roll weight (g)"), _weight, "1000"));
         }
@@ -346,9 +408,27 @@ public sealed class SpoolbaseEditWindow : Window
         };
     }
 
+    private bool _eanWarned;
+
     private void Commit(bool countOnly)
     {
         int count = int.TryParse(_count.Text.Trim(), out var c) ? Math.Max(0, c) : _original.SpoolCount;
+        string ean = new(_ean.Text.Where(ch => !char.IsWhiteSpace(ch) && ch != '-').ToArray());
+        double? price = PrintCostSettings.ParseAmount(_price.Text);
+        if (!countOnly && _price.Text.Trim().Length > 0 && price is null)
+        {
+            MessageBox.Show(this, AppSettings.T("Enter a number, e.g. 89.90, or leave it empty."), AppSettings.T("Check the roll price"));
+            return;
+        }
+        if (!countOnly && ean.Length > 0 && !EanCode.IsPlausible(ean) && !_eanWarned)
+        {
+            _eanWarned = true;
+            MessageBox.Show(this,
+                AppSettings.T("Code {0}: the check digit does not match. Check the digits, or continue anyway.").Replace("{0}", ean) + "\n" +
+                AppSettings.T("Press Save again to keep it as entered."),
+                AppSettings.T("This does not look like a valid EAN"));
+            return;
+        }
         var updated = new Filament
         {
             Id = _original.Id,
@@ -361,7 +441,9 @@ public sealed class SpoolbaseEditWindow : Window
             ManufacturerCode = countOnly ? _original.ManufacturerCode : _code.Text.Trim(),
             SpoolCount = count,
             Notes = _original.Notes,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            Ean = countOnly ? _original.Ean : (ean.Length > 0 ? ean : null),
+            PricePerRoll = countOnly ? _original.PricePerRoll : price,
         };
 
         if (_isNew)
@@ -372,7 +454,7 @@ public sealed class SpoolbaseEditWindow : Window
             double weight = double.TryParse(_weight.Text.Trim(), System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var w) && w > 0 ? w : 1000;
             var def = _store.Filaments.FirstOrDefault(f => f.Id == updated.Id) ?? updated;
-            SpoolbaseShared.Spools.CreateRolls(def.Id, count, weight);
+            SpoolbaseShared.Spools.CreateRolls(def.Id, count, weight, price: updated.PricePerRoll);
         }
         else
         {
@@ -428,4 +510,20 @@ public sealed class SpoolbaseEditWindow : Window
     {
         Text = text, FontSize = 10.5, Foreground = GTheme.Brush(GTheme.Muted), Margin = new Thickness(2, 0, 0, 3)
     };
+}
+
+/// EAN-8 / UPC-A / EAN-13 / GTIN-14 check digit. Other code types (Code 128, QR) are left alone.
+public static class EanCode
+{
+    public static bool IsPlausible(string value)
+    {
+        string digits = new(value.Where(ch => !char.IsWhiteSpace(ch) && ch != '-').ToArray());
+        if (!digits.All(ch => ch is >= '0' and <= '9')) return true;
+        if (digits.Length is not (8 or 12 or 13 or 14)) return false;
+        var numbers = digits.Select(ch => ch - '0').ToArray();
+        int sum = 0;
+        for (int index = 0; index < numbers.Length - 1; index++)
+            sum += numbers[numbers.Length - 2 - index] * (index % 2 == 0 ? 3 : 1);
+        return (10 - sum % 10) % 10 == numbers[^1];
+    }
 }

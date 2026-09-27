@@ -91,7 +91,7 @@ public sealed class PhysicalSpoolStore
     /// dropped straight into storage (spec §1: adding a filament creates one physical roll per spool). A
     /// full roll has remaining == nominal == <paramref name="weight"/>; an opened roll passes a smaller
     /// <paramref name="remaining"/>.</summary>
-    public void CreateRolls(Guid definitionId, int count, double weight, double? remaining = null)
+    public void CreateRolls(Guid definitionId, int count, double weight, double? remaining = null, double? price = null)
     {
         if (count <= 0) return;
         for (int i = 0; i < count; i++)
@@ -105,7 +105,8 @@ public sealed class PhysicalSpoolStore
                 RemainingWeightGrams = rest,
                 Status = rest < weight ? SpoolStatus.Active : SpoolStatus.New,
                 Location = SpoolLocation.Storage(),
-                OpenedAt = rest < weight ? DateTime.UtcNow : null
+                OpenedAt = rest < weight ? DateTime.UtcNow : null,
+                Price = price is { } value && value >= 0 ? value : null
             });
         }
         ChangedInternal(SaveSpools);
