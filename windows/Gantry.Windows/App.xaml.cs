@@ -87,6 +87,7 @@ public partial class App : Application
             else dispatcher.BeginInvoke(action);
         });
 
+        SmartPlugController.Attach(_store);
         _tray = new TrayIcon(_store);
         WindowsToast.Initialize(arguments => dispatcher.BeginInvoke(() =>
             _tray.HandleNotificationActivation(arguments)));

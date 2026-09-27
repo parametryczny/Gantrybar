@@ -145,6 +145,14 @@ public sealed class TrayIcon : IDisposable
                 (_, _) => ShowAuxiliary(new DiagnosticsWindow(_store))));
             menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Fleet statistics…"), null,
                 (_, _) => ShowAuxiliary(new FleetStatsWindow(_store))));
+            // In a fire nobody should have to look for it in a submenu.
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Emergency power-off…"), null,
+                (_, _) => SmartPlugController.ConfirmEmergencyOff())
+            {
+                ForeColor = System.Drawing.Color.FromArgb(0xE5, 0x48, 0x4D),
+                Font = new System.Drawing.Font(menu.Font, System.Drawing.FontStyle.Bold),
+            });
         }
         if (Build.HasExtras)
         {

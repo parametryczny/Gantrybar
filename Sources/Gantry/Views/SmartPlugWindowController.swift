@@ -44,7 +44,7 @@ final class SmartPlugWindowController: NSWindowController {
         build(name: name)
         load()
         _ = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [serial] _ in
-            MainActor.assumeIsolated { Self.open.removeValue(forKey: serial) }
+            MainActor.assumeIsolated { _ = Self.open.removeValue(forKey: serial) }
         }
     }
 

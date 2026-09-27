@@ -25,10 +25,11 @@ public sealed class AutomationsWindow : Window
     private static readonly string[] TriggerKinds = { "manual", "layer", "progress", "state" };
     private static readonly (string pl, string en)[] ActionNames =
         { ("Światło wł.", "Light on"), ("Światło wył.", "Light off"), ("Pauza", "Pause"), ("Wznów", "Resume"),
-          ("Stop", "Stop"), ("Powiadomienie", "Notification"), ("Własna komenda", "Custom command"), ("Skrypt", "Script") };
-    private static readonly string[] ActionKinds = { "lightOn", "lightOff", "pause", "resume", "stop", "notify", "command", "script" };
+          ("Stop", "Stop"), ("Powiadomienie", "Notification"), ("Własna komenda", "Custom command"), ("Skrypt", "Script"),
+          ("Gniazdko wł.", "Socket on"), ("Gniazdko wył.", "Socket off") };
+    private static readonly string[] ActionKinds = { "lightOn", "lightOff", "pause", "resume", "stop", "notify", "command", "script", "powerOn", "powerOff" };
     private static readonly string[] ActionSummaryKeys =
-        { "light on", "light off", "pause", "resume", "stop", "notification", "custom command", "script" };
+        { "light on", "light off", "pause", "resume", "stop", "notification", "custom command", "script", "socket on", "socket off" };
     private static readonly PrinterState[] StateOptions =
         { PrinterState.Printing, PrinterState.Paused, PrinterState.Finished, PrinterState.Error, PrinterState.Idle };
 

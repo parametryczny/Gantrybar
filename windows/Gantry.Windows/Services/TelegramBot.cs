@@ -116,6 +116,7 @@ public sealed class TelegramBot
             case "/history": await SendHistoryAsync(); break;
             case "/mute": await HandleMuteAsync(argument); break;
             case "/watch": await HandleWatchAsync(argument); break;
+            case "/emergency": case "/awaria": await AskEmergencyAsync(null); break;
             default: await SendPrinterMenuAsync(null); break;
         }
     }
@@ -129,6 +130,17 @@ public sealed class TelegramBot
             case "menu": await SendPrinterMenuAsync(messageId); await AnswerAsync(cbId, ""); break;
             case "a" when parts.Length >= 3: await RunActionAsync(parts[1], parts[2], cbId, messageId); break;
             case "photo" when parts.Length > 1: await HandlePhotoAsync(parts[1], cbId); break;
+            case "emg": await AskEmergencyAsync(messageId); await AnswerAsync(cbId, ""); break;
+            case "emgoff":
+            {
+                await AnswerAsync(cbId, AppSettings.T("⚡️ Switching everything off…"));
+                var lines = await SmartPlugController.EmergencyOffAsync();
+                var text = AppSettings.T("⚡️ Emergency power-off") + "\n" +
+                           (lines.Count == 0 ? AppSettings.T("No sockets are set up.") : string.Join("\n", lines));
+                if (messageId is { } id) await EditAsync(id, text, null);
+                else await SendAsync(text, CommandKeyboard());
+                break;
+            }
             default: await AnswerAsync(cbId, ""); break;
         }
     }
@@ -172,6 +184,17 @@ public sealed class TelegramBot
                 await AnswerAsync(cbId, "");
                 return;
             case "stop": Exec("stop"); await AnswerAsync(cbId, AppSettings.T("⏹ Stopped")); break;
+            case "plugon": Exec("powerOn"); await AnswerAsync(cbId, AppSettings.T("🔌 Socket on")); break;
+            case "plugoffask":
+                // Cutting power is irreversible for a running print, so it is confirmed like Stop.
+                if (messageId is { } pid)
+                    await EditAsync(pid, AppSettings.T("🔌 Switch the socket of {0} off? A running print ends.").Replace("{0}", name),
+                        Keyboard(new[] { new[] {
+                            Btn(AppSettings.T("Yes, switch off"), $"a:plugoff:{serial}"),
+                            Btn(AppSettings.T("Back"), $"p:{serial}") } }));
+                await AnswerAsync(cbId, "");
+                return;
+            case "plugoff": Exec("powerOff"); await AnswerAsync(cbId, AppSettings.T("🔌 Socket off")); break;
             default: await AnswerAsync(cbId, ""); return;
         }
         await Task.Delay(700);
@@ -189,11 +212,30 @@ public sealed class TelegramBot
         else await SendAsync(AppSettings.T("Couldn't grab a snapshot (camera unavailable)."), CommandKeyboard());
     }
 
+    /// Asked once, with the printers it will hit, then a single tap. The chat is already the one
+    /// Gantry trusts, and in a fire a second screen of questions costs time.
+    private async Task AskEmergencyAsync(int? messageId)
+    {
+        var names = OnUi(() => SmartPlugStore.Serials
+            .Where(serial => SmartPlugStore.Plug(serial)?.IncludeInEmergency == true)
+            .Select(serial => _store.Printers.FirstOrDefault(p => p.Serial == serial)?.Name ?? serial)
+            .OrderBy(name => name, StringComparer.CurrentCulture).ToList());
+        if (names.Count == 0)
+        {
+            await SendAsync(AppSettings.T("No sockets are set up. Add one in Gantry: card ⋯ → Power → Set up socket…"), CommandKeyboard());
+            return;
+        }
+        var text = AppSettings.T("⚡️ Switch off the power of every printer?") + "\n" + string.Join("\n", names.Select(name => "• " + name));
+        var markup = Keyboard(new[] { new[] { Btn(AppSettings.T("⚡️ YES, switch everything off"), "emgoff") }, new[] { Btn(AppSettings.T("Back"), "menu") } });
+        if (messageId is { } id) await EditAsync(id, text, markup);
+        else await SendAsync(text, markup);
+    }
+
     // Commands
 
     private async Task SendHelpAsync()
     {
-        var text = AppSettings.T("🖨 Gantry — commands:\n/status — pick a printer + controls\n/all — whole fleet at a glance\n/spools — spools running low\n/history — recent prints\n/watch 10m — a photo every 10 min (/watch off)\n/mute 2h — silence alerts (/mute off)\n/help — this menu");
+        var text = AppSettings.T("🖨 Gantry — commands:\n/status — pick a printer + controls\n/all — whole fleet at a glance\n/spools — spools running low\n/history — recent prints\n/watch 10m — a photo every 10 min (/watch off)\n/mute 2h — silence alerts (/mute off)\n/emergency — switch every printer's socket off\n/help — this menu");
         await ApiAsync("sendMessage", new Dictionary<string, string> { ["chat_id"] = ChatId, ["text"] = text, ["reply_markup"] = CommandKeyboard() });
     }
 
@@ -346,6 +388,8 @@ public sealed class TelegramBot
         for (int i = 0; i < tiles.Count; i += 4) rows.Add(tiles.Skip(i).Take(4).ToArray());
         rows.Add(new[] { Btn("⏸ " + AppSettings.T("Pause"), $"a:pause:{serial}"), Btn("▶️ " + AppSettings.T("Resume"), $"a:resume:{serial}"), Btn("⏹ " + AppSettings.T("Stop"), $"a:stopask:{serial}") });
         rows.Add(new[] { Btn("💡 " + AppSettings.T("On"), $"a:lighton:{serial}"), Btn("🌑 " + AppSettings.T("Off"), $"a:lightoff:{serial}"), Btn("📷 " + AppSettings.T("Photo"), $"photo:{serial}") });
+        if (SmartPlugStore.Plug(serial) is not null)
+            rows.Add(new[] { Btn("🔌 " + AppSettings.T("Socket on"), $"a:plugon:{serial}"), Btn("⭘ " + AppSettings.T("Socket off"), $"a:plugoffask:{serial}") });
         rows.Add(new[] { Btn("↻ " + AppSettings.T("Refresh"), $"p:{serial}"), Btn("‹ " + AppSettings.T("Printers"), "menu") });
         return Keyboard(rows.ToArray());
     }

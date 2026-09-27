@@ -883,6 +883,9 @@ public sealed class PrinterStore
                 ScriptRunner.Run(auto.Id, auto.ActionText);
                 NotificationService.Post(name, string.Format(AppSettings.T("Ran script: {0}"), auto.Name));
                 break;
+            // A rule fired by the printer's own state has already decided; it does not ask.
+            case "powerOn": SmartPlugController.Power(true, serial, confirmIfPrinting: false, reason: auto.Name == "telegram" ? null : auto.Name); break;
+            case "powerOff": SmartPlugController.Power(false, serial, confirmIfPrinting: false, reason: auto.Name == "telegram" ? null : auto.Name); break;
         }
     }
 

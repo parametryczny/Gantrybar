@@ -1917,6 +1917,17 @@ public partial class DashboardWindow : Window
                 Item(string.Format(AppSettings.T("Open in {0}"), slicer.Name), () => SlicerLauncher.Open(slicer.Path));
         }
 
+        if (Build.HasExtras)
+        {
+            // The socket that feeds this printer: switch it, or set it up the first time.
+            if (SmartPlugStore.Plug(serial) is not null)
+            {
+                Item(AppSettings.T("Switch socket on"), () => SmartPlugController.Power(true, serial));
+                Item(AppSettings.T("Switch socket off"), () => SmartPlugController.Power(false, serial));
+            }
+            Item(AppSettings.T("Set up socket…"), () => new SmartPlugWindow(_store, serial) { Owner = this }.Show());
+        }
+
         Item(AppSettings.T("Copy IP address"), () =>
         {
             if (Current() is { Host.Length: > 0 } p) { try { Clipboard.SetText(p.Host); } catch { } }

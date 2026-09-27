@@ -210,15 +210,15 @@ final class SmartPlugClient: NSObject, URLSessionTaskDelegate, @unchecked Sendab
         }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didReceive challenge: URLAuthenticationChallenge) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         let method = challenge.protectionSpace.authenticationMethod
         guard method == NSURLAuthenticationMethodHTTPBasic || method == NSURLAuthenticationMethodHTTPDigest,
               challenge.previousFailureCount == 0, let secret, !secret.isEmpty else {
-            completionHandler(.performDefaultHandling, nil); return
+            return (.performDefaultHandling, nil)
         }
         let user = plug.username?.isEmpty == false ? plug.username! : "admin"
-        completionHandler(.useCredential, URLCredential(user: user, password: secret, persistence: .forSession))
+        return (.useCredential, URLCredential(user: user, password: secret, persistence: .forSession))
     }
 }
 
