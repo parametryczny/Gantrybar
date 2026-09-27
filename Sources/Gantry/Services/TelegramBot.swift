@@ -81,6 +81,7 @@ final class TelegramBot {
         case "/history":        await sendHistory()
         case "/mute":           await handleMute(argument)
         case "/watch":          await handleWatch(argument)
+        case "/emergency", "/awaria": await askEmergency(messageID: nil)
         default:                await sendPrinterMenu(messageID: nil)   // /status, /menu, plain text
         }
     }
@@ -97,6 +98,7 @@ final class TelegramBot {
             /history — recent prints
             /watch 10m — a photo every 10 min (/watch off)
             /mute 2h — silence alerts (/mute off)
+            /emergency — switch every printer's socket off
             /help — this menu
             """)
         await api("sendMessage", ["chat_id": chatID, "text": text, "reply_markup": commandKeyboard()])
@@ -220,6 +222,14 @@ final class TelegramBot {
             await showStatus(serial: parts[1], messageID: messageID); await answer(cbID, "")
         case "menu":
             await sendPrinterMenu(messageID: messageID); await answer(cbID, "")
+        case "emg":
+            await askEmergency(messageID: messageID); await answer(cbID, "")
+        case "emgoff":
+            await answer(cbID, AppSettings.shared.t("⚡️ Switching everything off…"))
+            let lines = await SmartPlugController.shared.emergencyOff()
+            let text = AppSettings.shared.t("⚡️ Emergency power-off") + "\n" + (lines.isEmpty ? AppSettings.shared.t("No sockets are set up.") : lines.joined(separator: "\n"))
+            if let messageID { await edit(messageID: messageID, text: text, replyMarkup: nil) }
+            else { await send(text: text, replyMarkup: commandKeyboard()) }
         case "a" where parts.count >= 3:
             await runAction(parts[1], serial: parts[2], cbID: cbID, messageID: messageID)
         case "photo" where parts.count > 1:
@@ -239,6 +249,24 @@ final class TelegramBot {
     }
 
     // MARK: Screens
+
+    /// Asked once, with the printers it will hit, then a single tap. Anyone who can talk to this bot
+    /// is already the chat Gantry trusts, and in a fire a second screen of questions costs time.
+    private func askEmergency(messageID: Int?) async {
+        let s = AppSettings.shared
+        let names = SmartPlugStore.shared.serials
+            .filter { SmartPlugStore.shared.plug(for: $0)?.includeInEmergency == true }
+            .map { serial in store?.printers.first { $0.serial == serial }?.name ?? serial }
+            .sorted()
+        guard !names.isEmpty else {
+            await send(text: s.t("No sockets are set up. Add one in Gantry: card ⋯ → Power → Set up socket…"), replyMarkup: commandKeyboard())
+            return
+        }
+        let text = s.t("⚡️ Switch off the power of every printer?") + "\n" + names.map { "• \($0)" }.joined(separator: "\n")
+        let markup = keyboard([[(s.t("⚡️ YES, switch everything off"), "emgoff")], [(s.t("Back"), "menu")]])
+        if let messageID { await edit(messageID: messageID, text: text, replyMarkup: markup) }
+        else { await send(text: text, replyMarkup: markup) }
+    }
 
     private func sendPrinterMenu(messageID: Int?) async {
         let printers = store?.printers ?? []
@@ -278,6 +306,19 @@ final class TelegramBot {
             await answer(cbID, "")
             return
         case "stop":   exec(.stop);         await answer(cbID, AppSettings.shared.t("⏹ Stopped"))
+        case "plugon": exec(.power(true));  await answer(cbID, AppSettings.shared.t("🔌 Socket on"))
+        case "plugoffask":
+            // Cutting power is irreversible for a running print, so it is confirmed like Stop.
+            if let messageID {
+                await edit(messageID: messageID,
+                           text: AppSettings.shared.t("🔌 Switch the socket of {0} off? A running print ends.", name),
+                           replyMarkup: keyboard([[
+                               (AppSettings.shared.t("Yes, switch off"), "a:plugoff:\(serial)"),
+                               (AppSettings.shared.t("Back"), "p:\(serial)")]]))
+            }
+            await answer(cbID, "")
+            return
+        case "plugoff": exec(.power(false)); await answer(cbID, AppSettings.shared.t("🔌 Socket off"))
         default:       await answer(cbID, ""); return
         }
         // Reflect the new state right in the message (small settle delay so telemetry can catch up).
@@ -341,6 +382,10 @@ final class TelegramBot {
         rows.append([("💡 " + s.t("On"), "a:lighton:\(serial)"),
                      ("🌑 " + s.t("Off"), "a:lightoff:\(serial)"),
                      ("📷 " + s.t("Photo"), "photo:\(serial)")])
+        if SmartPlugStore.shared.plug(for: serial) != nil {
+            rows.append([("🔌 " + s.t("Socket on"), "a:plugon:\(serial)"),
+                         ("⭘ " + s.t("Socket off"), "a:plugoffask:\(serial)")])
+        }
         rows.append([("↻ " + s.t("Refresh"), "p:\(serial)"),
                      ("‹ " + s.t("Printers"), "menu")])
         return keyboard(rows)

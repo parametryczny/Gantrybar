@@ -32,6 +32,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     init(store: PrinterStore) {
         self.store = store
         super.init()
+        SmartPlugController.shared.attach(store)
 
         // macOS 27 keeps drifting the menu-bar item to the far-left on relaunch: on quit it writes a
         // stale position back under the autosave key, and a nil-guarded seed then never corrects it.
@@ -181,6 +182,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc func appMenuFarm(_ sender: Any?) { FarmWindowController.show(store: store) }
 
     @objc func appMenuFleetStats(_ sender: Any?) { showFleetStats() }
+    @objc func appMenuEmergencyOff(_ sender: Any?) { SmartPlugController.shared.confirmEmergencyOff() }
     @objc func appMenuCycleLanguage(_ sender: Any?) {
         let codes = Localization.available().map(\.code)
         guard !codes.isEmpty else { return }
@@ -392,6 +394,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             menu.addItem(row(icon: "chart.bar",
                              title: settings.t("Fleet statistics…")) { [weak self] in
                 self?.showFleetStats()
+            })
+        }
+        // Shown once any printer has a socket: in a fire nobody should have to find it in a submenu.
+        if SmartPlugController.shared.hasPlugs {
+            menu.addItem(.separator())
+            menu.addItem(row(icon: "power.circle.fill", tint: .systemRed,
+                             title: settings.t("Emergency power-off…")) {
+                SmartPlugController.shared.confirmEmergencyOff()
             })
         }
 

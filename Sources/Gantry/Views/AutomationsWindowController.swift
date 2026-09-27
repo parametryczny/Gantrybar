@@ -183,7 +183,8 @@ private final class AutomationRowView: NSView {
 
     private static let triggerTitles = ["Manual", "At layer", "At %", "On state"]
     private static let actionTitles = ["Light on", "Light off", "Pause", "Resume", "Stop",
-                                       "Notification", "Custom command", "Script"]
+                                       "Notification", "Custom command", "Script",
+                                       "Socket on", "Socket off"]
     private static let stateOptions: [PrinterState] = [.printing, .paused, .finished, .error, .idle]
 
     init(automation: PrinterAutomation,
@@ -366,6 +367,7 @@ private final class AutomationRowView: NSView {
         case .notify: index = 5
         case .command: index = 6
         case .script: index = 7
+        case .power(let on): index = on ? 8 : 9
         }
         actionPopup.selectItem(at: index)
         rebuildActionValue()
@@ -435,6 +437,8 @@ private final class AutomationRowView: NSView {
         case 5: return .notify((actionValueContainer.subviews.first as? NSTextField)?.stringValue ?? "")
         case 6: return .command(actionText())
         case 7: return .script(actionText())
+        case 8: return .power(true)
+        case 9: return .power(false)
         default: return .light(false)
         }
     }

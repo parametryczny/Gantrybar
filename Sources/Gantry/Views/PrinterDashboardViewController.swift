@@ -1582,6 +1582,21 @@ final class PrinterCardView: NSView, NSDraggingSource {
             actionEntries.append(.init(title: "Open slicer",
                                        symbol: "square.and.arrow.up", submenu: slicerEntries))
         }
+        if Build.hasExtras {
+            let serial = printer.serial
+            let hasPlug = { SmartPlugStore.shared.plug(for: serial) != nil }
+            actionEntries.append(.init(title: "Power", symbol: "powerplug", submenu: [
+                .init(title: "Switch socket on", symbol: "power", isEnabled: hasPlug, action: {
+                    SmartPlugController.shared.power(true, serial: serial)
+                }),
+                .init(title: "Switch socket off", symbol: "poweroff", isEnabled: hasPlug, action: {
+                    SmartPlugController.shared.power(false, serial: serial)
+                }),
+                .init(title: "Set up socket…", symbol: "gearshape", action: {
+                    SmartPlugController.shared.showSetup(serial: serial)
+                })
+            ]))
+        }
         actionEntries.append(contentsOf: [
             .init(title: "Copy IP address", symbol: "doc.on.doc", action: onCopyIP),
             .init(title: "Edit printer", symbol: "pencil", action: onEdit),

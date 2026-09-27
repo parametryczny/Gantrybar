@@ -400,6 +400,10 @@ final class PrinterStore: ObservableObject {
             ScriptRunner.shared.run(auto.id, script: content)
             NotificationService.post(title: name,
                                      body: AppSettings.shared.t("Ran script: {0}", auto.name))
+        case .power(let on):
+            // A rule fired by the printer's own state has already decided; it does not ask.
+            SmartPlugController.shared.power(on, serial: serial, confirmIfPrinting: false,
+                                             reason: auto.name == "telegram" ? nil : auto.name)
         }
     }
 

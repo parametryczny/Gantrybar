@@ -43,6 +43,7 @@ enum AutomationAction: Codable, Equatable, Sendable {
     case notify(String)       // local notification with this text
     case command(String)      // raw Bambu MQTT JSON (advanced / custom)
     case script(String)       // shell script content
+    case power(Bool)          // the printer's smart socket on/off
 
     func summary(_ t: (String, [Any]) -> String) -> String {
         switch self {
@@ -53,6 +54,7 @@ enum AutomationAction: Codable, Equatable, Sendable {
         case .notify: t("notification", [])
         case .command: t("custom command", [])
         case .script: t("script", [])
+        case .power(let on): on ? t("socket on", []) : t("socket off", [])
         }
     }
 

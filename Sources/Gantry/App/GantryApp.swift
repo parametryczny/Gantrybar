@@ -133,6 +133,12 @@ final class GantryApp: NSObject, NSApplicationDelegate {
                                        selector: "appMenuDiagnostics:"))
                 appMenu.addItem(action("Fleet statistics…", symbol: "chart.bar",
                                        selector: "appMenuFleetStats:"))
+                appMenu.addItem(.separator())
+                let emergency = action("Emergency power-off…", symbol: "power.circle.fill",
+                                       selector: "appMenuEmergencyOff:")
+                emergency.image?.isTemplate = false
+                emergency.image = emergency.image?.withSymbolConfiguration(.init(paletteColors: [.systemRed]))
+                appMenu.addItem(emergency)
             }
             appMenu.addItem(.separator())
 
