@@ -109,7 +109,7 @@ public sealed class EmergencyWindow : Window
         Loaded += (_, _) => go.Focus();
     }
 
-    private static TextBlock Text(string text, double size, FontWeight weight, Color color, Thickness margin, int spacing = 0) => new()
+    private static TextBlock Text(string text, double size, FontWeight weight, Color color, Thickness margin, int spacing = 0) => new TextBlock
     {
         Text = text, FontSize = size, FontWeight = weight, Foreground = new SolidColorBrush(color), TextAlignment = TextAlignment.Center,
         TextWrapping = TextWrapping.Wrap, Margin = margin,
