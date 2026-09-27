@@ -1331,5 +1331,6 @@
   "Send {0} to {1}?": "Wysłać {0} na {1}?",
   "Print time: {0}": "Czas druku: {0}",
   "Filament: {0}": "Filament: {0}",
-  "Check that the file was sliced for this printer and nozzle.": "Sprawdź, czy plik był pocięty pod tę drukarkę i dyszę."
+  "Check that the file was sliced for this printer and nozzle.": "Sprawdź, czy plik był pocięty pod tę drukarkę i dyszę.",
+  "Lamp": "Światło"
 }

@@ -250,7 +250,7 @@ final class PrinterControlPanelView: NSView {
         let s = AppSettings.shared
         pauseButton.caption = s.t("Pause")
         stopButton.caption = s.t("Stop")
-        lightButton.caption = s.t("Light")
+        lightButton.caption = s.t("Lamp")
         powerButton.caption = s.t("Power")
         pauseButton.onPress = { [weak self] in self?.pauseOrResume() }
         stopButton.onPress = { [weak self] in self?.confirmStop() }
@@ -727,32 +727,54 @@ final class PanelIconButton: NSButton {
         self.tint = tint
         super.init(frame: .zero)
         isBordered = false
-        wantsLayer = true
-        layer?.cornerRadius = 10
-        layer?.borderWidth = 1
-        imagePosition = .imageAbove
+        title = ""
         target = self
         action = #selector(fire)
         heightAnchor.constraint(equalToConstant: 54).isActive = true
-        apply()
     }
 
     required init?(coder: NSCoder) { nil }
 
     override var isEnabled: Bool { didSet { apply() } }
+    override var isFlipped: Bool { true }
 
     @objc private func fire() { onPress?() }
 
     private func apply() {
+        setAccessibilityLabel(caption)
+        needsDisplay = true
+    }
+
+    /// Drawn by hand: NSButton's own image-above layout pinned the symbol to the top edge and let the
+    /// caption float, so the icon and the text sat off-centre in every tile.
+    override func draw(_ dirtyRect: NSRect) {
         let color = !isEnabled ? GantryTheme.muted : active ? NSColor.systemYellow : tint
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
-        image = NSImage(systemSymbolName: symbol, accessibilityDescription: caption)?.withSymbolConfiguration(config)
-        contentTintColor = color
-        attributedTitle = NSAttributedString(string: caption, attributes: [
-            .foregroundColor: color, .font: NSFont.systemFont(ofSize: 10, weight: .semibold)
+        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
+        var fill = active ? NSColor.systemYellow.withAlphaComponent(0.12) : GantryTheme.surface
+        if isHighlighted { fill = fill.blended(withFraction: 0.15, of: .white) ?? fill }
+        fill.setFill()
+        shape.fill()
+        (active ? NSColor.systemYellow.withAlphaComponent(0.4) : GantryTheme.line).setStroke()
+        shape.lineWidth = 1
+        shape.stroke()
+
+        let text = NSAttributedString(string: caption, attributes: [
+            .foregroundColor: color, .font: NSFont.systemFont(ofSize: 11, weight: .semibold)
         ])
-        layer?.backgroundColor = (active ? NSColor.systemYellow.withAlphaComponent(0.12) : GantryTheme.surface).cgColor
-        layer?.borderColor = (active ? NSColor.systemYellow.withAlphaComponent(0.4) : GantryTheme.line).cgColor
+        let textSize = text.size()
+        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+        let icon = NSImage(systemSymbolName: symbol, accessibilityDescription: caption)?.withSymbolConfiguration(config)
+        let iconSize = icon?.size ?? .zero
+        let gap: CGFloat = 5
+        let total = iconSize.height + gap + textSize.height
+        var y = (bounds.height - total) / 2
+        if let icon {
+            icon.draw(in: NSRect(x: (bounds.width - iconSize.width) / 2, y: y, width: iconSize.width, height: iconSize.height),
+                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+        y += iconSize.height + gap
+        text.draw(at: NSPoint(x: (bounds.width - textSize.width) / 2, y: y))
     }
 }
 
