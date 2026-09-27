@@ -183,7 +183,10 @@ class AutomationEngine:
         text = action.get("text", "")
 
         def printer_command(bambu: str, klipper_macro: str) -> None:
-            if is_klipper:
+            if printer is not None and printer.kind in (PrinterKind.OCTOPRINT, PrinterKind.PRUSA):
+                action = "pause" if bambu == _PAUSE else "resume" if bambu == _RESUME else "stop"
+                self.app.send_print_action(serial, action)
+            elif is_klipper:
                 self.app.send_gcode(serial, klipper_macro)
             else:
                 self.app.send_command(serial, bambu)

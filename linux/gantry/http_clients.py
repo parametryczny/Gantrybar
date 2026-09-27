@@ -353,6 +353,79 @@ def parse_snapmaker(status_payload: bytes | str | dict[str, Any],
     return telemetry
 
 
+def octoprint_state(flags: dict[str, Any], progress: float | None, has_file: bool) -> PrinterState:
+    """OctoPrint's state flags onto Gantry's states. Mirrors macOS OctoPrintStatusParser.mapState."""
+    def flag(name: str) -> bool:
+        return bool(flags.get(name))
+    if flag("error") or (flag("closedOrError") and not flag("operational")):
+        return PrinterState.ERROR
+    if flag("paused") or flag("pausing"):
+        return PrinterState.PAUSED
+    if flag("printing"):
+        return PrinterState.PRINTING
+    if flag("cancelling"):
+        return PrinterState.IDLE
+    # OctoPrint has no "finished" state: the job stays loaded at 100 % until the next one.
+    if has_file and progress is not None and progress >= 100:
+        return PrinterState.FINISHED
+    if flag("operational") or flag("ready"):
+        return PrinterState.IDLE
+    return PrinterState.OFFLINE
+
+
+def parse_octoprint(printer_payload: bytes | str | dict[str, Any] | None,
+                    job_payload: bytes | str | dict[str, Any] | None = None,
+                    previous: Telemetry | None = None) -> Telemetry:
+    """OctoPrint's REST API: ``/api/printer`` for state and temperatures, ``/api/job`` for the file and
+    progress. ``printer_payload`` is None when OctoPrint answered 409: it runs, but no printer is
+    connected to it, which reads as offline."""
+    telemetry = _copy(previous)
+
+    def load(payload: Any) -> dict[str, Any] | None:
+        if payload is None:
+            return None
+        try:
+            root = json.loads(payload) if isinstance(payload, (bytes, str)) else payload
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return root if isinstance(root, dict) else None
+
+    root = load(printer_payload)
+    if root is None:
+        telemetry.state = PrinterState.OFFLINE
+        return telemetry
+    state = root.get("state") if isinstance(root.get("state"), dict) else {}
+    flags = state.get("flags") if isinstance(state.get("flags"), dict) else {}
+    temperature = root.get("temperature") if isinstance(root.get("temperature"), dict) else None
+    if temperature is not None:
+        def reading(key: str) -> tuple[float | None, float | None]:
+            entry = temperature.get(key) if isinstance(temperature.get(key), dict) else {}
+            return _number(entry.get("actual")), _number(entry.get("target"))
+        telemetry.nozzle, telemetry.nozzle_target = reading("tool0")
+        telemetry.bed, telemetry.bed_target = reading("bed")
+        telemetry.chamber, telemetry.chamber_target = reading("chamber")
+    progress: float | None = None
+    file_name: str | None = None
+    job_root = load(job_payload)
+    if job_root is not None:
+        job = job_root.get("job") if isinstance(job_root.get("job"), dict) else {}
+        file = job.get("file") if isinstance(job.get("file"), dict) else {}
+        file_name = str(file.get("display") or file.get("name") or "") or None
+        progress_entry = job_root.get("progress") if isinstance(job_root.get("progress"), dict) else {}
+        progress = _number(progress_entry.get("completion"))
+        left = _number(progress_entry.get("printTimeLeft"))
+        telemetry.remaining_minutes = round(left / 60) if left and left > 0 else None
+    if file_name:
+        telemetry.job_name = file_name.replace("\\", "/").rsplit("/", 1)[-1]
+    if progress is not None:
+        telemetry.progress = min(max(int(progress), 0), 100)
+    telemetry.state = octoprint_state(flags, progress, bool(file_name))
+    if telemetry.state not in (PrinterState.PRINTING, PrinterState.PAUSED):
+        telemetry.remaining_minutes = None
+    telemetry.nozzles = [NozzleTelemetry("single", telemetry.nozzle, telemetry.nozzle_target)]
+    return telemetry
+
+
 class HttpConnection:
     def __init__(self, printer: Printer, api_key: str | None, on_event: EventHandler,
                  moonraker_objects: dict[str, str | None] | None = None) -> None:
@@ -385,9 +458,62 @@ class HttpConnection:
                 raise ConnectionError(f"HTTP {response.status}")
             return response.read()
 
+    def _octoprint_get(self, path: str) -> tuple[bytes, int]:
+        """OctoPrint answers 409 when no printer is connected to it and 401/403 for a wrong key; both are
+        states to report, not transport failures."""
+        request = urllib.request.Request(f"http://{self.printer.host}:{self.printer.port}{path}")
+        request.add_header("Cache-Control", "no-cache")
+        if self.api_key:
+            request.add_header("X-Api-Key", self.api_key)
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                return response.read(), response.status
+        except urllib.error.HTTPError as error:
+            if error.code in (401, 403, 409):
+                return error.read(), error.code
+            raise ConnectionError(f"HTTP {error.code}") from error
+
+    def _post_json(self, path: str, body: dict[str, Any], method: str = "POST") -> bool:
+        data = json.dumps(body).encode("utf-8") if body else b""
+        request = urllib.request.Request(f"http://{self.printer.host}:{self.printer.port}{path}",
+                                         data=data, method=method)
+        if body:
+            request.add_header("Content-Type", "application/json")
+        if self.api_key:
+            request.add_header("X-Api-Key", self.api_key)
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                return 200 <= response.status < 300
+        except (OSError, urllib.error.URLError):
+            return False
+
+    def job_action(self, action: str) -> bool:
+        """Pause, resume or stop the current print on OctoPrint or PrusaLink ("pause", "resume", "stop").
+        PrusaLink addresses the running job by its id, so that is read first."""
+        if action not in ("pause", "resume", "stop"):
+            return False
+        if self.printer.kind == PrinterKind.OCTOPRINT:
+            if action == "stop":
+                return self._post_json("/api/job", {"command": "cancel"})
+            return self._post_json("/api/job", {"command": "pause", "action": action})
+        if self.printer.kind == PrinterKind.PRUSA:
+            try:
+                root = json.loads(self._get("/api/v1/job"))
+                job_id = int(root["id"])
+            except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError):
+                return False
+            if action == "stop":
+                return self._post_json(f"/api/v1/job/{job_id}", {}, method="DELETE")
+            return self._post_json(f"/api/v1/job/{job_id}/{action}", {}, method="PUT")
+        return False
+
     def send_gcode(self, script: str) -> bool:
         """Run a G-code line on the Klipper printer via Moonraker (chamber light, pause, custom).
-        Used by automations. Returns True on HTTP 200."""
+        Used by automations. Returns True on HTTP 200. OctoPrint takes the lines as one batch, so a
+        relative move and the G90 after it stay together."""
+        if self.printer.kind == PrinterKind.OCTOPRINT:
+            lines = [line for line in script.split("\n") if line.strip()]
+            return bool(lines) and self._post_json("/api/printer/command", {"commands": lines})
         query = urllib.parse.urlencode({"script": script})
         url = f"http://{self.printer.host}:{self.printer.port}/printer/gcode/script?{query}"
         request = urllib.request.Request(url, data=b"", method="POST")
@@ -436,6 +562,18 @@ class HttpConnection:
                         groups = list(self._cfs_groups)
                         updated.filament_groups = groups
                         updated.ams_slots = [slot for group in groups for slot in group.legacy_slots()]
+                elif self.printer.kind == PrinterKind.OCTOPRINT:
+                    data, code = self._octoprint_get("/api/printer")
+                    if code in (401, 403):
+                        self.on_event("disconnected", i18n.t("OctoPrint refused the API key."))
+                        self._stop.wait(30.0)
+                        continue
+                    try:
+                        job, _ = self._octoprint_get("/api/job")
+                    except (OSError, urllib.error.URLError):
+                        job = None
+                    # 409: OctoPrint is up but has no printer connected; offline, keep polling.
+                    updated = parse_octoprint(data if code == 200 else None, job, self.telemetry)
                 else:
                     status = self._get("/api/v1/status")
                     try:

@@ -117,3 +117,54 @@ def rejection_message(reason: str) -> str:
 
 def signing_notice() -> str:
     return i18n.t("Controls are off: the printer only accepts commands signed by Bambu Connect. Turn on LAN Only mode and then Developer Mode on the printer to control it from Gantry.")
+
+
+# --- the control panel beside the details (macOS PrinterControlPanel) -------------------------------
+
+#: The panel's width beside the details, the same as macOS PrinterControlPanelView.width.
+PANEL_WIDTH = 420
+#: Print actions and power while a print runs; sending a file and moving the head between prints.
+BUSY_ORDER = ("print", "thermal", "power", "send", "motion")
+IDLE_ORDER = ("send", "motion", "thermal", "print", "power")
+#: How often the metering socket is read for the power chart, and how many samples it keeps.
+POWER_SAMPLE_SECONDS = 3
+POWER_SAMPLES = 100
+
+
+def card_order(busy: bool) -> tuple[str, ...]:
+    return BUSY_ORDER if busy else IDLE_ORDER
+
+
+def is_motion_safe(state: Any) -> bool:
+    """Motion is refused mid-print: a jog then would ruin the part, or worse, crash the nozzle into it."""
+    from .core import PrinterState
+    return state in (PrinterState.IDLE, PrinterState.FINISHED)
+
+
+def takes_gcode(kind: Any, signing_required: bool) -> bool:
+    """Kinds whose motion, temperatures and fans Gantry drives with G-code. A Bambu printer that only
+    takes commands signed by Bambu Connect would refuse every one of them."""
+    from .core import PrinterKind
+    if kind in (PrinterKind.KLIPPER, PrinterKind.OCTOPRINT):
+        return True
+    return kind == PrinterKind.BAMBU and not signing_required
+
+
+def jog_gcode(x: float = 0, y: float = 0, z: float = 0) -> str | None:
+    """A relative move in millimetres, back to absolute afterwards. Z alone moves slower."""
+    axes = [f"{name}{value:.2f}" for name, value in (("X", x), ("Y", y), ("Z", z)) if value]
+    if not axes:
+        return None
+    feed = 600 if z and not x and not y else 3000
+    return f"G91\nG1 {' '.join(axes)} F{feed}\nG90"
+
+
+def home_gcode(axes: str = "") -> str:
+    """G28 for the given axes, all of them when none are named."""
+    names = " ".join(character for character in axes.upper() if character in "XYZ")
+    return f"G28 {names}" if names else "G28"
+
+
+def motion_row_visible(motion: bool, busy: bool, takes: bool) -> bool:
+    """The jog pad folds away while it cannot be used: one line says why instead of a grid of dead buttons."""
+    return motion or not (busy or not takes)

@@ -61,7 +61,7 @@ def _printer_dict(printer: Any, telemetry: Any, physical_spools: Any = None,
         "name": printer.name,
         "protocol": {
             "bambu": "MQTT", "klipper": "KLIPPER", "prusa": "PRUSALINK", "snapmaker": "HTTP",
-            "elegoo_cc1": "SDCP", "elegoo_cc2": "MQTT LAN", "anycubic_kobra_s1": "MQTT LAN",
+            "elegoo_cc1": "SDCP", "elegoo_cc2": "MQTT LAN", "anycubic_kobra_s1": "MQTT LAN", "octoprint": "OCTOPRINT",
         }.get(getattr(getattr(printer, "kind", None), "value", ""), "LAN"),
         "state": getattr(telemetry.state, "value", "offline"),
         "progress": telemetry.progress,

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 """Farm: sliced 3MF files sent to Bambu Lab printers over local FTPS and started over MQTT after an
-explicit check, plus a queue that hands copies to printers whose bed the user confirmed empty.
+explicit check, G-code sent to Klipper, PrusaLink and OctoPrint over HTTP (transfer.py), plus a queue
+that hands copies to printers whose bed the user confirmed empty.
 
 Mirrors the macOS Farm (Sources/Gantry/Farm). No GTK here: the archive reading, the rules and the store
 are unit-tested headless; farmwindow draws them.
@@ -16,12 +17,15 @@ import ssl
 import threading
 import time
 import uuid
+import base64
+import binascii
 import xml.etree.ElementTree as ElementTree
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from . import transfer
 from .core import PrinterKind, PrinterState
 
 MAX_BYTES = 512 * 1024 * 1024
@@ -104,6 +108,135 @@ def read_preview(zip_file: zipfile.ZipFile, plate: int) -> bytes | None:
     return None
 
 
+# ---------------------------------------------------------------- G-code
+
+GCODE_EXTENSIONS = frozenset({"gcode", "gco", "g", "bgcode"})
+
+
+def is_gcode(path: str | Path) -> bool:
+    return Path(path).suffix.lower().lstrip(".") in GCODE_EXTENSIONS
+
+
+def gcode_format(path: str | Path) -> str:
+    return "bgcode" if Path(path).suffix.lower() == ".bgcode" else "gcode"
+
+
+def _comments(data: bytes) -> str:
+    """Only the head and tail are scanned, never the whole toolpath."""
+    window = 512 * 1024
+    head, tail = data[:window], data[-window:] if len(data) > window else b""
+    return head.decode("utf-8", "replace") + "\n" + tail.decode("utf-8", "replace")
+
+
+def gcode_settings(text: str) -> dict[str, str]:
+    """Key/value comments such as ``; filament_type = PLA;PETG`` or ``;TIME:3600``. First one wins."""
+    result: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith(";"):
+            continue
+        body = line[1:].strip()
+        separator = body.find("=") if "=" in body else body.find(":")
+        if separator < 0:
+            continue
+        key, value = body[:separator].strip().lower(), body[separator + 1:].strip()
+        if key and len(key) < 80 and key not in result:
+            result[key] = value
+    return result
+
+
+def gcode_seconds(text: str) -> int | None:
+    """"1d 2h 3m 4s" (PrusaSlicer, Orca), or plain seconds (Cura)."""
+    value = text.strip()
+    if value.isdigit():
+        return int(value)
+    total, found = 0, False
+    for amount, unit in re.findall(r"(\d+)\s*([dhms])", value):
+        total += int(amount) * {"d": 86400, "h": 3600, "m": 60, "s": 1}[unit]
+        found = True
+    return total if found else None
+
+
+def gcode_plate(data: bytes) -> dict[str, Any]:
+    """Time, filaments, nozzle and printer from the slicer's comments, as one plate."""
+    values = gcode_settings(_comments(data))
+    plate: dict[str, Any] = {"index": 1, "filaments": []}
+    for key in ("estimated printing time (normal mode)", "time", "total estimated time"):
+        seconds = gcode_seconds(values[key]) if key in values else None
+        if seconds is not None:
+            plate["seconds"] = seconds
+            break
+    model = values.get("printer_model") or values.get("printer_settings_id")
+    if model:
+        plate["printerModel"] = model
+    try:
+        plate["nozzle"] = float(values.get("nozzle_diameter", "").split(",")[0].strip())
+    except ValueError:
+        pass
+
+    def listed(key: str) -> list[str]:
+        return [item.strip() for item in re.split(r"[;,]", values.get(key, ""))] if values.get(key) else []
+    materials, colours = listed("filament_type"), listed("filament_colour")
+    grams = listed("filament used [g]") or listed("total filament used [g]")
+    for index, material in enumerate(materials):
+        if not material:
+            continue
+        try:
+            used = float(grams[index]) if index < len(grams) else 0.0
+        except ValueError:
+            used = 0.0
+        # Unused extruders of a multi-tool profile carry a material but no weight.
+        if len(materials) > 1 and used == 0 and grams:
+            continue
+        plate["filaments"].append({"id": index + 1, "material": material,
+                                   "color": colours[index] if index < len(colours) else "", "grams": used})
+    return plate
+
+
+def gcode_thumbnail(data: bytes) -> bytes | None:
+    """The largest ``; thumbnail begin WxH N`` PNG block (PrusaSlicer, Orca, Cura with the plug-in)."""
+    text = data[:2 * 1024 * 1024].decode("utf-8", "replace")
+    best: tuple[int, bytes] | None = None
+    collecting: tuple[int, list[str]] | None = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("; thumbnail begin"):
+            size = line.split()[3] if len(line.split()) > 3 else ""
+            area = 1
+            for part in size.split("x"):
+                area *= int(part) if part.isdigit() else 1
+            collecting = (area, [])
+        elif line.startswith("; thumbnail end"):
+            if collecting is not None:
+                try:
+                    png = base64.b64decode("".join(collecting[1]), validate=True)
+                except (binascii.Error, ValueError):
+                    png = b""
+                if png and collecting[0] > (best[0] if best else 0):
+                    best = (collecting[0], png)
+            collecting = None
+        elif collecting is not None and line.startswith(";"):
+            collecting[1].append(line[1:].strip())
+    return best[1] if best else None
+
+
+def file_extension(file: dict[str, Any]) -> str:
+    return file.get("format") or "3mf"
+
+
+def printer_accepts(printer: Any, file: dict[str, Any]) -> bool:
+    return transfer.accepts(printer.kind, file_extension(file))
+
+
+def supports_printer(kind: Any) -> bool:
+    """Printers the Farm sends files to: Bambu Lab (3MF over FTPS) and the HTTP ones (G-code)."""
+    return kind == PrinterKind.BAMBU or transfer.supports(kind)
+
+
+def job_is_gcode(job: dict[str, Any]) -> bool:
+    return not str(job.get("remoteName", "")).lower().endswith(".3mf")
+
+
 # ---------------------------------------------------------------- rules
 
 def slot_index(slot_id: str) -> int | None:
@@ -126,10 +259,14 @@ def start_block(telemetry: Any, seen_at: float | None, now: float | None = None)
 
 
 def matches(job: dict[str, Any], telemetry: Any) -> bool:
+    """Whatever extension the printer reports the job with: Bambu drops ".3mf", OctoPrint and Moonraker
+    keep ".gcode", some firmware shows the bare stem."""
     remote = job["remoteName"]
-    stem = remote[:-4] if remote.endswith(".3mf") else remote
+    stem = os.path.splitext(remote)[0]
+    reported = (telemetry.job_name or "").replace("\\", "/").rsplit("/", 1)[-1] if telemetry.job_name else None
     gcode = (telemetry.gcode_file or "").replace("\\", "/").rsplit("/", 1)[-1]
-    return telemetry.job_name in (stem, remote) or gcode == remote
+    return (reported is not None and (reported in (stem, remote) or os.path.splitext(reported)[0] == stem)) \
+        or gcode == remote
 
 
 def command(job: dict[str, Any]) -> str:
@@ -199,12 +336,20 @@ def auto_mapping(plate: dict[str, Any], slots: list[Any], max_distance: float = 
     return None
 
 
-def next_queue_item(queue: list[dict[str, Any]], serial: str, telemetry: Any) -> tuple[int, list[int]] | None:
+def next_queue_item(queue: list[dict[str, Any]], serial: str, telemetry: Any,
+                    accepts: Callable[[str | None], bool] = lambda fmt: fmt is None) -> tuple[int, list[int]] | None:
     for index, item in enumerate(queue):
         if item.get("copies", 0) <= 0 or (item.get("printers") and serial not in item["printers"]):
             continue
+        if not accepts(item.get("format")):
+            continue
         nozzle = item["plate"].get("nozzle")
         if nozzle is not None and telemetry.nozzle_diameter is not None and abs(nozzle - telemetry.nozzle_diameter) > 0.01:
+            continue
+        # G-code carries its own filament choice and was sliced for the printers it names.
+        if item.get("format") is not None:
+            if serial in (item.get("printers") or []):
+                return index, []
             continue
         mapping = auto_mapping(item["plate"], telemetry.ams_slots)
         if mapping is not None:
@@ -268,11 +413,14 @@ class FarmStore:
 
     def __init__(self, app: Any, root: Path | None = None,
                  uploader: Callable[..., None] = upload,
+                 sender: Callable[..., None] = transfer.upload,
+                 starter: Callable[..., None] = transfer.start,
                  run_async: Callable[[Callable[[], None]], None] | None = None,
                  on_main: Callable[[Callable[[], None]], None] | None = None) -> None:
         self.app = app
         self.root = root or FARM_DIR
         self.uploader = uploader
+        self.sender, self.starter = sender, starter
         self.run_async = run_async or (lambda job: threading.Thread(target=job, daemon=True).start())
         self.on_main = on_main or (lambda job: job())
         self.files: list[dict[str, Any]] = []
@@ -307,6 +455,9 @@ class FarmStore:
     def file_path(self, file_id: str) -> Path:
         return self.root / f"{file_id}.3mf"
 
+    def stored_path(self, file: dict[str, Any]) -> Path:
+        return self.root / f"{file['id']}.{file_extension(file)}"
+
     def preview_path(self, file_id: str, plate: int) -> Path:
         return self.root / f"{file_id}.plate-{plate}.png"
 
@@ -328,11 +479,14 @@ class FarmStore:
         self.notice = text
         self._changed()
 
-    def import_file(self, path: str) -> None:
+    def import_file(self, path: str) -> dict[str, Any] | None:
+        """Adds a sliced 3MF or a G-code file to the library and returns its entry (None on failure)."""
         try:
             if not self._ready:
                 raise FarmError("Biblioteka jest niedostępna.")
             source = Path(path)
+            if is_gcode(source):
+                return self._import_gcode(source)
             if not source.is_file() or source.stat().st_size > MAX_BYTES:
                 raise FarmError("Wybierz plik 3MF do 512 MB.")
             file_id = str(uuid.uuid4())
@@ -351,10 +505,32 @@ class FarmStore:
                 self.files.remove(entry)
                 raise
             self.set_notice(f"Dodano {entry['name']} · {len(plates)} płyt.")
+            return entry
         except zipfile.BadZipFile:
             self.set_notice("Nieprawidłowe lub nieobsługiwane archiwum 3MF.")
         except (FarmError, OSError) as error:
             self.set_notice(str(error))
+        return None
+
+    def _import_gcode(self, source: Path) -> dict[str, Any]:
+        if not source.is_file() or source.stat().st_size > MAX_BYTES:
+            raise FarmError("Wybierz plik G-code do 512 MB.")
+        file_id, fmt = str(uuid.uuid4()), gcode_format(source)
+        data = source.read_bytes()
+        entry = {"id": file_id, "name": source.name, "bytes": len(data), "importedAt": _now_iso(), "format": fmt,
+                 "plates": [gcode_plate(data) if fmt == "gcode" else {"index": 1, "filaments": []}]}
+        self.stored_path(entry).write_bytes(data)
+        thumbnail = gcode_thumbnail(data) if fmt == "gcode" else None
+        if thumbnail:
+            self.preview_path(file_id, 1).write_bytes(thumbnail)
+        self.files.append(entry)
+        try:
+            self.persist()
+        except Exception:
+            self.files.remove(entry)
+            raise
+        self.set_notice(f"Dodano {entry['name']} · G-code.")
+        return entry
 
     def _printer(self, serial: str) -> Any:
         return next((p for p in self.app.printers if p.serial == serial), None)
@@ -367,20 +543,24 @@ class FarmStore:
 
     def upload_to(self, file: dict[str, Any], plate: dict[str, Any], printer: Any, mapping: list[int],
                   queue_item: str | None = None, auto_start: bool = False) -> None:
-        if printer.kind != PrinterKind.BAMBU:
-            raise FarmError("Wysyłanie obsługuje obecnie drukarki Bambu Lab.")
+        if not supports_printer(printer.kind):
+            raise FarmError("Ta drukarka nie przyjmuje plików z Gantry.")
+        if not printer_accepts(printer, file):
+            raise FarmError(f"{printer.name}: ten plik nie pasuje do drukarki. 3MF drukują Bambu Lab, G-code — Klipper, Prusa i OctoPrint.")
         if any(j["serial"] == printer.serial and j["state"] == "uploading" for j in self.jobs):
             raise FarmError("Ta drukarka już odbiera plik.")
         try:
             code = self.app.secrets.get(printer.serial)
         except Exception:
             code = None
-        if not code:
+        gcode = file.get("format") is not None
+        if not code and not gcode:
             raise FarmError("Brak kodu dostępu do drukarki.")
         job_id = str(uuid.uuid4())
         now = _now_iso()
+        remote_name = f"gantry-{job_id[:8]}.{file_extension(file)}" if gcode else f"gantry-{job_id}.3mf"
         job = {"id": job_id, "fileID": file["id"], "fileName": file["name"], "serial": printer.serial,
-               "printerName": printer.name, "plate": plate, "mapping": mapping, "remoteName": f"gantry-{job_id}.3mf",
+               "printerName": printer.name, "plate": plate, "mapping": mapping, "remoteName": remote_name,
                "state": "uploading", "message": "Wysyłanie…", "createdAt": now, "updatedAt": now, "bedLeveling": True}
         if queue_item:
             job["queueItemID"] = queue_item
@@ -392,14 +572,17 @@ class FarmStore:
         except Exception:
             self.jobs.remove(job)
             raise
-        local, host, remote = self.file_path(file["id"]), printer.host, job["remoteName"]
+        local, host, remote = self.stored_path(file), printer.host, job["remoteName"]
 
         def work() -> None:
             failure: str | None = None
+            progress = lambda value: self.on_main(lambda: self._progress(job_id, value))  # noqa: E731
+            cancelled = lambda: job_id in self._cancel  # noqa: E731
             try:
-                self.uploader(host, code, local, remote,
-                              lambda value: self.on_main(lambda: self._progress(job_id, value)),
-                              lambda: job_id in self._cancel)
+                if gcode:
+                    self.sender(printer, code, local, remote, progress, cancelled)
+                else:
+                    self.uploader(host, code, local, remote, progress, cancelled)
             except Exception as error:   # noqa: BLE001 - every failure is reported on the job
                 failure = "Anulowano transfer. Nie uruchomiono druku." if job_id in self._cancel else str(error)
 
@@ -437,6 +620,11 @@ class FarmStore:
         reason = start_block(telemetry, self._seen(job["serial"]))
         if reason:
             return reason
+        if job_is_gcode(job):
+            nozzle = job["plate"].get("nozzle")
+            if nozzle is not None and telemetry.nozzle_diameter is not None and abs(nozzle - telemetry.nozzle_diameter) > 0.01:
+                return "Średnica dyszy różni się od profilu pliku."
+            return None
         filaments = job["plate"].get("filaments") or []
         if not filaments:
             return "Brak informacji o filamentach w pliku. Wyeksportuj płytę z Bambu Studio."
@@ -466,6 +654,22 @@ class FarmStore:
         job.update(state="awaitingStart", startRequestedAt=_now_iso(), updatedAt=_now_iso(),
                    message="Wysłano start. Oczekiwanie na potwierdzenie drukarki…")
         self.persist()
+        if job_is_gcode(job):
+            printer = self._printer(job["serial"])
+            try:
+                code = self.app.secrets.get(printer.serial)
+            except Exception:
+                code = None
+
+            def work() -> None:
+                try:
+                    self.starter(printer, code, job["remoteName"])
+                except Exception as error:   # noqa: BLE001 - reported on the job, never retried
+                    message = f"Nie potwierdzono startu: {error} Sprawdź drukarkę."
+                    self.on_main(lambda: self._update(job_id, "uncertain", message))
+            self.run_async(work)
+            self._changed()
+            return
         if not self.app.send_command(job["serial"], command(job)):
             self._update(job_id, "uncertain", "Nie potwierdzono wysłania startu. Sprawdź drukarkę.")
             raise FarmError("Nie potwierdzono wysłania startu. Sprawdź drukarkę.")
@@ -493,10 +697,19 @@ class FarmStore:
     def enqueue(self, file: dict[str, Any], plate: dict[str, Any], copies: int, serials: list[str]) -> None:
         if not 1 <= copies <= 99:
             raise FarmError("Liczba kopii: od 1 do 99.")
-        if not plate.get("filaments"):
+        if file.get("format") is not None:
+            if not serials:
+                raise FarmError("G-code jest pocięty pod konkretną drukarkę. Zaznacz drukarki, które mogą go drukować.")
+            for serial in serials:
+                printer = self._printer(serial)
+                if printer is None or not printer_accepts(printer, file):
+                    raise FarmError(f"Zaznaczona drukarka nie drukuje plików {file_extension(file)}.")
+        elif not plate.get("filaments"):
             raise FarmError("Brak informacji o filamentach w pliku. Kolejka dobiera AMS po materiale i kolorze.")
         item = {"id": str(uuid.uuid4()), "fileID": file["id"], "fileName": file["name"], "plate": plate,
                 "copies": copies, "printers": serials, "createdAt": _now_iso()}
+        if file.get("format") is not None:
+            item["format"] = file["format"]
         self.queue.append(item)
         try:
             self.persist()
@@ -520,8 +733,8 @@ class FarmStore:
 
     def arm(self, serial: str) -> None:
         printer = self._printer(serial)
-        if printer is None or printer.kind != PrinterKind.BAMBU:
-            raise FarmError("Kolejka obsługuje drukarki Bambu Lab.")
+        if printer is None or not supports_printer(printer.kind):
+            raise FarmError("Kolejka obsługuje drukarki Bambu Lab, Klipper, Prusa i OctoPrint.")
         telemetry = self._telemetry(serial)
         if telemetry is not None and telemetry.state in (PrinterState.PRINTING, PrinterState.PAUSED):
             raise FarmError("Drukarka drukuje. Oznacz stół jako pusty po zdjęciu wydruku.")
@@ -543,8 +756,12 @@ class FarmStore:
         if existing is not None:
             existing["copies"] += 1
         else:
-            self.queue.insert(0, {"id": item_id, "fileID": job["fileID"], "fileName": job["fileName"], "plate": job["plate"],
-                                  "copies": 1, "printers": [], "createdAt": job["createdAt"]})
+            fmt = next((f.get("format") for f in self.files if f["id"] == job["fileID"]), None)
+            item = {"id": item_id, "fileID": job["fileID"], "fileName": job["fileName"], "plate": job["plate"],
+                    "copies": 1, "printers": [] if fmt is None else [job["serial"]], "createdAt": job["createdAt"]}
+            if fmt is not None:
+                item["format"] = fmt
+            self.queue.insert(0, item)
         self._try_persist()
 
     def _active(self, serial: str) -> bool:
@@ -556,14 +773,16 @@ class FarmStore:
         requires = getattr(self.app, "requires_signed_commands", None)
         for serial in sorted(self.armed):
             printer = self._printer(serial)
-            if printer is None or printer.kind != PrinterKind.BAMBU:
+            if printer is None or not supports_printer(printer.kind):
                 self.armed.discard(serial)
                 continue
             telemetry = self._telemetry(serial)
             if (self._active(serial) or telemetry is None or start_block(telemetry, self._seen(serial))
                     or (callable(requires) and requires(serial))):
                 continue
-            found = next_queue_item(self.queue, serial, telemetry)
+            kind = printer.kind
+            found = next_queue_item(self.queue, serial, telemetry,
+                                    accepts=lambda fmt, kind=kind: transfer.accepts(kind, fmt or "3mf"))
             if found is None:
                 continue
             index, mapping = found
@@ -626,3 +845,12 @@ class FarmStore:
                 self._update(job["id"], "uncertain", "Brak potwierdzenia startu. Sprawdź drukarkę. Polecenie nie będzie automatycznie ponawiane.")
         self._start_armed()
         self._dispatch()
+
+
+def shared(app: Any) -> FarmStore:
+    """The one library the Farm window and the control panel both use, so they never write index.json
+    over each other."""
+    if getattr(app, "farm", None) is None:
+        from gi.repository import GLib  # type: ignore
+        app.farm = FarmStore(app, on_main=lambda job: GLib.idle_add(lambda: (job(), False)[1]))
+    return app.farm

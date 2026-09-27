@@ -113,6 +113,38 @@ class SmartPlug:
                 return None
         return urllib.request.Request(url, data=data, headers=headers, method=method)
 
+    @property
+    def meters(self) -> bool:
+        """Whether this kind of socket can report its power draw at all."""
+        return self.kind in ("tasmota", "shelly", "shellyRPC")
+
+    def power_request(self, secret: str | None) -> urllib.request.Request | None:
+        """The request that reads the socket's energy meter, when it has one."""
+        if self.kind == "shellyRPC":
+            return self.request(None, secret)
+        if self.kind == "tasmota":
+            request = self.request(None, secret)
+            if request is None:
+                return None
+            parts = urllib.parse.urlsplit(request.full_url)
+            query = [(key, "Status 8" if key == "cmnd" else value)
+                     for key, value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)]
+            request.full_url = urllib.parse.urlunsplit(
+                parts._replace(query=urllib.parse.urlencode(query, quote_via=urllib.parse.quote)))
+            return request
+        if self.kind == "shelly":
+            return urllib.request.Request(f"{self._base()}/status")
+        return None
+
+    def power(self, secret: str | None) -> float | None:
+        """The socket's current draw in watts, or None when it has no meter. Raises RuntimeError."""
+        if self.problem:
+            raise RuntimeError(self.problem)
+        request = self.power_request(secret)
+        if request is None:
+            return None
+        return parse_power(self.kind, self.channel, self._fetch(request, secret))
+
     def send(self, on: bool | None, secret: str | None) -> bool | None:
         """Switches (or reads) the socket and returns the state it reports. Raises RuntimeError."""
         if self.problem:
@@ -120,6 +152,9 @@ class SmartPlug:
         request = self.request(on, secret)
         if request is None:
             raise RuntimeError(i18n.t("The address is not a valid URL."))
+        return parse_state(self.kind, self.channel, self._fetch(request, secret))
+
+    def _fetch(self, request: urllib.request.Request, secret: str | None) -> str:
         handlers: list[Any] = []
         if secret and self.kind in ("shelly", "shellyRPC"):
             # Basic for Shelly Gen1, digest for Gen2 and later; both answer the same challenge.
@@ -136,7 +171,43 @@ class SmartPlug:
             raise RuntimeError(i18n.t("The socket answered with HTTP {0}.").format(error.code)) from error
         except (urllib.error.URLError, OSError, ValueError) as error:
             raise RuntimeError(str(getattr(error, "reason", error))) from error
-        return parse_state(self.kind, self.channel, body)
+        return body
+
+
+def parse_power(kind: str, channel: int, body: str) -> float | None:
+    """Watts out of an energy-meter reply. None when the device does not meter this outlet."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    def number(value: Any) -> float | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            return float(value) if isinstance(value, str) else None
+        except ValueError:
+            return None
+
+    if kind == "shellyRPC":
+        return number(data.get("apower"))
+    if kind == "tasmota":
+        sensors = data.get("StatusSNS") if isinstance(data.get("StatusSNS"), dict) else {}
+        energy = sensors.get("ENERGY") if isinstance(sensors.get("ENERGY"), dict) else {}
+        value = energy.get("Power")
+        if isinstance(value, list):
+            return number(value[channel - 1]) if 0 < channel <= len(value) else None
+        return number(value)
+    if kind == "shelly":
+        meters = data.get("meters") if isinstance(data.get("meters"), list) else data.get("emeters")
+        if isinstance(meters, list) and 0 < channel <= len(meters) and isinstance(meters[channel - 1], dict):
+            return number(meters[channel - 1].get("power"))
+        return None
+    return None
 
 
 def parse_state(kind: str, channel: int, body: str) -> bool | None:

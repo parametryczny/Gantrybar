@@ -88,7 +88,8 @@ class PrinterDialog(Gtk.Dialog):
         for value, label in (("bambu", "Bambu Lab"), ("elegoo", "Elegoo"),
                              (PrinterKind.ANYCUBIC_KOBRA_S1.value, "Anycubic"),
                              ("klipper", "Klipper / Moonraker"),
-                             ("prusa", "Prusa / PrusaLink"), ("snapmaker", "Snapmaker")):
+                             ("prusa", "Prusa / PrusaLink"), ("snapmaker", "Snapmaker"),
+                             ("octoprint", "OctoPrint")):
             self.kind.append(value, label)
         selected_brand = "elegoo" if printer and printer.kind in {PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2} \
             else (printer.kind if printer else PrinterKind.BAMBU).value
@@ -195,7 +196,7 @@ class PrinterDialog(Gtk.Dialog):
         defaults = {PrinterKind.BAMBU: 8883, PrinterKind.KLIPPER: 7125,
                     PrinterKind.PRUSA: 80, PrinterKind.SNAPMAKER: 8080,
                     PrinterKind.ELEGOO_CC1: 3030, PrinterKind.ELEGOO_CC2: 1883,
-                    PrinterKind.ANYCUBIC_KOBRA_S1: 18910}
+                    PrinterKind.ANYCUBIC_KOBRA_S1: 18910, PrinterKind.OCTOPRINT: 80}
         if not self.printer or self.printer.kind != kind:
             self.fields["port"].set_text(str(defaults[kind]))
         if kind == PrinterKind.BAMBU:
@@ -207,6 +208,9 @@ class PrinterDialog(Gtk.Dialog):
         elif kind == PrinterKind.PRUSA:
             self.code_label.set_text(i18n.t("PrusaLink API key"))
             self.info.set_text(i18n.t("PrusaLink • port 80 • local connection, no Prusa account required."))
+        elif kind == PrinterKind.OCTOPRINT:
+            self.code_label.set_text(i18n.t("OctoPrint API key"))
+            self.info.set_text(i18n.t("Enter the OctoPrint address (OctoPi, port 80) and an API key from OctoPrint → Settings → Application Keys. Works over VPN too — just enter the Tailscale IP."))
         elif kind == PrinterKind.SNAPMAKER:
             self.info.set_text(i18n.t("Snapmaker 2.0 / Artisan • HTTP, port 8080. After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle."))
         elif kind == PrinterKind.ELEGOO_CC1:
@@ -273,15 +277,17 @@ class PrinterDialog(Gtk.Dialog):
         except ValueError: port = 0
         serial = values["serial"] if kind in {PrinterKind.BAMBU, PrinterKind.ELEGOO_CC1, PrinterKind.ELEGOO_CC2} \
             else (f"anycubic-kobra-s1-{values['host']}" if kind == PrinterKind.ANYCUBIC_KOBRA_S1
+                  else f"octoprint-{values['host']}" if kind == PrinterKind.OCTOPRINT
                   else f"{kind.value}-{values['host']}-{port}")
-        secret_required = kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2}
+        secret_required = kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2, PrinterKind.OCTOPRINT}
         if not values["name"] or not values["host"] or not serial or not 1 <= port <= 65535 or (secret_required and not values["code"] and not self.printer):
             self.error.set_text(i18n.t("Check the required fields and port range.")); return None
         model = {PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper",
                  PrinterKind.PRUSA: "Prusa", PrinterKind.SNAPMAKER: "Snapmaker",
                  PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
                  PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2",
-                 PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1"}[kind]
+                 PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1",
+                 PrinterKind.OCTOPRINT: "OctoPrint"}[kind]
         return Printer(serial, values["name"], values["host"], model=model, port=port, kind=kind), values["code"]
 
 
@@ -712,12 +718,12 @@ class Gantry:
 
     # --- printer control (opt-in; Bambu and Klipper, as on macOS and Windows) ------------------------
     def send_printer_gcode(self, serial: str, line: str) -> bool:
-        """One G-code line to a printer that takes them: Klipper over Moonraker, Bambu as an MQTT
-        gcode_line. Other brands have no route for it and are left alone."""
+        """One G-code line to a printer that takes them: Klipper over Moonraker, OctoPrint as one batch of
+        lines, Bambu as an MQTT gcode_line. Other brands have no route for it and are left alone."""
         printer = next((p for p in self.printers if p.serial == serial), None)
         if printer is None:
             return False
-        if printer.kind == PrinterKind.KLIPPER:
+        if printer.kind in (PrinterKind.KLIPPER, PrinterKind.OCTOPRINT):
             return self.send_gcode(serial, line)
         if printer.kind == PrinterKind.BAMBU:
             from .control import gcode_line_payload
@@ -742,7 +748,7 @@ class Gantry:
         printer = next((p for p in self.printers if p.serial == serial), None)
         if printer is None:
             return False
-        if printer.kind == PrinterKind.KLIPPER:
+        if printer.kind in (PrinterKind.KLIPPER, PrinterKind.OCTOPRINT):
             return index == 1 and self.send_gcode(serial, f"M106 S{value}")
         if printer.kind == PrinterKind.BAMBU:
             return self.send_printer_gcode(serial, f"M106 P{index} S{value}")
@@ -760,6 +766,50 @@ class Gantry:
         self._note_control(serial, "fans")
         from .control import speed_level_payload
         return self.send_command(serial, speed_level_payload(level))
+
+    def send_print_action(self, serial: str, action: str) -> bool:
+        """Pause, resume or stop the current print ("pause", "resume", "stop"), for every brand that
+        takes one. OctoPrint and PrusaLink have a job API; the rest go the automation's way."""
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        if printer is None or action not in ("pause", "resume", "stop"):
+            return False
+        if printer.kind in (PrinterKind.OCTOPRINT, PrinterKind.PRUSA):
+            sender = getattr(self.connections.get(serial), "job_action", None)
+            if not callable(sender):
+                return False
+            threading.Thread(target=sender, args=(action,), daemon=True).start()
+            return True
+        if printer.kind == PrinterKind.KLIPPER:
+            return self.send_gcode(serial, {"pause": "PAUSE", "resume": "RESUME", "stop": "CANCEL_PRINT"}[action])
+        from .automation import _PAUSE, _RESUME, _STOP
+        return self.send_command(serial, {"pause": _PAUSE, "resume": _RESUME, "stop": _STOP}[action])
+
+    def accepts_gcode(self, serial: str) -> bool:
+        """Kinds whose motion, temperatures and fans Gantry drives with G-code."""
+        from .control import takes_gcode
+        printer = next((p for p in self.printers if p.serial == serial), None)
+        return printer is not None and takes_gcode(
+            printer.kind, printer.kind == PrinterKind.BAMBU and self.requires_signed_commands(serial))
+
+    def is_motion_safe(self, serial: str) -> bool:
+        from .control import is_motion_safe
+        telemetry = self.telemetry.get(serial)
+        return telemetry is not None and is_motion_safe(telemetry.state)
+
+    def jog(self, serial: str, x: float = 0, y: float = 0, z: float = 0) -> bool:
+        """A relative move of the print head, in millimetres. Only while nothing is printing."""
+        from .control import jog_gcode
+        line = jog_gcode(x, y, z)
+        if line is None or not self.accepts_gcode(serial) or not self.is_motion_safe(serial):
+            return False
+        return self.send_printer_gcode(serial, line)
+
+    def home(self, serial: str, axes: str = "") -> bool:
+        """Homes the given axes ("" for all). Only while nothing is printing."""
+        from .control import home_gcode
+        if not self.accepts_gcode(serial) or not self.is_motion_safe(serial):
+            return False
+        return self.send_printer_gcode(serial, home_gcode(axes))
 
     def requires_signed_commands(self, serial: str) -> bool:
         """Whether a Bambu printer takes control commands only when signed by Bambu Connect. Its feature mask
@@ -799,7 +849,7 @@ class Gantry:
         from .overrides import overrides_for
         custom = overrides_for(self.config, serial).get("ledOn" if on else "ledOff")
         if custom:
-            if printer is not None and printer.kind == PrinterKind.KLIPPER:
+            if printer is not None and printer.kind in (PrinterKind.KLIPPER, PrinterKind.OCTOPRINT):
                 self.send_gcode(serial, custom)
             else:
                 self.send_command(serial, custom)
@@ -817,6 +867,9 @@ class Gantry:
         elif printer is not None and printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
             sender = getattr(self.connections.get(serial), "set_light", None)
             if callable(sender): sender(on)
+        elif printer is not None and printer.kind in (PrinterKind.OCTOPRINT, PrinterKind.PRUSA, PrinterKind.SNAPMAKER):
+            # No standard light command; a per-printer override above can supply one.
+            return
         else:
             from .automation import light_payload
             self.send_command(serial, light_payload(on))
@@ -1033,7 +1086,8 @@ class Gantry:
                 if updated.kind not in {PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1}: raise
                 existing_code = None
             credential = code or existing_code
-            if updated.kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2} and not credential:
+            if updated.kind in {PrinterKind.BAMBU, PrinterKind.PRUSA, PrinterKind.ELEGOO_CC2,
+                                PrinterKind.OCTOPRINT} and not credential:
                 return i18n.t("Access code / API key")
             if credential:
                 self.secrets.set(updated.serial, credential)
@@ -1208,7 +1262,7 @@ class Gantry:
         elif printer.kind == PrinterKind.ANYCUBIC_KOBRA_S1:
             from .anycubic import AnycubicS1Connection
             connection = AnycubicS1Connection(printer, callback)
-        elif printer.kind == PrinterKind.PRUSA:
+        elif printer.kind in (PrinterKind.PRUSA, PrinterKind.OCTOPRINT):
             if not code: return
             connection = HttpConnection(printer, code, callback)
         else:
@@ -1413,7 +1467,7 @@ class Gantry:
                 model={PrinterKind.BAMBU: "Bambu Lab", PrinterKind.KLIPPER: "Klipper", PrinterKind.PRUSA: "Prusa",
                        PrinterKind.SNAPMAKER: "Snapmaker", PrinterKind.ELEGOO_CC1: "Elegoo Centauri Carbon",
                        PrinterKind.ELEGOO_CC2: "Elegoo Centauri Carbon 2",
-                       PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1"}[kind],
+                       PrinterKind.ANYCUBIC_KOBRA_S1: "Anycubic Kobra S1", PrinterKind.OCTOPRINT: "OctoPrint"}[kind],
                 port=int(record["port"]), kind=kind,
             )
             by_serial[printer.serial] = printer

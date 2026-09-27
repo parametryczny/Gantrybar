@@ -181,4 +181,7 @@ def _mjpeg_url(app: Any, printer: Any, host: str) -> str | None:
         return f"http://{host}:8080/?action=stream" if is_cc2 else f"http://{host}:3031/video"
     if printer.kind == PrinterKind.KLIPPER:
         return f"http://{host}:{printer.port or 7125}/webcam/?action=stream"
+    if printer.kind == PrinterKind.OCTOPRINT:
+        # OctoPi serves mjpg-streamer on the web port, beside OctoPrint itself.
+        return f"http://{host}/webcam/?action=stream"
     return None
