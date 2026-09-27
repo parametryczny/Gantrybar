@@ -131,7 +131,7 @@ final class DefectRecorder {
     }
 
     /// How a print ended, read from the state the printer went to when it stopped printing.
-    static func outcome(after state: PrinterState) -> DefectSession.Outcome {
+    nonisolated static func outcome(after state: PrinterState) -> DefectSession.Outcome {
         switch state {
         case .finished: .finished
         case .error: .failed
