@@ -301,9 +301,14 @@ require("Sources/Gantry/Views/PrinterDashboardViewController.swift",
 require("Sources/Gantry/Views/PanelWindowController.swift",
         r"window\.center\(\)[\s\S]{0,120}?makeKeyAndOrderFront",
         "a detached panel does not open centred on the screen")
+# Since contract 1.15.0 a panel in menu-bar mode is an ordinary window, and in window mode it opens
+# inside the workspace instead of on top of it.
 require("Sources/Gantry/Views/PanelWindowController.swift",
-        r"window\.level = PanelWindowController\.companionWindow\?\(\)\?\.level",
-        "a detached panel does not borrow the fleet panel's window level, so it opens behind it")
+        r"if let workspacePresenter \{ return workspacePresenter\(",
+        "panels do not open inside the macOS workspace window")
+require("Sources/Gantry/Views/PanelWindowController.swift",
+        r"window\.level = \.normal[\s\S]{0,40}?window\.center\(\)",
+        "a detached panel is raised above other apps instead of being an ordinary window")
 require("Sources/Gantry/Views/PanelWindowController.swift",
         r"if holds == 1 \{ onHoldChanged\?\(true\) \}[\s\S]{0,240}?if holds == 0 \{ onHoldChanged\?\(false\) \}",
         "the fleet-panel hold is not reference counted, so closing one of two panels drops it")
@@ -311,11 +316,14 @@ forbid("Sources/Gantry/Views/PanelWindowController.swift",
        r"(?:onPreferredContentSize|popover\.contentSize)",
        "a detached panel resizes the fleet panel again, which jumps the whole window")
 require("Sources/Gantry/Views/MenuBarController.swift",
-        r"popover\.behavior = held \? \.applicationDefined : \.transient",
-        "the fleet popover is not held open while a panel is on screen, so it closes under it")
-require("Sources/Gantry/Views/MenuBarController.swift",
-        r"PanelWindowController\.onHoldChanged = \{[\s\S]{0,200}?PanelWindowController\.companionWindow = \{",
-        "the panel hooks are not installed, so panels cannot reach the live fleet presentation")
+        r"PanelWindowController\.onHoldChanged = nil[\s\S]{0,120}?PanelWindowController\.companionWindow = \{",
+        "the panel hooks are not installed, or panels pin the menu-bar popover open again")
+require("Sources/Gantry/Views/FloatingDashboardWindowController.swift",
+        rf"PanelWindowController\.workspacePresenter = \{{",
+        "the macOS window mode does not route panels into the workspace")
+require("Sources/Gantry/Views/GantryWorkspaceViewController.swift",
+        rf"static let railWidth:\s*CGFloat\s*=\s*{CONTRACT['floatingWindow']['workspaceRail']['width']}\b",
+        "the macOS workspace rail width differs from the contract")
 for panel_name, panel_file in (
     ("FleetStatsViewController", "Sources/Gantry/Views/FleetStatsViewController.swift"),
     ("DiagnosticCenterViewController", "Sources/Gantry/Views/DiagnosticCenterWindowController.swift"),

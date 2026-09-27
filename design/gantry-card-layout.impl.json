@@ -1,8 +1,8 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.14.0",
-    "date": "2026-09-18",
+    "version": "1.15.0",
+    "date": "2026-09-27",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
   "tokens": {
@@ -69,12 +69,12 @@
     "enabledByDefault": false,
     "alwaysOnTopDefault": false,
     "initialSize": {
-      "width": 682,
+      "width": 740,
       "height": 400
     },
     "minimumSize": {
-      "width": 345,
-      "height": 290
+      "width": 403,
+      "height": 340
     },
     "tileResize": {
       "card": {
@@ -108,7 +108,12 @@
     "frameAutosaveName": "GantryFloatingDashboardWindow",
     "usesFleetCardImplementation": true,
     "alwaysOnTopControl": "pin in dashboard header",
-    "alwaysOnTopNote": "Off by default since 2026-09-22: a window above every other window also covers alerts, and the user could not tell that anything had been asked. The pin on the fleet header still raises it, and ModalHost lowers every raised Gantry window while an alert is on screen."
+    "alwaysOnTopNote": "Off by default since 2026-09-22: a window above every other window also covers alerts, and the user could not tell that anything had been asked. The pin on the fleet header still raises it, and ModalHost lowers every raised Gantry window while an alert is on screen.",
+    "workspaceRail": {
+      "platform": "macOS",
+      "width": 58,
+      "note": "Since 1.15.0 the macOS window is a workspace: a 58 pt navigation rail (printers, jobs, spools, maintenance, statistics, diagnostics, settings) beside the cards, and panels open inside it instead of as separate windows. The initial and minimum sizes include the rail. Windows and GNU/Linux keep the plain fleet window for now."
+    }
   },
   "card": {
     "background": "fleetCard @fleetCardAlpha (light theme: white @0.86)",
@@ -570,7 +575,7 @@
     "position": "centred on the screen, not on the fleet panel, so it never opens on top of the cards",
     "fleetPanelStaysOpen": {
       "rule": "the fleet panel must remain visible and live while any panel is on screen",
-      "macOS": "the popover's behavior is switched from .transient to .applicationDefined and the outside-click monitor is suspended; a reference count, not a flag, so closing one of two open panels does not hand the popover back to AppKit",
+      "macOS": "Since 1.15.0: in window mode panels open inside the workspace, so there is nothing to keep open. In menu-bar mode a panel is an ordinary window at the normal level and the popover stays transient: auxiliary windows no longer pin the popover over other apps (PanelWindowController.onHoldChanged is nil).",
       "windows": "the dashboard's Deactivated handler walks OwnedWindows and returns while any is visible, so every panel must set Owner; inherently counted, unlike the macOS and Linux flags",
       "linux": "Dashboard._suppress_hide is a reference count behind a property, held while any panel window is mapped, so the tray panel's focus-out hide cannot fire under it"
     },

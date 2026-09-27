@@ -65,9 +65,15 @@ import UniformTypeIdentifiers
 
     @Test func silentPrinterIsRetriedThenReportedAsNoAnswer() async {
         let wire = Wire()
-        let gate = ElegooVideoGate(replyTimeout: 0.35, resendInterval: 0.1, releaseGrace: 0.05) { wire.record($0, $1) }
+        // Resends run on GCD timers. With 0.35 s for three 0.1 s hops, a busy CI runner that ran one timer
+        // late ended the wait after the first send. A wider window leaves each hop ~0.5 s of slack while
+        // still asserting what matters: a silent printer is asked again before the gate gives up.
+        let gate = ElegooVideoGate(replyTimeout: 1.5, resendInterval: 0.05, releaseGrace: 0.05) { wire.record($0, $1) }
+        let started = Date()
         #expect(await acquire(gate) == nil)
+        #expect(Date().timeIntervalSince(started) >= 1.4, "Gave up before the reply timeout")
         #expect(wire.all.count >= 3)
+        #expect(Set(wire.all.map(\.id)).count == wire.all.count, "Every resend needs its own RequestID")
         #expect(ElegooVideoGate.refusalMessage(ack: nil) == nil)
         #expect(ElegooVideoGate.refusalMessage(ack: 1) != nil)
         gate.release()
