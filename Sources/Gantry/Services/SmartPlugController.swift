@@ -128,13 +128,11 @@ final class SmartPlugController {
             ModalHost.run(alert)
             return
         }
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = s.t("Switch off every printer's power?")
-        alert.informativeText = s.t("{0} sockets are switched off at once. Running prints end and cannot be resumed.", count)
-        alert.addButton(withTitle: s.t("Switch everything off"))
-        alert.addButton(withTitle: s.t("Cancel"))
-        guard ModalHost.run(alert) == .alertFirstButtonReturn else { return }
+        let names = SmartPlugStore.shared.serials
+            .filter { SmartPlugStore.shared.plug(for: $0)?.includeInEmergency == true }
+            .map { name($0) }
+            .sorted()
+        guard EmergencyPanel.confirm(printers: names) else { return }
         Task { @MainActor in
             let lines = await emergencyOff()
             let report = NSAlert()

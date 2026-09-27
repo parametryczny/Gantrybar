@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Gantry emergency siren. The native windows (macOS SirenView, Windows EmergencyWindow, GNU/Linux
+       emergency.py) draw exactly these shapes; the rays blink, the dome pulses. -->
+  <g stroke="#FF453A" stroke-width="7" stroke-linecap="round" class="rays">
+    <line x1="10" y1="50" x2="24" y2="56"/>
+    <line x1="24" y1="18" x2="35" y2="31"/>
+    <line x1="64" y1="4" x2="64" y2="19"/>
+    <line x1="104" y1="18" x2="93" y2="31"/>
+    <line x1="118" y1="50" x2="104" y2="56"/>
+  </g>
+  <path d="M34 94 V70 A30 30 0 0 1 94 70 V94 Z" fill="#E5484D"/>
+  <path d="M46 70 A18 18 0 0 1 64 52" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="5" stroke-linecap="round"/>
+  <rect x="24" y="94" width="80" height="14" rx="4" fill="#8E1B1F"/>
+  <rect x="16" y="108" width="96" height="10" rx="5" fill="#3A3A3C"/>
+</svg>

@@ -313,11 +313,10 @@ public static class SmartPlugController
                             AppSettings.T("No smart sockets are set up"));
             return;
         }
-        var answer = MessageBox.Show(
-            AppSettings.T("{0} sockets are switched off at once. Running prints end and cannot be resumed.").Replace("{0}", count.ToString()),
-            AppSettings.T("Switch off every printer's power?"),
-            MessageBoxButton.OKCancel, MessageBoxImage.Warning, MessageBoxResult.OK);
-        if (answer != MessageBoxResult.OK) return;
+        var names = SmartPlugStore.Serials
+            .Where(serial => SmartPlugStore.Plug(serial)?.IncludeInEmergency == true)
+            .Select(Name).OrderBy(name => name, StringComparer.CurrentCulture).ToList();
+        if (!Gantry.UI.EmergencyWindow.Confirm(names)) return;
         try
         {
             var lines = await EmergencyOffAsync();

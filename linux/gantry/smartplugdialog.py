@@ -51,9 +51,10 @@ def confirm_emergency_off(app: Any) -> None:
         dialog.format_secondary_text(i18n.t("Add a socket to a printer: its card ⋯ menu → Power → Set up socket…"))
         dialog.run(); dialog.destroy()
         return
-    if not _ask(app, i18n.t("Switch off every printer's power?"),
-                i18n.t("{0} sockets are switched off at once. Running prints end and cannot be resumed.").format(count),
-                i18n.t("Switch everything off"), default_action=True):
+    from .emergency import confirm
+    names = sorted(next((p.name for p in app.printers if p.serial == serial), serial)
+                   for serial in store.serials() if (plug := store.plug(serial)) is not None and plug.includeInEmergency)
+    if not confirm(app.window, names):
         return
 
     def job() -> None:
