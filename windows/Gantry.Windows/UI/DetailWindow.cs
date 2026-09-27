@@ -15,8 +15,8 @@ using Gantry.Services;
 namespace Gantry.UI;
 
 /// Per-printer "Szczegóły" (details) window — a richer read view: live temperature graph, temps with
-/// targets, fans + speed + nozzle diameter, and the AMS/filament dock. Monitor only (control and
-/// camera arrive in later phases). Mirrors the macOS detail card.
+/// targets, fans + speed + nozzle diameter, and the AMS/filament dock. The cards only read; control
+/// lives in the PrinterControlPanel beside them. Mirrors the macOS detail card.
 public sealed class DetailView : UserControl
 {
     private readonly PrinterStore _store;
@@ -78,7 +78,17 @@ public sealed class DetailView : UserControl
     private readonly Action? _onSkipObjects;
     private readonly Button _skipObjects;
 
-    public DetailView(PrinterStore store, string serial, Action onBack, Action? onSkipObjects = null)
+    // Printer control: slides out beside the details in the tray panel, always shown in a window.
+    private const string ControlPanelOpenKey = "detail-control-panel-open";
+    private readonly PrinterControlPanel _controlPanel;
+    private readonly System.Windows.Controls.Primitives.ToggleButton? _controlToggle;
+    /// <summary>Raised when the tray panel's control panel slides out (true) or back in (false).</summary>
+    public event Action<bool>? ControlPanelToggled;
+    public bool ControlPanelOpen => _controlPanel.Visibility == Visibility.Visible;
+
+    /// <param name="windowed">true where the details fill a window of their own: the control panel is
+    /// then always shown and takes the keyboard shortcuts.</param>
+    public DetailView(PrinterStore store, string serial, Action onBack, Action? onSkipObjects = null, bool windowed = false)
     {
         _store = store;
         _serial = serial;
@@ -159,7 +169,9 @@ public sealed class DetailView : UserControl
         // A Bambu printer that only takes commands signed by Bambu Connect would refuse every capsule, so
         // it keeps the read-only view and gets one notice saying what to switch on.
         _signingBlocked = _kind == PrinterKind.Bambu && store.RequiresSignedCommands(serial);
-        _controlEnabled = AppSettings.PrinterControlEnabled && (_kind is PrinterKind.Bambu or PrinterKind.Klipper) && !_signingBlocked;
+        // Setpoints live in the control panel beside the details; the cards here only read. The panel's
+        // commands go through PrinterStore.AcceptsGcode, which refuses a printer that wants signed commands.
+        _controlEnabled = false;
         if (_controlEnabled)
         {
             _nozzleStepper = new ControlStepper(0, 300, 5, true, "°");
@@ -253,7 +265,7 @@ public sealed class DetailView : UserControl
         }
 
         // --- Camera card (Bambu native RTSPS/RTSP/JPEG → ffmpeg decode, Klipper MJPEG snapshots) ---
-        if (printer?.Kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2 or PrinterKind.AnycubicKobraS1)
+        if (DockCameraFeed.SupportsCamera(printer?.Kind))
         {
             var container = new Grid { Height = 230, Background = new SolidColorBrush(Colors.Black) };
             _cameraStatus = new TextBlock { Foreground = White(), FontSize = 11, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12) };
@@ -325,19 +337,57 @@ public sealed class DetailView : UserControl
         };
         _skipObjects.Click += (_, _) => _onSkipObjects?.Invoke();
         var navigation = new StackPanel { Orientation = Orientation.Horizontal, Children = { back, _skipObjects } };
-        var backBar = new Border { Padding = new Thickness(8, 8, 8, 2), Child = navigation };
+        var barRow = new DockPanel { LastChildFill = false };
+        _controlPanel = new PrinterControlPanel(store, serial, windowed ? null : () => ToggleControlPanel(), keyboardShortcuts: windowed)
+        {
+            // The tray panel reopens it the way it was left.
+            Visibility = windowed || Defaults.GetBool(ControlPanelOpenKey) ? Visibility.Visible : Visibility.Collapsed,
+        };
+        if (!windowed)
+        {
+            _controlToggle = new System.Windows.Controls.Primitives.ToggleButton
+            {
+                Content = AppSettings.T("Control"), Padding = new Thickness(10, 3, 10, 4), FontSize = 12, Cursor = Cursors.Hand,
+                IsChecked = ControlPanelOpen, Focusable = false, Background = GTheme.Brush(GTheme.Surface),
+                Foreground = White(), BorderBrush = GTheme.Brush(GTheme.Line), VerticalAlignment = VerticalAlignment.Center,
+            };
+            _controlToggle.Click += (_, _) => ToggleControlPanel();
+            DockPanel.SetDock(_controlToggle, Dock.Right);
+            barRow.Children.Add(_controlToggle);
+        }
+        barRow.Children.Add(navigation);
+        var backBar = new Border { Padding = new Thickness(8, 8, 8, 2), Child = barRow };
         DockPanel.SetDock(backBar, Dock.Top);
 
         var root = new DockPanel();
         root.Children.Add(backBar);
         root.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = stack });
-        Content = root;
+        // The details keep their own column; the control panel sits to its right.
+        var split = new Grid();
+        split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        split.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        split.Children.Add(root);
+        Grid.SetColumn(_controlPanel, 1);
+        split.Children.Add(_controlPanel);
+        Content = split;
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => Refresh();
         _timer.Start();
         Unloaded += (_, _) => _timer.Stop();
         Refresh();
+    }
+
+    /// Slides the control panel out to the right of the details, or back in. Tray only: in a window it
+    /// is always there.
+    private void ToggleControlPanel()
+    {
+        if (_controlToggle is null) return;
+        bool open = !ControlPanelOpen;
+        _controlPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        _controlToggle.IsChecked = open;
+        Defaults.SetBool(ControlPanelOpenKey, open);
+        ControlPanelToggled?.Invoke(open);
     }
 
     // --- reorderable cards (drag the "⠿" grip; order persists across printers) ---
@@ -533,7 +583,7 @@ public sealed class DetailView : UserControl
         var refusal = _store.CommandRejections.TryGetValue(_serial, out var found) && (DateTime.UtcNow - found.At).TotalSeconds < 120 ? found : null;
         SetNotice(_temperatureNotice, refusal, PrinterStore.ControlArea.Temperature);
         SetNotice(_fanNotice, refusal, PrinterStore.ControlArea.Fans);
-        if (AppSettings.PrinterControlEnabled && _signingBlocked)
+        if (_controlEnabled && _signingBlocked)
         {
             _temperatureNotice.Text = AppSettings.T("Controls are off: the printer only accepts commands signed by Bambu Connect. Turn on LAN Only mode and then Developer Mode on the printer to control it from Gantry.");
             _temperatureNotice.Visibility = Visibility.Visible;
@@ -796,6 +846,8 @@ public sealed class DetailView : UserControl
 
     private async Task<string?> DiscoverSnapshotUrlAsync(string host)
     {
+        // OctoPi serves mjpg-streamer on the web port, beside OctoPrint itself.
+        if (_kind == PrinterKind.OctoPrint) return $"http://{host}/webcam/?action=snapshot";
         var printer = _store.Printers.FirstOrDefault(p => p.Serial == _serial);
         int port = printer?.Port ?? 7125;
         var apiKey = AccessCodeStore.AccessCode(_serial);

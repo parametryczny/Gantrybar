@@ -111,6 +111,46 @@ public sealed class SmartPlug
         return request;
     }
 
+    /// <summary>Whether this kind of socket can report its power draw at all.</summary>
+    [JsonIgnore] public bool Meters => SmartPlugPower.Meters(Kind);
+
+    /// <summary>The request that reads the socket's energy meter, when it has one.</summary>
+    public HttpRequestMessage? PowerRequest(string? secret)
+    {
+        switch (Kind)
+        {
+            case "shellyRPC":
+                return Request(null, secret);
+            case "tasmota":
+            {
+                string url = $"{Base()}/cm?cmnd={Uri.EscapeDataString("Status 8")}";
+                if (!string.IsNullOrEmpty(secret))
+                    url += $"&user={Uri.EscapeDataString(string.IsNullOrEmpty(Username) ? "admin" : Username)}&password={Uri.EscapeDataString(secret)}";
+                return new HttpRequestMessage(HttpMethod.Get, url);
+            }
+            case "shelly":
+                return new HttpRequestMessage(HttpMethod.Get, $"{Base()}/status");
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>The socket's current draw in watts, or null when it has no meter.</summary>
+    public async Task<double?> PowerAsync(string? secret)
+    {
+        if (Problem is not null || PowerRequest(secret) is not { } request) return null;
+        using (request)
+        {
+            var handler = new HttpClientHandler();
+            if (!string.IsNullOrEmpty(secret) && Kind is "shelly" or "shellyRPC")
+                handler.Credentials = new NetworkCredential(string.IsNullOrEmpty(Username) ? "admin" : Username, secret);
+            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(6) };
+            using var response = await http.SendAsync(request).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+            return SmartPlugPower.Parse(Kind, Math.Max(1, Channel), await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+        }
+    }
+
     /// <summary>Reads "on" out of a device's reply; null when the reply does not say.</summary>
     public static bool? ParseState(string kind, int channel, string body)
     {

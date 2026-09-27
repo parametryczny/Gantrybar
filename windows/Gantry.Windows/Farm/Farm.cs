@@ -3,254 +3,9 @@ using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
-using System.Xml;
 using Gantry.Models;
 
 namespace Gantry.Services;
-
-// Farm: a library of sliced 3MF files, sent to Bambu Lab printers over local FTPS and started over
-// MQTT, plus a queue that hands copies to printers whose bed the user confirmed empty. Mirrors the
-// macOS Farm (Sources/Gantry/Farm).
-
-public sealed class FarmFilament
-{
-    [JsonPropertyName("id")] public int Id { get; set; }
-    [JsonPropertyName("material")] public string Material { get; set; } = "?";
-    [JsonPropertyName("color")] public string Color { get; set; } = "";
-    [JsonPropertyName("grams")] public double Grams { get; set; }
-}
-
-public sealed class FarmPlate
-{
-    [JsonPropertyName("index")] public int Index { get; set; }
-    [JsonPropertyName("filaments")] public List<FarmFilament> Filaments { get; set; } = new();
-    [JsonPropertyName("seconds")] public int? Seconds { get; set; }
-    [JsonPropertyName("printerModel")] public string? PrinterModel { get; set; }
-    [JsonPropertyName("nozzle")] public double? Nozzle { get; set; }
-}
-
-public sealed class FarmFile
-{
-    [JsonPropertyName("id")] public Guid Id { get; set; } = Guid.NewGuid();
-    [JsonPropertyName("name")] public string Name { get; set; } = "";
-    [JsonPropertyName("bytes")] public long Bytes { get; set; }
-    [JsonPropertyName("plates")] public List<FarmPlate> Plates { get; set; } = new();
-    [JsonPropertyName("importedAt")] public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
-}
-
-public enum FarmJobState { Uploading, Uploaded, AwaitingStart, Printing, Finished, Failed, Uncertain }
-
-public sealed class FarmJob
-{
-    [JsonPropertyName("id")] public Guid Id { get; set; } = Guid.NewGuid();
-    [JsonPropertyName("fileID")] public Guid FileId { get; set; }
-    [JsonPropertyName("fileName")] public string FileName { get; set; } = "";
-    [JsonPropertyName("serial")] public string Serial { get; set; } = "";
-    [JsonPropertyName("printerName")] public string PrinterName { get; set; } = "";
-    [JsonPropertyName("plate")] public FarmPlate Plate { get; set; } = new();
-    [JsonPropertyName("mapping")] public List<int> Mapping { get; set; } = new();
-    [JsonPropertyName("remoteName")] public string RemoteName { get; set; } = "";
-    [JsonPropertyName("state")] [JsonConverter(typeof(JsonStringEnumConverter))] public FarmJobState State { get; set; }
-    [JsonPropertyName("message")] public string Message { get; set; } = "";
-    [JsonPropertyName("createdAt")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    [JsonPropertyName("startRequestedAt")] public DateTime? StartRequestedAt { get; set; }
-    [JsonPropertyName("updatedAt")] public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-    [JsonPropertyName("bedLeveling")] public bool BedLeveling { get; set; } = true;
-    [JsonPropertyName("queueItemID")] public Guid? QueueItemId { get; set; }
-    [JsonPropertyName("autoStart")] public bool? AutoStart { get; set; }
-}
-
-/// <summary>A plate waiting for a free printer; copies go one per printer, only to a printer the user
-/// marked as having an empty bed, with the file's filaments already loaded.</summary>
-public sealed class FarmQueueItem
-{
-    [JsonPropertyName("id")] public Guid Id { get; set; } = Guid.NewGuid();
-    [JsonPropertyName("fileID")] public Guid FileId { get; set; }
-    [JsonPropertyName("fileName")] public string FileName { get; set; } = "";
-    [JsonPropertyName("plate")] public FarmPlate Plate { get; set; } = new();
-    [JsonPropertyName("copies")] public int Copies { get; set; } = 1;
-    [JsonPropertyName("printers")] public List<string> Printers { get; set; } = new();
-    [JsonPropertyName("createdAt")] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-}
-
-public sealed class FarmError : Exception { public FarmError(string message) : base(message) { } }
-
-/// <summary>Reads only the plate metadata and thumbnails of a sliced 3MF; never expands G-code.</summary>
-public static class FarmArchive
-{
-    public const long MaxBytes = 512L * 1024 * 1024;
-
-    public static List<FarmPlate> Plates(ZipArchive zip)
-    {
-        var indices = zip.Entries
-            .Select(entry => Regex.Match(entry.FullName, @"^Metadata/plate_(\d+)\.gcode$"))
-            .Where(match => match.Success).Select(match => int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture))
-            .Where(index => index is > 0 and < 1000).Distinct().OrderBy(index => index).ToList();
-        if (indices.Count == 0)
-            throw new FarmError("To nie jest pocięty plik. W Bambu Studio wybierz eksport pociętej płyty (.3mf).");
-        var metadata = zip.GetEntry("Metadata/slice_info.config") is { } config && config.Length < 16 * 1024 * 1024
-            ? ParseSliceInfo(config.Open()) : new List<FarmPlate>();
-        return indices.Select(index => metadata.FirstOrDefault(plate => plate.Index == index) ?? new FarmPlate { Index = index }).ToList();
-    }
-
-    public static byte[]? Preview(ZipArchive zip, int plate)
-    {
-        var entry = zip.GetEntry($"Metadata/plate_{plate}.png") ?? zip.GetEntry($"Metadata/top_{plate}.png");
-        if (entry is null || entry.Length > 16 * 1024 * 1024) return null;
-        using var stream = entry.Open();
-        using var memory = new MemoryStream();
-        stream.CopyTo(memory);
-        return memory.ToArray();
-    }
-
-    public static List<FarmPlate> ParseSliceInfo(Stream stream)
-    {
-        var plates = new List<FarmPlate>();
-        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
-        try
-        {
-            using var reader = XmlReader.Create(stream, settings);
-            FarmPlate? current = null;
-            while (reader.Read())
-            {
-                if (reader.NodeType == XmlNodeType.Element && reader.Name == "plate")
-                {
-                    current = new FarmPlate { Index = -1 };
-                    if (reader.IsEmptyElement) { plates.Add(current); current = null; }
-                    continue;
-                }
-                if (reader.NodeType == XmlNodeType.EndElement && reader.Name == "plate" && current is not null)
-                {
-                    plates.Add(current); current = null; continue;
-                }
-                if (current is null || reader.NodeType != XmlNodeType.Element) continue;
-                if (reader.Name == "metadata" && reader.GetAttribute("value") is { } value)
-                {
-                    switch (reader.GetAttribute("key"))
-                    {
-                        case "index": current.Index = int.TryParse(value, out var i) ? i : -1; break;
-                        case "prediction": current.Seconds = int.TryParse(value, out var s) ? s : null; break;
-                        case "printer_model_id": current.PrinterModel = value; break;
-                        case "nozzle_diameters":
-                            current.Nozzle = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n : null; break;
-                    }
-                }
-                if (reader.Name == "filament" && int.TryParse(reader.GetAttribute("id"), out var id) && id is > 0 and <= 64)
-                {
-                    current.Filaments.Add(new FarmFilament
-                    {
-                        Id = id, Material = reader.GetAttribute("type") ?? "?", Color = reader.GetAttribute("color") ?? "",
-                        Grams = double.TryParse(reader.GetAttribute("used_g"), NumberStyles.Float, CultureInfo.InvariantCulture, out var g) ? g : 0,
-                    });
-                }
-            }
-        }
-        catch (XmlException) { }
-        return plates;
-    }
-}
-
-public static class FarmRules
-{
-    public static int? SlotIndex(string id)
-    {
-        var parts = id.Split('-');
-        if (parts.Length != 3 || parts[0] != "ams" || !int.TryParse(parts[1], out var unit) || !int.TryParse(parts[2], out var tray)) return null;
-        return unit is >= 0 and <= 15 && tray is >= 0 and <= 3 ? unit * 4 + tray : null;
-    }
-
-    public static string? StartBlock(PrinterTelemetry? t, DateTime? now = null)
-    {
-        var at = now ?? DateTime.Now;
-        if (t?.LastUpdated is not { } updated || (at - updated).TotalSeconds >= 30) return "Brak świeżego statusu drukarki.";
-        if (t.State is not (PrinterState.Idle or PrinterState.Finished)) return "Drukarka nie jest gotowa.";
-        if (t.ErrorCode != 0) return "Drukarka zgłasza błąd.";
-        return null;
-    }
-
-    public static bool Matches(FarmJob job, PrinterTelemetry t)
-    {
-        string stem = job.RemoteName.EndsWith(".3mf") ? job.RemoteName[..^4] : job.RemoteName;
-        return t.JobName == stem || t.JobName == job.RemoteName || (t.GcodeFile is { } file && Path.GetFileName(file) == job.RemoteName);
-    }
-
-    public static string Command(FarmJob job)
-    {
-        var payload = new Dictionary<string, object>
-        {
-            ["print"] = new Dictionary<string, object>
-            {
-                ["command"] = "project_file",
-                ["sequence_id"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
-                ["param"] = $"Metadata/plate_{job.Plate.Index}.gcode",
-                ["url"] = $"ftp:///{job.RemoteName}",
-                ["subtask_name"] = job.RemoteName.EndsWith(".3mf") ? job.RemoteName[..^4] : job.RemoteName,
-                ["project_id"] = "0", ["profile_id"] = "0", ["task_id"] = "0", ["subtask_id"] = "0",
-                ["file"] = "", ["md5"] = "", ["bed_type"] = "auto",
-                ["bed_levelling"] = job.BedLeveling, ["flow_cali"] = false, ["vibration_cali"] = false,
-                ["timelapse"] = false, ["layer_inspect"] = false,
-                ["use_ams"] = job.Mapping.Count > 0, ["ams_mapping"] = job.Mapping,
-            },
-        };
-        return JsonSerializer.Serialize(payload);
-    }
-
-    private static (double R, double G, double B)? Rgb(string value)
-    {
-        string hex = (value ?? "").Trim().Replace("#", "");
-        if (hex.Length < 6 || !uint.TryParse(hex[..6], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v)) return null;
-        return ((v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
-    }
-
-    /// <summary>Weighted RGB distance (0…~765), enough to tell "same spool colour" from "different".</summary>
-    public static double? ColorDistance(string a, string b)
-    {
-        if (Rgb(a) is not { } x || Rgb(b) is not { } y) return null;
-        double r = (x.R + y.R) / 2, dr = x.R - y.R, dg = x.G - y.G, db = x.B - y.B;
-        return Math.Sqrt((2 + r / 256) * dr * dr + 4 * dg * dg + (2 + (255 - r) / 256) * db * db);
-    }
-
-    /// <summary>AMS mapping from the slots loaded now: same material, closest colour within the limit,
-    /// enough filament when the roll reports its weight. A single-filament plate may use the external
-    /// spool (empty mapping). Null when a filament has no source.</summary>
-    public static List<int>? AutoMapping(FarmPlate plate, IReadOnlyList<AmsSlot> slots, double maxColorDistance = 90)
-    {
-        if (plate.Filaments.Count == 0) return null;
-        double? Fits(AmsSlot slot, FarmFilament filament)
-        {
-            if (!string.Equals(slot.Material, filament.Material, StringComparison.OrdinalIgnoreCase)) return null;
-            if (slot.RemainingWeightGrams is { } grams && grams < filament.Grams) return null;
-            if (Rgb(filament.Color) is null) return 0;
-            return ColorDistance(filament.Color, slot.ColorHex) is { } d && d <= maxColorDistance ? d : null;
-        }
-        var mapping = Enumerable.Repeat(-1, plate.Filaments.Max(f => f.Id)).ToList();
-        bool complete = true;
-        foreach (var filament in plate.Filaments)
-        {
-            var best = slots.Where(slot => !slot.IsExternal && SlotIndex(slot.Id) is not null)
-                .Select(slot => (Index: SlotIndex(slot.Id)!.Value, Distance: Fits(slot, filament)))
-                .Where(candidate => candidate.Distance is not null)
-                .OrderBy(candidate => candidate.Distance).FirstOrDefault();
-            if (best.Distance is not null) mapping[filament.Id - 1] = best.Index; else complete = false;
-        }
-        if (complete) return mapping;
-        if (plate.Filaments.Count == 1 && slots.Any(slot => slot.IsExternal && Fits(slot, plate.Filaments[0]) is not null)) return new List<int>();
-        return null;
-    }
-
-    public static (int Index, List<int> Mapping)? NextQueueItem(IReadOnlyList<FarmQueueItem> queue, string serial, PrinterTelemetry t)
-    {
-        for (int index = 0; index < queue.Count; index++)
-        {
-            var item = queue[index];
-            if (item.Copies <= 0 || (item.Printers.Count > 0 && !item.Printers.Contains(serial))) continue;
-            if (item.Plate.Nozzle is { } nozzle && t.NozzleDiameter is { } actual && Math.Abs(nozzle - actual) > 0.01) continue;
-            if (AutoMapping(item.Plate, t.AmsSlots) is { } mapping) return (index, mapping);
-        }
-        return null;
-    }
-}
 
 /// <summary>The library, jobs and queue, persisted to %AppData%\Gantry\Farm\index.json. UI thread only.</summary>
 public sealed class FarmStore
@@ -275,6 +30,11 @@ public sealed class FarmStore
 
     private readonly Dictionary<Guid, CancellationTokenSource> _transfers = new();
     private bool _storageReady = true;
+
+    private static FarmStore? _shared;
+    /// The one library the Farm window and the control panel both use, so they never write index.json
+    /// over each other.
+    public static FarmStore Shared(PrinterStore printers) => _shared ??= new FarmStore(printers);
 
     public FarmStore(PrinterStore printers, string? root = null)
     {
@@ -303,6 +63,7 @@ public sealed class FarmStore
     private void Raise() => Changed?.Invoke();
 
     public string FilePath(Guid id) => Path.Combine(Root, id + ".3mf");
+    public string FilePath(FarmFile file) => Path.Combine(Root, file.Id + "." + file.FileExtension);
     public string PreviewPath(Guid id, int plate) => Path.Combine(Root, $"{id}.plate-{plate}.png");
 
     public void Persist()
@@ -315,12 +76,59 @@ public sealed class FarmStore
 
     private void SetNotice(string text) { Notice = text; Raise(); }
 
-    public async Task ImportAsync(string path)
+    /// <summary>The first 2 MB (thumbnails, header comments) and the last 512 KB (PrusaSlicer's settings
+    /// block) of a G-code file, never the toolpath in between.</summary>
+    private static byte[] Edges(string path)
+    {
+        const int head = 2 * 1024 * 1024, tail = 512 * 1024;
+        using var stream = File.OpenRead(path);
+        if (stream.Length <= head + tail)
+        {
+            var all = new byte[stream.Length];
+            stream.ReadExactly(all);
+            return all;
+        }
+        var data = new byte[head + 1 + tail];
+        stream.ReadExactly(data, 0, head);
+        data[head] = (byte)'\n';
+        stream.Seek(-tail, SeekOrigin.End);
+        stream.ReadExactly(data, head + 1, tail);
+        return data;
+    }
+
+    /// <summary>Adds a sliced 3MF or a G-code file to the library. Returns it, or null with the reason
+    /// in Notice.</summary>
+    public async Task<FarmFile?> ImportAsync(string path)
     {
         try
         {
             if (!_storageReady) throw new FarmError("Biblioteka jest niedostępna.");
             var id = Guid.NewGuid();
+            if (FarmGcode.IsGcode(path))
+            {
+                string format = FarmGcode.Format(path);
+                string target = Path.Combine(Root, $"{id}.{format}"), preview = PreviewPath(id, 1);
+                var gcode = await Task.Run(() =>
+                {
+                    var info = new FileInfo(path);
+                    if (!info.Exists || info.Length > FarmArchive.MaxBytes) throw new FarmError("Wybierz plik G-code do 512 MB.");
+                    File.Copy(path, target, overwrite: true);
+                    // Only the head and tail carry metadata; a binary G-code keeps it in blocks we do not read.
+                    var plate = new FarmPlate { Index = 1 };
+                    if (format == "gcode")
+                    {
+                        var data = Edges(target);
+                        plate = FarmGcode.Plate(data);
+                        if (FarmGcode.Thumbnail(data) is { } png) File.WriteAllBytes(preview, png);
+                    }
+                    return new FarmFile { Id = id, Name = Path.GetFileName(path), Bytes = info.Length, Plates = new() { plate },
+                                          ImportedAt = DateTime.UtcNow, Format = format };
+                });
+                Files.Add(gcode);
+                try { Persist(); } catch { Files.Remove(gcode); throw; }
+                SetNotice($"Dodano {gcode.Name} · G-code.");
+                return gcode;
+            }
             string destination = FilePath(id);
             var file = await Task.Run(() =>
             {
@@ -339,22 +147,28 @@ public sealed class FarmStore
             Files.Add(file);
             try { Persist(); } catch { Files.Remove(file); throw; }
             SetNotice($"Dodano {file.Name} · {file.Plates.Count} płyt.");
+            return file;
         }
         catch (InvalidDataException) { SetNotice("Nieprawidłowe lub nieobsługiwane archiwum 3MF."); }
         catch (Exception ex) { SetNotice(ex.Message); }
+        return null;
     }
 
     public void Upload(FarmFile file, FarmPlate plate, SavedPrinter printer, List<int> mapping, Guid? queueItemId = null, bool autoStart = false)
     {
-        if (printer.Kind != PrinterKind.Bambu) throw new FarmError("Wysyłanie obsługuje obecnie drukarki Bambu Lab.");
+        if (!PrinterFileTransfer.FarmSupports(printer.Kind)) throw new FarmError("Ta drukarka nie przyjmuje plików z Gantry.");
+        if (!PrinterFileTransfer.Accepts(printer.Kind, file.FileExtension))
+            throw new FarmError($"{printer.Name}: ten plik nie pasuje do drukarki. 3MF drukują Bambu Lab, G-code — Klipper, Prusa i OctoPrint.");
         if (Jobs.Any(job => job.Serial == printer.Serial && job.State == FarmJobState.Uploading)) throw new FarmError("Ta drukarka już odbiera plik.");
+        // Bambu needs its access code for FTPS; the HTTP printers take their optional API key.
         string? code = AccessCodeStore.AccessCode(printer.Serial);
-        if (string.IsNullOrEmpty(code)) throw new FarmError("Brak kodu dostępu do drukarki.");
+        if (printer.Kind == PrinterKind.Bambu && string.IsNullOrEmpty(code)) throw new FarmError("Brak kodu dostępu do drukarki.");
         var id = Guid.NewGuid();
         var job = new FarmJob
         {
             Id = id, FileId = file.Id, FileName = file.Name, Serial = printer.Serial, PrinterName = printer.Name,
-            Plate = plate, Mapping = mapping, RemoteName = $"gantry-{id}.3mf", State = FarmJobState.Uploading,
+            Plate = plate, Mapping = mapping, State = FarmJobState.Uploading,
+            RemoteName = file.IsGcode ? $"gantry-{id.ToString("N")[..8]}.{file.FileExtension}" : $"gantry-{id}.3mf",
             Message = "Wysyłanie…", QueueItemId = queueItemId, AutoStart = autoStart ? true : null,
         };
         Jobs.Insert(0, job);
@@ -363,12 +177,16 @@ public sealed class FarmStore
         _transfers[id] = cancel;
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         var progress = new Progress<double>(value => { Progress[id] = value; Raise(); });
-        string local = FilePath(file.Id), host = printer.Host;
+        string local = file.IsGcode ? FilePath(file) : FilePath(file.Id), host = printer.Host;
         Raise();
         _ = Task.Run(async () =>
         {
             string? failure = null;
-            try { await new BambuFileClient(host, code).UploadAsync(local, job.RemoteName, progress, cancel.Token); }
+            try
+            {
+                if (printer.Kind == PrinterKind.Bambu) await new BambuFileClient(host, code!).UploadAsync(local, job.RemoteName, progress, cancel.Token);
+                else await PrinterFileTransfer.UploadAsync(printer, code, local, job.RemoteName, progress, cancel.Token);
+            }
             catch (Exception ex) { failure = cancel.IsCancellationRequested ? "Anulowano transfer. Nie uruchomiono druku." : ex.Message; }
             void Finish()
             {
@@ -392,6 +210,13 @@ public sealed class FarmStore
         if (Printers.RequiresSignedCommands(job.Serial)) return "Drukarka wymaga podpisanych poleceń. Sprawdź tryb LAN / Developer Mode.";
         Printers.Telemetry.TryGetValue(job.Serial, out var t);
         if (FarmRules.StartBlock(t) is { } reason) return reason;
+        if (job.IsGcode)
+        {
+            // G-code carries its own filament choice; only the nozzle it was sliced for can be checked.
+            if (job.Plate.Nozzle is { } requested && t?.NozzleDiameter is { } fitted && Math.Abs(requested - fitted) > 0.01)
+                return "Średnica dyszy różni się od profilu pliku.";
+            return null;
+        }
         if (job.Plate.Filaments.Count == 0) return "Brak informacji o filamentach w pliku. Wyeksportuj płytę z Bambu Studio.";
         if (job.Mapping.Count == 0)
         {
@@ -422,6 +247,24 @@ public sealed class FarmStore
         job.State = FarmJobState.AwaitingStart; job.StartRequestedAt = DateTime.Now; job.UpdatedAt = DateTime.Now;
         job.Message = "Wysłano start. Oczekiwanie na potwierdzenie drukarki…";
         Persist();
+        if (job.IsGcode)
+        {
+            var printer = Printers.Printers.FirstOrDefault(p => p.Serial == job.Serial) ?? throw new FarmError("Drukarka została usunięta.");
+            string remote = job.RemoteName;
+            string? key = AccessCodeStore.AccessCode(printer.Serial);
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            _ = Task.Run(async () =>
+            {
+                try { await PrinterFileTransfer.StartAsync(printer, key, remote); }
+                catch (Exception ex)
+                {
+                    void Fail() => Update(id, FarmJobState.Uncertain, $"Nie potwierdzono startu: {ex.Message} Sprawdź drukarkę.");
+                    if (dispatcher is null || dispatcher.CheckAccess()) Fail(); else await dispatcher.InvokeAsync(Fail);
+                }
+            });
+            Raise();
+            return;
+        }
         try { Printers.SendCommand(job.Serial, FarmRules.Command(job)); }
         catch { Update(id, FarmJobState.Uncertain, "Nie potwierdzono wysłania startu. Sprawdź drukarkę."); throw; }
         Raise();
@@ -447,12 +290,19 @@ public sealed class FarmStore
     public void Enqueue(FarmFile file, FarmPlate plate, int copies, List<string> serials)
     {
         if (copies is < 1 or > 99) throw new FarmError("Liczba kopii: od 1 do 99.");
-        if (plate.Filaments.Count == 0) throw new FarmError("Brak informacji o filamentach w pliku. Kolejka dobiera AMS po materiale i kolorze.");
-        var item = new FarmQueueItem { FileId = file.Id, FileName = file.Name, Plate = plate, Copies = copies, Printers = serials };
+        if (file.IsGcode)
+        {
+            if (serials.Count == 0) throw new FarmError("G-code jest pocięty pod konkretną drukarkę. Zaznacz drukarki, które mogą go drukować.");
+            foreach (var serial in serials)
+                if (Printers.Printers.FirstOrDefault(p => p.Serial == serial) is not { } printer || !PrinterFileTransfer.Accepts(printer.Kind, file.FileExtension))
+                    throw new FarmError($"Zaznaczona drukarka nie drukuje plików {file.FileExtension}.");
+        }
+        else if (plate.Filaments.Count == 0) throw new FarmError("Brak informacji o filamentach w pliku. Kolejka dobiera AMS po materiale i kolorze.");
+        var item = new FarmQueueItem { FileId = file.Id, FileName = file.Name, Plate = plate, Copies = copies, Printers = serials, Format = file.Format };
         Queue.Add(item);
         try { Persist(); } catch { Queue.Remove(item); throw; }
         Reconcile();
-        SetNotice($"Do kolejki: {file.Name} · płyta {plate.Index} × {copies}.");
+        SetNotice(file.IsGcode ? $"Do kolejki: {file.Name} × {copies}." : $"Do kolejki: {file.Name} · płyta {plate.Index} × {copies}.");
     }
 
     public void RemoveFromQueue(Guid id) { Queue.RemoveAll(item => item.Id == id); TryPersist(); Raise(); }
@@ -467,7 +317,8 @@ public sealed class FarmStore
 
     public void Arm(string serial)
     {
-        if (!Printers.Printers.Any(p => p.Serial == serial && p.Kind == PrinterKind.Bambu)) throw new FarmError("Kolejka obsługuje drukarki Bambu Lab.");
+        if (!Printers.Printers.Any(p => p.Serial == serial && PrinterFileTransfer.FarmSupports(p.Kind)))
+            throw new FarmError("Kolejka obsługuje drukarki Bambu Lab, Klipper, Prusa i OctoPrint.");
         if (Printers.Telemetry.TryGetValue(serial, out var t) && t.State is PrinterState.Printing or PrinterState.Paused)
             throw new FarmError("Drukarka drukuje. Oznacz stół jako pusty po zdjęciu wydruku.");
         Armed.Add(serial);
@@ -485,7 +336,15 @@ public sealed class FarmStore
         // The bed confirmation belonged to this attempt; without it the copy would go straight back out.
         Armed.Remove(job.Serial);
         if (Queue.FirstOrDefault(item => item.Id == itemId) is { } existing) existing.Copies++;
-        else Queue.Insert(0, new FarmQueueItem { Id = itemId, FileId = job.FileId, FileName = job.FileName, Plate = job.Plate, Copies = 1, CreatedAt = job.CreatedAt });
+        else
+        {
+            var format = Files.FirstOrDefault(f => f.Id == job.FileId)?.Format;
+            Queue.Insert(0, new FarmQueueItem
+            {
+                Id = itemId, FileId = job.FileId, FileName = job.FileName, Plate = job.Plate, Copies = 1, CreatedAt = job.CreatedAt,
+                Printers = format is null ? new() : new() { job.Serial }, Format = format,
+            });
+        }
         TryPersist();
     }
 
@@ -497,11 +356,12 @@ public sealed class FarmStore
         if (!_storageReady || Queue.Count == 0) return;
         foreach (var serial in Armed.OrderBy(s => s).ToList())
         {
-            var printer = Printers.Printers.FirstOrDefault(p => p.Serial == serial && p.Kind == PrinterKind.Bambu);
+            var printer = Printers.Printers.FirstOrDefault(p => p.Serial == serial && PrinterFileTransfer.FarmSupports(p.Kind));
             if (printer is null) { Armed.Remove(serial); continue; }
             if (ActiveJob(serial) || !Printers.Telemetry.TryGetValue(serial, out var t) || FarmRules.StartBlock(t) is not null
                 || Printers.RequiresSignedCommands(serial)) continue;
-            if (FarmRules.NextQueueItem(Queue, serial, t) is not { } next) continue;
+            var kind = printer.Kind;
+            if (FarmRules.NextQueueItem(Queue, serial, t, format => PrinterFileTransfer.Accepts(kind, format ?? "3mf")) is not { } next) continue;
             var item = Queue[next.Index];
             var file = Files.FirstOrDefault(f => f.Id == item.FileId);
             if (file is null) { Queue.RemoveAt(next.Index); Notice = $"Usunięto z kolejki {item.FileName}: brak pliku w bibliotece."; TryPersist(); continue; }

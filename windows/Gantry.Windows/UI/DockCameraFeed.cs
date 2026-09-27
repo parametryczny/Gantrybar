@@ -46,7 +46,7 @@ internal sealed class DockCameraFeed
     /// <summary>Brands with no stream Gantry can decode would only ever show a black rectangle, so
     /// they are never offered a picture. Same list as macOS.</summary>
     public static bool SupportsCamera(PrinterKind? kind) =>
-        kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.ElegooCc1
+        kind is PrinterKind.Bambu or PrinterKind.Klipper or PrinterKind.OctoPrint or PrinterKind.ElegooCc1
             or PrinterKind.ElegooCc2 or PrinterKind.AnycubicKobraS1;
 
     public void Start()
@@ -94,7 +94,7 @@ internal sealed class DockCameraFeed
         }
         else
         {
-            _ = StartSnapshotsAsync(host, printer.Port ?? 7125);
+            _ = StartSnapshotsAsync(host, printer.Port ?? (printer.Kind == PrinterKind.OctoPrint ? 80 : 7125));
         }
     }
 

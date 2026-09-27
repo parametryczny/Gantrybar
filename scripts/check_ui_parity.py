@@ -506,7 +506,7 @@ require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"if \(wanted\.SetEquals\
 require("windows/Gantry.Windows/UI/EdgeDockWindow.cs", r"private void HideStrip\(\)\s*\{\s*DetachCameras\(\);",
         "a hidden Windows edge dock keeps its camera streams running")
 require("windows/Gantry.Windows/UI/DockCameraFeed.cs",
-        r"kind is PrinterKind\.Bambu or PrinterKind\.Klipper or PrinterKind\.ElegooCc1\s+or PrinterKind\.ElegooCc2 or PrinterKind\.AnycubicKobraS1",
+        r"kind is PrinterKind\.Bambu or PrinterKind\.Klipper or PrinterKind\.OctoPrint or PrinterKind\.ElegooCc1\s+or PrinterKind\.ElegooCc2 or PrinterKind\.AnycubicKobraS1",
         "Windows dock cameras support a different set of printer brands than macOS")
 for key in ("edge-dock-pinned", "edge-dock-camera", "edge-dock-camera-serials"):
     require("windows/Gantry.Windows/Services/Storage.cs", rf'"{key}"', f"Windows does not share the {key} setting with macOS")
@@ -1210,7 +1210,13 @@ require("Sources/Gantry/App/PrinterStore.swift", r"case \.bambu: return !require
         "macOS shows Bambu controls a signing printer would refuse")
 require("Sources/Gantry/Views/PrinterControlPanel.swift", r"store\.acceptsGcode\(serial: serial\)",
         "the macOS control panel does not check whether the printer takes commands")
-require(win_detail, r"&& !_signingBlocked", "Windows shows Bambu controls a signing printer would refuse")
+# Windows followed: the detail cards only read, and the control panel beside them sends through
+# PrinterStore.AcceptsGcode, which refuses a Bambu printer that only takes signed commands.
+require(win_detail, r"_controlEnabled = false;", "Windows detail cards show setpoints next to the control panel")
+require("windows/Gantry.Windows/Services/PrinterStore.cs", r"PrinterKind\.Bambu => !RequiresSignedCommands\(serial\)",
+        "Windows shows Bambu controls a signing printer would refuse")
+require("windows/Gantry.Windows/UI/PrinterControlPanel.cs", r"_store\.AcceptsGcode\(_serial\)",
+        "the Windows control panel does not check whether the printer takes commands")
 forbid(mac_detail, r"CompactControlSlider", "macOS brought back the loose plus/minus row under the tiles")
 forbid(win_detail, r"TempChip\(", "Windows rebuilds temperature chips, which would drop a capsule mid-change")
 require("windows/Gantry.Windows/Services/Storage.cs", rf'"{detail_controls["setting"]}"', "Windows is missing the printer-control setting")

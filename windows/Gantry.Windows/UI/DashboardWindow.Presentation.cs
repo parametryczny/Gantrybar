@@ -113,6 +113,8 @@ public partial class DashboardWindow
     {
         bool enabled = AppSettings.FloatingWindowEnabled;
         bool changed = enabled != WindowMode;
+        // The tray detail view may have widened the panel for its control panel; give that back first.
+        if (changed && DetailLayer.Child is not null) HideDetail();
         _changingMode = true;
         WindowMode = enabled;
         if (changed && !enabled) WindowState = WindowState.Normal;

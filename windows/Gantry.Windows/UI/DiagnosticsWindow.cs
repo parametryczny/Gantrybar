@@ -60,7 +60,7 @@ public sealed class DiagnosticsWindow : Window
             {
                 PrinterKind.Bambu => 8883, PrinterKind.Klipper => 7125, PrinterKind.Prusa => 80,
                 PrinterKind.Snapmaker => 8080, PrinterKind.ElegooCc1 => 3030, PrinterKind.ElegooCc2 => 3000,
-                PrinterKind.AnycubicKobraS1 => 18910,
+                PrinterKind.AnycubicKobraS1 => 18910, PrinterKind.OctoPrint => 80,
                 _ => 80
             });
             var network = await ProbeAsync(printer.Host, servicePort);
