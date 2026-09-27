@@ -235,7 +235,7 @@ public sealed class PrinterControlPanel : UserControl
     {
         _pause.Caption = AppSettings.T("Pause");
         _stop.Caption = AppSettings.T("Stop");
-        _light.Caption = AppSettings.T("Light");
+        _light.Caption = AppSettings.T("Lamp");
         _power.Caption = AppSettings.T("Power");
         _pause.Click += PauseOrResume;
         _stop.Click += ConfirmStop;
