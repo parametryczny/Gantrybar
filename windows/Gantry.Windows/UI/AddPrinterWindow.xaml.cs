@@ -43,10 +43,11 @@ public partial class AddPrinterWindow : Window
                 else if (editing.Kind == PrinterKind.Klipper) KlipperRadio.IsChecked = true;
                 else if (editing.Kind == PrinterKind.AnycubicKobraS1) AnycubicRadio.IsChecked = true;
                 else if (editing.Kind == PrinterKind.Snapmaker) SnapmakerRadio.IsChecked = true;
+                else if (editing.Kind == PrinterKind.OctoPrint) OctoPrintRadio.IsChecked = true;
                 else PrusaRadio.IsChecked = true;
                 // The key now lives in DPAPI, not the config — prefill from there so editing keeps
                 // it. A legacy config may still carry it inline; prefer that if present.
-                if (editing.Kind is PrinterKind.Klipper or PrinterKind.Prusa)
+                if (editing.Kind is PrinterKind.Klipper or PrinterKind.Prusa or PrinterKind.OctoPrint)
                     ApiKeyBox.Text = editing.ApiKey ?? AccessCodeStore.AccessCode(editing.Serial) ?? "";
             }
             // The tray-pin checkbox is offered only when editing a saved printer (its serial is known).
@@ -60,6 +61,7 @@ public partial class AddPrinterWindow : Window
         KlipperRadio.Checked += (_, _) => ApplyKind();
         PrusaRadio.Checked += (_, _) => ApplyKind();
         SnapmakerRadio.Checked += (_, _) => ApplyKind();
+        OctoPrintRadio.Checked += (_, _) => ApplyKind();
         ElegooModelBox.SelectionChanged += (_, _) => { ApplyKind(); RefreshDetected(); };
         ScanButton.Click += (_, _) => _store.Scan();
         ImportButton.Click += (_, _) => ImportFromStudio();
@@ -102,6 +104,8 @@ public partial class AddPrinterWindow : Window
         KlipperRadio.Content = "Klipper";
         PrusaRadio.Content = "Prusa";
         SnapmakerRadio.Content = "Snapmaker";
+        OctoPrintRadio.Content = "OctoPrint";
+        OctoPrintHint.Text = AppSettings.T("Enter the OctoPrint address (OctoPi, port 80) and an API key from OctoPrint → Settings → Application Keys. Works over VPN too — just enter the Tailscale IP.");
         ElegooModelLabel.Text = AppSettings.T("Elegoo model");
         SnapmakerHint.Text = AppSettings.T("Snapmaker 2.0 / Artisan (HTTP, port 8080). After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. Re-authorize after each power cycle.");
         AnycubicHint.Text = AppSettings.T("Anycubic Kobra S1: enter its IP address and enable LAN mode on the printer. Gantry obtains MQTT settings automatically through port 18910. FLV camera: port 18088.");
@@ -114,11 +118,12 @@ public partial class AddPrinterWindow : Window
     private bool IsKlipper => KlipperRadio.IsChecked == true;
     private bool IsPrusa => PrusaRadio.IsChecked == true;
     private bool IsSnapmaker => SnapmakerRadio.IsChecked == true;
+    private bool IsOctoPrint => OctoPrintRadio.IsChecked == true;
     private bool IsElegoo => ElegooRadio.IsChecked == true;
     private bool IsAnycubic => AnycubicRadio.IsChecked == true;
     private bool IsElegooCc2 => IsElegoo && ElegooModelBox.SelectedIndex == 1;
     // Klipper, Prusa and Snapmaker all connect over HTTP with a host + port.
-    private bool UsesHostFields => IsKlipper || IsPrusa || IsSnapmaker || IsAnycubic;
+    private bool UsesHostFields => IsKlipper || IsPrusa || IsSnapmaker || IsAnycubic || IsOctoPrint;
 
     /// <summary>Shows only the fields relevant to the selected printer kind. Klipper/Prusa need a
     /// host, optional port and API key; Bambu needs discovery, serial and access code.</summary>
@@ -134,6 +139,7 @@ public partial class AddPrinterWindow : Window
         ApiKeyLabel.Visibility = ApiKeyBox.Visibility = (hostBased && !IsSnapmaker && !IsAnycubic) ? Visibility.Visible : Visibility.Collapsed;
         SnapmakerHintBox.Visibility = IsSnapmaker ? Visibility.Visible : Visibility.Collapsed;
         AnycubicHintBox.Visibility = IsAnycubic ? Visibility.Visible : Visibility.Collapsed;
+        OctoPrintHintBox.Visibility = IsOctoPrint ? Visibility.Visible : Visibility.Collapsed;
         bool isBambu = BambuRadio.IsChecked == true;
         ImportConsent.Visibility = ImportHint.Visibility = ImportButton.Visibility = isBambu ? Visibility.Visible : Visibility.Collapsed;
         SubnetTargetsLabel.Visibility = SubnetTargetsBox.Visibility = SubnetTargetsError.Visibility = SubnetTargetsHint.Visibility = isBambu ? Visibility.Visible : Visibility.Collapsed;
@@ -142,6 +148,8 @@ public partial class AddPrinterWindow : Window
             : AppSettings.T("IP address");
         PortLabel.Text = IsPrusa
             ? AppSettings.T("PrusaLink port (default 80)")
+            : IsOctoPrint
+                ? AppSettings.T("OctoPrint port (default 80)")
             : IsKlipper
                 ? AppSettings.T("Moonraker port (default 7125)")
                 : IsSnapmaker
@@ -157,6 +165,8 @@ public partial class AddPrinterWindow : Window
         else if (!IsElegoo) CodeLabel.Text = AppSettings.T("Access Code / PIN");
         ApiKeyLabel.Text = IsPrusa
             ? AppSettings.T("PrusaLink API key")
+            : IsOctoPrint
+                ? AppSettings.T("OctoPrint API key")
             : AppSettings.T("API key (optional)");
     }
 
@@ -236,6 +246,7 @@ public partial class AddPrinterWindow : Window
                 if (_editing is not null && _editing.Host != HostBox.Text.Trim())
                     _store.Remove(_editing);
                 if (IsPrusa) _store.AddPrusa(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
+                else if (IsOctoPrint) _store.AddOctoPrint(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
                 else if (IsSnapmaker) _store.AddSnapmaker(NameBox.Text, HostBox.Text, port);
                 else if (IsAnycubic) _store.AddAnycubicKobraS1(NameBox.Text, HostBox.Text, port);
                 else _store.AddKlipper(NameBox.Text, HostBox.Text, port, ApiKeyBox.Text);
@@ -249,7 +260,7 @@ public partial class AddPrinterWindow : Window
             if (_editing is not null)
             {
                 var host = HostBox.Text.Trim();
-                var finalSerial = IsPrusa ? $"prusa-{host}" : IsKlipper ? $"klipper-{host}" : IsSnapmaker ? $"snapmaker-{host}" : IsAnycubic ? $"anycubic-kobra-s1-{host}" : SerialBox.Text.Trim();
+                var finalSerial = IsPrusa ? $"prusa-{host}" : IsOctoPrint ? $"octoprint-{host}" : IsKlipper ? $"klipper-{host}" : IsSnapmaker ? $"snapmaker-{host}" : IsAnycubic ? $"anycubic-kobra-s1-{host}" : SerialBox.Text.Trim();
                 TrayProgressPreference.SetEnabled(ProgressCheck.IsChecked == true, finalSerial);
             }
             Close();

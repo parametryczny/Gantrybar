@@ -10,18 +10,18 @@ using Microsoft.Win32;
 
 namespace Gantry.UI;
 
-/// Farm: sliced 3MF files, sent to Bambu Lab printers and started after an explicit check, plus the
-/// queue that hands copies to printers marked with an empty bed. Mirrors the macOS Farm window.
+/// Farm: sliced 3MF files for Bambu Lab and G-code for Klipper, PrusaLink and OctoPrint, sent and
+/// started after an explicit check, plus the queue that hands copies to printers marked with an empty
+/// bed. Mirrors the macOS Farm window.
 public sealed class FarmWindow : Window
 {
     private static FarmWindow? _current;
-    private static FarmStore? _farm;
 
     public static void ShowFor(PrinterStore store)
     {
-        _farm ??= new FarmStore(store);
         if (_current is { IsLoaded: true }) { _current.Activate(); return; }
-        _current = new FarmWindow(_farm);
+        // The same library the control panel sends from, so the two never write index.json over each other.
+        _current = new FarmWindow(FarmStore.Shared(store));
         _current.Closed += (_, _) => _current = null;
         _current.Show();
     }
@@ -58,7 +58,7 @@ public sealed class FarmWindow : Window
         var root = new DockPanel { Margin = new Thickness(16) };
         var intro = new TextBlock
         {
-            Text = "Wybierz plik i drukarki. Wyślij teraz — rozpocznij druk, gdy stół będzie gotowy. Albo dodaj do kolejki.",
+            Text = "Wybierz plik i drukarki. Wyślij teraz — rozpocznij druk, gdy stół będzie gotowy. Albo dodaj do kolejki. 3MF trafia na Bambu Lab, G-code na Klipper, Prusa i OctoPrint.",
             Foreground = GTheme.Brush(GTheme.Secondary), FontSize = 11, Margin = new Thickness(0, 0, 0, 10),
         };
         DockPanel.SetDock(intro, Dock.Top); root.Children.Add(intro);
@@ -77,7 +77,7 @@ public sealed class FarmWindow : Window
         var refresh = MakeButton("Odśwież AMS", RefreshDetails);
         DockPanel.SetDock(add, Dock.Left);
         actions.Children.Add(add);
-        actions.Children.Add(new TextBlock { Text = "  Przeciągnij pocięty plik .3mf do tego okna", Foreground = GTheme.Brush(GTheme.Muted),
+        actions.Children.Add(new TextBlock { Text = "  Przeciągnij pocięty plik .3mf lub .gcode do tego okna", Foreground = GTheme.Brush(GTheme.Muted),
                                              FontSize = 10.5, VerticalAlignment = VerticalAlignment.Center });
         DockPanel.SetDock(send, Dock.Right); DockPanel.SetDock(refresh, Dock.Right);
         actions.Children.Add(send); actions.Children.Add(refresh);
@@ -112,7 +112,7 @@ public sealed class FarmWindow : Window
 
     private void OnPrintersUpdated(object? sender, EventArgs e)
     {
-        var ids = _farmStore.Printers.Printers.Where(p => p.Kind == PrinterKind.Bambu).Select(p => p.Serial).ToList();
+        var ids = _farmStore.Printers.Printers.Where(p => PrinterFileTransfer.FarmSupports(p.Kind)).Select(p => p.Serial).ToList();
         if (!ids.SequenceEqual(_printerIds)) RefreshDetails();
     }
 
@@ -159,7 +159,7 @@ public sealed class FarmWindow : Window
 
     private void ChooseFiles()
     {
-        var dialog = new OpenFileDialog { Multiselect = true, Filter = "3MF|*.3mf" };
+        var dialog = new OpenFileDialog { Multiselect = true, Filter = "3MF, G-code|*.3mf;*.gcode;*.gco;*.g;*.bgcode|3MF|*.3mf|G-code|*.gcode;*.gco;*.g;*.bgcode" };
         if (dialog.ShowDialog(this) == true) _ = ImportAsync(dialog.FileNames);
     }
 
@@ -186,9 +186,9 @@ public sealed class FarmWindow : Window
             var id = file.Id;
             button.Click += (_, _) => { _selected = id; _plateIndex = file.Plates.FirstOrDefault()?.Index ?? 1; RefreshFiles(); RefreshDetails(); };
             _library.Children.Add(button);
-            _library.Children.Add(Label($"Płyty: {file.Plates.Count} · {file.Bytes / 1024.0 / 1024.0:0.0} MB", 11));
+            _library.Children.Add(Label((file.IsGcode ? "G-code" : $"Płyty: {file.Plates.Count}") + $" · {file.Bytes / 1024.0 / 1024.0:0.0} MB", 11));
         }
-        if (_farmStore.Files.Count == 0) _library.Children.Add(Label("Dodaj plik z Bambu Studio:\nPlik → Eksportuj → Eksportuj pociętą płytę."));
+        if (_farmStore.Files.Count == 0) _library.Children.Add(Label("Dodaj plik z Bambu Studio:\nPlik → Eksportuj → Eksportuj pociętą płytę.\nAlbo G-code z PrusaSlicera, Orki lub Cury."));
     }
 
     private (FarmFile File, FarmPlate Plate)? Selection
@@ -206,11 +206,11 @@ public sealed class FarmWindow : Window
     private void RefreshDetails()
     {
         _details.Children.Clear(); _destinations.Children.Clear(); _targets.Clear(); _mappings.Clear();
-        _printerIds = _farmStore.Printers.Printers.Where(p => p.Kind == PrinterKind.Bambu).Select(p => p.Serial).ToList();
+        _printerIds = _farmStore.Printers.Printers.Where(p => PrinterFileTransfer.FarmSupports(p.Kind)).Select(p => p.Serial).ToList();
         _details.Children.Add(Section("PODGLĄD PŁYTY"));
         if (Selection is not { } selection)
         {
-            _details.Children.Add(Label("Dodaj pocięty plik 3MF, aby zobaczyć płytę, materiały i czas druku."));
+            _details.Children.Add(Label("Dodaj pocięty plik 3MF lub G-code, aby zobaczyć płytę, materiały i czas druku."));
             return;
         }
         var (file, plate) = selection;
@@ -220,7 +220,7 @@ public sealed class FarmWindow : Window
         foreach (var p in file.Plates) plates.Items.Add($"Płyta {p.Index}");
         plates.SelectedIndex = file.Plates.FindIndex(p => p.Index == plate.Index);
         plates.SelectionChanged += (_, _) => { if (plates.SelectedIndex >= 0) { _plateIndex = file.Plates[plates.SelectedIndex].Index; RefreshDetails(); } };
-        _details.Children.Add(plates);
+        if (!file.IsGcode) _details.Children.Add(plates);
         string preview = _farmStore.PreviewPath(file.Id, plate.Index);
         if (File.Exists(preview))
         {
@@ -245,10 +245,12 @@ public sealed class FarmWindow : Window
         row.Children.Add(copies);
         row.Children.Add(MakeButton("Dodaj do kolejki…", ConfirmEnqueue));
         _details.Children.Add(row);
-        _details.Children.Add(Label("Kolejka wysyła kopie na drukarki oznaczone „Stół pusty”, z pasującym materiałem i kolorem w AMS, i sama uruchamia druk.", 11));
+        _details.Children.Add(Label(file.IsGcode
+            ? "Kolejka wysyła kopie G-code tylko na zaznaczone drukarki oznaczone „Stół pusty” i sama uruchamia druk."
+            : "Kolejka wysyła kopie na drukarki oznaczone „Stół pusty”, z pasującym materiałem i kolorem w AMS, i sama uruchamia druk.", 11));
 
         _destinations.Children.Add(Section("DRUKARKI"));
-        foreach (var printer in _farmStore.Printers.Printers.Where(p => p.Kind == PrinterKind.Bambu))
+        foreach (var printer in _farmStore.Printers.Printers.Where(p => PrinterFileTransfer.FarmSupports(p.Kind) && PrinterFileTransfer.Accepts(p.Kind, file.FileExtension)))
         {
             var box = new StackPanel();
             var check = new CheckBox { Content = printer.Name, FontWeight = FontWeights.SemiBold, Foreground = GTheme.Brush(GTheme.Text) };
@@ -270,7 +272,8 @@ public sealed class FarmWindow : Window
             };
             box.Children.Add(arm);
             var choices = new Dictionary<int, ComboBox>();
-            foreach (var f in plate.Filaments)
+            // G-code carries its own filament choice: there is no AMS slot to pick.
+            foreach (var f in file.IsGcode ? new List<FarmFilament>() : plate.Filaments)
             {
                 box.Children.Add(Label($"Filament {f.Id} · {f.Material}", 11));
                 var combo = new ComboBox { Margin = new Thickness(0, 0, 0, 4) };
@@ -286,7 +289,8 @@ public sealed class FarmWindow : Window
             _mappings[printer.Serial] = choices;
             _destinations.Children.Add(Box(box));
         }
-        if (_printerIds.Count == 0) _destinations.Children.Add(Label("Dodaj drukarkę Bambu Lab w Gantry."));
+        if (!_farmStore.Printers.Printers.Any(p => PrinterFileTransfer.Accepts(p.Kind, file.FileExtension)))
+            _destinations.Children.Add(Label(file.IsGcode ? "Dodaj drukarkę Klipper, Prusa lub OctoPrint w Gantry." : "Dodaj drukarkę Bambu Lab w Gantry."));
     }
 
     private void SendSelected()
@@ -300,8 +304,8 @@ public sealed class FarmWindow : Window
         {
             var options = _mappings.TryGetValue(printer.Serial, out var m) ? m : new Dictionary<int, ComboBox>();
             if (options.Values.Any(c => (c.SelectedItem as ComboBoxItem)?.Tag is -2)) { _notice.Text = $"Wybierz źródła filamentów dla {printer.Name}."; return; }
-            var mapping = Enumerable.Repeat(-1, plate.Filaments.Count == 0 ? 0 : plate.Filaments.Max(f => f.Id)).ToList();
-            foreach (var f in plate.Filaments)
+            var mapping = Enumerable.Repeat(-1, file.IsGcode || plate.Filaments.Count == 0 ? 0 : plate.Filaments.Max(f => f.Id)).ToList();
+            foreach (var f in file.IsGcode ? new List<FarmFilament>() : plate.Filaments)
                 mapping[f.Id - 1] = options.TryGetValue(f.Id, out var combo) && (combo.SelectedItem as ComboBoxItem)?.Tag is int tag ? tag : -1;
             if (mapping.All(v => v == -1)) mapping = new List<int>();
             plans.Add((printer, mapping));
@@ -319,10 +323,13 @@ public sealed class FarmWindow : Window
     {
         if (Selection is not { } selection) return;
         var (file, plate) = selection;
-        var targets = _farmStore.Printers.Printers.Where(p => p.Kind == PrinterKind.Bambu && _targets.TryGetValue(p.Serial, out var c) && c.IsChecked == true).ToList();
+        var targets = _farmStore.Printers.Printers.Where(p => PrinterFileTransfer.Accepts(p.Kind, file.FileExtension) && _targets.TryGetValue(p.Serial, out var c) && c.IsChecked == true).ToList();
+        if (file.IsGcode && targets.Count == 0) { _notice.Text = "Zaznacz drukarki, pod które pocięto ten G-code."; return; }
         string where = targets.Count == 0 ? "dowolna drukarka Bambu Lab" : "tylko: " + string.Join(", ", targets.Select(p => p.Name));
         if (!Confirm($"Dodać do kolejki {_copies} × {file.Name}?",
-                     $"Płyta {plate.Index} · {where}\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty, a w AMS będzie ten sam materiał w podobnym kolorze. Druk startuje wtedy sam.",
+                     (file.IsGcode ? "G-code · " : $"Płyta {plate.Index} · ") + where + (file.IsGcode
+                         ? "\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty. Druk startuje wtedy sam."
+                         : "\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty, a w AMS będzie ten sam materiał w podobnym kolorze. Druk startuje wtedy sam."),
                      "Dodaj do kolejki", new[] { "Profil pliku i dysza pasują do tych drukarek" })) return;
         try { _farmStore.Enqueue(file, plate, _copies, targets.Select(p => p.Serial).ToList()); }
         catch (Exception ex) { _notice.Text = ex.Message; }

@@ -161,6 +161,7 @@ public sealed class GantryWebServer
         PrinterKind.Bambu => "MQTT",
         PrinterKind.Klipper => "KLIPPER",
         PrinterKind.Prusa => "PRUSALINK",
+        PrinterKind.OctoPrint => "OCTOPRINT",
         PrinterKind.Snapmaker => "HTTP",
         PrinterKind.ElegooCc1 => "SDCP",
         _ => "MQTT LAN"

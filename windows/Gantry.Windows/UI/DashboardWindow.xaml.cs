@@ -53,7 +53,7 @@ public partial class DashboardWindow : Window
         // still finds the other, which is the bug the macOS and Linux counters had to fix by hand.
         Deactivated += (_, _) =>
         {
-            if (WindowMode || _boundedLayer is not null) return;
+            if (WindowMode || _boundedLayer is not null || _modalHolds > 0) return;
             foreach (Window owned in OwnedWindows)
                 if (owned.IsVisible) return;
             _lastHidden = DateTime.Now;
@@ -70,6 +70,31 @@ public partial class DashboardWindow : Window
 
     private DateTime _lastHidden = DateTime.MinValue;
     private FrameworkElement? _cardMenu;
+
+    /// <summary>Modal dialogs (a file picker, a message box) are not owned windows the Deactivated
+    /// walk can see, so whoever opens one from the tray panel holds it open for the dialog's lifetime.</summary>
+    private int _modalHolds;
+    internal IDisposable HoldOpen()
+    {
+        _modalHolds++;
+        return new ModalHold(this);
+    }
+
+    private sealed class ModalHold : IDisposable
+    {
+        private DashboardWindow? _owner;
+        public ModalHold(DashboardWindow owner) => _owner = owner;
+        public void Dispose()
+        {
+            if (_owner is null) return;
+            _owner._modalHolds = Math.Max(0, _owner._modalHolds - 1);
+            _owner = null;
+        }
+    }
+
+    /// <summary>How much wider the tray panel is than its cards while a detail view has its control
+    /// panel slid out beside it.</summary>
+    private double _detailExtraWidth;
 
     private DispatcherTimer? _transparencyRefreshTimer;
     private DateTime _transparencyRefreshUntil;
@@ -204,12 +229,17 @@ public partial class DashboardWindow : Window
     {
         if (WindowMode)
         {
-            ShowPanel(new DetailView(_store, serial, ClosePanel, () => ShowSkipObjects(serial)), 500, 720);
+            // The window shows the control panel beside the details at all times, so it opens wider.
+            ShowPanel(new DetailView(_store, serial, ClosePanel, () => ShowSkipObjects(serial), windowed: true),
+                      500 + PrinterControlPanel.PanelWidth, 720);
             return;
         }
         HideCardMenu();
-        DetailLayer.Child = new DetailView(_store, serial, HideDetail, () => ShowSkipObjects(serial));
+        var detail = new DetailView(_store, serial, HideDetail, () => ShowSkipObjects(serial));
+        detail.ControlPanelToggled += SetDetailExtraWidth;
+        DetailLayer.Child = detail;
         DetailLayer.Visibility = Visibility.Visible;
+        SetDetailExtraWidth(detail.ControlPanelOpen);
         FitHeightToContent();
     }
 
@@ -217,7 +247,22 @@ public partial class DashboardWindow : Window
     {
         DetailLayer.Child = null;   // removing the view fires its Unloaded → stops the camera + timer
         DetailLayer.Visibility = Visibility.Collapsed;
+        SetDetailExtraWidth(false);
         FitHeightToContent();       // shrink back to the list height immediately, not after the next refresh
+    }
+
+    /// <summary>The tray panel grows to the left by the control panel's width while it is out, so the
+    /// details keep their column and the panel still hangs off the corner of the work area.</summary>
+    private void SetDetailExtraWidth(bool open)
+    {
+        if (WindowMode) return;
+        double extra = open ? PrinterControlPanel.PanelWidth : 0;
+        if (Math.Abs(extra - _detailExtraWidth) < 0.5) return;
+        _changingMode = true;
+        Width = Math.Max(1, Width - _detailExtraWidth + extra);
+        _changingMode = false;
+        _detailExtraWidth = extra;
+        Left = SystemParameters.WorkArea.Right - Width - 8;
     }
 
     private DragAdorner? _dragAdorner;
@@ -679,6 +724,8 @@ public partial class DashboardWindow : Window
                     if (column >= cols) { row++; column = 0; }
                 }
             }
+            // The layouts above set the cards' own width; an open control panel keeps its share on top.
+            if (!WindowMode && _detailExtraWidth > 0) Width += _detailExtraWidth;
         }
 
         foreach (var printer in dashboardPrinters)
@@ -724,7 +771,7 @@ public partial class DashboardWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (!IsVisible || _boundedLayer != null || _nativeUserResize) return;
-            double innerWidth = Math.Max(1, Width - FleetSurface.Margin.Left - FleetSurface.Margin.Right);
+            double innerWidth = Math.Max(1, Width - _detailExtraWidth - FleetSurface.Margin.Left - FleetSurface.Margin.Right);
             double cardsWidth = Math.Max(1, innerWidth - CardsScroll.Padding.Left - CardsScroll.Padding.Right);
             // The plate, not the grid inside it: the header's outer margin moved onto the plate, so
             // measuring the grid would now miss it and the window would come out short.
@@ -1180,6 +1227,7 @@ public partial class DashboardWindow : Window
                 PrinterKind.Bambu => "MQTT",
                 PrinterKind.Klipper => "KLIPPER",
                 PrinterKind.Prusa => "PRUSALINK",
+                PrinterKind.OctoPrint => "OCTOPRINT",
                 PrinterKind.Snapmaker => "HTTP",
                 PrinterKind.ElegooCc1 => "SDCP",
                 PrinterKind.ElegooCc2 => "MQTT LAN",

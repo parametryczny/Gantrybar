@@ -233,7 +233,9 @@ public enum PrinterKind
     Snapmaker,
     ElegooCc1,
     ElegooCc2,
-    AnycubicKobraS1
+    AnycubicKobraS1,
+    // Appended, never inserted: saved printers store the kind as its number.
+    OctoPrint
 }
 
 public sealed class SavedPrinter

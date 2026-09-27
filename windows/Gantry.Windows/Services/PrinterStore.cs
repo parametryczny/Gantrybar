@@ -104,7 +104,7 @@ public sealed class PrinterStore
         var changed = false;
         foreach (var printer in Printers)
         {
-            if (printer.Kind is not (PrinterKind.Klipper or PrinterKind.Prusa)) continue;
+            if (printer.Kind is not (PrinterKind.Klipper or PrinterKind.Prusa or PrinterKind.OctoPrint)) continue;
             if (string.IsNullOrEmpty(printer.ApiKey)) continue;
             AccessCodeStore.Save(printer.ApiKey!, printer.Serial);
             printer.ApiKey = null;
@@ -364,6 +364,35 @@ public sealed class PrinterStore
         RaiseUpdated();
     }
 
+    public void AddOctoPrint(string name, string host, int? port, string? apiKey)
+    {
+        var cleanHost = host.Trim();
+        if (cleanHost.Length == 0)
+            throw new ArgumentException(string.Format(AppSettings.T("Enter the IP address of the {0} printer."), "OctoPrint"));
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new ArgumentException(AppSettings.T("Enter the OctoPrint API key."));
+        var cleanName = name.Trim();
+        // The API key is a secret: DPAPI, keyed by serial, like the Klipper and PrusaLink keys.
+        StoreSecret(apiKey, $"octoprint-{cleanHost}");
+        var printer = new SavedPrinter
+        {
+            Serial = $"octoprint-{cleanHost}",
+            Name = cleanName.Length == 0 ? $"OctoPrint {cleanHost}" : cleanName,
+            Model = "OctoPrint",
+            Host = cleanHost,
+            Kind = PrinterKind.OctoPrint,
+            Port = port,
+            ApiKey = null
+        };
+
+        var index = Printers.FindIndex(p => p.Serial == printer.Serial);
+        if (index >= 0) Printers[index] = printer; else Printers.Add(printer);
+        Telemetry[printer.Serial] = new PrinterTelemetry();
+        SavedPrinterStore.Save(Printers);
+        Reconnect(printer);
+        RaiseUpdated();
+    }
+
     public int ImportFromBambuStudio()
     {
         var devices = BambuStudioConfig.Devices();
@@ -495,6 +524,14 @@ public sealed class PrinterStore
             var prusa = new PrusaLinkClient(HydratedWithSecret(printer), evt => _post(() => Handle(evt, printer.Serial)));
             _clients[printer.Serial] = prusa;
             prusa.Start();
+            RaiseUpdated();
+            return;
+        }
+        if (printer.Kind == PrinterKind.OctoPrint)
+        {
+            var octoprint = new OctoPrintClient(HydratedWithSecret(printer), evt => _post(() => Handle(evt, printer.Serial)));
+            _clients[printer.Serial] = octoprint;
+            octoprint.Start();
             RaiseUpdated();
             return;
         }
@@ -718,15 +755,92 @@ public sealed class PrinterStore
         if (_clients.TryGetValue(serial, out var c) && c is MoonrakerClient m) m.SendGcode(script);
     }
 
-    /// One G-code line to a printer that takes them: Klipper over Moonraker, Bambu as an MQTT
-    /// gcode_line. Other brands have no route for it and are left alone, as on macOS.
+    /// G-code to a printer that takes it: Klipper over Moonraker, OctoPrint as one command batch, Bambu
+    /// as an MQTT gcode_line. Other brands have no route for it and are left alone, as on macOS.
     private void SendPrinterGcode(string serial, string line)
     {
         var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
         if (kind == PrinterKind.Klipper) SendGcode(serial, line);
+        else if (kind == PrinterKind.OctoPrint)
+        {
+            if (_clients.TryGetValue(serial, out var c) && c is OctoPrintClient octoprint)
+                octoprint.SendGcode(line.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        }
         else if (kind == PrinterKind.Bambu)
             SendCommand(serial, JsonSerializer.Serialize(new { print = new { sequence_id = "2006", command = "gcode_line", param = line + "\n" } }));
     }
+
+    public enum PrintAction { Pause, Resume, Stop }
+
+    /// Pause, resume or stop the current print, for every brand that takes one of these.
+    public void SendPrintAction(PrintAction action, string serial)
+    {
+        var printer = Printers.FirstOrDefault(p => p.Serial == serial);
+        if (printer is null) return;
+        _clients.TryGetValue(serial, out var client);
+        switch (printer.Kind)
+        {
+            case PrinterKind.OctoPrint:
+                (client as OctoPrintClient)?.Job(action switch
+                {
+                    PrintAction.Pause => OctoPrintClient.JobAction.Pause,
+                    PrintAction.Resume => OctoPrintClient.JobAction.Resume,
+                    _ => OctoPrintClient.JobAction.Cancel,
+                });
+                break;
+            case PrinterKind.Prusa:
+                (client as PrusaLinkClient)?.Job(action switch
+                {
+                    PrintAction.Pause => PrusaLinkClient.JobAction.Pause,
+                    PrintAction.Resume => PrusaLinkClient.JobAction.Resume,
+                    _ => PrusaLinkClient.JobAction.Stop,
+                });
+                break;
+            default:
+                // The automation path already speaks every other brand's pause/resume/stop.
+                RunAutomation(new PrinterAutomation
+                {
+                    Name = "control",
+                    ActionKind = action switch { PrintAction.Pause => "pause", PrintAction.Resume => "resume", _ => "stop" },
+                }, serial);
+                break;
+        }
+    }
+
+    /// Kinds whose motion, temperatures and fans Gantry drives with G-code. A Bambu printer that only
+    /// takes commands signed by Bambu Connect would refuse every one of them.
+    public bool AcceptsGcode(string serial) => Printers.FirstOrDefault(p => p.Serial == serial)?.Kind switch
+    {
+        PrinterKind.Klipper or PrinterKind.OctoPrint => true,
+        PrinterKind.Bambu => !RequiresSignedCommands(serial),
+        _ => false,
+    };
+
+    /// A relative move of the print head, in millimetres. Only while nothing is printing.
+    public void Jog(string serial, double x = 0, double y = 0, double z = 0)
+    {
+        if (!AcceptsGcode(serial) || !IsMotionSafe(serial)) return;
+        static string Mm(double value) => value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        var axes = new List<string>();
+        if (x != 0) axes.Add("X" + Mm(x));
+        if (y != 0) axes.Add("Y" + Mm(y));
+        if (z != 0) axes.Add("Z" + Mm(z));
+        if (axes.Count == 0) return;
+        int feed = z != 0 && x == 0 && y == 0 ? 600 : 3000;
+        SendPrinterGcode(serial, $"G91\nG1 {string.Join(" ", axes)} F{feed}\nG90");
+    }
+
+    /// Homes the given axes ("" for all). Only while nothing is printing.
+    public void Home(string serial, string axes = "")
+    {
+        if (!AcceptsGcode(serial) || !IsMotionSafe(serial)) return;
+        var list = string.Join(" ", axes.ToUpperInvariant().Where(c => c is 'X' or 'Y' or 'Z').Select(c => c.ToString()));
+        SendPrinterGcode(serial, list.Length == 0 ? "G28" : "G28 " + list);
+    }
+
+    /// Motion is refused mid-print: a jog then would ruin the part, or worse, crash the nozzle into it.
+    public bool IsMotionSafe(string serial) =>
+        Telemetry.TryGetValue(serial, out var t) && t.State is PrinterState.Idle or PrinterState.Finished;
 
     public void SetNozzleTemperature(string serial, int celsius)
     {
@@ -747,7 +861,7 @@ public sealed class PrinterStore
         int value = (int)Math.Round(Math.Clamp(percent, 0, 100) * 2.55);
         var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
         _lastControlArea[serial] = ControlArea.Fans;
-        if (kind == PrinterKind.Klipper) { if (index == 1) SendGcode(serial, $"M106 S{value}"); }
+        if (kind is PrinterKind.Klipper or PrinterKind.OctoPrint) { if (index == 1) SendPrinterGcode(serial, $"M106 S{value}"); }
         else if (kind == PrinterKind.Bambu) SendPrinterGcode(serial, $"M106 P{index} S{value}");
     }
 
@@ -829,11 +943,13 @@ public sealed class PrinterStore
         if (!string.IsNullOrEmpty(custom))
         {
             var kind = Printers.FirstOrDefault(p => p.Serial == serial)?.Kind;
-            if (kind == PrinterKind.Klipper) SendGcode(serial, custom);
+            if (kind is PrinterKind.Klipper or PrinterKind.OctoPrint) SendPrinterGcode(serial, custom);
             else if (kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2) SendElegooRaw(serial, custom);
             else SendCommand(serial, custom);
             return;
         }
+        if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind is PrinterKind.OctoPrint or PrinterKind.Prusa or PrinterKind.Snapmaker)
+            return;   // No standard light command; a per-printer override above can supply one.
         if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.Klipper)
             SendGcode(serial, on ? "SET_PIN PIN=caselight VALUE=1" : "SET_PIN PIN=caselight VALUE=0");
         else if (Printers.FirstOrDefault(p => p.Serial == serial)?.Kind == PrinterKind.ElegooCc1)
@@ -857,6 +973,11 @@ public sealed class PrinterStore
         bool isKlipper = printer?.Kind == PrinterKind.Klipper;
         void PrintCmd(string bambu, string macro)
         {
+            if (printer?.Kind is PrinterKind.OctoPrint or PrinterKind.Prusa)
+            {
+                SendPrintAction(bambu.Contains("\"pause\"") ? PrintAction.Pause : bambu.Contains("\"resume\"") ? PrintAction.Resume : PrintAction.Stop, serial);
+                return;
+            }
             if (isKlipper) SendGcode(serial, macro);
             else if (printer?.Kind == PrinterKind.ElegooCc1) SendElegooMethod(serial, bambu.Contains("\"pause\"") ? 129 : bambu.Contains("\"resume\"") ? 131 : 130);
             else if (printer?.Kind == PrinterKind.ElegooCc2) SendElegooMethod(serial, bambu.Contains("\"pause\"") ? 1021 : bambu.Contains("\"resume\"") ? 1023 : 1022);
@@ -874,7 +995,7 @@ public sealed class PrinterStore
             case "notify": NotificationService.Post(name, auto.ActionText); break;
             case "command":
                 if (!AllowCodeAction(auto, name)) break;
-                if (isKlipper) SendGcode(serial, auto.ActionText);
+                if (isKlipper || printer?.Kind == PrinterKind.OctoPrint) SendPrinterGcode(serial, auto.ActionText);
                 else if (printer?.Kind is PrinterKind.ElegooCc1 or PrinterKind.ElegooCc2) SendElegooRaw(serial, auto.ActionText);
                 else SendCommand(serial, auto.ActionText);
                 break;

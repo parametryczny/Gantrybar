@@ -61,6 +61,17 @@ public static class CameraSnapshot
                 cam.FrameReady += OnFrame; cam.Failed += _ => tcs.TrySetResult(null); cam.Start($"http://{host}:18088/flv");
                 var result = await WithTimeout(tcs.Task, timeoutMs); cam.FrameReady -= OnFrame; cam.Stop(); return result;
             }
+            case PrinterKind.OctoPrint:
+            {
+                // OctoPi serves mjpg-streamer on the web port, beside OctoPrint itself.
+                try
+                {
+                    using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
+                    var bytes = await http.GetByteArrayAsync($"http://{host}/webcam/?action=snapshot");
+                    return bytes.Length > 0 ? bytes : null;
+                }
+                catch { return null; }
+            }
             default:
                 return null;
         }

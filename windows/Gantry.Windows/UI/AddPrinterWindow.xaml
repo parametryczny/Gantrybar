@@ -123,14 +123,16 @@
                 <TextBlock x:Name="Heading" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
 
                 <Border x:Name="TypeSection" Background="#FF2C2C2E" CornerRadius="8" Padding="3" HorizontalAlignment="Left" Margin="0,0,0,12">
-                    <StackPanel Orientation="Horizontal">
+                    <!-- Wraps: seven kinds no longer fit one row of this dialog. -->
+                    <WrapPanel Orientation="Horizontal">
                         <RadioButton x:Name="BambuRadio" GroupName="Kind" IsChecked="True"/>
                         <RadioButton x:Name="ElegooRadio" GroupName="Kind"/>
                         <RadioButton x:Name="AnycubicRadio" GroupName="Kind"/>
                         <RadioButton x:Name="KlipperRadio" GroupName="Kind"/>
                         <RadioButton x:Name="PrusaRadio" GroupName="Kind"/>
                         <RadioButton x:Name="SnapmakerRadio" GroupName="Kind"/>
-                    </StackPanel>
+                        <RadioButton x:Name="OctoPrintRadio" GroupName="Kind"/>
+                    </WrapPanel>
                 </Border>
 
                 <StackPanel x:Name="ElegooModelSection" Visibility="Collapsed" Margin="0,0,0,12">
@@ -143,6 +145,10 @@
 
                 <Border x:Name="AnycubicHintBox" Background="#332B79C2" CornerRadius="8" Padding="10,8" Margin="0,0,0,12" Visibility="Collapsed">
                     <TextBlock x:Name="AnycubicHint" Foreground="#FFDCE6F2" FontSize="12" TextWrapping="Wrap"/>
+                </Border>
+
+                <Border x:Name="OctoPrintHintBox" Background="#332B79C2" CornerRadius="8" Padding="10,8" Margin="0,0,0,12" Visibility="Collapsed">
+                    <TextBlock x:Name="OctoPrintHint" Foreground="#FFDCE6F2" FontSize="12" TextWrapping="Wrap"/>
                 </Border>
 
                 <Border x:Name="SnapmakerHintBox" Background="#332B79C2" CornerRadius="8" Padding="10,8" Margin="0,0,0,12" Visibility="Collapsed">

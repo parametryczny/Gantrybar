@@ -26,5 +26,9 @@
     <Compile Include="../Gantry.Windows/Services/ChildProcessJob.cs" Link="ChildProcessJob.cs" />
     <Compile Include="../Gantry.Windows/Services/LowFilament.cs" Link="LowFilament.cs" />
     <Compile Include="../Gantry.Windows/Services/ObjectSkipping.cs" Link="ObjectSkipping.cs" />
+    <Compile Include="../Gantry.Windows/Services/OctoPrintStatusParser.cs" Link="OctoPrintStatusParser.cs" />
+    <Compile Include="../Gantry.Windows/Services/SmartPlugPower.cs" Link="SmartPlugPower.cs" />
+    <Compile Include="../Gantry.Windows/Services/PrinterFileTargets.cs" Link="PrinterFileTargets.cs" />
+    <Compile Include="../Gantry.Windows/Farm/FarmModels.cs" Link="FarmModels.cs" />
   </ItemGroup>
 </Project>
