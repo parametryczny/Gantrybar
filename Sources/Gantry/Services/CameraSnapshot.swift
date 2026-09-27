@@ -57,6 +57,162 @@ enum CameraSnapshot {
         return (jpeg, .liveKeyframe)
     }
 
+    /// Several frames a moment apart from one camera, for `FrameComposite` to fold into a picture
+    /// without the toolhead in it.
+    ///
+    /// A preview already running gives its frames for free, so they are simply read a moment apart.
+    /// Otherwise one connection is opened and kept for the whole burst: the P1/A1 JPEG feed, an MJPEG
+    /// webcam (Klipper, OctoPrint) and the RTSP feed all keep sending pictures, so five frames cost
+    /// about as much as one. Cameras that are expensive to open (Elegoo's gated stream, the Kobra)
+    /// still give a single frame, which is what every look used before.
+    @MainActor
+    static func burst(printer: SavedPrinter, store: PrinterStore, count: Int = 5,
+                      spacing: TimeInterval = 0.8, timeout: TimeInterval = 15) async -> (jpegs: [Data], source: Source)? {
+        let count = max(1, count)
+        if CameraFeedController.isLive(serial: printer.serial) {
+            var frames: [Data] = []
+            var source: Source = .livePreview
+            for index in 0..<count {
+                if index > 0 { try? await Task.sleep(for: .milliseconds(Int(spacing * 1000))) }
+                guard let frame = await latestFrame(printer: printer, store: store, timeout: timeout) else { break }
+                source = frame.source
+                if !frames.contains(frame.jpeg) { frames.append(frame.jpeg) }
+            }
+            return frames.isEmpty ? nil : (frames, source)
+        }
+        let host = cameraHost(printer, store)
+        var frames: [Data] = []
+        var source: Source = .other
+        switch printer.kind {
+        case .bambu:
+            guard let code = store.accessCode(for: printer.serial), !code.isEmpty else { return nil }
+            switch bambuTransports[host] {
+            case .jpeg:
+                frames = await burstBambuJPEG(host: host, accessCode: code, count: count, spacing: spacing, timeout: timeout)
+                source = .snapshotJPEG
+            case .rtsp:
+                frames = await burstBambuRTSP(host: host, accessCode: code, count: count, spacing: spacing, timeout: timeout)
+                source = .snapshotRTSP
+            case nil:
+                break   // not known yet: the single capture below finds out which stream it speaks
+            }
+        case .klipper:
+            frames = await burstMJPEG(url: "http://\(host):\(printer.port ?? 7125)/webcam/?action=stream",
+                                      apiKey: store.accessCode(for: printer.serial), count: count, spacing: spacing, timeout: timeout)
+        case .octoprint:
+            frames = await burstMJPEG(url: "http://\(host)/webcam/?action=stream", apiKey: nil,
+                                      count: count, spacing: spacing, timeout: timeout)
+        default:
+            break
+        }
+        if !frames.isEmpty { return (frames, source) }
+        guard let single = await latestFrame(printer: printer, store: store, timeout: timeout) else { return nil }
+        return ([single.jpeg], single.source)
+    }
+
+    private static func burstBambuJPEG(host: String, accessCode: String, count: Int,
+                                       spacing: TimeInterval, timeout: TimeInterval) async -> [Data] {
+        let collector = BurstCollector(count: count, spacing: spacing)
+        return await withCheckedContinuation { (continuation: CheckedContinuation<[Data], Never>) in
+            collector.onResult = { continuation.resume(returning: $0) }
+            let stream = BambuJPEGCameraStream(
+                host: host, accessCode: accessCode,
+                onState: { state in if case .failed = state { collector.finish() } },
+                onFrame: { collector.offer($0) })
+            collector.onStop = { stream.stop() }
+            stream.start()
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { collector.finish() }
+        }
+    }
+
+    private static func burstBambuRTSP(host: String, accessCode: String, count: Int,
+                                       spacing: TimeInterval, timeout: TimeInterval) async -> [Data] {
+        let collector = BurstCollector(count: count, spacing: spacing)
+        let parameters = ParameterSets()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<[Data], Never>) in
+            collector.onResult = { continuation.resume(returning: $0) }
+            let stream = RTSPCameraStream(
+                host: host, accessCode: accessCode,
+                onState: { _ in },
+                onParameterSets: { sps, pps in parameters.set(sps: sps, pps: pps) },
+                onAccessUnit: { avcc, keyframe in
+                    guard keyframe, collector.wants(), let sets = parameters.get(),
+                          let jpeg = decode(sps: sets.0, pps: sets.1, avcc: avcc) else { return }
+                    collector.offer(jpeg)
+                })
+            collector.onStop = { stream.stop() }
+            stream.start()
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { collector.finish() }
+        }
+    }
+
+    private static func burstMJPEG(url: String, apiKey: String?, count: Int,
+                                   spacing: TimeInterval, timeout: TimeInterval) async -> [Data] {
+        guard let parsed = URL(string: url) else { return [] }
+        let collector = BurstCollector(count: count, spacing: spacing)
+        return await withCheckedContinuation { (continuation: CheckedContinuation<[Data], Never>) in
+            collector.onResult = { continuation.resume(returning: $0) }
+            let reader = MJPEGReader(url: parsed, apiKey: apiKey) { collector.offer($0) }
+            collector.onStop = { reader.stop() }
+            reader.start()
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { collector.finish() }
+        }
+    }
+
+    /// Keeps frames at least `spacing` apart until it has `count`, then stops the stream and answers
+    /// once with whatever it collected (possibly nothing, on timeout).
+    private final class BurstCollector: @unchecked Sendable {
+        var onResult: (([Data]) -> Void)?
+        var onStop: (() -> Void)?
+        private let count: Int
+        private let spacing: TimeInterval
+        private let lock = NSLock()
+        private var frames: [Data] = []
+        private var lastAt = Date.distantPast
+        private var done = false
+
+        init(count: Int, spacing: TimeInterval) { self.count = count; self.spacing = spacing }
+
+        /// Whether the next frame would be kept; lets the RTSP path skip decoding frames it would drop.
+        func wants() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            return !done && Date().timeIntervalSince(lastAt) >= spacing
+        }
+
+        func offer(_ frame: Data) {
+            lock.lock()
+            guard !done, Date().timeIntervalSince(lastAt) >= spacing else { lock.unlock(); return }
+            frames.append(frame)
+            lastAt = Date()
+            let full = frames.count >= count
+            lock.unlock()
+            if full { finish() }
+        }
+
+        func finish() {
+            lock.lock()
+            if done { lock.unlock(); return }
+            done = true
+            let callback = onResult, stop = onStop, result = frames
+            onResult = nil; onStop = nil
+            lock.unlock()
+            stop?()
+            callback?(result)
+        }
+    }
+
+    private final class ParameterSets: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sps: Data?
+        private var pps: Data?
+        func set(sps: Data, pps: Data) { lock.lock(); self.sps = sps; self.pps = pps; lock.unlock() }
+        func get() -> (Data, Data)? {
+            lock.lock(); defer { lock.unlock() }
+            guard let sps, let pps else { return nil }
+            return (sps, pps)
+        }
+    }
+
     @MainActor
     static func capture(printer: SavedPrinter, store: PrinterStore, timeout: TimeInterval = 12) async -> Data? {
         let host = cameraHost(printer, store)
@@ -383,6 +539,9 @@ final class MJPEGReader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             lock.unlock(); return
         }
         let frame = buffer.subdata(in: start.lowerBound..<end.upperBound)
+        // Drop what was read, so a reader kept open for a burst hands over the next picture rather
+        // than the first one again.
+        buffer.removeSubrange(buffer.startIndex..<end.upperBound)
         lock.unlock()
         onFrame(frame)
     }

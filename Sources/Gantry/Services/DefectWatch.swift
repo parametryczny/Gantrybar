@@ -147,6 +147,16 @@ final class DefectWatch {
 
     private func look() {
         guard let store else { return }
+        // A recorded print ends when its printer stops printing; how it stopped labels the recording.
+        for serial in DefectRecorder.shared.openSerials {
+            let state = store.telemetry[serial]?.state ?? .offline
+            guard store.printers.contains(where: { $0.serial == serial }) else {
+                DefectRecorder.shared.close(serial: serial, outcome: .unknown)
+                continue
+            }
+            guard state != .printing, state != .paused, state != .offline else { continue }
+            DefectRecorder.shared.close(serial: serial, outcome: DefectRecorder.outcome(after: state))
+        }
         for printer in store.printers {
             let telemetry = store.telemetry[printer.serial] ?? PrinterTelemetry()
             // Only a running print can fail in a way worth interrupting, and only a printer with a
@@ -178,7 +188,15 @@ final class DefectWatch {
             Task { @MainActor [weak self] in
                 defer { self?.busy.remove(printer.serial) }
                 guard let self else { return }
-                let taken = await CameraSnapshot.latestFrame(printer: printer, store: store)
+                // A short burst folded into one picture of what stayed put: the toolhead sweeping
+                // across a single frame was the biggest source of false alarms (see FrameComposite).
+                let burst = await CameraSnapshot.burst(printer: printer, store: store)
+                var taken: (jpeg: Data, source: CameraSnapshot.Source)?
+                if let burst {
+                    let jpegs = burst.jpegs
+                    let folded = await Task.detached(priority: .utility) { FrameComposite.median(jpegs: jpegs) }.value
+                    taken = (folded ?? jpegs[0], burst.source)
+                }
                 if CameraFeedController.isLive(serial: printer.serial) == false {
                     // A camera that keeps refusing is asked less and less often, up to five minutes.
                     self.ownLookBackoff[printer.serial] = taken == nil
@@ -286,6 +304,9 @@ final class DefectWatch {
             .max { $0.confidence < $1.confidence }
         let best = alarming ?? readings.max { $0.confidence < $1.confidence } ?? readings[0]
         let first = readings[0]
+        DefectRecorder.shared.record(jpeg: jpeg, printer: printer, telemetry: telemetry,
+                                     behaviour: first, appearance: readings.count > 1 ? readings[1] : nil,
+                                     limitBytes: Int64(AppSettings.shared.defectDatasetLimitMB) * 1024 * 1024)
         if alarming == nil, first.label == nil {
             rememberGoodFrame(jpeg: jpeg, printer: printer, telemetry: telemetry)
         }
@@ -317,6 +338,7 @@ final class DefectWatch {
     }
 
     func answered(serial: String, confirmed: Bool) {
+        DefectRecorder.shared.noteAnswer(serial: serial, confirmed: confirmed)
         if !confirmed {
             verdicts[serial]?.reset()
             baselines[serial]?.reset()
@@ -394,6 +416,7 @@ final class DefectWatch {
         guard !told.labels.contains(failed) else { return }
         told.labels.insert(failed)
         toldAbout[printer.serial] = told
+        DefectRecorder.shared.noteAlarm(serial: printer.serial, label: failed, confidence: sure)
 
         let percent = Int((sure * 100).rounded())
         let body = settings.t("{0} ({1}%) on {2}", settings.t(failed), percent, printer.name)

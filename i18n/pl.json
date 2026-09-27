@@ -1334,5 +1334,15 @@
   "Check that the file was sliced for this printer and nozzle.": "Sprawdź, czy plik był pocięty pod tę drukarkę i dyszę.",
   "Lamp": "Światło",
   "OctoPrint API key": "Klucz API OctoPrinta",
-  "OctoPrint port (default 80)": "Port OctoPrinta (domyślnie 80)"
+  "OctoPrint port (default 80)": "Port OctoPrinta (domyślnie 80)",
+  "Evaluate recorded prints…": "Oceń nagrane wydruki…",
+  "Evaluating…": "Oceniam…",
+  "Failure detection on recorded prints": "Wykrywanie wpadek na nagranych wydrukach",
+  "No finished prints recorded yet. Gantry records every print it watches; come back after a few.": "Nie ma jeszcze nagranych, zakończonych wydruków. Gantry nagrywa każdy wydruk, którego pilnuje; wróć tu po kilku.",
+  "Prints replayed: {0} ({1} h)": "Odtworzone wydruki: {0} ({1} h)",
+  "Clean prints with a false alarm: {0} of {1} ({2} per 100 print hours)": "Udane wydruki z fałszywym alarmem: {0} z {1} ({2} na 100 godzin druku)",
+  "Confirmed failures caught: {0} of {1}": "Złapane potwierdzone wpadki: {0} z {1}",
+  "median {0} min before the warning you confirmed": "mediana {0} min przed ostrzeżeniem, które potwierdziłeś",
+  "No confirmed failures yet: answer the warnings so Gantry can count its catches.": "Brak potwierdzonych wpadek: odpowiadaj na ostrzeżenia, żeby Gantry mogło policzyć trafienia.",
+  "Stopped or failed without a confirmed warning: {0} (warned on {1})": "Przerwane lub nieudane bez potwierdzonego ostrzeżenia: {0} (ostrzeżenie przy {1})"
 }

@@ -50,3 +50,26 @@ Ustawienia, Zaawansowane, Wykrywanie wpadek, Plik modelu. Wskazany plik Core ML
 zastępuje Gantry Vision, w pilnowaniu w tle i w przycisku „Testuj" jednocześnie.
 Nazwa pokazywana na ekranie bierze się z metadanych modelu, więc nie zmienia się
 po przemianowaniu pliku.
+
+## Seria klatek zamiast jednej
+
+Każde spojrzenie to teraz 5 klatek w odstępie około 0,8 s, złożonych medianą w jeden
+obraz (`FrameComposite`). Głowica, która przejeżdża przez kadr, jest na jednej lub
+dwóch klatkach z pięciu, więc mediana ją usuwa, a stół i wydruk zostają. Podgląd,
+który już działa, oddaje klatki za darmo; bez niego Gantry trzyma jedno połączenie
+przez całą serię (strumień JPEG P1/A1, RTSP, MJPEG Klippera i OctoPrinta). Kamery
+drogie w otwieraniu (Elegoo, Kobra) dalej dają jedną klatkę.
+
+## Nagrania wydruków i ocena
+
+Każdy pilnowany wydruk jest nagrywany (`DefectRecorder`, katalog
+`Gantry/DefectRecordings`, ten sam limit co zbiór klatek): złożone klatki, co o nich
+powiedziało zachowanie wydruku i model, ostrzeżenia, Twoje odpowiedzi i to, jak
+wydruk się skończył. To opisuje się samo: wydruk zakończony bez potwierdzonej wpadki
+jest dobry, więc każde ostrzeżenie na nim to fałszywy alarm.
+
+Ustawienia → Zaawansowane → „Oceń nagrane wydruki…” odtwarza wszystkie nagrania
+z obecnymi ustawieniami (`DefectEvaluation`) i liczy na całe wydruki, nie na klatki:
+fałszywe alarmy na 100 godzin druku, złapane potwierdzone wpadki i o ile minut
+wcześniej. Klatki wzorcowe są przy tym pominięte, bo część z nich pochodzi z tych
+samych wydruków.

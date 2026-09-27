@@ -218,6 +218,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let watchModelButton = NSButton()
     private let watchRelearnButton = NSButton()
     private let watchTrialButton = NSButton()
+    private let watchEvaluateButton = NSButton()
     private let watchModelName = settingsNote()
     private let watchSensitivityCaption = settingsCaption()
     private let watchSensitivityControl = SettingsScaleControl()
@@ -567,7 +568,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         datasetRevealButton.action = #selector(revealDataset)
         datasetRevealButton.bezelStyle = .rounded
         datasetLimitControl.onStep = { [weak self] direction in self?.changeDatasetLimit(direction) }
-        let datasetRow = NSStackView(views: [datasetLimitControl, datasetRevealButton])
+        watchEvaluateButton.target = self
+        watchEvaluateButton.action = #selector(evaluateRecordedPrints)
+        watchEvaluateButton.bezelStyle = .rounded
+        let datasetRow = NSStackView(views: [datasetLimitControl, datasetRevealButton, watchEvaluateButton])
         datasetRow.orientation = .horizontal
         datasetRow.spacing = 7
 
@@ -954,6 +958,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         // Zawsze czynny: sprawdzenie na zdjęciu ma sens właśnie wtedy, gdy zastanawiasz się, czy
         // w ogóle to włączać.
         watchTrialButton.title = settings.t("Try on a picture…")
+        watchEvaluateButton.title = settings.t("Evaluate recorded prints…")
         let status = DefectWatch.current?.status
         if let error = status?.lastError {
             setText(watchModelName, error)
@@ -1037,6 +1042,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             alert.addButton(withTitle: settings.t("Close"))
         }
         _ = ModalHost.run(alert)
+    }
+
+    /// Replays every recorded print through the watcher as it is set up now and says how it did:
+    /// false alarms on clean prints, confirmed failures caught. The number to watch when changing the
+    /// sensitivity, the model or anything else about detection.
+    @objc private func evaluateRecordedPrints() {
+        let settings = AppSettings.shared
+        watchEvaluateButton.isEnabled = false
+        watchEvaluateButton.title = settings.t("Evaluating…")
+        Task { @MainActor [weak self] in
+            let sessions = DefectRecorder.sessions()
+            let results = await DefectEvaluation.replay(
+                sessions, modelPath: DefectModel.effectivePath(chosen: settings.defectModelPath),
+                threshold: settings.defectThreshold, hitsNeeded: settings.defectHitsNeeded)
+            let alert = NSAlert()
+            alert.messageText = settings.t("Failure detection on recorded prints")
+            alert.informativeText = DefectEvaluation.summary(DefectEvaluation.report(results))
+            alert.addButton(withTitle: settings.t("Close"))
+            self?.watchEvaluateButton.isEnabled = true
+            self?.watchEvaluateButton.title = settings.t("Evaluate recorded prints…")
+            _ = ModalHost.run(alert)
+        }
     }
 
     /// Recomputes the prototypes from the marked frames, so newly marked pictures count from now on.
