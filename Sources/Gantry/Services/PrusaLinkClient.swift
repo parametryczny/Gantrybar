@@ -54,6 +54,34 @@ final class PrusaLinkClient: PrinterConnection, @unchecked Sendable {
         return data
     }
 
+    enum JobAction: Sendable { case pause, resume, stop }
+
+    /// PrusaLink addresses the running job by id: read it, then pause, resume or delete that job.
+    func job(_ action: JobAction) {
+        let base = baseURL
+        let key = printer.apiKey
+        Task.detached(priority: .utility) {
+            func request(_ path: String, method: String) -> URLRequest? {
+                guard let url = URL(string: base + path) else { return nil }
+                var request = URLRequest(url: url)
+                request.httpMethod = method
+                request.timeoutInterval = 8
+                if let key, !key.isEmpty { request.setValue(key, forHTTPHeaderField: "X-Api-Key") }
+                return request
+            }
+            guard let read = request("/api/v1/job", method: "GET"),
+                  let (data, _) = try? await URLSession.shared.data(for: read),
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = (root["id"] as? NSNumber)?.intValue else { return }
+            let call: URLRequest? = switch action {
+            case .pause: request("/api/v1/job/\(id)/pause", method: "PUT")
+            case .resume: request("/api/v1/job/\(id)/resume", method: "PUT")
+            case .stop: request("/api/v1/job/\(id)", method: "DELETE")
+            }
+            if let call { _ = try? await URLSession.shared.data(for: call) }
+        }
+    }
+
     private func reportDisconnected(_ reason: String?) {
         guard !disconnectReported else { return }
         disconnectReported = true

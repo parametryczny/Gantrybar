@@ -797,9 +797,14 @@ require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
         r"static let popoverContentWidth: CGFloat = 480[\s\S]*?"
         r"root\.widthAnchor\.constraint\(equalToConstant: Self\.popoverContentWidth\)",
         "the macOS detail view lays itself out at a width of its own")
+# The control panel widens the popover when it slides out; the width reported is the one the root
+# view is pinned to, both computed by popoverWidth.
 require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
-        r"NSSize\(width: Self\.popoverContentWidth, height: target\)",
+        r"NSSize\(width: self\.popoverWidth, height: target\)",
         "the macOS detail view reports a width it does not lay itself out at")
+require("Sources/Gantry/Views/PrinterDetailWindowController.swift",
+        r"width\.constant = popoverWidth[\s\S]{0,160}onPreferredContentSize\?\(NSSize\(width: popoverWidth",
+        "the macOS control panel resizes the view and the popover by different amounts")
 require("Sources/Gantry/Views/MenuBarController.swift",
         r"PrinterDetailViewController\.popoverContentWidth",
         "the popover opens the detail view at a width of its own")

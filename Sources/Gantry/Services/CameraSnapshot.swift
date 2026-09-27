@@ -67,6 +67,9 @@ enum CameraSnapshot {
         case .klipper:
             let url = "http://\(host):\(printer.port ?? 7125)/webcam/?action=stream"
             return await captureMJPEG(url: url, apiKey: store.accessCode(for: printer.serial), timeout: timeout)
+        case .octoprint:
+            // OctoPi serves mjpg-streamer on the web port, beside OctoPrint itself.
+            return await captureMJPEG(url: "http://\(host)/webcam/?action=stream", apiKey: nil, timeout: timeout)
         case .elegooCC1, .elegooCC2:
             let isCC2 = printer.kind == .elegooCC2
             let url = isCC2 ? "http://\(host):8080/?action=stream" : "http://\(host):3031/video"

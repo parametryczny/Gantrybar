@@ -27,7 +27,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
     private let hostLabel = NSTextField(labelWithString: "")
     private let serialLabel = NSTextField(labelWithString: "")
     private let codeLabel = NSTextField(labelWithString: "")
-    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Elegoo", "Anycubic", "Klipper", "Prusa", "Snapmaker"], trackingMode: .selectOne, target: nil, action: nil)
+    private let typeControl = NSSegmentedControl(labels: ["Bambu", "Elegoo", "Anycubic", "Klipper", "Prusa", "Snapmaker", "OctoPrint"], trackingMode: .selectOne, target: nil, action: nil)
     private let elegooModelLabel = NSTextField(labelWithString: "Model Elegoo:")
     private let elegooModelPopup = NSPopUpButton()
     private let portField = NSTextField()
@@ -184,6 +184,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         case 3: return .klipper
         case 4: return .prusa
         case 5: return .snapmaker
+        case 6: return .octoprint
         default: return .bambu
         }
     }
@@ -205,7 +206,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         let settings = AppSettings.shared
         switch selectedKind {
         case .bambu: portField.placeholderString = "8883"
-        case .prusa: portField.placeholderString = "80"
+        case .prusa, .octoprint: portField.placeholderString = "80"
         case .klipper: portField.placeholderString = "7125"
         case .snapmaker: portField.placeholderString = "8080"
         case .elegooCC1: portField.placeholderString = "3030"
@@ -217,6 +218,8 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             infoLabel.stringValue = settings.t("Enter the Klipper host IP (Moonraker, port 7125). No access code is needed. Works over VPN too — just enter the Tailscale IP.")
         case .prusa:
             infoLabel.stringValue = settings.t("Enter the Prusa printer IP (PrusaLink, port 80) and the API key from PrusaLink settings. No Prusa account. Works over VPN too — just enter the Tailscale IP.")
+        case .octoprint:
+            infoLabel.stringValue = settings.t("Enter the OctoPrint address (OctoPi, port 80) and an API key from OctoPrint → Settings → Application Keys. Works over VPN too — just enter the Tailscale IP.")
         case .snapmaker:
             infoLabel.stringValue = settings.t("Enter the Snapmaker printer IP (HTTP, port 8080). Supports Snapmaker 2.0 and Artisan. After adding, the PRINTER SCREEN shows a permission request — tap “Allow” to authorize. You'll need to re-authorize after each power cycle.")
         case .anycubicKobraS1:
@@ -435,6 +438,9 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
             case .prusa:
                 try store.addPrusa(name: nameField.stringValue, host: host, port: port, apiKey: apiKeyField.stringValue)
                 dropOldEntryIfIdentifierChanged("prusa-\(host)")
+            case .octoprint:
+                try store.addOctoPrint(name: nameField.stringValue, host: host, port: port, apiKey: apiKeyField.stringValue)
+                dropOldEntryIfIdentifierChanged("octoprint-\(host)")
             case .snapmaker:
                 try store.addSnapmaker(name: nameField.stringValue, host: host, port: port)
                 dropOldEntryIfIdentifierChanged("snapmaker-\(host)")
@@ -469,6 +475,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
                 case .klipper: finalSerial = "klipper-\(host)"
                 case .prusa: finalSerial = "prusa-\(host)"
                 case .snapmaker: finalSerial = "snapmaker-\(host)"
+                case .octoprint: finalSerial = "octoprint-\(host)"
                 case .anycubicKobraS1: finalSerial = "anycubic-kobra-s1-\(host)"
                 case .elegooCC1, .elegooCC2: finalSerial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 case .bambu: finalSerial = serialField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -520,6 +527,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         case .klipper: typeControl.selectedSegment = 3
         case .prusa: typeControl.selectedSegment = 4
         case .snapmaker: typeControl.selectedSegment = 5
+        case .octoprint: typeControl.selectedSegment = 6
         }
         typeControl.isHidden = true          // kind is fixed when editing
         progressCheck.isHidden = false
@@ -533,7 +541,7 @@ final class AddPrinterWindowController: NSWindowController, NSTextFieldDelegate 
         statusLabel.stringValue = ""
         statusLabel.textColor = .systemRed
         portField.stringValue = printer.port.map(String.init) ?? ""   // Bambu too (tunnel port)
-        if printer.kind == .klipper || printer.kind == .prusa {
+        if printer.kind == .klipper || printer.kind == .prusa || printer.kind == .octoprint {
             // The key now lives in the secure store (Keychain), not the config — prefill from there
             // so editing keeps it. A legacy config may still carry it inline; prefer that if present.
             apiKeyField.stringValue = printer.apiKey ?? AccessCodeStore.accessCode(for: printer.serial) ?? ""

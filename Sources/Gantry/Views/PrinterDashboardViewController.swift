@@ -2100,6 +2100,7 @@ final class PrinterCardView: NSView, NSDraggingSource {
         case .bambu: " MQTT "
         case .klipper: " KLIPPER "
         case .prusa: " PRUSALINK "
+        case .octoprint: " OCTOPRINT "
         case .snapmaker: " HTTP "
         case .elegooCC1: " SDCP "
         case .elegooCC2: " MQTT LAN "

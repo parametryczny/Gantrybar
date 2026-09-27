@@ -133,7 +133,7 @@ final class CameraFeedController {
     /// Takes an optional so callers holding a printer that may not exist any more need no dance.
     static func supportsCamera(_ kind: PrinterKind?) -> Bool {
         switch kind {
-        case .bambu, .klipper, .elegooCC1, .elegooCC2, .anycubicKobraS1: true
+        case .bambu, .klipper, .octoprint, .elegooCC1, .elegooCC2, .anycubicKobraS1: true
         default: false
         }
     }
@@ -147,7 +147,7 @@ final class CameraFeedController {
         decodeFailures = 0
         switch printer.kind {
         case .bambu: startBambuCamera(printer)
-        case .klipper: startKlipperCamera(printer)
+        case .klipper, .octoprint: startKlipperCamera(printer)
         case .elegooCC1, .elegooCC2: startElegooCamera(printer)
         case .anycubicKobraS1: startAnycubicCamera(printer)
         default:
@@ -257,7 +257,7 @@ final class CameraFeedController {
         showStatus(AppSettings.shared.t("Connecting to camera…"))
         let stream = KlipperCameraStream(
             host: cameraHost(for: printer),
-            port: printer.port ?? 7125,
+            port: printer.port ?? (printer.kind == .octoprint ? 80 : 7125),
             apiKey: store.accessCode(for: serial),
             onFrame: { data in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleImageFrame(data) } } },
             onState: { state in Task { @MainActor [weak self] in self?.receive(generation) { $0.handleKlipperState(state) } } }

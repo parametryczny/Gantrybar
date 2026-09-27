@@ -210,6 +210,7 @@ enum PrinterKind: String, Codable, Sendable {
     case elegooCC1 = "elegoo_cc1"
     case elegooCC2 = "elegoo_cc2"
     case anycubicKobraS1 = "anycubic_kobra_s1"
+    case octoprint
 }
 
 struct SavedPrinter: Codable, Identifiable, Hashable, Sendable {

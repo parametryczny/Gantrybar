@@ -51,7 +51,7 @@ import UniformTypeIdentifiers
         current?.present()
     }
     init(store:PrinterStore,root:URL?=nil) {
-        farm=FarmStore(printers:store,root:root)
+        farm=root==nil ? FarmStore.shared(printers:store) : FarmStore(printers:store,root:root)
         super.init()
         build()
         farm.$files.sink{[weak self] _ in Task{@MainActor in self?.refreshFiles()}}.store(in:&subscriptions)
@@ -67,7 +67,7 @@ import UniformTypeIdentifiers
             for (serial,label) in self.statuses {let t=values[serial];label.stringValue=t?.state.label ?? "Offline"}
         }}.store(in:&subscriptions)
         store.$printers.sink{[weak self] values in Task{@MainActor in
-            guard let self else{return};let ids=values.filter{$0.kind == .bambu}.map(\.serial)
+            guard let self else{return};let ids=values.filter{FarmPrinters.supports($0.kind)}.map(\.serial)
             if ids != self.printerIDs {self.refreshDetails()}
         }}.store(in:&subscriptions)
     }
@@ -113,7 +113,7 @@ import UniformTypeIdentifiers
         root.appearance=AppSettings.shared.appearance
         let main=NSStackView();stack(main);main.spacing=GantryTheme.cardGap;main.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(main)
         NSLayoutConstraint.activate([main.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:16),main.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-16),main.topAnchor.constraint(equalTo:root.topAnchor,constant:16),main.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-14)])
-        fill(label("Wybierz plik i drukarki. Wyślij teraz — rozpocznij druk, gdy stół będzie gotowy.",11),in:main)
+        fill(label("Wybierz plik i drukarki. Wyślij teraz — rozpocznij druk, gdy stół będzie gotowy. 3MF trafia na Bambu Lab, G-code na Klipper, Prusa i OctoPrint.",11),in:main)
         let columns=NSStackView();columns.orientation = .horizontal;columns.alignment = .top;columns.spacing=GantryTheme.cardGap;fill(columns,in:main)
         let left=scroll(library),middle=scroll(details),right=scroll(destinations)
         [left,middle,right].forEach{columns.addArrangedSubview($0);$0.heightAnchor.constraint(equalTo:columns.heightAnchor).isActive=true}
@@ -123,12 +123,12 @@ import UniformTypeIdentifiers
         send.image=NSImage(systemSymbolName:"tray.and.arrow.up",accessibilityDescription:nil);send.imagePosition = .imageLeading
         send.widthAnchor.constraint(equalToConstant:192).isActive=true
         let refresh=FarmActionButton("Odśwież AMS"){[weak self] in self?.refreshDetails()};refresh.widthAnchor.constraint(equalToConstant:114).isActive=true
-        let actions=NSStackView(views:[label("Przeciągnij pocięty plik .3mf do tego panelu",10),NSView(),refresh,send]);actions.spacing=8;fill(actions,in:main)
+        let actions=NSStackView(views:[label("Przeciągnij pocięty plik .3mf lub .gcode do tego panelu",10),NSView(),refresh,send]);actions.spacing=8;fill(actions,in:main)
         let jobs=scroll(history);fill(jobs,in:main);jobs.heightAnchor.constraint(equalToConstant:210).isActive=true
         notice.font = .systemFont(ofSize:11);notice.textColor=GantryTheme.secondary;fill(notice,in:main)
         refreshFiles();refreshDetails();refreshHistory()
     }
-    private func chooseFiles(){let p=NSOpenPanel();p.allowsMultipleSelection=true;p.allowedContentTypes=[UTType(filenameExtension:"3mf") ?? .data];if p.runModal() == .OK {importURLs(p.urls)}}
+    private func chooseFiles(){let p=NSOpenPanel();p.allowsMultipleSelection=true;p.allowedContentTypes=["3mf","gcode","bgcode"].compactMap{UTType(filenameExtension:$0)};if p.runModal() == .OK {importURLs(p.urls)}}
     private func importURLs(_ urls:[URL]){Task{for url in urls {await farm.importFile(url)};selected=farm.files.last?.id;refreshFiles();refreshDetails()}}
     private func refreshFiles(){
         clear(library);fill(section("PLIKI","doc.on.doc"),in:library)
@@ -138,9 +138,9 @@ import UniformTypeIdentifiers
             b.lineBreakMode = .byTruncatingMiddle;b.toolTip=file.name;b.alignment = .left
             if selected==file.id {b.layer?.backgroundColor=GantryTheme.accent.withAlphaComponent(0.12).cgColor;b.layer?.borderColor=GantryTheme.accent.withAlphaComponent(0.35).cgColor}
             fill(b,in:library)
-            fill(label("Płyty: \(file.plates.count) · \(ByteCountFormatter.string(fromByteCount:Int64(file.bytes),countStyle:.file))",11),in:library)
+            fill(label((file.isGcode ? "G-code":"Płyty: \(file.plates.count)")+" · \(ByteCountFormatter.string(fromByteCount:Int64(file.bytes),countStyle:.file))",11),in:library)
         }
-        if farm.files.isEmpty {fill(label("Dodaj plik z Bambu Studio:\nPlik → Eksportuj → Eksportuj pociętą płytę."),in:library)}
+        if farm.files.isEmpty {fill(label("Dodaj plik z Bambu Studio:\nPlik → Eksportuj → Eksportuj pociętą płytę.\nAlbo G-code z PrusaSlicera, Orki lub Cury."),in:library)}
     }
     private var selection:(FarmFile,FarmPlate)? {
         guard let file=farm.files.first(where:{$0.id==selected}),let plate=file.plates.first(where:{$0.index==plateIndex}) ?? file.plates.first else{return nil};return(file,plate)
@@ -149,11 +149,11 @@ import UniformTypeIdentifiers
     @objc private func changePlate(_ sender:NSPopUpButton){plateIndex=sender.selectedItem?.tag ?? 1;refreshDetails()}
     private func refreshDetails(){
         clear(details);clear(destinations);checks=[:];mappings=[:];statuses=[:];armChecks=[:]
-        printerIDs=farm.printers.printers.filter{$0.kind == .bambu}.map(\.serial)
-        guard let (file,plate)=selection else{fill(section("PODGLĄD PŁYTY","square.3.layers.3d"),in:details);fill(label("Dodaj pocięty plik 3MF, aby zobaczyć płytę, materiały i czas druku.",12),in:details);return}
+        printerIDs=farm.printers.printers.filter{FarmPrinters.supports($0.kind)}.map(\.serial)
+        guard let (file,plate)=selection else{fill(section("PODGLĄD PŁYTY","square.3.layers.3d"),in:details);fill(label("Dodaj pocięty plik 3MF lub G-code, aby zobaczyć płytę, materiały i czas druku.",12),in:details);return}
         plateIndex=plate.index
         fill(section("PODGLĄD PŁYTY","square.3.layers.3d"),in:details);fill(label(file.name,13,true),in:details)
-        let plates=NSPopUpButton();for p in file.plates {plates.addItem(withTitle:"Płyta \(p.index)");plates.lastItem?.tag=p.index};plates.selectItem(withTag:plate.index);plates.target=self;plates.action=#selector(changePlate);stylePopup(plates);fill(plates,in:details)
+        if !file.isGcode {let plates=NSPopUpButton();for p in file.plates {plates.addItem(withTitle:"Płyta \(p.index)");plates.lastItem?.tag=p.index};plates.selectItem(withTag:plate.index);plates.target=self;plates.action=#selector(changePlate);stylePopup(plates);fill(plates,in:details)}
         let image=NSImageView();image.imageScaling = .scaleProportionallyUpOrDown;image.image=NSImage(contentsOf:farm.previewURL(file.id,plate:plate.index));image.heightAnchor.constraint(equalToConstant:160).isActive=true;fill(card(image,inset:0),in:details)
         if image.image==nil {fill(label("Plik nie zawiera miniatury tej płyty."),in:details)}
         if let seconds=plate.seconds {fill(label("Czas według slicera: \(seconds/3600) h \((seconds%3600)/60) min"),in:details)}
@@ -166,9 +166,9 @@ import UniformTypeIdentifiers
         enqueue.image=NSImage(systemSymbolName:"text.badge.plus",accessibilityDescription:nil);enqueue.imagePosition = .imageLeading
         stepperAction=StepperAction(stepper){[weak self,weak count] value in self?.copies=value;count?.stringValue="Kopie: \(value)"}
         let row=NSStackView(views:[count,stepper,NSView(),enqueue]);row.spacing=8;fill(row,in:details)
-        fill(label("Kolejka wysyła kopie na drukarki oznaczone „Stół pusty”, z pasującym materiałem i kolorem w AMS, i sama uruchamia druk.",11),in:details)
+        fill(label(file.isGcode ? "Kolejka wysyła kopie G-code tylko na zaznaczone drukarki oznaczone „Stół pusty” i sama uruchamia druk.":"Kolejka wysyła kopie na drukarki oznaczone „Stół pusty”, z pasującym materiałem i kolorem w AMS, i sama uruchamia druk.",11),in:details)
         fill(section("DRUKARKI","printer"),in:destinations)
-        for printer in farm.printers.printers where printer.kind == .bambu {
+        for printer in farm.printers.printers where FarmPrinters.supports(printer.kind) && FarmPrinters.accepts(printer,file) {
             let printerCard=NSStackView();stack(printerCard)
             let check=NSButton(checkboxWithTitle:printer.name,target:nil,action:nil);checks[printer.serial]=check;check.font = .systemFont(ofSize:12,weight:.semibold);check.contentTintColor=GantryTheme.text;fill(check,in:printerCard)
             let status=label(farm.printers.telemetry[printer.serial]?.state.label ?? "Offline",11);statuses[printer.serial]=status;fill(status,in:printerCard)
@@ -176,7 +176,7 @@ import UniformTypeIdentifiers
             arm.identifier=NSUserInterfaceItemIdentifier(printer.serial);arm.font = .systemFont(ofSize:11);arm.contentTintColor=GantryTheme.text
             arm.state=farm.armed.contains(printer.serial) ? .on:.off;armChecks[printer.serial]=arm;fill(arm,in:printerCard)
             var choices:[Int:NSPopUpButton]=[:]
-            for f in plate.filaments {
+            for f in plate.filaments where !file.isGcode {
                 fill(label("Filament \(f.id) · \(f.material)",11),in:printerCard)
                 let popup=NSPopUpButton();popup.addItem(withTitle:"Wybierz źródło…");popup.lastItem?.tag = -2
                 if plate.filaments.count==1 {popup.addItem(withTitle:"Szpula zewnętrzna");popup.lastItem?.tag = -1}
@@ -190,7 +190,7 @@ import UniformTypeIdentifiers
             mappings[printer.serial]=choices
             fill(card(printerCard,inset:10),in:destinations)
         }
-        if printerIDs.isEmpty {fill(label("Dodaj drukarkę Bambu Lab w Gantry."),in:destinations)}
+        if !farm.printers.printers.contains(where:{FarmPrinters.accepts($0,file)}) {fill(label(file.isGcode ? "Dodaj drukarkę Klipper, Prusa lub OctoPrint w Gantry.":"Dodaj drukarkę Bambu Lab w Gantry."),in:destinations)}
     }
     private func sendSelected(){
         guard let(file,plate)=selection else{return}
@@ -200,8 +200,8 @@ import UniformTypeIdentifiers
         for printer in targets {
             let options=mappings[printer.serial] ?? [:]
             if options.values.contains(where:{$0.selectedItem?.tag == -2}) {farm.notice="Wybierz źródła filamentów dla \(printer.name).";return}
-            var mapping=Array(repeating:-1,count:plate.filaments.map(\.id).max() ?? 0)
-            for f in plate.filaments {mapping[f.id-1]=options[f.id]?.selectedItem?.tag ?? -1}
+            var mapping=Array(repeating:-1,count:file.isGcode ? 0 : plate.filaments.map(\.id).max() ?? 0)
+            for f in plate.filaments where !file.isGcode {mapping[f.id-1]=options[f.id]?.selectedItem?.tag ?? -1}
             if mapping.allSatisfy({$0 == -1}) {mapping=[]}
             plans.append((printer,mapping))
         }
@@ -217,9 +217,10 @@ import UniformTypeIdentifiers
     }
     private func confirmEnqueue(){
         guard let(file,plate)=selection else{return}
-        let targets=farm.printers.printers.filter{$0.kind == .bambu && checks[$0.serial]?.state == .on}
+        let targets=farm.printers.printers.filter{FarmPrinters.accepts($0,file) && checks[$0.serial]?.state == .on}
+        if file.isGcode && targets.isEmpty {farm.notice="Zaznacz drukarki, pod które pocięto ten G-code.";return}
         let alert=NSAlert();alert.messageText="Dodać do kolejki \(copies) × \(file.name)?"
-        alert.informativeText="Płyta \(plate.index) · "+(targets.isEmpty ? "dowolna drukarka Bambu Lab":"tylko: "+targets.map(\.name).joined(separator:", "))+"\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty, a w AMS będzie ten sam materiał w podobnym kolorze. Druk startuje wtedy sam."
+        alert.informativeText=(file.isGcode ? "G-code · ":"Płyta \(plate.index) · ")+(targets.isEmpty ? "dowolna drukarka Bambu Lab":"tylko: "+targets.map(\.name).joined(separator:", "))+(file.isGcode ? "\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty. Druk startuje wtedy sam.":"\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty, a w AMS będzie ten sam materiał w podobnym kolorze. Druk startuje wtedy sam.")
         alert.addButton(withTitle:"Dodaj do kolejki");alert.addButton(withTitle:"Anuluj")
         let profile=NSButton(checkboxWithTitle:"Profil pliku i dysza pasują do tych drukarek",target:nil,action:nil);profile.frame=NSRect(x:0,y:0,width:390,height:24);alert.accessoryView=profile
         guard alert.runModal() == .alertFirstButtonReturn else{return}

@@ -172,6 +172,8 @@ final class PrinterStore: ObservableObject {
         guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return }
         if kind == .klipper {
             sendGcode(serial: serial, script: line)
+        } else if kind == .octoprint {
+            (clients[serial] as? OctoPrintClient)?.sendGcode(line.components(separatedBy: "\n").filter { !$0.isEmpty })
         } else if kind == .bambu {
             let payload: [String: Any] = ["print": [
                 "sequence_id": "2006", "command": "gcode_line", "param": line + "\n"
@@ -180,6 +182,64 @@ final class PrinterStore: ObservableObject {
                   let json = String(data: data, encoding: .utf8) else { return }
             sendCommand(serial: serial, json: json)
         }
+    }
+
+    enum PrintAction: Sendable { case pause, resume, stop }
+
+    /// Pause, resume or stop the current print, for every brand that takes one of these.
+    func sendPrintAction(_ action: PrintAction, serial: String) {
+        guard let printer = printers.first(where: { $0.serial == serial }) else { return }
+        switch printer.kind {
+        case .octoprint:
+            let client = clients[serial] as? OctoPrintClient
+            switch action {
+            case .pause: client?.job(.pause)
+            case .resume: client?.job(.resume)
+            case .stop: client?.job(.cancel)
+            }
+        case .prusa:
+            (clients[serial] as? PrusaLinkClient)?.job(action == .pause ? .pause : action == .resume ? .resume : .stop)
+        default:
+            // The automation path already speaks every other brand's pause/resume/stop.
+            let mapped: AutomationAction = action == .pause ? .pause : action == .resume ? .resume : .stop
+            runAutomation(PrinterAutomation(name: "control", trigger: .manual, action: mapped), serial: serial)
+        }
+    }
+
+    /// Kinds whose motion, temperatures and fans Gantry drives with G-code.
+    func acceptsGcode(serial: String) -> Bool {
+        guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return false }
+        switch kind {
+        case .klipper, .octoprint: return true
+        case .bambu: return !requiresSignedCommands(serial: serial)
+        default: return false
+        }
+    }
+
+    /// A relative move of the print head, in millimetres. Only while nothing is printing.
+    func jog(serial: String, x: Double = 0, y: Double = 0, z: Double = 0) {
+        guard acceptsGcode(serial: serial), isMotionSafe(serial: serial) else { return }
+        func mm(_ value: Double) -> String { String(format: "%.2f", value) }
+        var axes: [String] = []
+        if x != 0 { axes.append("X" + mm(x)) }
+        if y != 0 { axes.append("Y" + mm(y)) }
+        if z != 0 { axes.append("Z" + mm(z)) }
+        guard !axes.isEmpty else { return }
+        let feed = z != 0 && x == 0 && y == 0 ? 600 : 3000
+        sendPrinterGcode(serial: serial, line: "G91\nG1 \(axes.joined(separator: " ")) F\(feed)\nG90")
+    }
+
+    /// Homes the given axes ("" for all). Only while nothing is printing.
+    func home(serial: String, axes: String = "") {
+        guard acceptsGcode(serial: serial), isMotionSafe(serial: serial) else { return }
+        let list = axes.uppercased().filter { "XYZ".contains($0) }.map { String($0) }.joined(separator: " ")
+        sendPrinterGcode(serial: serial, line: list.isEmpty ? "G28" : "G28 \(list)")
+    }
+
+    /// Motion is refused mid-print: a jog then would ruin the part, or worse, crash the nozzle into it.
+    func isMotionSafe(serial: String) -> Bool {
+        guard let state = telemetry[serial]?.state else { return false }
+        return state == .idle || state == .finished
     }
 
     func setNozzleTemperature(serial: String, celsius: Int) {
@@ -198,9 +258,9 @@ final class PrinterStore: ObservableObject {
         let value = Int((Double(max(0, min(100, percent))) * 2.55).rounded())
         guard let kind = printers.first(where: { $0.serial == serial })?.kind else { return }
         lastControlArea[serial] = .fans
-        if kind == .klipper {
+        if kind == .klipper || kind == .octoprint {
             guard index == 1 else { return }
-            sendGcode(serial: serial, script: "M106 S\(value)")
+            sendPrinterGcode(serial: serial, line: "M106 S\(value)")
         } else if kind == .bambu {
             sendPrinterGcode(serial: serial, line: "M106 P\(index) S\(value)")
         }
@@ -339,8 +399,8 @@ final class PrinterStore: ObservableObject {
                         : PrinterOverridesStore.shared.overrides(for: serial).ledOff
         if let custom, !custom.isEmpty {
             let kind = printers.first(where: { $0.serial == serial })?.kind
-            if kind == .klipper {
-                sendGcode(serial: serial, script: custom)
+            if kind == .klipper || kind == .octoprint {
+                sendPrinterGcode(serial: serial, line: custom)
             } else if kind == .elegooCC1 || kind == .elegooCC2 {
                 _ = sendElegooRaw(serial: serial, json: custom)
             } else {
@@ -357,6 +417,9 @@ final class PrinterStore: ObservableObject {
             sendElegooMethod(serial: serial, method: 1029, params: ["power": on ? 1 : 0])
         case .anycubicKobraS1:
             (clients[serial] as? AnycubicS1Client)?.setLight(on)
+        case .octoprint, .prusa, .snapmaker:
+            // No standard light command; a per-printer override above can supply one.
+            break
         default:
             let mode = on ? "on" : "off"
             sendCommand(serial: serial, json: "{\"system\":{\"sequence_id\":\"2003\",\"command\":\"ledctrl\",\"led_node\":\"chamber_light\",\"led_mode\":\"\(mode)\",\"led_on_time\":500,\"led_off_time\":500,\"loop_times\":0,\"interval_time\":0}}")
@@ -370,6 +433,11 @@ final class PrinterStore: ObservableObject {
         let isKlipper = printer?.kind == .klipper
 
         func printCommand(bambu: String, klipperMacro: String) {
+            if printer?.kind == .octoprint || printer?.kind == .prusa {
+                let action: PrintAction = bambu.contains("\"pause\"") ? .pause : bambu.contains("\"resume\"") ? .resume : .stop
+                sendPrintAction(action, serial: serial)
+                return
+            }
             if isKlipper { sendGcode(serial: serial, script: klipperMacro) }
             else if printer?.kind == .elegooCC1 {
                 let command = bambu.contains("\"pause\"") ? 129 : bambu.contains("\"resume\"") ? 131 : 130
@@ -392,7 +460,7 @@ final class PrinterStore: ObservableObject {
         case .command(let payload):
             // Bambu: raw MQTT JSON. Klipper: raw G-code line.
             guard allowCodeAction(auto, printerName: name) else { break }
-            if isKlipper { sendGcode(serial: serial, script: payload) }
+            if isKlipper || printer?.kind == .octoprint { sendPrinterGcode(serial: serial, line: payload) }
             else if printer?.kind == .elegooCC1 || printer?.kind == .elegooCC2 { _ = sendElegooRaw(serial: serial, json: payload) }
             else { sendCommand(serial: serial, json: payload) }
         case .script(let content):
@@ -551,6 +619,36 @@ final class PrinterStore: ObservableObject {
             model: "Klipper",
             host: cleanHost,
             kind: .klipper,
+            port: port,
+            apiKey: nil
+        )
+        if let index = printers.firstIndex(where: { $0.serial == identifier }) {
+            printers[index] = printer
+        } else {
+            printers.append(printer)
+        }
+        telemetry[identifier] = PrinterTelemetry()
+        persistence.save(printers)
+        reconnect(printer)
+    }
+
+    func addOctoPrint(name: String, host: String, port: Int?, apiKey: String?) throws {
+        let cleanHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanHost.isEmpty else {
+            throw ValidationError(AppSettings.shared.t("Enter the IP address of the {0} printer.", "OctoPrint"))
+        }
+        guard !(apiKey ?? "").trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw ValidationError(AppSettings.shared.t("Enter the OctoPrint API key."))
+        }
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let identifier = "octoprint-\(cleanHost)"
+        storeSecret(apiKey, for: identifier)
+        let printer = SavedPrinter(
+            serial: identifier,
+            name: cleanName.isEmpty ? "OctoPrint \(cleanHost)" : cleanName,
+            model: "OctoPrint",
+            host: cleanHost,
+            kind: .octoprint,
             port: port,
             apiKey: nil
         )
@@ -735,6 +833,8 @@ final class PrinterStore: ObservableObject {
             client = MoonrakerClient(printer: hydratedWithSecret(printer), objects: objects, onEvent: handler)
         case .prusa:
             client = PrusaLinkClient(printer: hydratedWithSecret(printer), onEvent: handler)
+        case .octoprint:
+            client = OctoPrintClient(printer: hydratedWithSecret(printer), onEvent: handler)
         case .snapmaker:
             client = SnapmakerClient(printer: printer, onEvent: handler)
         case .elegooCC1:
@@ -885,7 +985,7 @@ final class PrinterStore: ObservableObject {
         var changed = false
         for index in printers.indices {
             let printer = printers[index]
-            guard printer.kind == .klipper || printer.kind == .prusa,
+            guard printer.kind == .klipper || printer.kind == .prusa || printer.kind == .octoprint,
                   let key = printer.apiKey, !key.isEmpty else { continue }
             try? AccessCodeStore.save(accessCode: key, for: printer.serial)
             printers[index].apiKey = nil

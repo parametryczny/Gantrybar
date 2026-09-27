@@ -90,6 +90,11 @@ final class PrinterDetailViewController: NSViewController {
     /// Reported whenever the cards change the height the panel needs, so the popover can follow.
     var onPreferredContentSize: ((NSSize) -> Void)?
     private var popoverHeightConstraint: NSLayoutConstraint?
+    private var popoverWidthConstraint: NSLayoutConstraint?
+    /// Printer control: slides out beside the details in the popover, always shown in the window.
+    private var controlPanel: PrinterControlPanelView?
+    private let controlButton = NSButton()
+    private var popoverWidth: CGFloat { Self.popoverContentWidth + (controlPanel?.isHidden == false ? PrinterControlPanelView.width : 0) }
     private var hasReportedSize = false
     private weak var headerRow: NSView?
     /// The height the panel used to be nailed to. It survives as a floor, so a short detail view
@@ -131,15 +136,43 @@ final class PrinterDetailViewController: NSViewController {
         if presentation == .popover {
             let height = root.heightAnchor.constraint(equalToConstant: Self.minimumPopoverHeight)
             popoverHeightConstraint = height
-            NSLayoutConstraint.activate([
-                root.widthAnchor.constraint(equalToConstant: Self.popoverContentWidth),
-                height
-            ])
+            let width = root.widthAnchor.constraint(equalToConstant: Self.popoverContentWidth)
+            popoverWidthConstraint = width
+            NSLayoutConstraint.activate([width, height])
         }
+        // The details keep their own column; the control panel sits to its right.
+        let column = NSView()
+        column.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(column)
+        var closePanel: (() -> Void)?
+        if presentation == .popover { closePanel = { [weak self] in self?.toggleControlPanel() } }
+        let panel = PrinterControlPanelView(store: store, serial: serial, onClose: closePanel)
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.isHidden = presentation == .popover
+        root.addSubview(panel)
+        controlPanel = panel
+        var columnConstraints = [
+            column.topAnchor.constraint(equalTo: root.topAnchor),
+            column.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            column.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            panel.topAnchor.constraint(equalTo: root.topAnchor),
+            panel.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            panel.leadingAnchor.constraint(equalTo: column.trailingAnchor),
+            panel.widthAnchor.constraint(equalToConstant: PrinterControlPanelView.width)
+        ]
+        if presentation == .popover {
+            columnConstraints.append(column.widthAnchor.constraint(equalToConstant: Self.popoverContentWidth))
+            root.wantsLayer = true
+            root.layer?.masksToBounds = true
+        } else {
+            columnConstraints.append(panel.trailingAnchor.constraint(equalTo: root.trailingAnchor))
+            columnConstraints.append(column.widthAnchor.constraint(greaterThanOrEqualToConstant: 380))
+        }
+        NSLayoutConstraint.activate(columnConstraints)
         let header = makeHeader()
         header.translatesAutoresizingMaskIntoConstraints = false
         headerRow = header
-        root.addSubview(header)
+        column.addSubview(header)
 
         let scroll = NSScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -153,18 +186,18 @@ final class PrinterDetailViewController: NSViewController {
         // with overlay scrollers, the usual case, it costs nothing because they never take space.
         scroll.autohidesScrollers = false
         scroll.scrollerStyle = .overlay
-        root.addSubview(scroll)
+        column.addSubview(scroll)
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
+            header.topAnchor.constraint(equalTo: column.topAnchor, constant: 8),
+            header.leadingAnchor.constraint(equalTo: column.leadingAnchor, constant: 14),
             // Tied to the clip view, not to the root, so the header and the cards keep one right
             // edge. Pinned to the root it sat 15 points further out whenever a scroller was taking
             // its lane, which is why "Back" and the state dot did not line up with the cards.
             header.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor, constant: -14),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+            scroll.leadingAnchor.constraint(equalTo: column.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: column.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: column.bottomAnchor)
         ])
 
         let flipped = FlippedView()
@@ -282,7 +315,7 @@ final class PrinterDetailViewController: NSViewController {
             guard changed || !self.hasReportedSize else { return }
             self.hasReportedSize = true
             constraint.constant = target
-            self.onPreferredContentSize?(NSSize(width: Self.popoverContentWidth, height: target))
+            self.onPreferredContentSize?(NSSize(width: self.popoverWidth, height: target))
         }
     }
 
@@ -432,7 +465,22 @@ final class PrinterDetailViewController: NSViewController {
         // The state used to sit at the far right of this row, a whole row away from the printer it
         // described. It now rides next to the name inside the status card, which is where the eye
         // already is, so this row carries only navigation.
-        let row = NSStackView(views: [backButton, skipObjectsButton, NSView()])
+        let navigation = NSStackView(views: [backButton, skipObjectsButton])
+        navigation.orientation = .horizontal
+        navigation.spacing = 7
+        var views: [NSView] = [navigation, NSView()]
+        if presentation == .popover {
+            controlButton.title = AppSettings.shared.t("Control")
+            controlButton.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: nil)
+            controlButton.imagePosition = .imageLeading
+            controlButton.bezelStyle = .accessoryBar
+            controlButton.setButtonType(.pushOnPushOff)
+            controlButton.controlSize = .small
+            controlButton.target = self
+            controlButton.action = #selector(controlPressed)
+            views.append(controlButton)
+        }
+        let row = NSStackView(views: views)
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 7
@@ -440,6 +488,18 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     @objc private func backPressed() { onBack() }
+    @objc private func controlPressed() { toggleControlPanel() }
+
+    /// Slides the control panel out to the right of the details, or back in. Popover only: in the
+    /// window it is always there.
+    private func toggleControlPanel() {
+        guard presentation == .popover, let panel = controlPanel, let width = popoverWidthConstraint else { return }
+        panel.isHidden.toggle()
+        controlButton.state = panel.isHidden ? .off : .on
+        width.constant = popoverWidth
+        let height = popoverHeightConstraint?.constant ?? Self.minimumPopoverHeight
+        onPreferredContentSize?(NSSize(width: popoverWidth, height: height))
+    }
     @objc private func skipObjectsPressed() { onSkipObjects() }
 
     /// Asks what is wrong with what the camera is showing and keeps that frame under the answer.

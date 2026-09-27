@@ -328,6 +328,7 @@ final class GantryWebServer {
         case .bambu: "MQTT"
         case .klipper: "KLIPPER"
         case .prusa: "PRUSALINK"
+        case .octoprint: "OCTOPRINT"
         case .snapmaker: "HTTP"
         case .elegooCC1: "SDCP"
         case .elegooCC2, .anycubicKobraS1: "MQTT LAN"

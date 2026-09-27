@@ -3,15 +3,39 @@ import Combine
 
 @MainActor protocol FarmTransport {
     func upload(printer: SavedPrinter, file: URL, remoteName: String, progress: @escaping @Sendable (Double) -> Void) async throws
+    /// Bambu: the project_file command over MQTT.
     func send(serial: String, json: String) throws
+    /// Klipper, PrusaLink, OctoPrint: start a file already on the printer.
+    func startFile(printer: SavedPrinter, remoteName: String) async throws
+}
+extension FarmTransport {
+    func startFile(printer: SavedPrinter, remoteName: String) async throws {
+        throw FarmError(message: "Ta drukarka nie obsługuje startu pliku.")
+    }
 }
 @MainActor private struct LiveFarmTransport: FarmTransport {
     let printers: PrinterStore
     func upload(printer: SavedPrinter, file: URL, remoteName: String, progress: @escaping @Sendable (Double) -> Void) async throws {
+        if printer.kind != .bambu {
+            try await PrinterFileTransfer.upload(printer: printer, apiKey: printers.accessCode(for: printer.serial),
+                                                 file: file, remoteName: remoteName, progress: progress)
+            return
+        }
         guard let code = printers.accessCode(for: printer.serial), !code.isEmpty else { throw FarmError(message: "Brak kodu dostępu do drukarki.") }
         try await BambuFileClient(host: printer.host, accessCode: code).upload(file: file, remoteName: remoteName, progress: progress)
     }
     func send(serial: String, json: String) throws { try printers.sendFarmCommand(serial: serial, json: json) }
+    func startFile(printer: SavedPrinter, remoteName: String) async throws {
+        try await PrinterFileTransfer.start(printer: printer, apiKey: printers.accessCode(for: printer.serial), remoteName: remoteName)
+    }
+}
+
+/// Printers the Farm can send files to: Bambu Lab (3MF over FTPS) and the HTTP ones (G-code).
+enum FarmPrinters {
+    static func supports(_ kind: PrinterKind) -> Bool { kind == .bambu || PrinterFileTransfer.supports(kind) }
+    static func accepts(_ printer: SavedPrinter, _ file: FarmFile) -> Bool {
+        PrinterFileTransfer.accepts(printer.kind, fileExtension: file.fileExtension)
+    }
 }
 
 @MainActor final class FarmStore: ObservableObject {
@@ -32,6 +56,16 @@ import Combine
     private var storageReady=true
     private let transport: any FarmTransport
     private let holdsPower: Bool
+
+    private static var sharedStore: FarmStore?
+    /// The one library the Farm window and the control panel both use, so they never write index.json
+    /// over each other.
+    static func shared(printers: PrinterStore) -> FarmStore {
+        if let sharedStore { return sharedStore }
+        let store = FarmStore(printers: printers)
+        sharedStore = store
+        return store
+    }
 
     init(printers:PrinterStore,root:URL?=nil,transport:(any FarmTransport)?=nil,holdsPower:Bool=true) {
         self.transport=transport ?? LiveFarmTransport(printers:printers)
@@ -58,14 +92,35 @@ import Combine
         }
     }
     func fileURL(_ id:UUID)->URL { root.appendingPathComponent(id.uuidString+".3mf") }
+    func fileURL(_ file:FarmFile)->URL { root.appendingPathComponent(file.id.uuidString+"."+file.fileExtension) }
     func persist() throws {
         guard storageReady else { throw FarmError(message:"Biblioteka jest niedostępna. Nie można bezpiecznie zapisać zadania.") }
         try JSONEncoder().encode(Snapshot(files:files,jobs:jobs,queue:queue)).write(to:root.appendingPathComponent("index.json"),options:.atomic)
     }
-    func importFile(_ url:URL) async {
+    @discardableResult
+    func importFile(_ url:URL) async -> FarmFile? {
         do {
             guard storageReady else { throw FarmError(message:"Biblioteka jest niedostępna.") }
-            let id=UUID(), dest=fileURL(id)
+            let id=UUID()
+            if FarmGcode.isGcode(url) {
+                let format=FarmGcode.format(url)
+                let dest=root.appendingPathComponent(id.uuidString+"."+format)
+                let preview=previewURL(id,plate:1)
+                let file=try await Task.detached(priority:.userInitiated) {
+                    let resource=try url.resourceValues(forKeys:[.fileSizeKey,.isRegularFileKey])
+                    guard resource.isRegularFile==true,let size=resource.fileSize,size<=512*1024*1024 else { throw FarmError(message:"Wybierz plik G-code do 512 MB.") }
+                    let data=try Data(contentsOf:url,options:.mappedIfSafe)
+                    try data.write(to:dest,options:.atomic)
+                    let plate=format=="gcode" ? FarmGcode.plate(data) : FarmPlate(index:1)
+                    if format=="gcode",let png=FarmGcode.thumbnail(data) { try png.write(to:preview,options:.atomic) }
+                    return FarmFile(id:id,name:url.lastPathComponent,bytes:data.count,plates:[plate],importedAt:Date(),format:format)
+                }.value
+                files.append(file)
+                do { try persist() } catch { files.removeAll{$0.id==id};throw error }
+                notice="Dodano \(file.name) · G-code."
+                return file
+            }
+            let dest=fileURL(id)
             let file=try await Task.detached(priority:.userInitiated) {
                 let resource=try url.resourceValues(forKeys:[.fileSizeKey,.isRegularFileKey])
                 guard resource.isRegularFile==true,let size=resource.fileSize,size<=512*1024*1024 else { throw FarmError(message:"Wybierz plik 3MF do 512 MB.") }
@@ -80,17 +135,20 @@ import Combine
             files.append(file)
             do { try persist() } catch { files.removeAll{$0.id==id};throw error }
             notice="Dodano \(file.name) · \(file.plates.count) płyt."
-        } catch { notice=error.localizedDescription }
+            return file
+        } catch { notice=error.localizedDescription;return nil }
     }
     func previewURL(_ id:UUID,plate:Int)->URL { fileURL(id).deletingPathExtension().appendingPathExtension("plate-\(plate).png") }
     func upload(file:FarmFile,plate:FarmPlate,printer:SavedPrinter,mapping:[Int],queueItemID:UUID?=nil,autoStart:Bool=false) throws {
-        guard printer.kind == .bambu else { throw FarmError(message:"Wysyłanie obsługuje obecnie drukarki Bambu Lab.") }
+        guard FarmPrinters.supports(printer.kind) else { throw FarmError(message:"Ta drukarka nie przyjmuje plików z Gantry.") }
+        guard FarmPrinters.accepts(printer,file) else { throw FarmError(message:"\(printer.name): ten plik nie pasuje do drukarki. 3MF drukują Bambu Lab, G-code — Klipper, Prusa i OctoPrint.") }
         guard !jobs.contains(where:{$0.serial==printer.serial && $0.state == .uploading}) else { throw FarmError(message:"Ta drukarka już odbiera plik.") }
         let id=UUID(),date=Date()
-        let job=FarmJob(id:id,fileID:file.id,fileName:file.name,serial:printer.serial,printerName:printer.name,plate:plate,mapping:mapping,remoteName:"gantry-\(id.uuidString).3mf",state:.uploading,message:"Wysyłanie…",createdAt:date,updatedAt:date,queueItemID:queueItemID,autoStart:autoStart ? true:nil)
+        let remoteName=file.isGcode ? "gantry-\(id.uuidString.prefix(8).lowercased()).\(file.fileExtension)" : "gantry-\(id.uuidString).3mf"
+        let job=FarmJob(id:id,fileID:file.id,fileName:file.name,serial:printer.serial,printerName:printer.name,plate:plate,mapping:mapping,remoteName:remoteName,state:.uploading,message:"Wysyłanie…",createdAt:date,updatedAt:date,queueItemID:queueItemID,autoStart:autoStart ? true:nil)
         jobs.insert(job,at:0)
         do {try persist()} catch {jobs.removeAll{$0.id==id};throw error}
-        let hold=holdsPower ? KeepAwake.shared.beginOperation() : nil,url=fileURL(file.id)
+        let hold=holdsPower ? KeepAwake.shared.beginOperation() : nil,url=file.isGcode ? fileURL(file) : fileURL(file.id)
         let transport=self.transport
         tasks[id]=Task { [weak self] in
             defer { if let hold { KeepAwake.shared.endOperation(hold) };self?.tasks.removeValue(forKey:id);self?.progress.removeValue(forKey:id) }
@@ -110,8 +168,15 @@ import Combine
     // MARK: Queue
     func enqueue(file:FarmFile,plate:FarmPlate,copies:Int,printers serials:[String]) throws {
         guard (1...99).contains(copies) else { throw FarmError(message:"Liczba kopii: od 1 do 99.") }
-        guard !plate.filaments.isEmpty else { throw FarmError(message:"Brak informacji o filamentach w pliku. Kolejka dobiera AMS po materiale i kolorze.") }
-        let item=FarmQueueItem(id:UUID(),fileID:file.id,fileName:file.name,plate:plate,copies:copies,printers:serials,createdAt:Date())
+        if file.isGcode {
+            guard !serials.isEmpty else { throw FarmError(message:"G-code jest pocięty pod konkretną drukarkę. Zaznacz drukarki, które mogą go drukować.") }
+            for serial in serials {
+                guard let printer=printers.printers.first(where:{$0.serial==serial}),FarmPrinters.accepts(printer,file) else { throw FarmError(message:"Zaznaczona drukarka nie drukuje plików \(file.fileExtension).") }
+            }
+        } else {
+            guard !plate.filaments.isEmpty else { throw FarmError(message:"Brak informacji o filamentach w pliku. Kolejka dobiera AMS po materiale i kolorze.") }
+        }
+        let item=FarmQueueItem(id:UUID(),fileID:file.id,fileName:file.name,plate:plate,copies:copies,printers:serials,createdAt:Date(),format:file.format)
         queue.append(item)
         do { try persist() } catch { queue.removeAll{$0.id==item.id};throw error }
         notice="Do kolejki: \(file.name) · płyta \(plate.index) × \(copies)."
@@ -128,7 +193,7 @@ import Combine
     }
     /// The user confirms this printer's bed is empty: the queue may send and start one job on it.
     func arm(_ serial:String) throws {
-        guard printers.printers.contains(where:{$0.serial==serial && $0.kind == .bambu}) else { throw FarmError(message:"Kolejka obsługuje drukarki Bambu Lab.") }
+        guard printers.printers.contains(where:{$0.serial==serial && FarmPrinters.supports($0.kind)}) else { throw FarmError(message:"Kolejka obsługuje drukarki Bambu Lab, Klipper, Prusa i OctoPrint.") }
         if let state=printers.telemetry[serial]?.state,state == .printing || state == .paused { throw FarmError(message:"Drukarka drukuje. Oznacz stół jako pusty po zdjęciu wydruku.") }
         armed.insert(serial)
         reconcile(printers.telemetry)
@@ -139,7 +204,10 @@ import Combine
         // The bed confirmation belonged to this attempt; without it the copy would go straight back out.
         armed.remove(job.serial)
         if let i=queue.firstIndex(where:{$0.id==itemID}) { queue[i].copies+=1 }
-        else { queue.insert(FarmQueueItem(id:itemID,fileID:job.fileID,fileName:job.fileName,plate:job.plate,copies:1,printers:[],createdAt:job.createdAt),at:0) }
+        else {
+            let format=files.first(where:{$0.id==job.fileID})?.format
+            queue.insert(FarmQueueItem(id:itemID,fileID:job.fileID,fileName:job.fileName,plate:job.plate,copies:1,printers:format==nil ? []:[job.serial],createdAt:job.createdAt,format:format),at:0)
+        }
         do { try persist() } catch { notice=error.localizedDescription }
     }
     private func activeJob(on serial:String)->Bool {
@@ -148,9 +216,10 @@ import Combine
     private func dispatchQueue(_ telemetry:[String:PrinterTelemetry]) {
         guard storageReady,!queue.isEmpty else { return }
         for serial in armed.sorted() {
-            guard let printer=printers.printers.first(where:{$0.serial==serial && $0.kind == .bambu}) else { armed.remove(serial);continue }
+            guard let printer=printers.printers.first(where:{$0.serial==serial && FarmPrinters.supports($0.kind)}) else { armed.remove(serial);continue }
             guard !activeJob(on:serial),let t=telemetry[serial],FarmRules.startBlock(t)==nil,!printers.requiresSignedCommands(serial:serial) else { continue }
-            guard let next=FarmRules.nextQueueItem(queue,serial:serial,telemetry:t) else { continue }
+            let kind=printer.kind
+            guard let next=FarmRules.nextQueueItem(queue,serial:serial,telemetry:t,accepts:{ PrinterFileTransfer.accepts(kind,fileExtension:$0 ?? "3mf") }) else { continue }
             let item=queue[next.index]
             guard let file=files.first(where:{$0.id==item.fileID}) else {
                 queue.remove(at:next.index);notice="Usunięto z kolejki \(item.fileName): brak pliku w bibliotece.";try? persist();continue
@@ -179,6 +248,10 @@ import Combine
         if jobs.contains(where:{$0.serial==job.serial && [.awaitingStart,.uncertain,.printing].contains($0.state)}) {return "Poprzednie zadanie tej drukarki wymaga zakończenia lub sprawdzenia."}
         if printers.requiresSignedCommands(serial:job.serial) { return "Drukarka wymaga podpisanych poleceń. Sprawdź tryb LAN / Developer Mode." }
         if let reason=FarmRules.startBlock(printers.telemetry[job.serial]) {return reason}
+        if job.isGcode {
+            if let requested=job.plate.nozzle,let actual=printers.telemetry[job.serial]?.nozzleDiameter,abs(requested-actual)>0.01 {return "Średnica dyszy różni się od profilu pliku."}
+            return nil
+        }
         guard !job.plate.filaments.isEmpty else { return "Brak informacji o filamentach w pliku. Wyeksportuj płytę z Bambu Studio." }
         if job.mapping.isEmpty {
             guard job.plate.filaments.count==1 else {return "Wydruk wielomateriałowy wymaga przypisania AMS."}
@@ -198,6 +271,15 @@ import Combine
         let previous=jobs[i]
         jobs[i].state = .awaitingStart;jobs[i].startRequestedAt=Date();jobs[i].updatedAt=Date();jobs[i].message="Wysłano start. Oczekiwanie na potwierdzenie drukarki…"
         do {try persist()} catch {jobs[i]=previous;throw error}
+        if jobs[i].isGcode {
+            guard let printer=printers.printers.first(where:{$0.serial==jobs[i].serial}) else { throw FarmError(message:"Drukarka została usunięta.") }
+            let remoteName=jobs[i].remoteName,transport=self.transport
+            Task { [weak self] in
+                do { try await transport.startFile(printer:printer,remoteName:remoteName) }
+                catch { self?.update(id,state:.uncertain,message:"Nie potwierdzono startu: \(error.localizedDescription) Sprawdź drukarkę.") }
+            }
+            return
+        }
         do {try transport.send(serial:jobs[i].serial,json:FarmRules.command(jobs[i]))}
         catch {update(id,state:.uncertain,message:"Nie potwierdzono wysłania startu. Sprawdź drukarkę.");throw error}
     }

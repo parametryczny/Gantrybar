@@ -738,7 +738,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                 onOpenAdvanced: { [weak self] in self?.showAdvanced(serial: serial) },
                 onSkipObjects: { [weak self] in self?.showSkipObjects(serial: serial) },
                 presentation: .floatingWindow)
-            floatingDashboard?.present(detail, size: NSSize(width: 480, height: 700))
+            floatingDashboard?.present(detail, size: NSSize(width: 480 + PrinterControlPanelView.width, height: 700))
             return
         }
         let detail = PrinterDetailViewController(

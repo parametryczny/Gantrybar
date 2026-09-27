@@ -306,7 +306,7 @@ final class RemoteBridge {
                          "chamber": Self.json(t.chamberFanPercent)],
                 "speedLevel": Self.json(t.speedLevel),
                 "speedPercent": Self.json(t.speedPercent),
-                "hasCamera": printer.kind != .prusa,
+                "hasCamera": CameraFeedController.supportsCamera(printer.kind),
                 "controllable": controllable,
                 "signingBlocked": signingBlocked,
                 "offersSkipping": mode.allowsControl && store.offersObjectSkipping(serial: printer.serial),

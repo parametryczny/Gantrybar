@@ -134,6 +134,56 @@ struct SmartPlug: Codable, Equatable, Sendable {
         return request
     }
 
+    /// Whether this kind of socket can report its power draw at all.
+    var meters: Bool { kind == .tasmota || kind == .shelly || kind == .shellyRPC }
+
+    /// The request that reads the socket's energy meter, when it has one.
+    func powerRequest(secret: String?) -> URLRequest? {
+        switch kind {
+        case .shellyRPC:
+            return request(on: nil, secret: secret)
+        case .tasmota:
+            guard var request = request(on: nil, secret: secret), let url = request.url,
+                  var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+            parts.queryItems = (parts.queryItems ?? []).map { $0.name == "cmnd" ? URLQueryItem(name: "cmnd", value: "Status 8") : $0 }
+            request.url = parts.url
+            return request
+        case .shelly:
+            let raw = host.trimmingCharacters(in: .whitespacesAndNewlines)
+            let base = raw.contains("://") ? raw : "http://\(raw)"
+            guard let url = URL(string: (base.hasSuffix("/") ? String(base.dropLast()) : base) + "/status") else { return nil }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 6
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            return request
+        case .homeAssistant, .http:
+            return nil
+        }
+    }
+
+    /// Watts out of an energy-meter reply. Nil when the device does not meter this outlet.
+    static func parsePower(kind: Kind, channel: Int, data: Data) -> Double? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        func number(_ value: Any?) -> Double? {
+            if let n = value as? NSNumber { return n.doubleValue }
+            if let text = value as? String { return Double(text) }
+            return nil
+        }
+        switch kind {
+        case .shellyRPC:
+            return number(object["apower"])
+        case .tasmota:
+            let energy = ((object["StatusSNS"] as? [String: Any])?["ENERGY"] as? [String: Any])
+            if let values = energy?["Power"] as? [Any] { return values.indices.contains(channel - 1) ? number(values[channel - 1]) : nil }
+            return number(energy?["Power"])
+        case .shelly:
+            let meters = (object["meters"] as? [[String: Any]]) ?? (object["emeters"] as? [[String: Any]]) ?? []
+            return meters.indices.contains(channel - 1) ? number(meters[channel - 1]["power"]) : nil
+        case .homeAssistant, .http:
+            return nil
+        }
+    }
+
     /// Reads "on" out of a device's reply. Nil when the reply does not say.
     static func parseState(kind: Kind, channel: Int, data: Data) -> Bool? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -192,6 +242,12 @@ final class SmartPlugClient: NSObject, URLSessionTaskDelegate, @unchecked Sendab
         if let problem = plug.problem { throw SmartPlugError.notConfigured(problem) }
         guard let request = plug.request(on: nil, secret: secret) else { return nil }
         return SmartPlug.parseState(kind: plug.kind, channel: plug.channel, data: try await send(request))
+    }
+
+    /// The socket's current draw in watts, or nil when it has no meter.
+    func power() async throws -> Double? {
+        guard plug.problem == nil, let request = plug.powerRequest(secret: secret) else { return nil }
+        return SmartPlug.parsePower(kind: plug.kind, channel: plug.channel, data: try await send(request))
     }
 
     private func send(_ request: URLRequest) async throws -> Data {
