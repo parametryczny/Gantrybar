@@ -540,7 +540,8 @@ class TelegramBot:
         rows.append([self._btn("💡 " + self._t("On"), f"a:lighton:{serial}"),
                      self._btn("🌑 " + self._t("Off"), f"a:lightoff:{serial}"),
                      self._btn("📷 " + self._t("Photo"), f"photo:{serial}")])
-        if self.app.smart_plugs.store.plug(serial) is not None:
+        plugs = getattr(self.app, "smart_plugs", None)
+        if plugs is not None and plugs.store.plug(serial) is not None:
             rows.append([self._btn("🔌 " + self._t("Socket on"), f"a:plugon:{serial}"),
                          self._btn("⭘ " + self._t("Socket off"), f"a:plugoffask:{serial}")])
         rows.append([self._btn("↻ " + self._t("Refresh"), f"p:{serial}"),

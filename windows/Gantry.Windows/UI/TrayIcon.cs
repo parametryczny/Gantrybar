@@ -141,6 +141,7 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Reconnect (all)"), null, (_, _) => _store.ReconnectAll()));
         if (Build.HasExtras)
         {
+            menu.Items.Add(new ToolStripMenuItem("Farma · pliki i wydruki…", null, (_, _) => FarmWindow.ShowFor(_store)));
             menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Diagnostic Center…"), null,
                 (_, _) => ShowAuxiliary(new DiagnosticsWindow(_store))));
             menu.Items.Add(new ToolStripMenuItem(AppSettings.T("Fleet statistics…"), null,

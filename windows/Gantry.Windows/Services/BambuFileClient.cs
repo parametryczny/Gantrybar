@@ -58,6 +58,60 @@ public sealed class BambuFileClient
         }
     }
 
+    /// <summary>Uploads a sliced 3MF to the printer's storage root. Same gate as downloads, a 10-minute
+    /// ceiling for a large file over Wi-Fi, and it completes only after the FTP 226 reply, so "uploaded"
+    /// means the printer has the whole file.</summary>
+    public async Task UploadAsync(string localPath, string remoteName, IProgress<double>? progress, CancellationToken cancel)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(remoteName, "^gantry-[A-Fa-f0-9-]+\\.3mf$"))
+            throw new IOException("Invalid upload name");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        timeout.CancelAfter(TimeSpan.FromMinutes(10));
+        _token = timeout.Token;
+        var gate = HostGates.GetOrAdd(_host, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(_token);
+        try
+        {
+            await OpenControlAsync();
+            await ExpectAsync(220);
+            await SendAsync("USER bblp"); await ExpectAsync(331);
+            await SendAsync($"PASS {_accessCode}"); await ExpectAsync(230);
+            await SendAsync("PBSZ 0"); await ExpectAsync(200);
+            await SendAsync("PROT P"); await ExpectAsync(200);
+            await SendAsync("TYPE I"); await ExpectAsync(200);
+            await SendAsync("PASV");
+            var pasv = await ReadResponseAsync();
+            int port = ParsePasv(pasv.Text) ?? throw new IOException($"bad PASV: {pasv.Text}");
+            using var dataClient = new TcpClient();
+            await dataClient.ConnectAsync(_host, port, _token);
+            await SendAsync($"STOR {remoteName}");
+            using (var dataSsl = new SslStream(dataClient.GetStream(), false, (_, _, _, _) => true))
+            {
+                await dataSsl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = _host }, _token);
+                var mark = await ReadResponseAsync();
+                if (mark.Code is not (150 or 125)) throw new IOException($"STOR rejected: {mark.Code} {mark.Text}");
+                await using var file = File.OpenRead(localPath);
+                long total = Math.Max(1, file.Length), sent = 0;
+                var buffer = new byte[256 * 1024];
+                int read;
+                while ((read = await file.ReadAsync(buffer.AsMemory(), _token)) > 0)
+                {
+                    await dataSsl.WriteAsync(buffer.AsMemory(0, read), _token);
+                    sent += read;
+                    progress?.Report((double)sent / total);
+                }
+                await dataSsl.FlushAsync(_token);
+                try { await dataSsl.ShutdownAsync(); } catch (IOException) { }
+            }
+            await ExpectAsync(226);
+        }
+        finally
+        {
+            Close();
+            gate.Release();
+        }
+    }
+
     private IOException TimedOut() => new($"FTPS transfer from {_host} timed out after {TransferTimeout.TotalSeconds:0} s");
 
     private async Task<byte[]> FetchUncoordinatedAsync(string fileName)

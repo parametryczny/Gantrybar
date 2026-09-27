@@ -1234,7 +1234,8 @@ class Gantry:
         if event == "telemetry":
             self._record_temperature(serial, current)
             self.insights.observe(serial, previous, current)
-            self.smart_plugs.observe(serial, current.state)
+            if getattr(self, "smart_plugs", None) is not None:
+                self.smart_plugs.observe(serial, current.state)
             if self.detail_window is not None and self.detail_window.serial == serial:
                 self.detail_window.update(current)
             if getattr(self, "automations", None) is not None:
