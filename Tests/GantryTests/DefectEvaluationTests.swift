@@ -28,6 +28,17 @@ import Testing
         #expect(folded[(15 * 64 + 25) * 4] == 10)
     }
 
+    @Test func aMovingBedIsNotSmearedIntoOneFrame() {
+        // The whole picture shifts between frames, as on a bed-slinger: no median, pick one frame.
+        func shifted(_ offset: Int) -> [UInt8] {
+            var pixels = [UInt8](repeating: 0, count: 64 * 36 * 4)
+            for i in 0..<(64 * 36) { let v = UInt8(((i % 64) + offset) % 64 * 4); pixels[i * 4] = v; pixels[i * 4 + 1] = v; pixels[i * 4 + 2] = v }
+            return pixels
+        }
+        #expect(FrameComposite.medoidIfSceneMoves([shifted(0), shifted(20), shifted(40)]) != nil)
+        #expect(FrameComposite.medoidIfSceneMoves([frame(headAt: 0), frame(headAt: 20), frame(headAt: 40)]) == nil)
+    }
+
     @Test func oneFrameIsReturnedAsItIs() {
         let jpeg = FrameComposite.encode(frame(headAt: 0), width: 64, height: 36)
         #expect(jpeg != nil)
