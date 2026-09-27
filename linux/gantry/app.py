@@ -360,6 +360,9 @@ class Gantry:
         i18n.set_language(self.language)
         self.printers = self.config.printers
         self.telemetry = {printer.serial: Telemetry() for printer in self.printers}
+        # When each printer last reported, for checks that must not trust a stale status (Farm start).
+        self.telemetry_seen: dict[str, float] = {}
+        self.farm = None
         from .startup import StartupState
         self.startup = StartupState([p.serial for p in self.printers])
         self.connection_reasons: dict[str, str] = {}
@@ -509,6 +512,8 @@ class Gantry:
         reconnect = Gtk.MenuItem(label=i18n.t("Reconnect (all)"))
         reconnect.connect("activate", lambda *_: self.reconnect_all()); menu.append(reconnect)
         if edition.HAS_EXTRAS:
+            farm_item = Gtk.MenuItem(label="Farma · pliki i wydruki…")
+            farm_item.connect("activate", lambda *_: self.open_farm()); menu.append(farm_item)
             diagnostics = Gtk.MenuItem(label=i18n.t("Diagnostic Center…"))
             diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
             stats = Gtk.MenuItem(label=i18n.t("Fleet statistics…"))
@@ -1236,6 +1241,12 @@ class Gantry:
             self.insights.observe(serial, previous, current)
             if getattr(self, "smart_plugs", None) is not None:
                 self.smart_plugs.observe(serial, current.state)
+            if current.state != PrinterState.OFFLINE:
+                if not hasattr(self, "telemetry_seen"):
+                    self.telemetry_seen = {}
+                self.telemetry_seen[serial] = time.time()
+            if getattr(self, "farm", None) is not None:
+                self.farm.reconcile()
             if self.detail_window is not None and self.detail_window.serial == serial:
                 self.detail_window.update(current)
             if getattr(self, "automations", None) is not None:
@@ -1351,6 +1362,10 @@ class Gantry:
             from . import telegram
             telegram.notify(self, printer_name, body, "")
         return False
+
+    def open_farm(self) -> None:
+        from .farmwindow import FarmWindow
+        FarmWindow.show_for(self)
 
     def emergency_power_off(self) -> None:
         from .smartplugdialog import confirm_emergency_off
