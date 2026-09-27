@@ -39,7 +39,7 @@ except (ImportError, ValueError):
 
 #: Brands whose stream Gantry can decode. Anything else would only ever show a black rectangle, so it is
 #: never offered a picture. The same list as macOS CameraFeedController and Windows DockCameraFeed.
-CAMERA_KINDS = frozenset({PrinterKind.BAMBU, PrinterKind.KLIPPER, PrinterKind.ELEGOO_CC1,
+CAMERA_KINDS = frozenset({PrinterKind.BAMBU, PrinterKind.KLIPPER, PrinterKind.OCTOPRINT, PrinterKind.ELEGOO_CC1,
                           PrinterKind.ELEGOO_CC2, PrinterKind.ANYCUBIC_KOBRA_S1})
 
 #: The edge dock draws a picture at most 300 px wide; a 1080p frame scaled on every draw is waste.
@@ -423,6 +423,9 @@ class CameraView(Gtk.Box):
                         return f"http://{host}{path if path.startswith('/') else '/' + path}"
             except Exception:
                 pass
+            return f"http://{host}/webcam/?action=stream"
+        if self.printer.kind == PrinterKind.OCTOPRINT:
+            # OctoPi serves mjpg-streamer on the web port, beside OctoPrint itself.
             return f"http://{host}/webcam/?action=stream"
         return None
 

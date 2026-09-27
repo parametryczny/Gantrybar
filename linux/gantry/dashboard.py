@@ -207,6 +207,20 @@ button.control-step:active { background: alpha(#ffffff, 0.16); }
 button.control-step:disabled { color: alpha(%(muted)s, 0.55); }
 .control-tile { background: alpha(#ffffff, 0.052); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; padding: 6px; }
 .control-notice { color: #ff9f0a; font-size: 11px; font-weight: 500; }
+.control-panel { padding-top: 2px; }
+.panel-hint { color: %(secondary)s; font-size: 11px; }
+.panel-value { color: %(text)s; font-size: 12px; font-weight: 600; }
+.panel-row-title { color: %(text)s; font-size: 12px; font-weight: 500; }
+.panel-glyph { color: %(muted)s; font-size: 11px; }
+button.panel-icon { color: %(text)s; background: alpha(#ffffff, 0.055); border: 1px solid alpha(#ffffff, 0.09); border-radius: 10px; box-shadow: none; min-height: 50px; padding: 4px 2px; }
+button.panel-icon:hover { background: alpha(#ffffff, 0.09); }
+button.panel-icon:disabled { color: alpha(%(muted)s, 0.7); }
+button.panel-icon label { color: inherit; text-shadow: none; }
+button.panel-icon.active { background: alpha(#ffd60a, 0.12); border-color: alpha(#ffd60a, 0.4); color: #ffd60a; }
+button.panel-icon.danger:not(:disabled) { color: #ff453a; }
+.panel-icon-caption { font-size: 10px; font-weight: 600; }
+.drop-zone { background: alpha(#ffffff, 0.045); border: 1px dashed alpha(%(muted)s, 0.8); border-radius: 10px; padding: 8px; }
+.drop-zone.hover { background: alpha(#0a84ff, 0.10); border-color: #0a84ff; }
 entry { padding: 8px; border-radius: 8px; }
 progressbar trough { min-height: 7px; border-radius: 3px; background: %(segment_off)s; }
 progressbar progress { border-radius: 2px; background: %(metric)s; }
@@ -398,7 +412,7 @@ class PrinterCard(Gtk.Frame):
         connection = {PrinterKind.BAMBU: "MQTT", PrinterKind.KLIPPER: "KLIPPER",
                       PrinterKind.PRUSA: "PRUSALINK", PrinterKind.SNAPMAKER: "HTTP",
                       PrinterKind.ELEGOO_CC1: "SDCP", PrinterKind.ELEGOO_CC2: "MQTT LAN",
-                      PrinterKind.ANYCUBIC_KOBRA_S1: "MQTT LAN"}[printer.kind]
+                      PrinterKind.ANYCUBIC_KOBRA_S1: "MQTT LAN", PrinterKind.OCTOPRINT: "OCTOPRINT"}[printer.kind]
         self.connection = Gtk.Label(label=connection)
         self.connection.get_style_context().add_class("connection")
         self.details = self._button("⌁",i18n.t("Details"))
@@ -1171,7 +1185,8 @@ class Dashboard(DesktopPresentation, Gtk.Window):
                 deactivate = getattr(widget, "deactivate", None)
                 if deactivate: deactivate()
                 if self.app.detail_window is widget: self.app.detail_window = None
-            self.show_panel(widget, 480, 700, cleanup=cleanup)
+            # The window always shows the control panel beside the details, so it asks for their width.
+            self.show_panel(widget, getattr(widget, "preferred_width", 480), 700, cleanup=cleanup)
             return
         old = self.stack.get_child_by_name("detail")
         if old is not None:
@@ -1180,7 +1195,7 @@ class Dashboard(DesktopPresentation, Gtk.Window):
             self.stack.remove(old)
         self.stack.add_named(widget, "detail")
         self.stack.show_all(); self.stack.set_visible_child_name("detail")
-        self.resize(480, min(700, self.get_screen().get_height() - 48))
+        self.resize(getattr(widget, "preferred_width", 480), min(700, self.get_screen().get_height() - 48))
 
     def show_fleet(self) -> None:
         self.close_panel()

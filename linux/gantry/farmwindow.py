@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-"""Farm window: sliced 3MF files, sending to Bambu Lab printers with an explicit start, and the queue that
-hands copies to printers marked with an empty bed. Mirrors the macOS Farm window.
+"""Farm window: sliced 3MF files for Bambu Lab and G-code for Klipper, PrusaLink and OctoPrint, sending with
+an explicit start, and the queue that hands copies to printers marked with an empty bed. Mirrors the macOS
+Farm window.
 
 gi is already pinned in app.py.
 """
@@ -12,7 +13,7 @@ from gi.repository import GdkPixbuf, GLib, Gtk  # type: ignore
 
 from . import i18n
 from .core import STATE_LABELS, PrinterKind, PrinterState
-from .farm import FarmError, FarmStore, slot_index
+from .farm import FarmError, printer_accepts, shared, slot_index, supports_printer
 from .panelwindow import panel_header
 
 
@@ -47,8 +48,7 @@ class FarmWindow(Gtk.Window):
 
     @classmethod
     def show_for(cls, app: Any) -> None:
-        if app.farm is None:
-            app.farm = FarmStore(app, on_main=lambda job: GLib.idle_add(lambda: (job(), False)[1]))
+        shared(app)
         if cls._current is not None:
             cls._current.present()
             return
@@ -71,7 +71,7 @@ class FarmWindow(Gtk.Window):
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         root.get_style_context().add_class("settings-root")
-        root.pack_start(_label("Wybierz plik i drukarki. Wyślij teraz — rozpocznij druk, gdy stół będzie gotowy. Albo dodaj do kolejki."),
+        root.pack_start(_label("Wybierz plik i drukarki. Wyślij teraz — rozpocznij druk, gdy stół będzie gotowy. Albo dodaj do kolejki. 3MF trafia na Bambu Lab, G-code na Klipper, Prusa i OctoPrint."),
                         False, False, 0)
         columns = Gtk.Box(spacing=10)
         self.library = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -89,7 +89,7 @@ class FarmWindow(Gtk.Window):
         for text, callback in (("＋ Dodaj pliki…", self._choose_files),):
             button = Gtk.Button(label=text); button.connect("clicked", lambda *_a, c=callback: c())
             actions.pack_start(button, False, False, 0)
-        actions.pack_start(_label("Pliki 3MF: Bambu Studio → Plik → Eksportuj → Eksportuj pociętą płytę"), False, False, 0)
+        actions.pack_start(_label("Pliki 3MF: Bambu Studio → Plik → Eksportuj → Eksportuj pociętą płytę · G-code: PrusaSlicer, Orca, Cura"), False, False, 0)
         for text, callback in (("Wyślij do zaznaczonych", self._send_selected), ("Odśwież AMS", self._refresh_details)):
             button = Gtk.Button(label=text); button.connect("clicked", lambda *_a, c=callback: c())
             actions.pack_end(button, False, False, 0)
@@ -129,10 +129,12 @@ class FarmWindow(Gtk.Window):
     # ------------------------------------------------------------ files
 
     def _choose_files(self) -> None:
-        chooser = Gtk.FileChooserDialog(title="Dodaj pliki 3MF", transient_for=self, action=Gtk.FileChooserAction.OPEN)
+        chooser = Gtk.FileChooserDialog(title="Dodaj pliki 3MF lub G-code", transient_for=self, action=Gtk.FileChooserAction.OPEN)
         chooser.add_buttons("Anuluj", Gtk.ResponseType.CANCEL, "Dodaj", Gtk.ResponseType.ACCEPT)
         chooser.set_select_multiple(True)
-        pattern = Gtk.FileFilter(); pattern.set_name("3MF"); pattern.add_pattern("*.3mf"); pattern.add_pattern("*.3MF")
+        pattern = Gtk.FileFilter(); pattern.set_name("3MF, G-code")
+        for extension in ("3mf", "gcode", "gco", "g", "bgcode"):
+            pattern.add_pattern(f"*.{extension}"); pattern.add_pattern(f"*.{extension.upper()}")
         chooser.add_filter(pattern)
         paths = chooser.get_filenames() if chooser.run() == Gtk.ResponseType.ACCEPT else []
         chooser.destroy()
@@ -154,9 +156,10 @@ class FarmWindow(Gtk.Window):
             button.set_tooltip_text(file["name"])
             button.connect("clicked", lambda _b, f=file: self._select(f))
             self.library.pack_start(button, False, False, 0)
-            self.library.pack_start(_label(f"Płyty: {len(file['plates'])} · {file['bytes'] / 1048576:.1f} MB"), False, False, 0)
+            kind = "G-code" if file.get("format") else f"Płyty: {len(file['plates'])}"
+            self.library.pack_start(_label(f"{kind} · {file['bytes'] / 1048576:.1f} MB"), False, False, 0)
         if not self.farm.files:
-            self.library.pack_start(_label("Dodaj plik z Bambu Studio:\nPlik → Eksportuj → Eksportuj pociętą płytę."), False, False, 0)
+            self.library.pack_start(_label("Dodaj plik z Bambu Studio:\nPlik → Eksportuj → Eksportuj pociętą płytę.\nAlbo G-code z PrusaSlicera, Orki lub Cury."), False, False, 0)
         self.library.show_all()
 
     def _select(self, file: dict[str, Any]) -> None:
@@ -179,18 +182,20 @@ class FarmWindow(Gtk.Window):
         self.details.pack_start(_section("PODGLĄD PŁYTY"), False, False, 0)
         selection = self._selection()
         if selection is None:
-            self.details.pack_start(_label("Dodaj pocięty plik 3MF, aby zobaczyć płytę, materiały i czas druku."), False, False, 0)
+            self.details.pack_start(_label("Dodaj pocięty plik 3MF lub G-code, aby zobaczyć płytę, materiały i czas druku."), False, False, 0)
             self.details.show_all(); self.destinations.show_all()
             return
         file, plate = selection
         self.plate_index = plate["index"]
         self.details.pack_start(_label(file["name"], bold=True), False, False, 0)
-        plates = Gtk.ComboBoxText()
-        for p in file["plates"]:
-            plates.append(str(p["index"]), f"Płyta {p['index']}")
-        plates.set_active_id(str(plate["index"]))
-        plates.connect("changed", lambda combo: self._change_plate(int(combo.get_active_id() or "1")))
-        self.details.pack_start(plates, False, False, 0)
+        gcode = file.get("format") is not None
+        if not gcode:
+            plates = Gtk.ComboBoxText()
+            for p in file["plates"]:
+                plates.append(str(p["index"]), f"Płyta {p['index']}")
+            plates.set_active_id(str(plate["index"]))
+            plates.connect("changed", lambda combo: self._change_plate(int(combo.get_active_id() or "1")))
+            self.details.pack_start(plates, False, False, 0)
         preview = self.farm.preview_path(file["id"], plate["index"])
         if preview.exists():
             try:
@@ -219,12 +224,13 @@ class FarmWindow(Gtk.Window):
         enqueue.connect("clicked", lambda *_: self._confirm_enqueue())
         row.pack_start(enqueue, False, False, 0)
         self.details.pack_start(row, False, False, 0)
-        self.details.pack_start(_label("Kolejka wysyła kopie na drukarki oznaczone „Stół pusty”, z pasującym materiałem i kolorem w AMS, i sama uruchamia druk."),
+        self.details.pack_start(_label("Kolejka wysyła kopie G-code tylko na zaznaczone drukarki oznaczone „Stół pusty” i sama uruchamia druk." if gcode
+                                       else "Kolejka wysyła kopie na drukarki oznaczone „Stół pusty”, z pasującym materiałem i kolorem w AMS, i sama uruchamia druk."),
                                 False, False, 0)
 
         self.destinations.pack_start(_section("DRUKARKI"), False, False, 0)
-        bambu = [p for p in self.app.printers if p.kind == PrinterKind.BAMBU]
-        for printer in bambu:
+        destinations = [p for p in self.app.printers if supports_printer(p.kind) and printer_accepts(p, file)]
+        for printer in destinations:
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             check = Gtk.CheckButton(label=printer.name)
             self.targets[printer.serial] = check
@@ -237,7 +243,7 @@ class FarmWindow(Gtk.Window):
             arm.connect("toggled", self._toggle_arm, printer.serial)
             box.pack_start(arm, False, False, 0)
             choices: dict[int, Gtk.ComboBoxText] = {}
-            for f in plate.get("filaments", []):
+            for f in ([] if gcode else plate.get("filaments", [])):
                 box.pack_start(_label(f"Filament {f['id']} · {f['material']}"), False, False, 0)
                 combo = Gtk.ComboBoxText()
                 combo.append("-2", "Wybierz źródło…")
@@ -252,8 +258,9 @@ class FarmWindow(Gtk.Window):
                 box.pack_start(combo, False, False, 0)
             self.mappings[printer.serial] = choices
             self.destinations.pack_start(_card(box), False, False, 0)
-        if not bambu:
-            self.destinations.pack_start(_label("Dodaj drukarkę Bambu Lab w Gantry."), False, False, 0)
+        if not destinations:
+            self.destinations.pack_start(_label("Dodaj drukarkę Klipper, Prusa lub OctoPrint w Gantry." if gcode
+                                                else "Dodaj drukarkę Bambu Lab w Gantry."), False, False, 0)
         self.details.show_all(); self.destinations.show_all()
 
     def _change_plate(self, index: int) -> None:
@@ -288,7 +295,7 @@ class FarmWindow(Gtk.Window):
             if any(combo.get_active_id() == "-2" for combo in options.values()):
                 self.notice.set_text(f"Wybierz źródła filamentów dla {printer.name}.")
                 return
-            filaments = plate.get("filaments", [])
+            filaments = [] if file.get("format") else plate.get("filaments", [])
             mapping = [-1] * (max((f["id"] for f in filaments), default=0))
             for f in filaments:
                 mapping[f["id"] - 1] = int(options[f["id"]].get_active_id() or "-1") if f["id"] in options else -1
@@ -326,10 +333,15 @@ class FarmWindow(Gtk.Window):
         if selection is None:
             return
         file, plate = selection
-        targets = [p for p in self.app.printers if p.kind == PrinterKind.BAMBU and self.targets.get(p.serial) and self.targets[p.serial].get_active()]
+        gcode = file.get("format") is not None
+        targets = [p for p in self.app.printers if printer_accepts(p, file) and self.targets.get(p.serial) and self.targets[p.serial].get_active()]
+        if gcode and not targets:
+            self.notice.set_text("Zaznacz drukarki, pod które pocięto ten G-code.")
+            return
         where = "dowolna drukarka Bambu Lab" if not targets else "tylko: " + ", ".join(p.name for p in targets)
-        if not self._confirm(f"Dodać do kolejki {self.copies} × {file['name']}?",
-                             f"Płyta {plate['index']} · {where}\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty, a w AMS będzie ten sam materiał w podobnym kolorze. Druk startuje wtedy sam.",
+        detail = (f"G-code · {where}\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty. Druk startuje wtedy sam." if gcode
+                  else f"Płyta {plate['index']} · {where}\nKopia trafi na drukarkę dopiero, gdy oznaczysz jej stół jako pusty, a w AMS będzie ten sam materiał w podobnym kolorze. Druk startuje wtedy sam.")
+        if not self._confirm(f"Dodać do kolejki {self.copies} × {file['name']}?", detail,
                              "Dodaj do kolejki", ["Profil pliku i dysza pasują do tych drukarek"]):
             return
         try:

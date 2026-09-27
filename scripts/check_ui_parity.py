@@ -708,9 +708,11 @@ require("windows/Gantry.Windows/UI/EdgeDockWindow.cs",
 require("linux/gantry/dockcaptions.py",
         rf"CAMERA_MIN_STRIP_WIDTH = {_number(cams['minStripWidth'])}\s*\nCAMERA_MAX_STRIP_WIDTH = {_number(cams['maxStripWidth'])}",
         "GNU/Linux edge-dock picture width band differs from the contract")
+# OctoPrint joined macOS CameraFeedController.supportsCamera with the OctoPrint port (dace57d); the
+# GNU/Linux list follows macOS, and Windows adds it when it gets OctoPrint.
 require("linux/gantry/camera.py",
-        r"CAMERA_KINDS = frozenset\(\{PrinterKind\.BAMBU, PrinterKind\.KLIPPER, PrinterKind\.ELEGOO_CC1,\s*PrinterKind\.ELEGOO_CC2, PrinterKind\.ANYCUBIC_KOBRA_S1\}\)",
-        "GNU/Linux camera brands differ from macOS and Windows")
+        r"CAMERA_KINDS = frozenset\(\{PrinterKind\.BAMBU, PrinterKind\.KLIPPER, PrinterKind\.OCTOPRINT, PrinterKind\.ELEGOO_CC1,\s*PrinterKind\.ELEGOO_CC2, PrinterKind\.ANYCUBIC_KOBRA_S1\}\)",
+        "GNU/Linux camera brands differ from macOS")
 require("linux/gantry/camera.py", r"sink = self\.frame_sink\s*\n\s*if sink is not None:",
         "the GNU/Linux camera cannot hand frames to the edge dock")
 require("linux/gantry/edgedock.py", r"view\.frame_sink = lambda pixbuf",
@@ -1270,11 +1272,23 @@ require(linux_control, rf"CAPSULE_HEIGHT = {capsule['height']}\n[\s\S]*?BUTTON_W
 for linux_label, low, high, step in (("nozzle", *ranges["nozzle"], steps["temperature"]), ("bed", *ranges["bed"], steps["temperature"]),
                                      ("fan", *ranges["fan"], steps["fan"]), ("speed", *ranges["speed"], steps["speed"]),
                                      ("Bambu speed mode", speed_low, speed_high, 1)):
-    require("linux/gantry/details.py", rf"StepperModel\({low}, {high}, {step}\b", f"GNU/Linux {linux_label} capsule range or step differs from the contract")
+    # The setpoints moved out of the detail cards into the control panel beside them (as on macOS in
+    # 824d347); its sliders keep the contract's ranges and steps through the same StepperModel.
+    require("linux/gantry/controlpanel.py", rf"StepperModel\({low}, {high}, {step}\b", f"GNU/Linux {linux_label} control range or step differs from the contract")
 require(linux_control, rf'"command": "{bambu_speed["command"]}"', "GNU/Linux does not send the Bambu speed mode command")
 require("linux/gantry/core.py", r'"fun"[\s\S]*?0x20000000', "GNU/Linux does not read Bambu's command-signing bit")
 require("linux/gantry/mqtt.py", r"parse_command_reply\(payload\)", "GNU/Linux does not read the printer's replies to control commands")
-require("linux/gantry/details.py", r"return wanted and not blocked, blocked", "GNU/Linux shows Bambu controls a signing printer would refuse")
+# The detail cards only read now; the control panel's commands go through app.accepts_gcode, which
+# refuses a Bambu printer that only takes signed commands (control.takes_gcode).
+require("linux/gantry/details.py", r"Setpoints live in the control panel beside the details; these cards only read",
+        "GNU/Linux detail cards show setpoints next to the control panel")
+forbid("linux/gantry/details.py", r"ControlStepper\(", "GNU/Linux detail cards show setpoints next to the control panel")
+require("linux/gantry/control.py", r"return kind == PrinterKind\.BAMBU and not signing_required",
+        "GNU/Linux shows Bambu controls a signing printer would refuse")
+require("linux/gantry/app.py", r"def accepts_gcode[\s\S]{0,400}?takes_gcode\([\s\S]{0,120}?requires_signed_commands\(serial\)",
+        "GNU/Linux does not ask whether a Bambu printer wants signed commands before controlling it")
+require("linux/gantry/controlpanel.py", r"accepts_gcode",
+        "the GNU/Linux control panel does not check whether the printer takes commands")
 require("linux/gantry/app.py", r"M104 S[\s\S]*?M140 S[\s\S]*?M106 P\{index\}[\s\S]*?M220 S", "GNU/Linux is missing the temperature, fan or speed commands")
 # One list of 3MF paths on all three platforms, held by a shared fixture.
 for paths_file, marker in (("Sources/Gantry/Services/BambuFileClient.swift", r"static func candidatePaths"),
