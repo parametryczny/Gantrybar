@@ -27,6 +27,8 @@ from . import i18n
 from .barcodescan import ScannerSession
 from .panelwindow import panel_header
 from .filamentstore import Filament, FilamentStore, TYPES, load_catalog, normalized_hex, save_catalog
+from .printcost import ean_plausible, parse_amount
+from .printcost import load as load_cost
 
 
 def _badge_class(count: int, red_max: int, blue_max: int) -> str:
@@ -444,7 +446,9 @@ class SpoolbaseWindow(Gtk.Window):
 
     def _open_editor(self, item: Filament | None, prefilled_code: str | None = None) -> None:
         dialog = EditorDialog(self, self.store, item, prefilled_code)
-        dialog.run()
+        # Save that failed a check (a price that is not a number) leaves the form open to fix it.
+        while dialog.run() == Gtk.ResponseType.OK and not dialog.saved:
+            pass
         dialog.destroy()
 
     # ---- show / hide ----------------------------------------------------------------------
@@ -543,6 +547,11 @@ class CatalogDialog(Gtk.Dialog):
         self.search.connect("search-changed", lambda _e: self.filter.refilter())
         search_row = Gtk.Box(spacing=8)
         search_row.pack_start(self.search, True, True, 0)
+        # For a label that will not scan, no camera, or a USB scanner that types the code and Enter.
+        typed = Gtk.Button(label=i18n.t("Enter code…"))
+        typed.set_tooltip_text(i18n.t("Type the EAN from the label, or use a USB barcode scanner."))
+        typed.connect("clicked", self._enter_code)
+        search_row.pack_start(typed, False, False, 0)
         scan = Gtk.Button(label=i18n.t("▣  Scan code…"))
         scan.connect("clicked", self._scan_code)
         search_row.pack_start(scan, False, False, 0)
@@ -559,6 +568,11 @@ class CatalogDialog(Gtk.Dialog):
         self.weight.set_value(1000)
         self.weight.set_width_chars(6)
         options.pack_start(self.weight, False, False, 0)
+        price_label = Gtk.Label(label=i18n.t("Price per roll"))
+        price_label.set_tooltip_text(i18n.t("Optional. Used to price the filament in each print's cost."))
+        options.pack_start(price_label, False, False, 0)
+        self.price = Gtk.Entry(width_chars=7)
+        options.pack_start(self.price, False, False, 0)
         content.pack_start(options, False, False, 0)
 
         # id, hexcolor, display, sub, haystack
@@ -599,6 +613,30 @@ class CatalogDialog(Gtk.Dialog):
         self.connect("response", self._on_response)
         self.show_all()
 
+    def _enter_code(self, _button: Gtk.Button) -> None:
+        dialog = Gtk.Dialog(title=i18n.t("Enter the EAN code"), transient_for=self, modal=True)
+        dialog.add_buttons(i18n.t("Cancel"), Gtk.ResponseType.CANCEL, i18n.t("Find"), Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        box = dialog.get_content_area()
+        box.set_spacing(8); box.set_margin_top(12); box.set_margin_bottom(8); box.set_margin_start(14); box.set_margin_end(14)
+        box.pack_start(Gtk.Label(label=i18n.t("The digits under the barcode on the spool or the box."), xalign=0), False, False, 0)
+        entry = Gtk.Entry(activates_default=True, placeholder_text="5901234123457")
+        box.pack_start(entry, False, False, 0)
+        dialog.show_all()
+        code = entry.get_text().strip() if dialog.run() == Gtk.ResponseType.OK else ""
+        dialog.destroy()
+        if not code:
+            return
+        if not ean_plausible(code):
+            warning = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                                        buttons=Gtk.ButtonsType.OK_CANCEL, text=i18n.t("This does not look like a valid EAN"))
+            warning.format_secondary_text(i18n.t("Code {0}: the check digit does not match. Check the digits, or continue anyway.").format(code))
+            proceed = warning.run() == Gtk.ResponseType.OK
+            warning.destroy()
+            if not proceed:
+                return
+        self._handle_code(code)
+
     def _scan_code(self, _button: Gtk.Button) -> None:
         scanner = BarcodeScannerDialog(self, self._handle_code, self.parent_window._pl)
         scanner.run()
@@ -612,6 +650,11 @@ class CatalogDialog(Gtk.Dialog):
         normalized = self._normalize_code(code)
         match = next((entry for entry in self.catalog
                       if self._normalize_code(entry.get("manufacturerCode", "")) == normalized), None)
+        if match is None:
+            # A filament already in stock may carry the EAN in its own field.
+            owned = next((f for f in self.store.filaments if self._normalize_code(f.ean or "") == normalized), None)
+            if owned is not None and owned.catalogID:
+                match = next((entry for entry in self.catalog if entry.get("id") == owned.catalogID), None)
         self.search.set_text(match.get("manufacturerCode", code) if match else code)
         self.filter.refilter()
         if match is not None:
@@ -667,9 +710,15 @@ class CatalogDialog(Gtk.Dialog):
             colorName=entry.get("colorName", ""), colorHex=entry.get("colorHex", "8E8E93"),
             catalogID=entry.get("id"), manufacturerCode=entry.get("manufacturerCode", ""),
             spoolCount=quantity))
+        price = parse_amount(self.price.get_text())
+        if price is not None and definition.pricePerRoll != price:
+            # A price typed here becomes the product's price for the next rolls too.
+            definition.pricePerRoll = price
+            self.store.update(definition)
         physical = getattr(self.parent_window.app, "physical_spools", None)
         if physical is not None:
-            physical.create_rolls(definition.id, quantity, self.weight.get_value())
+            physical.create_rolls(definition.id, quantity, self.weight.get_value(),
+                                  price=price if price is not None else definition.pricePerRoll)
         self.destroy()
 
     def _on_response(self, _dialog: Gtk.Dialog, response: int) -> None:
@@ -721,6 +770,11 @@ class EditorDialog(Gtk.Dialog):
         self.color_name = self._field(content,i18n.t("Colour"), base.colorName)
         self.color_hex = self._field(content, "Hex", base.colorHex)
         self.code = self._field(content,i18n.t("Manufacturer code"), base.manufacturerCode)
+        self.ean = self._field(content, i18n.t("EAN code"), base.ean or "")
+        self.price = self._field(content, i18n.t("Roll price ({0})").format(load_cost(parent.app.config).currency),
+                                 f"{base.pricePerRoll:g}" if base.pricePerRoll is not None else "")
+        self._ean_warned = False
+        self.saved = False
 
         content.pack_start(self._label(i18n.t("Spool count")), False, False, 0)
         self.count = Gtk.SpinButton.new_with_range(0, 9999, 1)
@@ -755,6 +809,18 @@ class EditorDialog(Gtk.Dialog):
     def _on_response(self, _dialog: Gtk.Dialog, response: int) -> None:
         if response != Gtk.ResponseType.OK:
             return
+        ean = "".join(ch for ch in self.ean.get_text() if not ch.isspace() and ch != "-")
+        price_text = self.price.get_text().strip()
+        price = parse_amount(price_text)
+        if price_text and price is None:
+            self._warn(i18n.t("Check the roll price"), i18n.t("Enter a number, e.g. 89.90, or leave it empty."))
+            return
+        if ean and not ean_plausible(ean) and not self._ean_warned:
+            self._ean_warned = True
+            self._warn(i18n.t("This does not look like a valid EAN"),
+                       i18n.t("Code {0}: the check digit does not match. Check the digits, or continue anyway.").format(ean)
+                       + "\n" + i18n.t("Press Save again to keep it as entered."))
+            return
         base = self.original
         updated = Filament(
             brand=self.brand.get_text().strip(),
@@ -767,16 +833,26 @@ class EditorDialog(Gtk.Dialog):
             manufacturerCode=self.code.get_text().strip(),
             spoolCount=int(self.count.get_value()),
             notes=base.notes if base else "",
+            ean=ean or None,
+            pricePerRoll=price,
         )
         if self.is_new:
             updated.catalogID = updated.catalogID or f"custom-{uuid.uuid4().hex}"
             definition = self.store.add(updated)
             physical = getattr(self.parent_window.app, "physical_spools", None)
             if physical is not None and self.weight is not None:
-                physical.create_rolls(definition.id, updated.spoolCount, self.weight.get_value())
+                physical.create_rolls(definition.id, updated.spoolCount, self.weight.get_value(), price=price)
         else:
             self._upsert_catalog(updated)
             self.store.update(updated)
+        self.saved = True
+
+    def _warn(self, title: str, detail: str) -> None:
+        dialog = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                                   buttons=Gtk.ButtonsType.OK, text=title)
+        dialog.format_secondary_text(detail)
+        dialog.run()
+        dialog.destroy()
 
     @staticmethod
     def _upsert_catalog(f: Filament) -> None:

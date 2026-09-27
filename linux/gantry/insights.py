@@ -102,7 +102,8 @@ class PrinterInsights:
                 history.append({"id": str(uuid.uuid4()), "job": job, "startedAt": started.isoformat(),
                                 "endedAt": now.isoformat(), "result": result,
                                 "durationSeconds": max(0.0, (now - started).total_seconds())})
-                record["history"] = history[-100:]
+                # Enough for a year of production statistics and cost reports on a busy printer.
+                record["history"] = history[-1000:]
             record.pop("activeStartedAt", None)
             record.pop("activeJob", None)
         elif not active and current.state != PrinterState.OFFLINE and not was_active:

@@ -29,7 +29,7 @@ _RESUME = '{"print":{"sequence_id":"2004","command":"resume"}}'
 _STOP = '{"print":{"sequence_id":"2004","command":"stop"}}'
 
 TRIGGERS = ("manual", "at_layer", "at_progress", "on_state")
-ACTIONS = ("light_on", "light_off", "pause", "resume", "stop", "notify", "command", "script")
+ACTIONS = ("light_on", "light_off", "pause", "resume", "stop", "notify", "command", "script", "power_on", "power_off")
 _CODE_ACTIONS = ("command", "script")
 
 
@@ -85,6 +85,7 @@ def action_summary(rule: dict[str, Any], pl: bool) -> str:
     label = {
         "light_on": "light on", "light_off": "light off", "pause": "pause", "resume": "resume",
         "stop": "stop", "notify": "notification", "command": "custom command", "script": "script",
+        "power_on": "socket on", "power_off": "socket off",
     }.get(rule.get("action", {}).get("type", "light_off"), "")
     return i18n.t(label) if label else ""
 
@@ -199,6 +200,10 @@ class AutomationEngine:
             printer_command(_STOP, "CANCEL_PRINT")
         elif kind == "notify":
             self.app.notify(name, text)
+        elif kind in ("power_on", "power_off"):
+            # A rule fired by the printer's own state has already decided; it does not ask.
+            self.app.smart_plugs.power(kind == "power_on", serial,
+                                       reason=None if rule.get("name") == "telegram" else rule.get("name"))
         elif kind in _CODE_ACTIONS:
             if not self._allow_code_action(rule, name):
                 return

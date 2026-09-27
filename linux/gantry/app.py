@@ -346,6 +346,16 @@ class Gantry:
         self.config, self.secrets = Config(), SecretStore()
         from .insights import PrinterInsights
         self.insights = PrinterInsights(self)
+        from .smartplug import SmartPlugController
+
+        def telegram_notify(printer: str, title: str, body: str) -> None:
+            from . import telegram
+            telegram.notify(self, printer, title, body)
+        self.smart_plugs = SmartPlugController(
+            self, notify=self.notify, telegram=telegram_notify,
+            on_main=lambda job: GLib.idle_add(lambda: (job(), False)[1]),
+            schedule=lambda seconds, callback: GLib.timeout_add_seconds(max(1, int(seconds)), callback),
+            cancel=GLib.source_remove)
         self.language = str(self.config.data.get("language", "pl"))
         i18n.set_language(self.language)
         self.printers = self.config.printers
@@ -503,6 +513,10 @@ class Gantry:
             diagnostics.connect("activate", lambda *_: self.open_diagnostics()); menu.append(diagnostics)
             stats = Gtk.MenuItem(label=i18n.t("Fleet statistics…"))
             stats.connect("activate", lambda *_: self.open_fleet_stats()); menu.append(stats)
+            # In a fire nobody should have to look for it in a submenu.
+            menu.append(Gtk.SeparatorMenuItem())
+            emergency = Gtk.MenuItem(label="⚡ " + i18n.t("Emergency power-off…"))
+            emergency.connect("activate", lambda *_: self.emergency_power_off()); menu.append(emergency)
             guide = Gtk.MenuItem(label=i18n.t("How to read Gantry"))
             guide.connect("activate", lambda *_: (self.show(), self.window.show_onboarding())); menu.append(guide)
         menu.append(Gtk.SeparatorMenuItem())
@@ -1220,6 +1234,7 @@ class Gantry:
         if event == "telemetry":
             self._record_temperature(serial, current)
             self.insights.observe(serial, previous, current)
+            self.smart_plugs.observe(serial, current.state)
             if self.detail_window is not None and self.detail_window.serial == serial:
                 self.detail_window.update(current)
             if getattr(self, "automations", None) is not None:
@@ -1335,6 +1350,18 @@ class Gantry:
             from . import telegram
             telegram.notify(self, printer_name, body, "")
         return False
+
+    def emergency_power_off(self) -> None:
+        from .smartplugdialog import confirm_emergency_off
+        confirm_emergency_off(self)
+
+    def power_socket(self, serial: str, on: bool) -> None:
+        from .smartplugdialog import power
+        power(self, on, serial)
+
+    def open_smart_plug(self, serial: str) -> None:
+        from .smartplugdialog import SmartPlugDialog
+        SmartPlugDialog(self, serial).present()
 
     @staticmethod
     def notify(title: str, body: str) -> None:

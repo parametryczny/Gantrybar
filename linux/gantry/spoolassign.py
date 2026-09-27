@@ -301,7 +301,11 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
                     store.assign(spool["id"], location)
             elif choice.startswith("def:"):
                 nominal = nominal_spin.get_value()
-                store.create_spool(choice.split(":", 1)[1], nominal, nominal, location)
+                definition_id = choice.split(":", 1)[1]
+                # The product's price per roll, when Spoolbase has one, so the print cost counts it.
+                product = next((d for d in getattr(inventory, "filaments", []) if d.id == definition_id), None)
+                store.create_spool(definition_id, nominal, nominal, location,
+                                   price=getattr(product, "pricePerRoll", None))
             else:
                 nominal = nominal_spin.get_value()
                 matched = None
@@ -310,7 +314,8 @@ def open_assign_dialog(app: Any, serial: str, group: Any, group_index: int, slot
                                     if (definition.type or "").upper() == (getattr(slot, "material", "") or "").upper()
                                     and (not _normal_color(getattr(slot, "color", ""))
                                          or _normal_color(definition.colorHex) == _normal_color(getattr(slot, "color", "")))), None)
-                store.create_spool(matched.id if matched is not None else None, nominal, nominal, location)
+                store.create_spool(matched.id if matched is not None else None, nominal, nominal, location,
+                                   price=getattr(matched, "pricePerRoll", None))
             _refresh(app, serial)
         dialog.destroy()
 

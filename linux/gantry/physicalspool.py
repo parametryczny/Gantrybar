@@ -126,7 +126,7 @@ class PhysicalSpoolStore:
 
     @serialized
     def create_rolls(self, definition_id: str, count: int, weight: float,
-                     remaining: float | None = None) -> list[dict[str, Any]]:
+                     remaining: float | None = None, price: float | None = None) -> list[dict[str, Any]]:
         """Create real rolls for a Spoolbase definition and leave them in storage."""
         created: list[dict[str, Any]] = []
         nominal = max(0.0, float(weight))
@@ -146,6 +146,8 @@ class PhysicalSpoolStore:
                 "openedAt": None if rest >= nominal else now,
                 "totalConsumedGrams": 0.0,
             }
+            if price is not None and price >= 0:
+                spool["price"] = float(price)   # what the roll cost; the print cost uses it
             self.spools.append(spool)
             created.append(spool)
         if created:
@@ -166,7 +168,7 @@ class PhysicalSpoolStore:
 
     @serialized
     def create_spool(self, definition_id: str | None, nominal: float, remaining: float,
-                     location: dict[str, Any]) -> dict[str, Any]:
+                     location: dict[str, Any], price: float | None = None) -> dict[str, Any]:
         """Make a new physical roll and drop it straight into a slot (bumping whatever was there)."""
         now = _now_iso()
         spool = {
@@ -182,6 +184,8 @@ class PhysicalSpoolStore:
             "openedAt": now,
             "totalConsumedGrams": 0.0,
         }
+        if price is not None and price >= 0:
+            spool["price"] = float(price)
         self.spools.append(spool)
         self.assign(spool["id"], location)   # assign saves + notifies
         return spool

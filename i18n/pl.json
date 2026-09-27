@@ -1285,6 +1285,5 @@
   "Power": "Zasilanie",
   "Switch socket on": "Włącz gniazdko",
   "Switch socket off": "Wyłącz gniazdko",
-  "Set up socket…": "Ustaw gniazdko…",
-  "🖨 Gantry — commands:\n/status — pick a printer + controls\n/all — whole fleet at a glance\n/spools — spools running low\n/history — recent prints\n/watch 10m — a photo every 10 min (/watch off)\n/mute 2h — silence alerts (/mute off)\n/help — this menu": "🖨 Gantry — komendy:\n/status — wybór drukarki + sterowanie\n/all — cała flota w skrócie\n/spools — rolki na wyczerpaniu\n/history — ostatnie wydruki\n/watch 10m — zdjęcia co 10 min (/watch off)\n/mute 2h — wycisz alerty (/mute off)\n/help — to menu"
+  "Set up socket…": "Ustaw gniazdko…"
 }

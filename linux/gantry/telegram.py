@@ -216,6 +216,8 @@ class TelegramBot:
             self._handle_mute(argument)
         elif command == "/watch":
             self._handle_watch(argument)
+        elif command in ("/emergency", "/awaria"):
+            self._ask_emergency(None)
         else:
             self._send_printer_menu(None)
 
@@ -233,6 +235,17 @@ class TelegramBot:
         elif head == "photo" and len(parts) > 1:
             self._answer(cb_id, "📷")
             self._handle_photo(parts[1])
+        elif head == "emg":
+            self._ask_emergency(message_id)
+            self._answer(cb_id, "")
+        elif head == "emgoff":
+            self._answer(cb_id, self._t("⚡️ Switching everything off…"))
+            lines = self.app.smart_plugs.emergency_off()
+            text = self._t("⚡️ Emergency power-off") + "\n" + ("\n".join(lines) if lines else self._t("No sockets are set up."))
+            if message_id is not None:
+                self._edit(message_id, text, None)
+            else:
+                self._send(text, self._command_keyboard())
         else:
             self._answer(cb_id, "")
 
@@ -287,8 +300,43 @@ class TelegramBot:
         else:
             self._send(text, markup)
 
+    def _ask_emergency(self, message_id: int | None) -> None:
+        """Asked once, with the printers it will hit, then a single tap. The chat is already the one
+        Gantry trusts, and in a fire a second screen of questions costs time."""
+        store = self.app.smart_plugs.store
+        names = sorted(next((p.name for p in self.app.printers if p.serial == serial), serial)
+                       for serial in store.serials()
+                       if (plug := store.plug(serial)) is not None and plug.includeInEmergency)
+        if not names:
+            self._send(self._t("No sockets are set up. Add one in Gantry: card ⋯ → Power → Set up socket…"),
+                       self._command_keyboard())
+            return
+        text = self._t("⚡️ Switch off the power of every printer?") + "\n" + "\n".join(f"• {name}" for name in names)
+        markup = self._keyboard([[self._btn(self._t("⚡️ YES, switch everything off"), "emgoff")],
+                                 [self._btn(self._t("Back"), "menu")]])
+        if message_id is not None:
+            self._edit(message_id, text, markup)
+        else:
+            self._send(text, markup)
+
     def _run_action(self, action: str, serial: str, cb_id: str, message_id: int | None) -> None:
         name = next((p.name for p in self.app.printers if p.serial == serial), serial)
+        if action == "plugoffask":
+            # Cutting power is irreversible for a running print, so it is confirmed like Stop.
+            if message_id is not None:
+                self._edit(message_id,
+                           self._t("🔌 Switch the socket of {0} off? A running print ends.").format(name),
+                           self._keyboard([[self._btn(self._t("Yes, switch off"), f"a:plugoff:{serial}"),
+                                            self._btn(self._t("Back"), f"p:{serial}")]]))
+            self._answer(cb_id, "")
+            return
+        if action in ("plugon", "plugoff"):
+            on = action == "plugon"
+            GLib.idle_add(lambda: (self.app.smart_plugs.power(on, serial), False)[1])
+            self._answer(cb_id, self._t("🔌 Socket on") if on else self._t("🔌 Socket off"))
+            time.sleep(0.7)
+            self._show_status(serial, message_id)
+            return
         if action == "stopask":
             if message_id is not None:
                 self._edit(message_id,
@@ -333,7 +381,7 @@ class TelegramBot:
         text = self._t(
             "🖨 Gantry — commands:\n/status — pick a printer + controls\n/all — whole fleet at a glance\n"
             "/spools — spools running low\n/history — recent prints\n/watch 10m — a photo every 10 min (/watch off)\n"
-            "/mute 2h — silence alerts (/mute off)\n/help — this menu")
+            "/mute 2h — silence alerts (/mute off)\n/emergency — switch every printer's socket off\n/help — this menu")
         _post(self._token, "sendMessage",
               {"chat_id": self._chat, "text": text, "reply_markup": self._command_keyboard()})
 
@@ -492,6 +540,9 @@ class TelegramBot:
         rows.append([self._btn("💡 " + self._t("On"), f"a:lighton:{serial}"),
                      self._btn("🌑 " + self._t("Off"), f"a:lightoff:{serial}"),
                      self._btn("📷 " + self._t("Photo"), f"photo:{serial}")])
+        if self.app.smart_plugs.store.plug(serial) is not None:
+            rows.append([self._btn("🔌 " + self._t("Socket on"), f"a:plugon:{serial}"),
+                         self._btn("⭘ " + self._t("Socket off"), f"a:plugoffask:{serial}")])
         rows.append([self._btn("↻ " + self._t("Refresh"), f"p:{serial}"),
                      self._btn("‹ " + self._t("Printers"), "menu")])
         return self._keyboard(rows)

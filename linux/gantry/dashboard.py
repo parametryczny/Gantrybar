@@ -530,6 +530,19 @@ class PrinterCard(Gtk.Frame):
                 item.connect("activate", lambda *_, value=slicer: open_desktop_app(value))
                 slicer_menu.append(item)
             slicer_item.set_submenu(slicer_menu); menu.append(slicer_item)
+        if edition.HAS_EXTRAS:
+            # The socket that feeds this printer: switch it, or set it up the first time.
+            serial = self.printer.serial
+            power_item = Gtk.MenuItem(label=i18n.t("Power"))
+            power_menu = Gtk.Menu()
+            has_plug = self.app.smart_plugs.store.plug(serial) is not None
+            for label, callback, enabled in (
+                    (i18n.t("Switch socket on"), lambda *_: self.app.power_socket(serial, True), has_plug),
+                    (i18n.t("Switch socket off"), lambda *_: self.app.power_socket(serial, False), has_plug),
+                    (i18n.t("Set up socket…"), lambda *_: self.app.open_smart_plug(serial), True)):
+                item = Gtk.MenuItem(label=label); item.set_sensitive(enabled)
+                item.connect("activate", callback); power_menu.append(item)
+            power_item.set_submenu(power_menu); menu.append(power_item)
         clipboard_item = Gtk.MenuItem(label=i18n.t("Copy IP address"))
         clipboard_item.connect("activate", lambda *_: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(self.printer.host, -1))
         menu.append(clipboard_item)
