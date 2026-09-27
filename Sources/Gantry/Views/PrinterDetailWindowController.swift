@@ -24,6 +24,7 @@ final class PrinterDetailViewController: NSViewController {
     // Temperatury → Wentylatory → Sterowanie.
     private static let defaultCardOrder = ["status", "recent", "maintenance", "stats", "camera", "ams", "temps", "fans", "control"]
     private static let cardOrderKey = "detail-card-order"
+    private static let controlPanelOpenKey = "detail-control-panel-open"
 
     // Header
     private let backButton = NSButton()
@@ -148,9 +149,11 @@ final class PrinterDetailViewController: NSViewController {
         if presentation == .popover { closePanel = { [weak self] in self?.toggleControlPanel() } }
         let panel = PrinterControlPanelView(store: store, serial: serial, onClose: closePanel)
         panel.translatesAutoresizingMaskIntoConstraints = false
-        panel.isHidden = presentation == .popover
+        // The popover reopens the panel the way it was left.
+        panel.isHidden = presentation == .popover && !UserDefaults.standard.bool(forKey: Self.controlPanelOpenKey)
         root.addSubview(panel)
         controlPanel = panel
+        popoverWidthConstraint?.constant = popoverWidth
         var columnConstraints = [
             column.topAnchor.constraint(equalTo: root.topAnchor),
             column.leadingAnchor.constraint(equalTo: root.leadingAnchor),
@@ -475,6 +478,7 @@ final class PrinterDetailViewController: NSViewController {
             controlButton.imagePosition = .imageLeading
             controlButton.bezelStyle = .accessoryBar
             controlButton.setButtonType(.pushOnPushOff)
+            controlButton.state = controlPanel?.isHidden == false ? .on : .off
             controlButton.controlSize = .small
             controlButton.target = self
             controlButton.action = #selector(controlPressed)
@@ -495,6 +499,7 @@ final class PrinterDetailViewController: NSViewController {
     private func toggleControlPanel() {
         guard presentation == .popover, let panel = controlPanel, let width = popoverWidthConstraint else { return }
         panel.isHidden.toggle()
+        UserDefaults.standard.set(!panel.isHidden, forKey: Self.controlPanelOpenKey)
         controlButton.state = panel.isHidden ? .off : .on
         width.constant = popoverWidth
         let height = popoverHeightConstraint?.constant ?? Self.minimumPopoverHeight
@@ -990,7 +995,8 @@ final class PrinterDetailViewController: NSViewController {
         }
 
         graph.samples = store.temperatureHistory[serial] ?? []
-        let controlEnabled = settings.printerControlEnabled && (kind == .bambu || kind == .klipper) && !signingBlocked
+        // Setpoints live in the control panel beside the details; the cards here only read.
+        let controlEnabled = false
         for chip in [nozzleChip, bedChip, chamberChip] { chip.largeReading = controlEnabled }
         nozzleChip.showsControl = controlEnabled
         bedChip.showsControl = controlEnabled
@@ -1036,7 +1042,7 @@ final class PrinterDetailViewController: NSViewController {
             notice.stringValue = shown ? Self.rejectionText(rejection?.reason ?? "", settings: settings) : ""
             notice.isHidden = !shown
         }
-        if settings.printerControlEnabled && signingBlocked {
+        if controlEnabled && signingBlocked {
             temperatureNotice.stringValue = settings.t("Controls are off: the printer only accepts commands signed by Bambu Connect. Turn on LAN Only mode and then Developer Mode on the printer to control it from Gantry.")
             temperatureNotice.isHidden = false
         }

@@ -1203,7 +1203,13 @@ require("Sources/Gantry/Services/BambuStatusParser.swift", rf'report\["fun"\][\s
         "macOS does not read Bambu's command-signing bit")
 require("windows/Gantry.Windows/Services/StatusParser.cs", rf'"fun"[\s\S]*?mask & 0x{signing_bit:X}UL',
         "Windows does not read Bambu's command-signing bit")
-require(mac_detail, r"&& !signingBlocked", "macOS shows Bambu controls a signing printer would refuse")
+# macOS moved the setpoints out of the detail cards into the control panel; the panel's commands go
+# through PrinterStore.acceptsGcode, which refuses a Bambu printer that only takes signed commands.
+require(mac_detail, r"let controlEnabled = false", "macOS detail cards show setpoints next to the control panel")
+require("Sources/Gantry/App/PrinterStore.swift", r"case \.bambu: return !requiresSignedCommands\(serial: serial\)",
+        "macOS shows Bambu controls a signing printer would refuse")
+require("Sources/Gantry/Views/PrinterControlPanel.swift", r"store\.acceptsGcode\(serial: serial\)",
+        "the macOS control panel does not check whether the printer takes commands")
 require(win_detail, r"&& !_signingBlocked", "Windows shows Bambu controls a signing printer would refuse")
 forbid(mac_detail, r"CompactControlSlider", "macOS brought back the loose plus/minus row under the tiles")
 forbid(win_detail, r"TempChip\(", "Windows rebuilds temperature chips, which would drop a capsule mid-change")

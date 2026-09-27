@@ -30,8 +30,16 @@ final class PrinterControlPanelView: NSView {
     private let powerButton = PanelIconButton(symbol: "power")
     private var lightOn = false
 
+    // Cards, rearranged by printer state: the controls that matter now come first.
+    private var cards: [String: NSView] = [:]
+    private var orderSignature = ""
+    private let optInBanner = NSStackView()
+    private var optInCardView: NSView?
+    private var keyMonitor: Any?
+    /// In the Gantry window the keyboard can move the head; the popover has no room for surprises.
+    private var keyboardShortcuts: Bool { onClose == nil }
+
     // Send
-    private let modeControl = NSSegmentedControl()
     private let dropZone = PanelDropZone()
     private let sendStatus = NSTextField(wrappingLabelWithString: "")
 
@@ -40,6 +48,8 @@ final class PrinterControlPanelView: NSView {
     private var zButtons: [NSButton] = []
     private var homeButtons: [NSButton] = []
     private let motionNotice = NSTextField(wrappingLabelWithString: "")
+    private let motionRow = NSStackView()
+    private let keyboardHint = NSTextField(wrappingLabelWithString: "")
 
     // Temperatures and fans
     private let nozzleRow = SliderRow(symbol: "flame", title: "Nozzle", range: 0...300, step: 5, suffix: "°", tint: GantryTheme.nozzle)
@@ -49,6 +59,8 @@ final class PrinterControlPanelView: NSView {
     private let auxFanRow = SliderRow(symbol: "fanblades", title: "Aux fan", range: 0...100, step: 10, suffix: "%", tint: GantryTheme.accent)
     private let chamberFanRow = SliderRow(symbol: "fanblades", title: "Chamber fan", range: 0...100, step: 10, suffix: "%", tint: GantryTheme.accent)
     private let thermalNotice = NSTextField(wrappingLabelWithString: "")
+    private let speedModes = NSSegmentedControl()
+    private let speedRow = SliderRow(symbol: "speedometer", title: "Speed", range: 10...166, step: 10, suffix: "%", tint: GantryTheme.accent)
 
     // Power
     private let powerChart = PowerChartView()
@@ -64,6 +76,7 @@ final class PrinterControlPanelView: NSView {
         build()
         store.$telemetry.sink { [weak self] _ in self?.scheduleRefresh() }.store(in: &subscriptions)
         store.$printers.sink { [weak self] _ in self?.scheduleRefresh() }.store(in: &subscriptions)
+        AppSettings.shared.objectWillChange.sink { [weak self] _ in self?.scheduleRefresh() }.store(in: &subscriptions)
         refresh()
     }
 
@@ -74,8 +87,11 @@ final class PrinterControlPanelView: NSView {
         powerTimer?.invalidate()
         powerTimer = nil
         farmSubscriptions.removeAll()
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
         guard window != nil, !isHidden else { return }
         watchFarm()
+        installKeyMonitor()
         guard SmartPlugStore.shared.plug(for: serial)?.meters == true else { return }
         samplePower()
         let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
@@ -142,14 +158,56 @@ final class PrinterControlPanelView: NSView {
         header.alignment = .centerY
         add(header)
 
-        add(card(s.t("PRINT"), actionsRow()))
-        add(card(s.t("SEND FILE"), sendSection()))
-        add(card(s.t("MOTION"), motionSection()))
-        add(card(s.t("TEMPERATURES AND FANS"), thermalSection()))
-        let power = card(s.t("POWER"), powerSection())
-        powerCard = power
-        add(power)
+        let optIn = optInCard()
+        optInCardView = optIn
+        add(optIn)
+        cards = [
+            "print": card(s.t("PRINT"), actionsRow()),
+            "send": card(s.t("SEND FILE"), sendSection()),
+            "motion": card(s.t("MOTION"), motionSection()),
+            "thermal": card(s.t("TEMPERATURES AND FANS"), thermalSection()),
+            "power": card(s.t("POWER"), powerSection())
+        ]
+        powerCard = cards["power"]
+        arrangeCards(busy: false)
     }
+
+    /// While printing: print actions, temperatures and power first, motion folded away. Otherwise
+    /// the things you do between prints come first: sending a file and moving the head.
+    private func arrangeCards(busy: Bool) {
+        let order = busy ? ["print", "thermal", "power", "send", "motion"] : ["send", "motion", "thermal", "print", "power"]
+        let signature = order.joined(separator: ",")
+        guard signature != orderSignature else { return }
+        orderSignature = signature
+        for key in order {
+            guard let view = cards[key] else { continue }
+            if view.superview === stack {
+                stack.removeArrangedSubview(view)
+                stack.addArrangedSubview(view)
+            } else {
+                add(view)
+            }
+        }
+    }
+
+    /// Control is opt-in (Settings → Printer control); this says so and turns it on in one click.
+    private func optInCard() -> NSView {
+        let s = AppSettings.shared
+        let text = NSTextField(wrappingLabelWithString: s.t("Printer control is off. Turn it on to move the head and set temperatures, fans and speed from Gantry."))
+        text.font = .systemFont(ofSize: 11, weight: .medium)
+        text.textColor = GantryTheme.secondary
+        let button = NSButton(title: s.t("Turn on control"), target: self, action: #selector(enableControl))
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        optInBanner.setViews([text, button], in: .leading)
+        optInBanner.orientation = .vertical
+        optInBanner.alignment = .leading
+        optInBanner.spacing = 6
+        text.widthAnchor.constraint(equalTo: optInBanner.widthAnchor).isActive = true
+        return card(s.t("CONTROL IS OFF"), optInBanner)
+    }
+
+    @objc private func enableControl() { AppSettings.shared.printerControlEnabled = true }
 
     private func add(_ view: NSView) {
         stack.addArrangedSubview(view)
@@ -207,14 +265,6 @@ final class PrinterControlPanelView: NSView {
 
     private func sendSection() -> NSView {
         let s = AppSettings.shared
-        modeControl.segmentCount = 2
-        modeControl.setLabel(s.t("Upload only"), forSegment: 0)
-        modeControl.setLabel(s.t("Upload & print"), forSegment: 1)
-        modeControl.setImage(NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: nil), forSegment: 0)
-        modeControl.setImage(NSImage(systemSymbolName: "printer", accessibilityDescription: nil), forSegment: 1)
-        modeControl.trackingMode = .selectOne
-        modeControl.selectedSegment = 0
-        modeControl.segmentDistribution = .fillEqually
         dropZone.onDrop = { [weak self] url in self?.send(url) }
         dropZone.translatesAutoresizingMaskIntoConstraints = false
         dropZone.heightAnchor.constraint(equalToConstant: 74).isActive = true
@@ -230,11 +280,11 @@ final class PrinterControlPanelView: NSView {
         buttons.orientation = .horizontal
         sendStatus.font = .systemFont(ofSize: 11)
         sendStatus.textColor = GantryTheme.secondary
-        let column = NSStackView(views: [modeControl, dropZone, buttons, sendStatus])
+        let column = NSStackView(views: [dropZone, buttons, sendStatus])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 8
-        for view in [modeControl, dropZone, buttons, sendStatus] as [NSView] {
+        for view in [dropZone, buttons, sendStatus] as [NSView] {
             view.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         }
         return column
@@ -277,16 +327,22 @@ final class PrinterControlPanelView: NSView {
         homeColumn.orientation = .vertical
         homeColumn.spacing = 6
         for button in zButtons + homeButtons { button.widthAnchor.constraint(equalToConstant: 72).isActive = true }
-        let row = NSStackView(views: [jogPad, zColumn, homeColumn])
+        let row = motionRow
+        row.setViews([jogPad, zColumn, homeColumn], in: .leading)
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 10
         notice(motionNotice)
-        let column = NSStackView(views: [row, motionNotice])
+        keyboardHint.stringValue = s.t("Pointer over this panel: arrows move X/Y, Shift ×10, Page Up/Down move Z, H homes.")
+        keyboardHint.font = .systemFont(ofSize: 10)
+        keyboardHint.textColor = GantryTheme.muted
+        keyboardHint.isHidden = !keyboardShortcuts
+        let column = NSStackView(views: [row, motionNotice, keyboardHint])
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 8
         motionNotice.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        keyboardHint.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         return column
     }
 
@@ -311,10 +367,23 @@ final class PrinterControlPanelView: NSView {
             guard let self else { return }
             self.store.setFan(serial: self.serial, index: 3, percent: value)
         }
+        speedRow.onCommit = { [weak self] value in
+            guard let self else { return }
+            self.store.setPrintSpeed(serial: self.serial, percent: value)
+        }
+        let s = AppSettings.shared
+        speedModes.segmentCount = 4
+        for (index, name) in [s.t("Silent"), "Standard", "Sport", s.t("Ludicrous")].enumerated() {
+            speedModes.setLabel(name, forSegment: index)
+        }
+        speedModes.trackingMode = .selectOne
+        speedModes.segmentDistribution = .fillEqually
+        speedModes.target = self
+        speedModes.action = #selector(speedModeChanged(_:))
         chamberLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         chamberLabel.textColor = GantryTheme.chamber
         notice(thermalNotice)
-        let rows: [NSView] = [nozzleRow, bedRow, chamberLabel, partFanRow, auxFanRow, chamberFanRow, thermalNotice]
+        let rows: [NSView] = [nozzleRow, bedRow, chamberLabel, partFanRow, auxFanRow, chamberFanRow, speedModes, speedRow, thermalNotice]
         let column = NSStackView(views: rows)
         column.orientation = .vertical
         column.alignment = .leading
@@ -364,6 +433,9 @@ final class PrinterControlPanelView: NSView {
         let t = self.t
         let busy = t.state == .printing || t.state == .paused
         let online = t.state != .offline
+        let allowed = s.printerControlEnabled
+        arrangeCards(busy: busy)
+        optInCardView?.isHidden = allowed
 
         pauseButton.symbol = t.state == .paused ? "play.fill" : "pause.fill"
         pauseButton.caption = t.state == .paused ? s.t("Resume") : s.t("Pause")
@@ -381,13 +453,15 @@ final class PrinterControlPanelView: NSView {
             ? s.t("This printer cannot receive files from Gantry.")
             : s.t("Drop a file here") + "\n" + s.t("Supported: {0}", extensions.map { "." + $0 }.joined(separator: ", "))
         dropZone.enabled = !extensions.isEmpty
-        modeControl.isEnabled = !extensions.isEmpty
 
         let gcode = store.acceptsGcode(serial: serial)
-        let motion = gcode && store.isMotionSafe(serial: serial)
+        let motion = gcode && allowed && store.isMotionSafe(serial: serial)
         jogPad.enabled = motion
         (zButtons + homeButtons).forEach { $0.isEnabled = motion }
-        motionNotice.isHidden = motion
+        // Folded away while it cannot be used: one line saying why instead of a grid of dead buttons.
+        motionRow.isHidden = !motion && (busy || !gcode)
+        keyboardHint.isHidden = !keyboardShortcuts || !motion
+        motionNotice.isHidden = motion || !allowed
         motionNotice.stringValue = !gcode
             ? s.t("This printer does not take motion commands from Gantry.")
             : s.t("Moving the head is available while the printer is not printing.")
@@ -402,7 +476,12 @@ final class PrinterControlPanelView: NSView {
         chamberFanRow.update(actual: t.chamberFanPercent.map(Double.init), target: nil)
         auxFanRow.isHidden = !bambu
         chamberFanRow.isHidden = !bambu
-        for row in [nozzleRow, bedRow, partFanRow, auxFanRow, chamberFanRow] { row.enabled = gcode && online }
+        speedModes.isHidden = !bambu
+        speedRow.isHidden = bambu
+        if let level = t.speedLevel, (1...4).contains(level) { speedModes.selectedSegment = level - 1 }
+        speedRow.update(actual: t.speedPercent.map(Double.init), target: nil)
+        speedModes.isEnabled = gcode && online && allowed
+        for row in [nozzleRow, bedRow, partFanRow, auxFanRow, chamberFanRow, speedRow] { row.enabled = gcode && online && allowed }
         thermalNotice.isHidden = gcode
         thermalNotice.stringValue = bambu && store.requiresSignedCommands(serial: serial)
             ? s.t("Controls are off: the printer only accepts commands signed by Bambu Connect. Turn on LAN Only mode and Developer Mode on the printer.")
@@ -423,6 +502,47 @@ final class PrinterControlPanelView: NSView {
     // MARK: Actions
 
     @objc private func closePressed() { onClose?() }
+
+    @objc private func speedModeChanged(_ sender: NSSegmentedControl) {
+        store.setPrintSpeedLevel(serial: serial, level: sender.selectedSegment + 1)
+    }
+
+    private func installKeyMonitor() {
+        guard keyboardShortcuts, keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let code = event.keyCode
+            let shift = event.modifierFlags.contains(.shift)
+            let characters = event.charactersIgnoringModifiers ?? ""
+            let windowNumber = event.windowNumber
+            let handled = MainActor.assumeIsolated {
+                self?.handleKey(code: code, shift: shift, characters: characters, windowNumber: windowNumber) ?? false
+            }
+            return handled ? nil : event
+        }
+    }
+
+    /// Arrow keys move the head only while the pointer is over this panel, so typing or scrolling
+    /// elsewhere in the window never moves the printer.
+    private func handleKey(code: UInt16, shift: Bool, characters: String, windowNumber: Int) -> Bool {
+        guard let window, window.windowNumber == windowNumber, window.isKeyWindow, !isHidden,
+              !(window.firstResponder is NSText), AppSettings.shared.printerControlEnabled,
+              store.acceptsGcode(serial: serial), store.isMotionSafe(serial: serial) else { return false }
+        let pointer = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard bounds.contains(pointer) else { return false }
+        let step: Double = shift ? 10 : 1
+        switch code {
+        case 123: store.jog(serial: serial, x: -step)
+        case 124: store.jog(serial: serial, x: step)
+        case 126: store.jog(serial: serial, y: step)
+        case 125: store.jog(serial: serial, y: -step)
+        case 116: store.jog(serial: serial, z: step)
+        case 121: store.jog(serial: serial, z: -step)
+        default:
+            guard characters.lowercased() == "h" else { return false }
+            store.home(serial: serial)
+        }
+        return true
+    }
 
     private func pauseOrResume() {
         store.sendPrintAction(t.state == .paused ? .resume : .pause, serial: serial)
@@ -467,30 +587,17 @@ final class PrinterControlPanelView: NSView {
         send(url)
     }
 
-    /// Imports the file into the Farm library and sends it to this printer. "Upload & print" asks
-    /// about the bed first and then lets the Farm's own start rules decide when to start.
+    private enum SendChoice { case upload, print }
+
+    /// Drop or choose a file: it goes into the Farm library, then one dialog shows what it is (preview,
+    /// time, filament and whether the AMS has it) and offers "Upload only" or "Send and print". Printing
+    /// stays locked until the bed is confirmed empty; the Farm's own start rules still decide when.
     private func send(_ url: URL) {
         let s = AppSettings.shared
         guard let printer else { return }
         guard PrinterFileTransfer.accepts(printer.kind, fileExtension: url.pathExtension) else {
             sendStatus.stringValue = s.t("{0} cannot print .{1} files.", printer.name, url.pathExtension.lowercased())
             return
-        }
-        let andPrint = modeControl.selectedSegment == 1
-        if andPrint {
-            let alert = NSAlert()
-            alert.messageText = s.t("Send and print on {0}?", printer.name)
-            alert.informativeText = s.t("{0}\nThe print starts as soon as the file is on the printer. Check that the file was sliced for this printer and nozzle.", url.lastPathComponent)
-            let bed = NSButton(checkboxWithTitle: s.t("The bed is empty and ready"), target: nil, action: nil)
-            bed.frame = NSRect(x: 0, y: 0, width: 360, height: 24)
-            alert.accessoryView = bed
-            alert.addButton(withTitle: s.t("Send and print"))
-            alert.addButton(withTitle: s.t("Cancel"))
-            guard ModalHost.run(alert) == .alertFirstButtonReturn else { return }
-            guard bed.state == .on else {
-                sendStatus.stringValue = s.t("Confirm that the bed is empty to start the print.")
-                return
-            }
         }
         sendStatus.stringValue = s.t("Preparing {0}…", url.lastPathComponent)
         let farm = self.farm
@@ -500,23 +607,64 @@ final class PrinterControlPanelView: NSView {
                 self?.sendStatus.stringValue = farm.notice
                 return
             }
+            guard let self else { return }
             var mapping: [Int] = []
+            var note: String?
+            var canPrint = true
             if !file.isGcode {
-                let slots = self?.store.telemetry[serial]?.amsSlots ?? []
+                let slots = self.store.telemetry[serial]?.amsSlots ?? []
                 if let auto = FarmRules.autoMapping(plate, slots: slots) {
                     mapping = auto
+                    note = s.t("AMS: matching filament found.")
                 } else if plate.filaments.count > 1 {
-                    self?.sendStatus.stringValue = AppSettings.shared.t("The AMS has no matching filament for every colour. Assign the slots in the Farm.")
-                    return
+                    canPrint = false
+                    note = s.t("The AMS has no matching filament for every colour. Assign the slots in the Farm.")
                 }
             }
+            guard let choice = self.confirmSend(file: file, plate: plate, printer: printer, note: note, canPrint: canPrint) else {
+                self.sendStatus.stringValue = s.t("Not sent.")
+                return
+            }
             do {
-                if andPrint { try farm.arm(serial) }
-                try farm.upload(file: file, plate: plate, printer: printer, mapping: mapping, autoStart: andPrint)
+                if choice == .print { try farm.arm(serial) }
+                try farm.upload(file: file, plate: plate, printer: printer, mapping: mapping, autoStart: choice == .print)
             } catch {
                 farm.disarm(serial)
-                self?.sendStatus.stringValue = error.localizedDescription
+                self.sendStatus.stringValue = error.localizedDescription
             }
+        }
+    }
+
+    private func confirmSend(file: FarmFile, plate: FarmPlate, printer: SavedPrinter, note: String?, canPrint: Bool) -> SendChoice? {
+        let s = AppSettings.shared
+        let alert = NSAlert()
+        alert.messageText = s.t("Send {0} to {1}?", file.name, printer.name)
+        var lines: [String] = []
+        if let seconds = plate.seconds, seconds > 0 {
+            lines.append(s.t("Print time: {0}", String(format: "%d h %02d min", seconds / 3600, (seconds % 3600) / 60)))
+        }
+        let filaments = plate.filaments.filter { $0.grams > 0 }
+        if !filaments.isEmpty {
+            lines.append(s.t("Filament: {0}", filaments.map { "\($0.material) \(String(format: "%.0f", $0.grams)) g" }.joined(separator: ", ")))
+        }
+        if let note { lines.append(note) }
+        lines.append(s.t("Check that the file was sliced for this printer and nozzle."))
+        alert.informativeText = lines.joined(separator: "\n")
+        if let preview = NSImage(contentsOf: farm.previewURL(file.id, plate: plate.index)) { alert.icon = preview }
+        let bed = NSButton(checkboxWithTitle: s.t("The bed is empty and ready"), target: nil, action: nil)
+        bed.frame = NSRect(x: 0, y: 0, width: 360, height: 24)
+        alert.accessoryView = bed
+        let printButton = alert.addButton(withTitle: s.t("Send and print"))
+        alert.addButton(withTitle: s.t("Upload only"))
+        let cancel = alert.addButton(withTitle: s.t("Cancel"))
+        cancel.keyEquivalent = "\u{1b}"
+        printButton.isEnabled = false
+        let gate = CheckboxGate(checkbox: bed) { on in printButton.isEnabled = on && canPrint }
+        let response = withExtendedLifetime(gate) { ModalHost.run(alert) }
+        switch response {
+        case .alertFirstButtonReturn: return .print
+        case .alertSecondButtonReturn: return .upload
+        default: return nil
         }
     }
 
@@ -548,6 +696,19 @@ final class PrinterControlPanelView: NSView {
 }
 
 // MARK: - Pieces
+
+/// Enables a dialog button only while its checkbox is ticked.
+@MainActor
+private final class CheckboxGate: NSObject {
+    private let change: (Bool) -> Void
+    init(checkbox: NSButton, change: @escaping (Bool) -> Void) {
+        self.change = change
+        super.init()
+        checkbox.target = self
+        checkbox.action = #selector(toggled(_:))
+    }
+    @objc private func toggled(_ sender: NSButton) { change(sender.state == .on) }
+}
 
 @MainActor
 private final class PanelFlippedView: NSView { override var isFlipped: Bool { true } }
