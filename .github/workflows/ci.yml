@@ -22,10 +22,22 @@ jobs:
       # Catches a dropped x:Name here rather than on the Windows runner, where it is a CS0103.
       - name: Check WPF markup against its code-behind
         run: python3 scripts/check_xaml_names.py --base "${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
+      # Compiler and test failures are also written as annotations, so they are readable from the
+      # run summary and the API without downloading the log.
       - name: Build
-        run: swift build --disable-sandbox
+        run: |
+          set -o pipefail
+          swift build --disable-sandbox 2>&1 | tee build.log || {
+            grep -E "error:" build.log | sort -u | head -40 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            exit 1
+          }
       - name: Run regression tests
-        run: scripts/run-tests.sh --disable-sandbox
+        run: |
+          set -o pipefail
+          scripts/run-tests.sh --disable-sandbox 2>&1 | tee test.log || {
+            grep -E "✘|recorded an issue|Expectation failed|error:|fatal|crash" test.log | head -60 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            exit 1
+          }
       - name: Run AppKit layout regression
         run: python3 scripts/run_card_layout_test.py
       - name: Run protocol self-test
