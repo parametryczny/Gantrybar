@@ -137,10 +137,10 @@ public sealed class FilamentPillWindow : Window
         // działa tylko na zwykłym oknie, którego nie da się obciąć do kształtu kapsuły. Zamiast
         // udawać mrożoną szybę, panel jest przyciemnioną szybą: przepuszcza to, co pod nim, ale nie
         // rozmywa. Uczciwsze niż jednolita płyta udająca efekt, którego tu nie ma.
-        _shell.Background = new SolidColorBrush(GantryTheme.IsLight
+        _shell.Background = new SolidColorBrush(GTheme.IsLight
             ? Color.FromArgb(0xE8, 0xFA, 0xFA, 0xFB)
             : Color.FromArgb(0xE6, 0x1A, 0x1D, 0x20));
-        _shell.BorderBrush = GantryTheme.Brush(GantryTheme.FleetCardLine);
+        _shell.BorderBrush = GTheme.Brush(GTheme.FleetCardLine);
         _shell.BorderThickness = new Thickness(1);
         _shell.Padding = new Thickness(10, 10, 10, 8);
         _shell.Width = PanelWidth;
@@ -161,7 +161,7 @@ public sealed class FilamentPillWindow : Window
             Text = AppSettings.T("Spoolbase — filament stock"),
             FontSize = 10.5,
             Margin = new Thickness(4, 8, 0, 0),
-            Foreground = GantryTheme.Brush(GantryTheme.Muted),
+            Foreground = GTheme.Brush(GTheme.Muted),
             Cursor = Cursors.Hand,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
@@ -206,7 +206,7 @@ public sealed class FilamentPillWindow : Window
             _groups.Children.Add(new TextBlock
             {
                 Text = AppSettings.T("No filament in Spoolbase yet."),
-                Foreground = GantryTheme.Brush(GantryTheme.Muted),
+                Foreground = GTheme.Brush(GTheme.Muted),
                 FontSize = 11.5,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(4, 6, 4, 6)
@@ -234,7 +234,7 @@ public sealed class FilamentPillWindow : Window
             Text = material,
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
-            Foreground = GantryTheme.Brush(GantryTheme.Text),
+            Foreground = GTheme.Brush(GTheme.Text),
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(name, 0);
@@ -243,7 +243,7 @@ public sealed class FilamentPillWindow : Window
         {
             Text = count.ToString(),
             FontSize = 11.5,
-            Foreground = GantryTheme.Brush(GantryTheme.Muted),
+            Foreground = GTheme.Brush(GTheme.Muted),
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(sum, 1);
@@ -256,7 +256,7 @@ public sealed class FilamentPillWindow : Window
         var card = new Border
         {
             CornerRadius = new CornerRadius(11),
-            Background = GantryTheme.Brush(GantryTheme.Surface),
+            Background = GTheme.Brush(GTheme.Surface),
             Padding = new Thickness(8, 6, 6, 6),
             Margin = new Thickness(0, 0, 0, 4)
         };
@@ -270,8 +270,8 @@ public sealed class FilamentPillWindow : Window
         var swatch = new Border
         {
             Width = 13, Height = 13, CornerRadius = new CornerRadius(6.5),
-            Background = GantryTheme.Brush(Filament.ColorFromHex(filament.ColorHex)),
-            BorderBrush = GantryTheme.Brush(GantryTheme.Line),
+            Background = GTheme.Brush(Filament.ColorFromHex(filament.ColorHex)),
+            BorderBrush = GTheme.Brush(GTheme.Line),
             BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0)
@@ -285,14 +285,14 @@ public sealed class FilamentPillWindow : Window
         label.Children.Add(new TextBlock
         {
             Text = string.IsNullOrWhiteSpace(filament.ColorName) ? filament.Name : filament.ColorName,
-            Foreground = GantryTheme.Brush(GantryTheme.Text),
+            Foreground = GTheme.Brush(GTheme.Text),
             FontSize = 12, FontWeight = FontWeights.Medium,
             TextTrimming = TextTrimming.CharacterEllipsis
         });
         label.Children.Add(new TextBlock
         {
             Text = $"{filament.Brand} · {filament.Name}",
-            Foreground = GantryTheme.Brush(GantryTheme.Muted),
+            Foreground = GTheme.Brush(GTheme.Muted),
             FontSize = 10,
             TextTrimming = TextTrimming.CharacterEllipsis
         });
@@ -311,7 +311,7 @@ public sealed class FilamentPillWindow : Window
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
             // Zero jest przygaszone: „nie mam" ma wyglądać inaczej niż „mam jedną".
-            Foreground = GantryTheme.Brush(filament.SpoolCount > 0 ? GantryTheme.Text : GantryTheme.Muted),
+            Foreground = GTheme.Brush(filament.SpoolCount > 0 ? GTheme.Text : GTheme.Muted),
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(count, 3);
@@ -330,7 +330,7 @@ public sealed class FilamentPillWindow : Window
         var border = new Border
         {
             Width = 21, Height = 21, CornerRadius = new CornerRadius(10.5),
-            Background = GantryTheme.Brush(GantryTheme.W(0.07)),
+            Background = GTheme.Brush(GTheme.W(0.07)),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(2, 0, 2, 0),
             Cursor = enabled ? Cursors.Hand : Cursors.Arrow,
@@ -339,14 +339,14 @@ public sealed class FilamentPillWindow : Window
                 Text = glyph,
                 FontSize = 13,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = GantryTheme.Brush(enabled ? GantryTheme.Text : GantryTheme.Muted),
+                Foreground = GTheme.Brush(enabled ? GTheme.Text : GTheme.Muted),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             }
         };
         if (!enabled) return border;
-        border.MouseEnter += (_, _) => border.Background = GantryTheme.Brush(GantryTheme.W(0.16));
-        border.MouseLeave += (_, _) => border.Background = GantryTheme.Brush(GantryTheme.W(0.07));
+        border.MouseEnter += (_, _) => border.Background = GTheme.Brush(GTheme.W(0.16));
+        border.MouseLeave += (_, _) => border.Background = GTheme.Brush(GTheme.W(0.07));
         // Obsłużone, więc kliknięcie w przycisk nie zaczyna przeciągania okna.
         border.MouseLeftButtonDown += (_, e) => { e.Handled = true; run(); };
         return border;
