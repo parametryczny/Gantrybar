@@ -12,7 +12,7 @@ from typing import Any
 
 from gi.repository import Gdk, GLib, Gtk  # type: ignore  # noqa: E402
 
-from . import i18n
+from . import i18n, printcost
 from .core import PrinterKind, PrinterState, Telemetry, TEMP_SYMBOLS, temp_state
 
 def _filament_signature(groups: Any, *extra: Any) -> tuple:
@@ -744,11 +744,19 @@ class DetailPanel(Gtk.Box):
         recent = snap["history"][:3]
         if not recent:
             self.recent.pack_start(self._line(i18n.t("No recorded history.")), False, False, 0)
+        pricing = printcost.load(self.app.config)
         for entry in recent:
             icon = "✓" if entry.get("result") == "completed" else "!" if entry.get("result") == "failed" else "×"
             minutes = int(float(entry.get("durationSeconds", 0)) / 60)
             duration = f"{minutes // 60}h {minutes % 60}m" if minutes >= 60 else f"{minutes}m"
-            self.recent.pack_start(self._line(f"{icon}  {entry.get('job') or '—'} · {duration}"), False, False, 0)
+            # What the print cost and, for a good one, what to ask for it (Settings → Pricing).
+            cost = self._entry_cost(entry, pricing)
+            value = f"  ·  {cost.total:.2f} {pricing.currency}"
+            if entry.get("result") == "completed":
+                value += "  →  " + i18n.t("sell for {0}").format(
+                    f"{printcost.SaleQuote.compute(cost, pricing).gross:.2f} {pricing.currency}")
+            self.recent.pack_start(self._line(f"{icon}  {entry.get('job') or '—'} · {duration}{value}"),
+                                   False, False, 0)
         self._clear(self.maintenance)
         ordered = sorted(snap["tasks"], key=lambda task: (not task.urgent, not task.due, task.remaining_hours))[:2]
         for task in ordered:
@@ -778,6 +786,19 @@ class DetailPanel(Gtk.Box):
         dialog.format_secondary_text("\n".join(rows[:100]) if rows else
                                      (i18n.t("No history.")))
         dialog.run(); dialog.destroy()
+
+    def _entry_cost(self, entry: dict[str, Any], pricing: printcost.PrintCostSettings) -> printcost.PrintCost:
+        """A history entry's cost, remembered until the prices or Spoolbase's usage records change:
+        this runs on every telemetry packet, and the usage list only grows."""
+        usage = getattr(getattr(self.app, "physical_spools", None), "usage", None) or []
+        key = (entry.get("startedAt"), entry.get("endedAt"), entry.get("durationSeconds"), len(usage),
+               repr(pricing.to_dict()))
+        cache = self.__dict__.setdefault("_cost_cache", {})
+        if key not in cache:
+            if len(cache) > 32:
+                cache.clear()
+            cache[key] = printcost.entry_cost(self.app, self.serial, entry, pricing)
+        return cache[key]
 
     @staticmethod
     def _line(text: str) -> Gtk.Label:

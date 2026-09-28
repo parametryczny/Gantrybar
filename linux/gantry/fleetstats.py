@@ -12,7 +12,7 @@ gi is already pinned in app.py.
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from gi.repository import Gtk  # type: ignore
+from gi.repository import GLib, Gtk  # type: ignore
 
 from . import i18n, printcost
 from .panelwindow import panel_header
@@ -51,7 +51,8 @@ class FleetStatsDialog(Gtk.Dialog):
         controls = Gtk.Box(spacing=6)
         controls.pack_start(self.period, True, True, 0)
         prices = Gtk.Button(label=i18n.t("Prices…"))
-        prices.connect("clicked", self._edit_prices)
+        # Prices live in Settings → Pricing now, next to the business set-up and the calculator.
+        prices.connect("clicked", lambda *_: self.app.open_pricing_settings())
         csv_button = Gtk.Button(label=i18n.t("CSV…"))
         csv_button.connect("clicked", self._export_csv)
         controls.pack_start(prices, False, False, 0)
@@ -242,12 +243,15 @@ class FleetStatsDialog(Gtk.Dialog):
 
         if lines:
             recent = []
+            pricing = printcost.load(self.app.config)
             for line in lines[:15]:
+                sell = (" → " + i18n.t("sell for {0}").format(
+                    self._money(printcost.SaleQuote.compute(line["cost"], pricing).gross)) if line["ok"] else "")
                 grams_text = f" · {line['cost'].grams:.0f} g" if line["cost"].grams is not None else ""
                 recent.append(f"{'✓' if line['ok'] else '✕'} {line['ended'].astimezone().strftime('%d.%m %H:%M')} · "
                               f"{line['printer']} · {line['entry'].get('job') or '—'} · "
                               f"{float(line['entry'].get('durationSeconds', 0) or 0) / 3600:.1f} h{grams_text} · "
-                              f"{self._money(line['cost'].total)}")
+                              f"{self._money(line['cost'].total)}{sell}")
             self.body.pack_start(self._caption(i18n.t("RECENT PRINTS")), False, False, 0)
             self.body.pack_start(self._card(recent), False, False, 0)
         self.body.show_all()
@@ -334,46 +338,17 @@ class FleetStatsDialog(Gtk.Dialog):
                 pass
         chooser.destroy()
 
-    def _edit_prices(self, *_args: object) -> None:
-        settings = printcost.load(self.app.config)
-        dialog = Gtk.Dialog(title=i18n.t("Print cost prices"), transient_for=self, modal=True)
-        dialog.add_buttons(i18n.t("Cancel"), Gtk.ResponseType.CANCEL, i18n.t("Save"), Gtk.ResponseType.OK)
-        dialog.set_default_response(Gtk.ResponseType.OK)
-        grid = Gtk.Grid(row_spacing=8, column_spacing=12, margin=16)
+    def prices_changed(self) -> None:
+        """Settings → Pricing saves as it is typed; redraw once the typing pauses, not per key."""
+        pending = getattr(self, "_reprice", None)
+        if pending:
+            GLib.source_remove(pending)
 
-        def number(value: float) -> str:
-            return f"{value:g}"
-        fields = [(i18n.t("Currency"), settings.currency),
-                  (i18n.t("Filament per kg"), number(settings.filamentPerKg)),
-                  (i18n.t("Per material (per kg)"), ", ".join(f"{k}={number(v)}" for k, v in sorted((settings.materialPerKg or {}).items()))),
-                  (i18n.t("Electricity per kWh"), number(settings.electricityPerKWh)),
-                  (i18n.t("Average printer power (W)"), number(settings.printerWatts)),
-                  (i18n.t("Machine time per hour"), number(settings.machinePerHour))]
-        entries = []
-        for row, (label, value) in enumerate(fields):
-            text = Gtk.Label(label=label, xalign=1)
-            entry = Gtk.Entry(text=value, hexpand=True, activates_default=True)
-            grid.attach(text, 0, row, 1, 1); grid.attach(entry, 1, row, 1, 1)
-            entries.append(entry)
-        entries[2].set_placeholder_text("PETG=90, ASA=120")
-        hint = Gtk.Label(label=i18n.t("Used to price every print: filament from Spoolbase usage, electricity and machine time from its duration."),
-                         xalign=0, wrap=True)
-        hint.get_style_context().add_class("settings-hint")
-        grid.attach(hint, 0, len(fields), 2, 1)
-        dialog.get_content_area().pack_start(grid, True, True, 0)
-        dialog.show_all()
-        if dialog.run() == Gtk.ResponseType.OK:
-            if entries[0].get_text().strip():
-                settings.currency = entries[0].get_text().strip()[:8]
-            for entry, key in ((entries[1], "filamentPerKg"), (entries[3], "electricityPerKWh"),
-                               (entries[4], "printerWatts"), (entries[5], "machinePerHour")):
-                value = printcost.parse_amount(entry.get_text())
-                if value is not None:
-                    setattr(settings, key, value)
-            settings.materialPerKg = printcost.parse_material_prices(entries[2].get_text())
-            printcost.save(self.app.config, settings)
+        def redraw() -> bool:
+            self._reprice = None
             self._render()
-        dialog.destroy()
+            return False
+        self._reprice = GLib.timeout_add(400, redraw)
 
     def _export(self, *_args: object) -> None:
         chooser = Gtk.FileChooserDialog(
