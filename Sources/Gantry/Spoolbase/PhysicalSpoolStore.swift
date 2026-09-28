@@ -201,6 +201,51 @@ final class PhysicalSpoolStore {
         assign(spoolID: spool.id, to: .storage)
     }
 
+    /// Odkąd slot zgłasza, że jest pusty. Nie zapisywane: po restarcie odliczanie zaczyna się od nowa,
+    /// co najwyżej odsuwa odpięcie o dwie minuty.
+    private var emptySince: [SpoolLocation: Date] = [:]
+
+    /// Ile slot musi być pusty, zanim rolka wróci do magazynu.
+    ///
+    /// AMS przy zmianie szpuli potrafi na chwilę zgłosić pusty slot, a odpinanie przy każdym takim
+    /// mrugnięciu odsyłałoby rolkę do magazynu w środku wydruku. Dwie minuty przechodzą nad tym do
+    /// porządku i są dużo krótsze niż czas, w którym zdążysz zanieść rolkę do innej drukarki.
+    static let removalGrace: TimeInterval = 120
+
+    /// Wyjęta rolka wraca do magazynu.
+    ///
+    /// Bez tego rolka zostawała przypisana do slotu, w którym jej już nie ma: w magazynie nie było jej
+    /// widać, inna drukarka nie mogła jej dostać, a przy filamencie bez tagu zostawała tam na zawsze,
+    /// bo nic poza tagiem nie potrafiło jej stamtąd zabrać.
+    ///
+    /// Pusta lista grup nie znaczy „nic nie ma w slotach", tylko „drukarka nic nie powiedziała", więc
+    /// wtedy nie dzieje się nic.
+    @discardableResult
+    func detachRemovedRolls(printerSerial: String, groups: [FilamentGroup],
+                            now: Date = Date()) -> [(spoolID: String, slot: String)] {
+        guard !groups.isEmpty else { return [] }
+        var detached: [(spoolID: String, slot: String)] = []
+        for (groupIndex, group) in groups.enumerated() {
+            for (slotIndex, slot) in group.slots.enumerated() {
+                let location = SpoolLocation(printerSerial: printerSerial,
+                                             feeder: group.isExternal ? .ext : .ams,
+                                             amsIndex: groupIndex, slot: slotIndex)
+                guard !slot.isPresent, let assigned = spool(at: location) else {
+                    emptySince[location] = nil
+                    continue
+                }
+                let since = emptySince[location] ?? now
+                emptySince[location] = since
+                guard now.timeIntervalSince(since) >= Self.removalGrace else { continue }
+                emptySince[location] = nil
+                clearSlot(location)
+                detached.append((assigned.id,
+                                 group.isExternal ? group.displayName : "\(group.displayName) \(slot.label)"))
+            }
+        }
+        return detached
+    }
+
     /// When a real RFID/NFC spool is newly inserted into a slot that still holds a manually-assigned
     /// Spoolbase spool, the assignment is stale (that physical roll was taken out) — send the assigned
     /// spool back to storage so the slot shows the inserted NFC roll's own data. Only fires on the
@@ -208,6 +253,12 @@ final class PhysicalSpoolStore {
     /// Returns a short description of each detached spool (id + slot label), so the UI can tell the user.
     @discardableResult
     func detachAssignmentsReplacedByNFC(printerSerial: String, previous: [FilamentGroup], current: [FilamentGroup]) -> [(spoolID: String, slot: String)] {
+        // Brak poprzedniego odczytu to nie jest „przed chwilą włożono". Po wybudzeniu Maca albo po
+        // ponownym połączeniu pierwsza telemetria przychodzi bez żadnej poprzedniej, więc każdy slot
+        // wyglądał jak dopiero co napełniony: rolka wracała do magazynu, a chwilę później parowanie po
+        // tagu wkładało ją z powrotem. Użytkownik dostawał tę samą parę komunikatów przy każdym
+        // wybudzeniu, a rolka dwa razy dziennie odbywała podróż w obie strony.
+        guard !previous.isEmpty else { return [] }
         var detached: [(spoolID: String, slot: String)] = []
         for (gi, group) in current.enumerated() {
             for (si, slot) in group.slots.enumerated() where slot.remainingWeightGrams != nil {
@@ -218,6 +269,10 @@ final class PhysicalSpoolStore {
                 let location = SpoolLocation(printerSerial: printerSerial,
                                              feeder: group.isExternal ? .ext : .ams, amsIndex: gi, slot: si)
                 if let assigned = spool(at: location) {
+                    // Rolka, której tag zgadza się z tym, co czyta slot, jest dokładnie tą rolką.
+                    // Ten warunek miał chronić przypisania ręczne, zrobione zanim rolka z tagiem
+                    // wjechała na jej miejsce, a nie odsyłać do magazynu tej, która właśnie leży.
+                    if let tag = slot.spoolUID, assigned.tagUID == tag { continue }
                     let slotLabel = group.isExternal ? group.displayName : "\(group.displayName) \(slot.label)"
                     clearSlot(location)
                     detached.append((assigned.id, slotLabel))

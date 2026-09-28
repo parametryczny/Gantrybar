@@ -68,6 +68,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private lazy var launchCheck = SettingsCheckbox(target: self, action: #selector(launchAtLoginChanged))
     private lazy var spoolbaseCheck = SettingsCheckbox(target: self, action: #selector(spoolbaseToggled))
     private lazy var spoolPairCheck = SettingsCheckbox(target: self, action: #selector(spoolPairToggled))
+    private lazy var spoolAskCheck = SettingsCheckbox(target: self, action: #selector(spoolAskToggled))
     private let basicsCaption = settingsCaption()
 
     private let updatesHeading = settingsHeading()
@@ -406,7 +407,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let grid = SettingsGrid()
         grid.field(languageCaption, languageControl)
         // Spoolbase is a full-edition tool, so LITE's basics are language and launch at login only.
-        grid.group(basicsCaption, Build.hasExtras ? [launchCheck, spoolbaseCheck, spoolPairCheck] : [launchCheck])
+        grid.group(basicsCaption, Build.hasExtras ? [launchCheck, spoolbaseCheck, spoolPairCheck, spoolAskCheck] : [launchCheck])
         if Build.hasExtras {
             // LITE never checks for or installs updates, so it has no updates section at all.
             grid.section(updatesHeading)
@@ -816,6 +817,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             spoolPairCheck.setSubtitle(settings.t("Bambu RFID rolls are matched to their Spoolbase roll, so prints are priced with what you paid"))
             spoolPairCheck.isOn = settings.spoolAutoPair
             spoolPairCheck.setEnabled(settings.spoolbaseEnabled)
+            spoolAskCheck.title = settings.t("Ask about rolls that are not in Spoolbase")
+            spoolAskCheck.setSubtitle(settings.t("A tagged roll Spoolbase does not know offers to be added, filled in from what the AMS reports"))
+            spoolAskCheck.isOn = settings.spoolAskUnknownTags
+            spoolAskCheck.setEnabled(settings.spoolbaseEnabled && settings.spoolAutoPair)
 
             setText(updatesHeading, settings.t("Updates"))
             setText(updateCaption, settings.t("Check for updates") + ":")
@@ -1032,10 +1037,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                                       index: limitIndex, count: limitSteps.count)
         let stats = DefectDataset.stats()
         let megabytes = Double(stats.bytes) / (1024 * 1024)
-        setText(datasetStatus, stats.frames == 0
-                ? settings.t("None yet. Mark one from the camera in Details; the oldest correct frames go first when the limit is reached.")
-                : settings.t("{0} frames, {1} MB. The oldest correct frames go first when the limit is reached.",
-                             stats.frames, String(format: "%.1f", megabytes)))
+        var line = stats.frames == 0
+            ? settings.t("None yet. Mark one from the camera in Details; the oldest correct frames go first when the limit is reached.")
+            : settings.t("{0} frames, {1} MB. The oldest correct frames go first when the limit is reached.",
+                         stats.frames, String(format: "%.1f", megabytes))
+        // Dopóki klatek „idzie dobrze" jest mało, rozpoznawanie po wyglądzie nie ma drugiej klasy i
+        // nie potrafi nikogo oskarżyć. Lepiej to napisać, niż zostawić kogoś w przekonaniu, że
+        // pilnowanie już działa w pełni.
+        let good = stats.byLabel["ok"] ?? 0
+        if good < 40 {
+            line += " " + settings.t("Gantry has {0} of its own “printing fine” frames; recognition by appearance needs about 40 and collects them by itself while prints go well.", good)
+        }
+        setText(datasetStatus, line)
     }
 
     @objc private func watchToggled() {
@@ -1430,6 +1443,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func spoolPairToggled() {
         AppSettings.shared.spoolAutoPair = spoolPairCheck.isOn
+    }
+
+    @objc private func spoolAskToggled() {
+        AppSettings.shared.spoolAskUnknownTags = spoolAskCheck.isOn
     }
 
     @objc private func autoUpdateToggled() {

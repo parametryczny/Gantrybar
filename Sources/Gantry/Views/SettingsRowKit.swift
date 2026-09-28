@@ -417,9 +417,38 @@ final class SettingsSidebarController: NSViewController {
     static let paneWidth: CGFloat = SettingsMetrics.captionColumn + SettingsMetrics.columnSpacing
         + SettingsMetrics.controlColumn + 2 * SettingsMetrics.paneInset
 
+    /// Kolumna z panelami wchodzi dopiero tutaj, po tym, jak `view` już istnieje.
+    ///
+    /// Sięgnięcie po `content.view` każe kontrolerowi kart wczytać swój widok, a ten wybiera pierwszą
+    /// kartę i zgłasza to z powrotem tutaj, do `show(titles:)`. `show` zaczyna od `_ = view`, więc
+    /// dopóki działo się to wewnątrz `loadView`, AppKit wchodził w `loadView` drugi raz: powstawał
+    /// drugi pasek boczny, przenosił do siebie `list` (bo to jedno wspólne pole), a pierwszy zostawał
+    /// z więzami do widoków, które już do niego nie należą. Okno Ustawień nie otwierało się w ogóle,
+    /// bo wyjątek leciał w środku `setContentViewController:`.
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let root = view
+        addChild(content)
+        let pane = content.view
+        pane.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(pane)
+        NSLayoutConstraint.activate([
+            pane.leadingAnchor.constraint(equalTo: sidebarView.trailingAnchor),
+            pane.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            pane.topAnchor.constraint(equalTo: root.topAnchor),
+            pane.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            pane.widthAnchor.constraint(equalToConstant: Self.paneWidth),
+            // A short pane must not cut the list off.
+            root.heightAnchor.constraint(greaterThanOrEqualTo: list.heightAnchor, constant: 24)
+        ])
+        preferredContentSize = root.frame.size
+    }
+
+    private let sidebarView = NSVisualEffectView()
+
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: Self.width + Self.paneWidth, height: 420))
-        let sidebar = NSVisualEffectView()
+        let sidebar = sidebarView
         sidebar.material = .sidebar
         sidebar.blendingMode = .behindWindow
         sidebar.state = .followsWindowActiveState
@@ -430,10 +459,6 @@ final class SettingsSidebarController: NSViewController {
         list.translatesAutoresizingMaskIntoConstraints = false
         sidebar.addSubview(list)
         root.addSubview(sidebar)
-        addChild(content)
-        let pane = content.view
-        pane.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(pane)
         NSLayoutConstraint.activate([
             sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             sidebar.topAnchor.constraint(equalTo: root.topAnchor),
@@ -441,17 +466,9 @@ final class SettingsSidebarController: NSViewController {
             sidebar.widthAnchor.constraint(equalToConstant: Self.width),
             list.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 12),
             list.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 10),
-            list.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -10),
-            pane.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
-            pane.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            pane.topAnchor.constraint(equalTo: root.topAnchor),
-            pane.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            pane.widthAnchor.constraint(equalToConstant: Self.paneWidth),
-            // A short pane must not cut the list off.
-            root.heightAnchor.constraint(greaterThanOrEqualTo: list.heightAnchor, constant: 24)
+            list.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -10)
         ])
         view = root
-        preferredContentSize = root.frame.size
     }
 
     /// Follows the pane's own height, so the window keeps fitting it.

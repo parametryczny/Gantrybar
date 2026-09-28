@@ -74,6 +74,19 @@ import Testing
         #expect(FrameSignals.texture(spaghetti(step: 10)) > FrameSignals.legibleTexture * 10)
     }
 
+    /// Zbieranie klatek „idzie dobrze" przyspiesza, gdy nie ma ich prawie wcale, i samo zwalnia.
+    ///
+    /// Przy trzech na wydruk kamera, o której nie wiadomo nic, potrzebowałaby tygodnia, żeby bank
+    /// dostał drugą klasę, a bez drugiej klasy porównanie po wyglądzie nie ma zdania o niczym.
+    @Test func anEmptyLibraryFillsFastAndThenCalmsDown() {
+        let empty = DefectWatch.collectionQuota(framesSoFar: 0)
+        let middling = DefectWatch.collectionQuota(framesSoFar: 60)
+        let full = DefectWatch.collectionQuota(framesSoFar: 400)
+        #expect(empty.perPrint > middling.perPrint && middling.perPrint > full.perPrint)
+        #expect(empty.spacing < middling.spacing && middling.spacing < full.spacing)
+        #expect(full.perPrint == 3, "a library that has enough goes back to just keeping up to date")
+    }
+
     /// The print with everything on it slid sideways, as a layer shift leaves it.
     private func slid(_ frame: [Float], by offset: Int) -> [Float] {
         var moved = [Float](repeating: 0.30, count: side * side)

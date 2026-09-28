@@ -347,6 +347,20 @@ final class DefectWatch {
         rebuildPrototypes()
     }
 
+    /// Ile klatek „idzie dobrze" brać z jednego wydruku i jak rzadko, przy tylu już zebranych.
+    ///
+    /// Trzy stopnie, bo trzy różne sytuacje. Pusto: bierz ile się da, co trzy minuty, bo bez drugiej
+    /// klasy rozpoznawanie po wyglądzie w ogóle nie ma zdania. Zaczyna być z czym porównywać: zwolnij.
+    /// Dość: wróć do trzech na wydruk co osiem minut, czyli do samego odświeżania, bo drukarka z
+    /// czasem wygląda inaczej, ale nowe klatki nie wnoszą już nic poza aktualnością.
+    nonisolated static func collectionQuota(framesSoFar: Int) -> (perPrint: Int, spacing: TimeInterval) {
+        switch framesSoFar {
+        case ..<40: (12, 3 * 60)
+        case ..<120: (6, 5 * 60)
+        default: (3, 8 * 60)
+        }
+    }
+
     /// Mówi raz na wydruk, że z tej kamery nic nie da się wyczytać.
     ///
     /// Cisza znaczy tu dwie zupełnie różne rzeczy: „wszystko w porządku" i „patrzę w ciemność". Do
@@ -384,9 +398,15 @@ final class DefectWatch {
         let job = telemetry.jobName ?? ""
         var kept = goodFrames[printer.serial] ?? (job: job, count: 0, at: .distantPast)
         if kept.job != job { kept = (job: job, count: 0, at: .distantPast) }
-        // Three a print is enough to describe a camera, and far apart enough to catch it at
-        // different heights of the same object rather than three views of one minute.
-        guard kept.count < 3, Date().timeIntervalSince(kept.at) > 8 * 60 else { return }
+        // Ile brać z jednego wydruku, zależy od tego, ile już jest.
+        //
+        // Trzy na wydruk starczą, żeby opisać kamerę, która ma się z czym porównywać. Kamera, o
+        // której nie wiadomo jeszcze nic, potrzebuje ich dużo więcej i to szybko: dopóki klatek
+        // „idzie dobrze" jest garść, bank nie ma drugiej klasy i nie potrafi nikogo oskarżyć, więc
+        // zbieranie po trzy na wydruk oznacza tydzień ciszy. Próg sam się wycofuje, gdy zbiór
+        // urośnie, więc nie ma tu przełącznika do zapomnienia.
+        let quota = Self.collectionQuota(framesSoFar: DefectDataset.stats().byLabel["ok"] ?? 0)
+        guard kept.count < quota.perPrint, Date().timeIntervalSince(kept.at) > quota.spacing else { return }
         guard (try? DefectDataset.save(jpeg: jpeg, label: .ok, printer: printer, telemetry: telemetry,
                                        limitBytes: AppSettings.shared.defectDatasetLimitMB * 1024 * 1024,
                                        automatic: true)) != nil else { return }

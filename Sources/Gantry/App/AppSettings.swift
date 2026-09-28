@@ -83,6 +83,8 @@ final class AppSettings: ObservableObject {
     @Published var spoolbaseEnabled: Bool { didSet { defaults.set(spoolbaseEnabled, forKey: "spoolbase-enabled") } }
     /// Pair Bambu RFID rolls in the AMS with their Spoolbase rolls on their own (SpoolAutoPair).
     @Published var spoolAutoPair: Bool { didSet { defaults.set(spoolAutoPair, forKey: "spool-auto-pair") } }
+    /// Ask about a tagged roll that is not in Spoolbase yet, instead of passing over it in silence.
+    @Published var spoolAskUnknownTags: Bool { didSet { defaults.set(spoolAskUnknownTags, forKey: "spool-ask-unknown-tags") } }
 
     /// Whether the read-only LAN web dashboard (http://<host>.local:8787) runs. Off keeps Gantry a
     /// pure desktop app with no listening socket.
@@ -287,6 +289,7 @@ final class AppSettings: ObservableObject {
         panelTransparency = PanelTransparency(rawValue: defaults.string(forKey: "panel-transparency") ?? "") ?? .low
         spoolbaseEnabled = defaults.object(forKey: "spoolbase-enabled") as? Bool ?? true
         spoolAutoPair = defaults.object(forKey: "spool-auto-pair") as? Bool ?? true
+        spoolAskUnknownTags = defaults.object(forKey: "spool-ask-unknown-tags") as? Bool ?? true
         webDashboardEnabled = defaults.object(forKey: "web-dashboard-enabled") as? Bool ?? true
         remoteBridgeMode = defaults.string(forKey: "remote-bridge-mode") ?? "off"
         remoteBridgeURL = defaults.string(forKey: "remote-bridge-url") ?? ""

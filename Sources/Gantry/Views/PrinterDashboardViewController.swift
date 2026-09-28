@@ -1882,14 +1882,10 @@ final class PrinterCardView: NSView, NSDraggingSource {
 
         // Bottom notice banner (spool auto-detached, etc.) with an OK to dismiss.
         noticeBanner.wantsLayer = true
-        noticeBanner.layer?.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.14, blue: 0.09, alpha: 0.98).cgColor
-        noticeBanner.layer?.cornerRadius = 10
-        noticeBanner.layer?.borderWidth = 1
-        noticeBanner.layer?.borderColor = GantryTheme.line.cgColor
+        noticeBanner.layer?.cornerRadius = 12
         noticeBanner.isHidden = true
         noticeBanner.translatesAutoresizingMaskIntoConstraints = false
-        noticeLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
-        noticeLabel.textColor = GantryTheme.text
+        noticeLabel.font = .systemFont(ofSize: 11, weight: .semibold)
         noticeLabel.lineBreakMode = .byWordWrapping
         noticeLabel.maximumNumberOfLines = 3
         noticeLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -1899,8 +1895,6 @@ final class PrinterCardView: NSView, NSDraggingSource {
         noticeOKButton.title = "OK"
         noticeOKButton.bezelStyle = .rounded
         noticeOKButton.controlSize = .regular
-        noticeOKButton.bezelColor = GantryTheme.accent
-        noticeOKButton.contentTintColor = GantryTheme.canvas
         noticeOKButton.font = .systemFont(ofSize: 11, weight: .bold)
         noticeOKButton.target = self
         noticeOKButton.action = #selector(dismissNoticeTapped)
@@ -1984,7 +1978,31 @@ final class PrinterCardView: NSView, NSDraggingSource {
         noticeOKButton.isHidden = answer != nil
         noticeFailedButton.isHidden = answer == nil
         noticeFalseAlarmButton.isHidden = answer == nil
+        applyNoticeTone(asking: answer != nil)
         noticeBanner.isHidden = false
+    }
+
+    /// Kolor paska zależy od tego, co on mówi.
+    ///
+    /// Zwykła wiadomość, na przykład że rolka wróciła do magazynu, jest zielona i mocna: to się już
+    /// stało, jest w porządku, wystarczy wiedzieć. Ostrzeżenie o wpadce zostaje bursztynowe, bo pytanie
+    /// „czy Twój wydruk się posypał" na soczystej zieleni czytałoby się jak dobra wiadomość, a jedyny
+    /// kolor, który ma w Gantry coś znaczyć, przestałby cokolwiek znaczyć.
+    private func applyNoticeTone(asking: Bool) {
+        let green = NSColor(hex: 0x34E04A)
+        let amber = NSColor(calibratedRed: 0.22, green: 0.18, blue: 0.08, alpha: 0.98)
+        noticeBanner.layer?.backgroundColor = (asking ? amber : green).cgColor
+        noticeBanner.layer?.borderWidth = asking ? 1 : 0
+        noticeBanner.layer?.borderColor = asking ? GantryTheme.line.cgColor : nil
+        // Poświata pod kaflem, ta sama zieleń rozmyta: bez niej kolor leży płasko na ciemnej karcie.
+        noticeBanner.layer?.shadowColor = green.cgColor
+        noticeBanner.layer?.shadowOpacity = asking ? 0 : 0.45
+        noticeBanner.layer?.shadowRadius = 12
+        noticeBanner.layer?.shadowOffset = NSSize(width: 0, height: -2)
+        noticeBanner.layer?.masksToBounds = false
+        noticeLabel.textColor = asking ? GantryTheme.text : NSColor(hex: 0x07200C)
+        noticeOKButton.bezelColor = NSColor(hex: 0x07200C)
+        noticeOKButton.contentTintColor = green
     }
 
     required init?(coder: NSCoder) { nil }

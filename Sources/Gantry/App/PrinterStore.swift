@@ -15,6 +15,8 @@ final class PrinterStore: ObservableObject {
     @Published private(set) var spoolNotices: [String: [String]] = [:]
     /// Ostrzeżenia o wpadce czekające na „to wpadka" albo „fałszywy alarm".
     @Published private(set) var defectAlarms: [String: DefectAlarm] = [:]
+    /// Rolki z tagiem, których nie ma w Spoolbase, czekające na pytanie „dodać do magazynu?".
+    @Published private(set) var spoolOffers: [SpoolAutoPair.Offer] = []
     @Published private(set) var discovered: [DiscoveredPrinter] = []
     @Published var isScanning = false
     @Published var globalMessage: String?
@@ -885,6 +887,31 @@ final class PrinterStore: ObservableObject {
     /// A notification is easy to miss: it can be swiped away without reading, and quiet hours
     /// suppress it outright. Anything worth waking somebody for is worth leaving somewhere they will
     /// find it afterwards, so the card keeps saying it until they say OK.
+    /// Rolki z tagiem, o które Gantry chce zapytać: jedna po drugiej, nigdy dwanaście naraz.
+    ///
+    /// Tag, o który raz zapytano i dostano „nie", nie wraca. Inaczej ta sama rolka pytałaby przy
+    /// każdym włożeniu do końca świata, a ktoś, kto świadomie trzyma filament poza magazynem, ma
+    /// prawo nie być o to pytany.
+    private func offerUnknownRolls(_ offers: [SpoolAutoPair.Offer]) {
+        guard AppSettings.shared.spoolAskUnknownTags else { return }
+        for offer in offers where !refusedSpoolTags.contains(offer.tagUID)
+            && !spoolOffers.contains(where: { $0.tagUID == offer.tagUID }) {
+            spoolOffers.append(offer)
+        }
+    }
+
+    /// Odpowiedź na pytanie o rolkę. `remember` zapamiętuje „nie" dla tego tagu na stałe.
+    func answerSpoolOffer(tagUID: String, remember: Bool) {
+        spoolOffers.removeAll { $0.tagUID == tagUID }
+        guard remember else { return }
+        refusedSpoolTags.insert(tagUID)
+        BambuDefaults.shared.set(Array(refusedSpoolTags), forKey: Self.refusedTagsKey)
+    }
+
+    private static let refusedTagsKey = "spool-refused-tags"
+    private lazy var refusedSpoolTags: Set<String> =
+        Set(BambuDefaults.shared.stringArray(forKey: Self.refusedTagsKey) ?? [])
+
     /// Ostrzeżenie o wpadce, które czeka na odpowiedź, razem z klatką, która je wywołała.
     struct DefectAlarm: Equatable {
         var text: String
@@ -1039,10 +1066,20 @@ final class PrinterStore: ObservableObject {
                     let text = AppSettings.shared.t("{0} returned to storage (NFC tag detected in {1})", item.spoolID, item.slot)
                     spoolNotices[serial, default: []].append(text)
                 }
+                // Wyjęta rolka wraca do magazynu, żeby była do wzięcia przez inną drukarkę. Liczone
+                // przy każdym odczycie, nie tylko przy zmianie, bo o odpięciu decyduje czas.
+                for item in SpoolbaseShared.spools.detachRemovedRolls(
+                    printerSerial: serial, groups: value.filamentGroups) {
+                    postCardNotice(serial: serial,
+                                   text: AppSettings.shared.t("{0} returned to storage ({1} is empty)",
+                                                              item.spoolID, item.slot))
+                }
                 if value.filamentGroups != previous?.filamentGroups {
-                    for text in SpoolAutoPair.pair(serial: serial, groups: value.filamentGroups) {
+                    let outcome = SpoolAutoPair.result(serial: serial, groups: value.filamentGroups)
+                    for text in outcome.notices {
                         spoolNotices[serial, default: []].append(text)
                     }
+                    offerUnknownRolls(outcome.offers)
                 }
             }
             recordTemperature(serial: serial, value: value)

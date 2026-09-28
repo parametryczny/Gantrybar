@@ -91,6 +91,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             DispatchQueue.main.async {
                 self?.updateStatusItem()
                 self?.updateProgressItems()
+                // Rolka z tagiem, której nie ma w magazynie, pyta o siebie sama. Kolejka po jednym,
+                // więc pełne AMS-y na trzech drukarkach nie zasypią użytkownika oknami.
+                if let store = self?.store { SpoolOfferPrompt.presentNext(store: store) }
             }
         }
         settingsSubscription = AppSettings.shared.objectWillChange.sink { [weak self] _ in
@@ -354,30 +357,43 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// Menu prawego przycisku, ułożone od tego, po co sięga się najczęściej, po to, co otwiera się raz.
+    ///
+    /// Pięć grup, każda krótsza od poprzedniej pod względem tego, jak często się jej używa: okna, do
+    /// których się wraca; działania na flocie; wyłącznik awaryjny; przełączniki i ustawienia; pomoc.
+    /// „Pokaż drukarki" tu nie ma, bo to samo robi lewy przycisk, a pozycja, która dubluje kliknięcie
+    /// obok, zajmuje miejsce na górze listy i niczego nie wnosi.
+    ///
+    /// Ikony są jednokolorowe. Jedyny wyjątek to awaryjne wyłączenie zasilania, bo kolor ma tu znaczyć
+    /// „uwaga, to odcina prąd", a nie zdobić; gdy czerwone jest jedno, widać je od razu.
     private func showContextMenu(relativeTo button: NSStatusBarButton) {
         let settings = AppSettings.shared
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        menu.addItem(row(icon: "printer.fill", tint: Self.accentTint,
-                         title: settings.t("Show printers")) { [weak self] in
-            self?.showPopoverFromMenu()
-        })
+        // 1. Okna, do których wraca się w kółko.
         if Build.hasExtras {
-            menu.addItem(row(icon: "questionmark.circle", title: settings.t("How to read Gantry")) { [weak self] in
-                self?.appMenuOnboarding(nil)
+            if settings.spoolbaseEnabled {
+                menu.addItem(row(icon: "shippingbox",
+                                 title: settings.t("Spoolbase — filament stock")) { [weak self] in
+                    self?.showSpoolbase()
+                })
+            }
+            menu.addItem(row(icon: "tray.and.arrow.up", title: "Farma · pliki i wydruki…") { [weak self] in
+                guard let self else { return }; FarmWindowController.show(store: self.store)
             })
+            menu.addItem(row(icon: "chart.bar",
+                             title: settings.t("Fleet statistics…")) { [weak self] in
+                self?.showFleetStats()
+            })
+            menu.addItem(row(icon: "stethoscope",
+                             title: settings.t("Diagnostic Center…")) { [weak self] in
+                self?.showDiagnostics()
+            })
+            menu.addItem(.separator())
         }
 
-        if Build.hasExtras, settings.spoolbaseEnabled {
-            menu.addItem(row(icon: "shippingbox.fill",
-                             title: settings.t("Spoolbase — filament stock")) { [weak self] in
-                self?.showSpoolbase()
-            })
-        }
-
-        menu.addItem(.separator())
-
+        // 2. Flota: pozycje, które coś robią od razu.
         menu.addItem(row(icon: "antenna.radiowaves.left.and.right",
                          title: settings.t("Search printers…"),
                          enabled: !store.isScanning) { [weak self] in
@@ -392,20 +408,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
                          enabled: !store.printers.isEmpty) { [weak self] in
             self?.store.reconnectAll()
         })
-        if Build.hasExtras {
-            menu.addItem(row(icon: "tray.and.arrow.up", title: "Farma · pliki i wydruki…") { [weak self] in
-                guard let self else { return }; FarmWindowController.show(store: self.store)
-            })
-            menu.addItem(row(icon: "stethoscope",
-                             title: settings.t("Diagnostic Center…")) { [weak self] in
-                self?.showDiagnostics()
-            })
-            menu.addItem(row(icon: "chart.bar",
-                             title: settings.t("Fleet statistics…")) { [weak self] in
-                self?.showFleetStats()
-            })
-        }
-        // Shown once any printer has a socket: in a fire nobody should have to find it in a submenu.
+
+        // 3. Wyłącznik awaryjny, w osobnej grupie i jako jedyny w kolorze: w pożarze nikt nie ma
+        //    szukać go w podmenu ani wodzić wzrokiem po jednakowych wierszach.
         if SmartPlugController.shared.hasPlugs {
             menu.addItem(.separator())
             menu.addItem(row(icon: "power.circle.fill", tint: .systemRed,
@@ -416,21 +421,15 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         menu.addItem(.separator())
 
-        menu.addItem(row(icon: "globe",
-                         title: settings.t("Language"),
-                         accessory: .value(settings.language.uppercased())) {
-            // Cycles through the installed catalogs, so a dropped-in language is reachable here too.
-            let codes = Localization.available().map(\.code)
-            let next = codes.firstIndex(of: AppSettings.shared.language).map { ($0 + 1) % codes.count } ?? 0
-            AppSettings.shared.language = codes[next]
-        })
+        // 4. Przełączniki i ustawienia.
         menu.addItem(row(icon: QuietHours.isEnabled ? "moon.fill" : "moon",
                          title: settings.t("Quiet hours"),
                          accessory: .detail(QuietHours.isEnabled ? QuietHours.rangeLabel() : settings.t("off"))) {
             QuietHours.isEnabled.toggle()
         })
         // The same switch as the shortcut, for the times the hands are already on the mouse. The
-        // detail says who is holding the Mac awake, so a blue icon is never a mystery.
+        // detail says who is holding the Mac awake, so the row is never a mystery; it used to say it
+        // in blue, which made it the second coloured thing in a menu that needs exactly one.
         let awake = KeepAwake.shared
         var detail: String
         if awake.isBridgeHoldSilenced {
@@ -440,23 +439,28 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         } else {
             detail = GlobalHotKey.defaultLabel
         }
-        // A closed MacBook sleeps whatever Gantry asks for, so the row says so rather than letting a
-        // blue icon promise it.
+        // A closed MacBook sleeps whatever Gantry asks for, so the row says so rather than letting an
+        // icon promise it.
         if awake.isOn && !KeepAwake.lidSleepDisabled {
             detail = settings.t("lid open only") + " · " + detail
         }
         menu.addItem(row(icon: awake.isOn ? "cup.and.saucer.fill" : "cup.and.saucer",
-                         tint: awake.isOn ? .systemBlue : .secondaryLabelColor,
                          title: settings.t("Keep this Mac awake"),
                          accessory: .detail(detail)) {
             KeepAwake.shared.toggle()
         })
-        if Build.hasExtras {
-            menu.addItem(row(icon: "arrow.down.circle",
-                             title: settings.t("Check for updates…"),
-                             accessory: .detail("v\(UpdateService.currentVersion)")) {
-                UpdatePresenter.checkAndPresent(from: nil)
-            })
+        menu.addItem(row(icon: "globe",
+                         title: settings.t("Language"),
+                         accessory: .value(settings.language.uppercased())) {
+            // Cycles through the installed catalogs, so a dropped-in language is reachable here too.
+            let codes = Localization.available().map(\.code)
+            let next = codes.firstIndex(of: AppSettings.shared.language).map { ($0 + 1) % codes.count } ?? 0
+            AppSettings.shared.language = codes[next]
+        })
+        if Build.hasExtras, settings.edgeDockEnabled {
+            menu.addItem(submenuRow(icon: "menubar.dock.rectangle",
+                                    title: settings.t("Edge dock"),
+                                    submenu: edgeDockMenu(settings: settings)))
         }
         menu.addItem(row(icon: "gearshape",
                          title: settings.t("Settings…"),
@@ -464,21 +468,24 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             self?.showSettings()
         })
 
-        if Build.hasExtras, settings.edgeDockEnabled {
-            let dockItem = NSMenuItem(title: settings.t("🖥  Edge dock"), action: nil, keyEquivalent: "")
-            dockItem.submenu = edgeDockMenu(settings: settings)
-            menu.addItem(dockItem)
+        menu.addItem(.separator())
+
+        // 5. Pomoc: czytane raz, a potem najwyżej przy wątpliwości. Obie pozycje mówią o tym samym,
+        //    czyli jak czytać to, co Gantry pokazuje, więc stoją razem i na końcu.
+        menu.addItem(submenuRow(icon: "paintpalette",
+                                title: settings.t("Colour legend"),
+                                submenu: colourLegendMenu(settings: settings)))
+        if Build.hasExtras {
+            menu.addItem(row(icon: "questionmark.circle", title: settings.t("How to read Gantry")) { [weak self] in
+                self?.appMenuOnboarding(nil)
+            })
+            menu.addItem(row(icon: "arrow.down.circle",
+                             title: settings.t("Check for updates…"),
+                             accessory: .detail("v\(UpdateService.currentVersion)")) {
+                UpdatePresenter.checkAndPresent(from: nil)
+            })
         }
-
-        // Every icon in this menu is drawn by a custom row view; a plain NSMenuItem's native image
-        // doesn't render here, and a view-based item won't open a submenu on hover. So the icon is an
-        // emoji in the title — it always renders and keeps the row expandable.
-        let legendItem = NSMenuItem(title: settings.t("🎨  Colour legend"),
-                                    action: nil, keyEquivalent: "")
-        legendItem.submenu = colourLegendMenu(settings: settings)
-        menu.addItem(legendItem)
-
-        menu.addItem(row(icon: "cup.and.saucer.fill",
+        menu.addItem(row(icon: "cup.and.saucer",
                          title: settings.t("Buy me a coffee ☕️")) {
             if let url = URL(string: "https://buycoffee.to/parametryczny") { NSWorkspace.shared.open(url) }
         })
@@ -552,6 +559,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     /// Warm coral tint used to highlight the primary "show printers" row, echoing the app icon.
     private static let accentTint = NSColor(calibratedRed: 0.91, green: 0.57, blue: 0.49, alpha: 1)
+
+    /// Wiersz, który rozwija podmenu.
+    ///
+    /// Nie może być widokiem, bo wiersz zbudowany z własnego widoku nie rozwija podmenu po najechaniu.
+    /// Przez jakiś czas ikoną było więc emoji w tytule, co zawsze się rysuje, ale w menu, w którym
+    /// wszystko inne jest jednokolorowe, dwa kolorowe obrazki rzucają się w oczy bardziej niż
+    /// jedyna rzecz, która ma się rzucać, czyli awaryjne wyłączenie. Zwykła pozycja z obrazkiem
+    /// szablonowym rysuje się w kolorze tekstu menu i sama trafia w jasny i ciemny motyw.
+    private func submenuRow(icon: String, title: String, submenu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let image = NSImage(systemSymbolName: icon, accessibilityDescription: title)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .regular))
+        image?.isTemplate = true
+        item.image = image
+        item.submenu = submenu
+        return item
+    }
 
     private func row(icon: String, tint: NSColor = .secondaryLabelColor, title: String,
                      accessory: MenuRowView.Accessory = .none, enabled: Bool = true,
