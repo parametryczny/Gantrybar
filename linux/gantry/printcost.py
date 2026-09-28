@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 CONFIG_KEY = "print-cost-settings-v1"
+#: PrintCostSettings.Business on macOS, in the order the Pricing pane lists them.
+BUSINESSES = ("unregistered", "company", "companyVAT")
 
 
 @dataclass
@@ -23,19 +25,44 @@ class PrintCostSettings:
     printerWatts: float = 150.0
     watts: dict[str, float] | None = None
     machinePerHour: float = 0.0
+    # Selling (Settings → Pricing). Same names and defaults as macOS, so one JSON serves all three.
+    #: "unregistered" (no VAT, PIT scale), "company" (VAT-exempt) or "companyVAT" (charges VAT).
+    business: str = "unregistered"
+    #: Income tax in percent, from the profit, or from the revenue when taxOnRevenue (ryczałt).
+    incomeTaxPercent: float = 12.0
+    taxOnRevenue: bool = False
+    vatPercent: float = 23.0
+    #: Mark-up on everything it costs to make and ship one print.
+    marginPercent: float = 30.0
+    #: A marketplace's cut of the gross price (Allegro, Etsy).
+    platformFeePercent: float = 0.0
+    laborPerHour: float = 0.0
+    laborMinutes: float = 10.0
+    #: Box, filler and label per order.
+    packaging: float = 0.0
+    #: Extra material and machine time set aside for prints that fail, in percent.
+    failurePercent: float = 5.0
 
     @classmethod
     def from_dict(cls, data: Any) -> "PrintCostSettings":
         value = cls()
         if not isinstance(data, dict):
             return value
-        for key in ("filamentPerKg", "electricityPerKWh", "printerWatts", "machinePerHour"):
+        for key in ("filamentPerKg", "electricityPerKWh", "printerWatts", "machinePerHour",
+                    "incomeTaxPercent", "vatPercent", "marginPercent", "platformFeePercent",
+                    "laborPerHour", "laborMinutes", "packaging", "failurePercent"):
+            if isinstance(data.get(key), bool):
+                continue
             try:
                 setattr(value, key, max(0.0, float(data.get(key, getattr(value, key)))))
             except (TypeError, ValueError):
                 pass
         if isinstance(data.get("currency"), str) and data["currency"].strip():
             value.currency = data["currency"].strip()[:8]
+        if data.get("business") in BUSINESSES:
+            value.business = data["business"]
+        if isinstance(data.get("taxOnRevenue"), bool):
+            value.taxOnRevenue = data["taxOnRevenue"]
         for key in ("materialPerKg", "watts"):
             raw = data.get(key)
             if isinstance(raw, dict):
@@ -45,7 +72,12 @@ class PrintCostSettings:
     def to_dict(self) -> dict[str, Any]:
         return {"currency": self.currency, "filamentPerKg": self.filamentPerKg,
                 "materialPerKg": self.materialPerKg or {}, "electricityPerKWh": self.electricityPerKWh,
-                "printerWatts": self.printerWatts, "watts": self.watts or {}, "machinePerHour": self.machinePerHour}
+                "printerWatts": self.printerWatts, "watts": self.watts or {}, "machinePerHour": self.machinePerHour,
+                "business": self.business, "incomeTaxPercent": self.incomeTaxPercent,
+                "taxOnRevenue": self.taxOnRevenue, "vatPercent": self.vatPercent,
+                "marginPercent": self.marginPercent, "platformFeePercent": self.platformFeePercent,
+                "laborPerHour": self.laborPerHour, "laborMinutes": self.laborMinutes,
+                "packaging": self.packaging, "failurePercent": self.failurePercent}
 
     def price_per_kg(self, material: str | None) -> float:
         return (self.materialPerKg or {}).get((material or "").strip().upper(), self.filamentPerKg)
@@ -110,6 +142,84 @@ def compute(duration_seconds: float, uses: list[Use], serial: str, settings: Pri
                      hours * max(0.0, settings.machinePerHour), kwh)
 
 
+@dataclass
+class SaleQuote:
+    """What a print should sell for, built up from what it cost. Mirrors macOS SaleQuote.
+
+    Costs first: the print itself (filament, electricity, machine time), an allowance for prints that
+    fail, the hands-on work and the packaging. The mark-up is the profit wanted on top of those, after
+    tax. The price is then solved so that, once the marketplace has taken its cut and the tax office
+    its share, exactly that profit is left; VAT, when charged, goes on top::
+
+        income tax on profit:     net = (costs + profit / (1 − tax)) / (1 − fee)
+        tax on revenue (ryczałt): net = (costs + profit) / (1 − fee − tax)
+        gross = net × (1 + VAT)
+
+    The marketplace fee is charged on the gross price, which is how Allegro and Etsy bill it.
+    An estimate for pricing, not tax advice.
+    """
+    print: float
+    failures: float
+    labor: float
+    packaging: float
+    profit: float
+    fee: float
+    tax: float
+    vat: float
+    net: float      # price without VAT
+    gross: float    # what the customer pays
+    complete: bool  # False when the filament use is unknown, so the price leaves the material out
+
+    @property
+    def costs(self) -> float:
+        return self.print + self.failures + self.labor + self.packaging
+
+    @classmethod
+    def compute(cls, cost: PrintCost, settings: PrintCostSettings) -> "SaleQuote":
+        s = settings
+        printed = cost.total
+        failures = printed * max(0.0, s.failurePercent) / 100
+        labor = max(0.0, s.laborPerHour) * max(0.0, s.laborMinutes) / 60
+        packaging = max(0.0, s.packaging)
+        costs = printed + failures + labor + packaging
+        profit = costs * max(0.0, s.marginPercent) / 100
+        vat_rate = max(0.0, s.vatPercent) / 100 if s.business == "companyVAT" else 0.0
+        tax_rate = min(0.9, max(0.0, s.incomeTaxPercent) / 100)
+        # The fee is a share of the gross price; as a share of the net it is that times (1 + VAT).
+        fee_rate = min(0.9, max(0.0, s.platformFeePercent) / 100)
+        if s.taxOnRevenue:
+            net = (costs + profit) / max(0.05, 1 - fee_rate - tax_rate)
+        else:
+            net = (costs + profit / max(0.05, 1 - tax_rate)) / max(0.05, 1 - fee_rate)
+        gross = net * (1 + vat_rate)
+        fee = gross * fee_rate / (1 + vat_rate)
+        tax = net * tax_rate if s.taxOnRevenue else max(0.0, net - fee - costs) * tax_rate
+        return cls(printed, failures, labor, packaging, profit, fee, tax, gross - net, net, gross,
+                   cost.filament is not None)
+
+    def breakdown(self, currency: str, t: Any = None) -> str:
+        """The price and where it comes from, one line each, for the calculator."""
+        if t is None:
+            from . import i18n
+            t = i18n.t
+
+        def money(value: float) -> str:
+            return f"{value:.2f} {currency}"
+        lines = [t("Print (filament, power, machine): {0}").format(money(self.print)),
+                 t("Failed prints allowance: {0}").format(money(self.failures)),
+                 t("Labour: {0}").format(money(self.labor)),
+                 t("Packaging: {0}").format(money(self.packaging)),
+                 t("Profit after tax: {0}").format(money(self.profit)),
+                 t("Marketplace fee: {0}").format(money(self.fee)),
+                 t("Income tax: {0}").format(money(self.tax))]
+        if self.vat > 0:
+            lines.append(t("VAT: {0}").format(money(self.vat)))
+            lines.append(t("Sell for {0} gross ({1} net)").format(money(self.gross), money(self.net)))
+        else:
+            lines.append(t("Sell for {0}").format(money(self.gross)))
+        return "\n".join(lines)
+
+
 def _date(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(str(value))
@@ -145,6 +255,21 @@ def uses(app: Any, serial: str, started: datetime, ended: datetime) -> list[Use]
             per_kg = float(definition.pricePerRoll) / nominal * 1000
         result.append(Use(float(event.get("consumedGrams", 0) or 0), getattr(definition, "type", None), per_kg))
     return result
+
+
+def entry_times(item: dict[str, Any]) -> tuple[datetime, datetime]:
+    """(started, ended) of a history entry; a missing start is the end minus the duration."""
+    ended = _date(item.get("endedAt")) or datetime.min.replace(tzinfo=timezone.utc)
+    started = _date(item.get("startedAt"))
+    if started is None:
+        started = ended - timedelta(seconds=float(item.get("durationSeconds", 0) or 0))
+    return started, ended
+
+
+def entry_cost(app: Any, serial: str, item: dict[str, Any], settings: PrintCostSettings) -> PrintCost:
+    """What one history entry cost, with the filament Spoolbase recorded for it."""
+    started, ended = entry_times(item)
+    return compute(float(item.get("durationSeconds", 0) or 0), uses(app, serial, started, ended), serial, settings)
 
 
 def ean_plausible(value: str) -> bool:

@@ -20,7 +20,7 @@ from gi.repository import Gdk, GLib, Gtk  # type: ignore
 
 from . import __version__
 from . import edition
-from . import i18n
+from . import i18n, printcost
 from .dockplacement import ROW_MARGIN, ROWS, position_title
 from .storage import autostart_enabled, set_autostart
 
@@ -115,8 +115,8 @@ class SettingsPane(Gtk.Grid):
 
 class SettingsDialog(Gtk.Dialog):
     # Same panes, same order, as the macOS window: SettingsPaneID.visible.
-    PANES = ("general", "appearance", "notifications", "windows", "integrations", "advanced")
-    # Integrations and Advanced are full-edition only; LITE has no Telegram, no LAN server and no
+    PANES = ("general", "appearance", "notifications", "windows", "integrations", "pricing", "advanced")
+    # Integrations, Pricing and Advanced are full-edition only; LITE has no Telegram, no LAN server and no
     # developer mode, so it shows four panes.
     LITE_PANES = ("general", "appearance", "notifications", "windows")
 
@@ -156,7 +156,8 @@ class SettingsDialog(Gtk.Dialog):
         self.panes: dict[str, Gtk.Widget] = {}
         builders = {"general": self._general, "appearance": self._appearance,
                     "notifications": self._notifications, "windows": self._windows,
-                    "integrations": self._integrations, "advanced": self._advanced}
+                    "integrations": self._integrations, "pricing": self._pricing,
+                    "advanced": self._advanced}
         visible = self.PANES if edition.HAS_EXTRAS else self.LITE_PANES
         for name in self.PANES:
             pane = SettingsPane()
@@ -185,7 +186,8 @@ class SettingsDialog(Gtk.Dialog):
     def _pane_title(name: str) -> str:
         return {"general": i18n.t("General"), "appearance": i18n.t("Appearance"),
                 "notifications": i18n.t("Notifications"), "windows": i18n.t("Windows and strip"),
-                "integrations": i18n.t("Integrations"), "advanced": i18n.t("Advanced")}[name]
+                "integrations": i18n.t("Integrations"), "pricing": i18n.t("Pricing"),
+                "advanced": i18n.t("Advanced")}[name]
 
     def _pane_changed(self, *_args: object) -> None:
         """Title and height follow the pane, the way the macOS window does: the top edge stays put
@@ -211,6 +213,10 @@ class SettingsDialog(Gtk.Dialog):
         width = (SettingsPane.CAPTION_COLUMN + SettingsPane.CONTROL_COLUMN
                  + SettingsPane.COLUMN_SPACING + SettingsPane.INSET * 2 + 151)
         natural = pane.get_preferred_height_for_width(width - 151)[1] + SettingsPane.INSET
+        # resize() counts the header bar in the window's height, so the pane has to leave room for it.
+        header = self.get_header_bar()
+        if header is not None:
+            natural += header.get_allocated_height()
         screen = self.get_screen()
         limit = (screen.get_height() - 120) if screen is not None else 760
         self.resize(width, max(240, min(limit, natural)))
@@ -482,6 +488,158 @@ class SettingsDialog(Gtk.Dialog):
         pane.aligned(self.web_enabled)
         pane.field(i18n.t("Address"), self.web_address)
         pane.note(i18n.t("Open on a phone on the same Wi-Fi. View only, no control."))
+
+    def _pricing(self, pane: SettingsPane) -> None:
+        """Settings → Pricing, as on macOS: how the seller is set up, the mark-up and extras, what
+        printing costs (the fleet statistics' old "Prices…" dialog) and a calculator. All of it is one
+        PrintCostSettings value, saved as it is typed."""
+        value = printcost.load(self.app.config)
+
+        def number(amount: float) -> Gtk.Entry:
+            entry = Gtk.Entry(text=f"{amount:g}", xalign=1)
+            entry.set_width_chars(8)
+            return entry
+
+        def row(entry: Gtk.Widget, unit: "str | Gtk.Label | None" = None,
+                extra: Gtk.Widget | None = None) -> Gtk.Box:
+            box = Gtk.Box(spacing=6)
+            box.pack_start(entry, False, False, 0)
+            if unit is not None:
+                label = unit if isinstance(unit, Gtk.Label) else Gtk.Label(label=unit)
+                label.get_style_context().add_class("dim-label")   # secondary colour, body size, as on macOS
+                box.pack_start(label, False, False, 0)
+            if extra is not None:
+                box.pack_start(extra, False, False, 6)
+            return box
+
+        self.pricing_business = Gtk.ComboBoxText()
+        for business, english in zip(printcost.BUSINESSES, ("Unregistered activity", "Company, VAT-exempt",
+                                                            "Company, VAT payer")):
+            self.pricing_business.append(business, i18n.t(english))
+        self.pricing_business.set_active_id(value.business)
+        self.pricing_tax = number(value.incomeTaxPercent)
+        self.pricing_on_revenue = self._check(i18n.t("on revenue (lump sum)"), value.taxOnRevenue)
+        self.pricing_vat = number(value.vatPercent)
+        self.pricing_vat.set_sensitive(value.business == "companyVAT")
+        self.pricing_margin = number(value.marginPercent)
+        self.pricing_fee = number(value.platformFeePercent)
+        self.pricing_labor_rate = number(value.laborPerHour)
+        self.pricing_labor_minutes = number(value.laborMinutes)
+        self.pricing_packaging = number(value.packaging)
+        self.pricing_failures = number(value.failurePercent)
+        self.pricing_currency = Gtk.Entry(text=value.currency)
+        self.pricing_currency.set_width_chars(8)
+        self.pricing_filament = number(value.filamentPerKg)
+        self.pricing_materials = Gtk.Entry(text=", ".join(
+            f"{key}={price:g}" for key, price in sorted((value.materialPerKg or {}).items())))
+        self.pricing_materials.set_placeholder_text("PETG=90, ASA=120")
+        self.pricing_materials.set_width_chars(28)
+        self.pricing_energy = number(value.electricityPerKWh)
+        self.pricing_watts = number(value.printerWatts)
+        self.pricing_machine = number(value.machinePerHour)
+        self.pricing_grams = Gtk.Entry(xalign=1, placeholder_text="120")
+        self.pricing_grams.set_width_chars(8)
+        self.pricing_hours = Gtk.Entry(xalign=1, placeholder_text="4.5")
+        self.pricing_hours.set_width_chars(8)
+        self.pricing_result = Gtk.Label(label="", xalign=0, wrap=True, selectable=True)
+        self.pricing_result.set_max_width_chars(52)
+        # Units that follow the currency as it is typed.
+        self._pricing_units = [Gtk.Label(label=value.currency) for _ in range(5)]
+
+        pane.field(i18n.t("Business"), self.pricing_business)
+        pane.field(i18n.t("Income tax"), row(self.pricing_tax, "%", self.pricing_on_revenue))
+        pane.field(i18n.t("VAT"), row(self.pricing_vat, "%"))
+        pane.note(i18n.t("An estimate for pricing, not tax advice. Check the limits and rates that apply to you."))
+
+        pane.section(i18n.t("Mark-up and extras"))
+        pane.field(i18n.t("Mark-up"), row(self.pricing_margin, "%"))
+        pane.field(i18n.t("Marketplace fee"), row(self.pricing_fee, "%"))
+        pane.field(i18n.t("Labour per hour"), row(self.pricing_labor_rate, self._pricing_units[0]))
+        pane.field(i18n.t("Labour per print"), row(self.pricing_labor_minutes, "min"))
+        pane.field(i18n.t("Packaging per order"), row(self.pricing_packaging, self._pricing_units[1]))
+        pane.field(i18n.t("Failed prints allowance"), row(self.pricing_failures, "%"))
+
+        pane.section(i18n.t("Production costs"))
+        pane.field(i18n.t("Currency"), self.pricing_currency)
+        pane.field(i18n.t("Filament per kg"), row(self.pricing_filament, self._pricing_units[2]))
+        pane.field(i18n.t("Per material (per kg)"), self.pricing_materials)
+        pane.field(i18n.t("Electricity per kWh"), row(self.pricing_energy, self._pricing_units[3]))
+        pane.field(i18n.t("Average printer power (W)"), row(self.pricing_watts, "W"))
+        pane.field(i18n.t("Machine time per hour"), row(self.pricing_machine, self._pricing_units[4]))
+
+        pane.section(i18n.t("Calculator"))
+        pane.field(i18n.t("Filament"), row(self.pricing_grams, "g"))
+        pane.field(i18n.t("Print time"), row(self.pricing_hours, "h"))
+        pane.aligned(self.pricing_result)
+
+        for entry in (self.pricing_tax, self.pricing_vat, self.pricing_margin, self.pricing_fee,
+                      self.pricing_labor_rate, self.pricing_labor_minutes, self.pricing_packaging,
+                      self.pricing_failures, self.pricing_currency, self.pricing_filament,
+                      self.pricing_materials, self.pricing_energy, self.pricing_watts, self.pricing_machine):
+            entry.connect("changed", self._pricing_changed)
+        self.pricing_business.connect("changed", self._pricing_changed)
+        self.pricing_on_revenue.connect("toggled", self._pricing_changed)
+        self.pricing_grams.connect("changed", lambda *_: self._pricing_recalculate())
+        self.pricing_hours.connect("changed", lambda *_: self._pricing_recalculate())
+        self._pricing_recalculate()
+
+    def _pricing_changed(self, widget: Gtk.Widget) -> None:
+        """Saved as typed, like the macOS pane. A field that does not parse keeps the stored value."""
+        value = printcost.load(self.app.config)
+        before = printcost.PrintCostSettings.from_dict(value.to_dict())
+        business = self.pricing_business.get_active_id() or value.business
+        if business != value.business and business == "companyVAT" and value.incomeTaxPercent == 12 \
+                and not value.taxOnRevenue:
+            # A VAT payer usually settles on a flat or lump-sum rate rather than the scale.
+            value.incomeTaxPercent = 19
+            self.pricing_tax.set_text("19")
+        value.business = business
+        value.taxOnRevenue = self.pricing_on_revenue.get_active()
+        self.pricing_vat.set_sensitive(business == "companyVAT")
+        for entry, key, limit in ((self.pricing_tax, "incomeTaxPercent", 90.0),
+                                  (self.pricing_vat, "vatPercent", 50.0),
+                                  (self.pricing_margin, "marginPercent", None),
+                                  (self.pricing_fee, "platformFeePercent", 90.0),
+                                  (self.pricing_labor_rate, "laborPerHour", None),
+                                  (self.pricing_labor_minutes, "laborMinutes", None),
+                                  (self.pricing_packaging, "packaging", None),
+                                  (self.pricing_failures, "failurePercent", 100.0),
+                                  (self.pricing_filament, "filamentPerKg", None),
+                                  (self.pricing_energy, "electricityPerKWh", None),
+                                  (self.pricing_watts, "printerWatts", None),
+                                  (self.pricing_machine, "machinePerHour", None)):
+            amount = printcost.parse_amount(entry.get_text())
+            if amount is not None and math.isfinite(amount):
+                setattr(value, key, amount if limit is None else min(limit, amount))
+        currency = self.pricing_currency.get_text().strip()
+        if currency:
+            value.currency = currency[:8]
+        value.materialPerKg = printcost.parse_material_prices(self.pricing_materials.get_text())
+        for unit in self._pricing_units:
+            unit.set_text(value.currency)
+        if value != before:
+            printcost.save(self.app.config, value)
+            # The statistics price every print with these, so an open one follows.
+            stats = getattr(self.app, "fleet_stats_dialog", None)
+            if stats is not None and hasattr(stats, "prices_changed"):
+                stats.prices_changed()
+        self._pricing_recalculate()
+
+    def _pricing_recalculate(self) -> None:
+        """The calculator: a print of this weight and duration, priced with everything above."""
+        settings = printcost.load(self.app.config)
+        grams = printcost.parse_amount(self.pricing_grams.get_text())
+        hours = printcost.parse_amount(self.pricing_hours.get_text())
+        lines_before = self.pricing_result.get_text().count("\n")
+        if grams is None or hours is None or not (grams > 0 or hours > 0):
+            self.pricing_result.set_text(i18n.t("Enter the filament weight and print time to see the price."))
+        else:
+            cost = printcost.compute(hours * 3600, [printcost.Use(grams)], "", settings)
+            self.pricing_result.set_text(printcost.SaleQuote.compute(cost, settings).breakdown(settings.currency))
+        # The breakdown is several lines where the hint was one: the window follows, as it does per pane.
+        if (self._ready and self.pricing_result.get_text().count("\n") != lines_before
+                and self.stack.get_visible_child_name() == "pricing"):
+            GLib.idle_add(self._fit_to_pane, "pricing")
 
     def _advanced(self, pane: SettingsPane) -> None:
         self.printer_control = self._check(i18n.t("Printer control"),

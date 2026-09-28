@@ -164,7 +164,8 @@ def main(out_dir: str) -> None:
     # One shot per tab; the window carries three pages instead of one long scrolling column.
     for index, (name, filename) in enumerate((("general", "02-settings.png"),
                                               ("appearance", "02b-settings-appearance.png"),
-                                              ("advanced", "02c-settings-advanced.png"))):
+                                              ("advanced", "02c-settings-advanced.png"),
+                                              ("pricing", "02d-settings-pricing.png"))):
         settings_window.stack.set_visible_child_name(name)
         while Gtk.events_pending():
             Gtk.main_iteration()

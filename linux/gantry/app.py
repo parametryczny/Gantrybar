@@ -1540,6 +1540,13 @@ class Gantry:
         if dialog is not None:
             dialog.stack.set_visible_child_name("windows")
 
+    def open_pricing_settings(self) -> None:
+        """The fleet statistics' "Prices…" button: the settings window, on the Pricing pane."""
+        self.open_settings()
+        dialog = getattr(self, "settings_dialog", None)
+        if dialog is not None:
+            dialog.stack.set_visible_child_name("pricing")
+
     def switch_to_workshop(self) -> bool:
         """Hand over to Gantry Workshop, the full-screen kiosk (see workshop.enter_workshop)."""
         from . import workshop
