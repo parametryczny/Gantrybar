@@ -46,7 +46,7 @@ nie deklaruje licencji. Same wagi są własne.
 
 ## Wymiana silnika
 
-Ustawienia, Zaawansowane, Wykrywanie wpadek, Plik modelu. Wskazany plik Core ML
+Ustawienia, Zaawansowane, Wykrywanie błędów wydruku, Plik modelu. Wskazany plik Core ML
 zastępuje Gantry Vision, w pilnowaniu w tle i w przycisku „Testuj" jednocześnie.
 Nazwa pokazywana na ekranie bierze się z metadanych modelu, więc nie zmienia się
 po przemianowaniu pliku.
@@ -65,11 +65,11 @@ drogie w otwieraniu (Elegoo, Kobra) dalej dają jedną klatkę.
 Każdy pilnowany wydruk jest nagrywany (`DefectRecorder`, katalog
 `Gantry/DefectRecordings`, ten sam limit co zbiór klatek): złożone klatki, co o nich
 powiedziało zachowanie wydruku i model, ostrzeżenia, Twoje odpowiedzi i to, jak
-wydruk się skończył. To opisuje się samo: wydruk zakończony bez potwierdzonej wpadki
+wydruk się skończył. To opisuje się samo: wydruk zakończony bez potwierdzonego błędu wydruku
 jest dobry, więc każde ostrzeżenie na nim to fałszywy alarm.
 
 Ustawienia → Zaawansowane → „Oceń nagrane wydruki…” odtwarza wszystkie nagrania
 z obecnymi ustawieniami (`DefectEvaluation`) i liczy na całe wydruki, nie na klatki:
-fałszywe alarmy na 100 godzin druku, złapane potwierdzone wpadki i o ile minut
+fałszywe alarmy na 100 godzin druku, złapane potwierdzone błędy wydruku i o ile minut
 wcześniej. Klatki wzorcowe są przy tym pominięte, bo część z nich pochodzi z tych
 samych wydruków.

@@ -1,4 +1,4 @@
-# Klatki wzorcowe wpadek: skąd są, na jakiej licencji i czego nie ma
+# Klatki wzorcowe błędów wydruku: skąd są, na jakiej licencji i czego nie ma
 
 `Resources/defect-starter-v1.bank` i `Resources/defect-starter-v2.bank` to pliki, z których Gantry
 rozpoznaje spaghetti. Nie ma w nich żadnych zdjęć. Są w nich liczby, które system macOS (Vision,
