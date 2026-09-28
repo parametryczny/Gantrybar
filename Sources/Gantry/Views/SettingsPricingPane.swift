@@ -215,6 +215,7 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
             if business != value.business, business == .companyVAT, value.incomeTaxPercent == 12, !value.taxOnRevenue {
                 // A VAT payer usually settles on a flat or lump-sum rate rather than the scale.
                 value.incomeTaxPercent = 19
+                taxField.stringValue = "19"
             }
             value.business = business
         }
