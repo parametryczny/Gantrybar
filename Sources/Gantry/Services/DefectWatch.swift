@@ -42,11 +42,6 @@ final class DefectWatch {
     /// Jak zachowuje się każdy wydruk z osobna. Nie wymaga żadnych danych, więc działa od pierwszego
     /// uruchomienia i jest jedyną drogą, którą ma nowy użytkownik (patrz PrintBaseline).
     private var baselines: [String: PrintBaseline] = [:]
-    /// The object-aware check, per printer, for printers whose bed has been calibrated.
-    private var footprintWatches: [String: FootprintWatch] = [:]
-    /// Object outlines of the running job, in bed millimetres, and when they were last asked for.
-    private var footprints: [String: (job: String, outlines: [[BedCalibration.Point]], triedAt: Date)] = [:]
-    private var footprintLoading: Set<String> = []
     private var lastFrame: [String: Data] = [:]
     private var masks: [String: DefectMask] = [:]
     private var lastInspection: [String: Date] = [:]
@@ -127,8 +122,6 @@ final class DefectWatch {
         lastFrame.removeAll()
         lastInspection.removeAll()
         baselines.removeAll()
-        footprintWatches.removeAll()
-        footprints.removeAll()
         goodFrames.removeAll()
         frameSource.removeAll()
         toldAbout.removeAll()
@@ -177,7 +170,6 @@ final class DefectWatch {
                 lastJob[printer.serial] = job
                 verdicts[printer.serial]?.reset()
                 baselines[printer.serial]?.reset()
-                footprintWatches[printer.serial]?.reset()
                 toldAbout[printer.serial] = (job: job, labels: [])
                 toldBlind[printer.serial] = nil
             }
@@ -258,20 +250,8 @@ final class DefectWatch {
             reportBlindCamera(printer: printer, telemetry: telemetry)
             return
         }
-        // With the bed calibrated: the background is greyed out for the behaviour check, the model sees
-        // only the bed, and the object-aware check knows where the objects are (see FootprintWatch).
-        let calibration = BedCalibration.load(serial: printer.serial)
-        let outlines = calibration?.usableForObjects == true ? footprints(for: printer, telemetry: telemetry, calibration: calibration!) : []
-        var footprintWatch = footprintWatches[printer.serial] ?? FootprintWatch()
-        let located = FootprintAnalysis.apply(frame: frame, jpeg: analysis, calibration: calibration, outlines: outlines,
-                                              layer: telemetry.currentLayer, progress: Double(telemetry.progress) / 100,
-                                              watch: &footprintWatch)
-        footprintWatches[printer.serial] = footprintWatch
-        if let calibration { DefectRecorder.shared.describe(serial: printer.serial, calibration: calibration, outlines: outlines) }
-        let extra = located.zones.map { [$0] } ?? []
-
         // Store raw camera frames, but use the selected area for both analysis paths.
-        let fromBehaviour = watchBehaviour(frame: located.behaviourFrame, printer: printer, telemetry: telemetry)
+        let fromBehaviour = watchBehaviour(frame: frame, printer: printer, telemetry: telemetry)
 
         // Wzorce liczą się zawsze, także przy wskazanym modelu. Model zna kamery, na których był
         // uczony; Twoje klatki znają Twoją. Gdy model mówi „coś podobnego, ale za słabo", a klatka
@@ -280,50 +260,24 @@ final class DefectWatch {
         let fromFrames = PrintBaseline.Reading(label: match?.label, confidence: match?.confidence ?? 0)
 
         guard let path = DefectModel.effectivePath(chosen: AppSettings.shared.defectModelPath) else {
-            settle([fromBehaviour, fromFrames] + extra, jpeg: jpeg, printer: printer, telemetry: telemetry)
+            settle([fromBehaviour, fromFrames], jpeg: jpeg, printer: printer, telemetry: telemetry)
             return
         }
         // Ten sam wczytany plik, którego używa „Testuj". Dwa wczytania tego samego modelu prędzej
         // czy później zaczęłyby odpowiadać inaczej, a wtedy sprawdzanie przestaje cokolwiek znaczyć.
         do {
-            let guess = try DefectModel.shared.guess(jpeg: located.modelJPEG, path: path)
+            let guess = try DefectModel.shared.guess(jpeg: analysis, path: path)
             let appearance = DefectAppearance.select(
                 model: guess.map { ($0.label, $0.confidence) },
                 reference: match.map { ($0.label, $0.confidence) },
                 threshold: AppSettings.shared.defectThreshold)
             let fromModel = PrintBaseline.Reading(label: appearance?.label, confidence: appearance?.confidence ?? 0)
-            settle([fromBehaviour, fromModel] + extra, jpeg: jpeg, printer: printer, telemetry: telemetry)
+            settle([fromBehaviour, fromModel], jpeg: jpeg, printer: printer, telemetry: telemetry)
         } catch {
             var next = status
             next.lastError = error.localizedDescription
             status = next
         }
-    }
-
-    /// The running job's object outlines in bed millimetres. Klipper publishes them with every status;
-    /// a Bambu printer is asked for the job's layout once (the same request "Skip object" makes), and
-    /// again after five minutes if it had nothing to give.
-    private func footprints(for printer: SavedPrinter, telemetry: PrinterTelemetry,
-                            calibration: BedCalibration) -> [[BedCalibration.Point]] {
-        if printer.kind == .klipper {
-            return telemetry.printObjects.map { $0.polygon.map { BedCalibration.Point(x: $0.x, y: $0.y) } }.filter { $0.count >= 3 }
-        }
-        let job = telemetry.jobName ?? ""
-        let cached = footprints[printer.serial].flatMap { $0.job == job ? $0 : nil }
-        if let cached, !cached.outlines.isEmpty || Date().timeIntervalSince(cached.triedAt) < 300 { return cached.outlines }
-        guard printer.kind == .bambu, let store, !footprintLoading.contains(printer.serial) else { return cached?.outlines ?? [] }
-        footprintLoading.insert(printer.serial)
-        footprints[printer.serial] = (job: job, outlines: [], triedAt: Date())
-        let serial = printer.serial
-        Task { @MainActor [weak self] in
-            let result = await store.loadPrintObjectLayout(serial: serial)
-            guard let self else { return }
-            self.footprintLoading.remove(serial)
-            guard case .loaded(let layout) = result else { return }
-            self.footprints[serial] = (job: job, outlines: FootprintAnalysis.outlines(from: layout, calibration: calibration), triedAt: Date())
-            self.footprintWatches[serial]?.reset()
-        }
-        return []
     }
 
     /// Co o tej klatce mówi samo zachowanie wydruku. Historia jest osobna dla każdej drukarki, bo

@@ -920,12 +920,7 @@ final class PrinterDetailViewController: NSViewController {
         let areaButton = NSButton(title: "Obszar wykrywania…", target: self, action: #selector(editDefectMask))
         areaButton.isBordered = false
         areaButton.contentTintColor = .controlAccentColor
-        let calibrateButton = NSButton(title: AppSettings.shared.t("Calibrate bed…"), target: self, action: #selector(calibrateBed))
-        calibrateButton.isBordered = false
-        calibrateButton.contentTintColor = .controlAccentColor
-        let tools = NSStackView(views: [areaButton, calibrateButton])
-        tools.spacing = 14
-        let stack = NSStackView(views: [header, cameraView, tools])
+        let stack = NSStackView(views: [header, cameraView, areaButton])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -944,11 +939,6 @@ final class PrinterDetailViewController: NSViewController {
     }
 
     @objc private func openAdvanced() { onOpenAdvanced() }
-
-    @objc private func calibrateBed() {
-        guard let printer = store.printers.first(where: { $0.serial == serial }) else { return }
-        BedCalibrationWindowController.show(store: store, printer: printer)
-    }
 
     private func pin(_ inner: NSView, in outer: NSView, inset: CGFloat) {
         inner.translatesAutoresizingMaskIntoConstraints = false

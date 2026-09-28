@@ -78,7 +78,6 @@ enum DefectEvaluation {
         for (folder, session) in sessions where session.outcome != nil && !session.frames.isEmpty {
             let mask = DefectMask.load(serial: session.serial)
             var baseline = PrintBaseline()
-            var footprintWatch = FootprintWatch()
             var verdict = DefectVerdict(threshold: threshold, hitsNeeded: hitsNeeded)
             var first: (at: Date, label: String)?
             for frame in session.frames {
@@ -90,13 +89,9 @@ enum DefectEvaluation {
                     verdict.reset()
                     continue
                 }
-                let located = FootprintAnalysis.apply(frame: grey, jpeg: jpeg, calibration: session.calibration,
-                                                      outlines: session.outlines ?? [], layer: frame.layer,
-                                                      progress: Double(frame.progress) / 100, watch: &footprintWatch)
-                let behaviour = baseline.observe(frame: located.behaviourFrame, progress: Double(frame.progress) / 100)
+                let behaviour = baseline.observe(frame: grey, progress: Double(frame.progress) / 100)
                 var readings = [behaviour]
-                if let zones = located.zones { readings.append(zones) }
-                if let modelPath, let guess = try? DefectModel.shared.guess(jpeg: located.modelJPEG, path: modelPath),
+                if let modelPath, let guess = try? DefectModel.shared.guess(jpeg: jpeg, path: modelPath),
                    let appearance = DefectAppearance.select(model: (guess.label, guess.confidence),
                                                             reference: nil, threshold: threshold) {
                     readings.append(PrintBaseline.Reading(label: appearance.label, confidence: appearance.confidence))

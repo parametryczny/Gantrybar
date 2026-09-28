@@ -43,9 +43,6 @@ struct DefectSession: Codable, Equatable {
     var outcome: Outcome?
     var frames: [Frame] = []
     var alarms: [Alarm] = []
-    /// The bed calibration and object outlines in force, so a replay can place the objects too.
-    var calibration: BedCalibration?
-    var outlines: [[BedCalibration.Point]]?
 
     var hours: Double { ((endedAt ?? frames.last?.at ?? startedAt).timeIntervalSince(startedAt)) / 3600 }
     /// A print known to be good: it finished and no warning on it was confirmed.
@@ -98,17 +95,6 @@ final class DefectRecorder {
             behaviour: behaviour.label, behaviourConfidence: behaviour.confidence,
             appearance: appearance?.label, appearanceConfidence: appearance?.confidence ?? 0))
         active[printer.serial] = entry
-        write(entry)
-    }
-
-    /// Keeps the calibration and outlines the live watcher used, once they are known or change.
-    func describe(serial: String, calibration: BedCalibration, outlines: [[BedCalibration.Point]]) {
-        guard var entry = active[serial] else { return }
-        let keptOutlines = outlines.isEmpty ? entry.session.outlines : outlines
-        guard entry.session.calibration != calibration || entry.session.outlines != keptOutlines else { return }
-        entry.session.calibration = calibration
-        entry.session.outlines = keptOutlines
-        active[serial] = entry
         write(entry)
     }
 
