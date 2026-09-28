@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.15.0",
+    "version": "1.16.0",
     "date": "2026-09-27",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
@@ -533,6 +533,7 @@
       "Notifications",
       "Windows and strip",
       "Integrations",
+      "Pricing",
       "Advanced"
     ],
     "macOSOnlyPanes": [

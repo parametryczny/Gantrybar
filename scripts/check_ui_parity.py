@@ -103,7 +103,7 @@ require("Sources/Gantry/Views/SettingsWindowController.swift",
         rf"enum SettingsPaneID: String \{{\s*case (?:\w+, ){{{macos_panes - 1}}}\w+",
         "macOS settings pane count differs from the contract")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"\.general, \.appearance, \.notifications, \.windows, \.integrations, \.remote, \.advanced",
+        r"\.general, \.appearance, \.notifications, \.windows, \.integrations, \.pricing, \.remote, \.advanced",
         "macOS settings panes are not in the contract's order")
 require("Sources/Gantry/Views/SettingsRowKit.swift",
         rf"captionColumn: CGFloat = {settings_metrics['captionColumn']}[\s\S]*?"
@@ -191,7 +191,7 @@ require("windows/Gantry.Windows/UI/SettingsWindow.xaml",
         r'x:Key="PaneCaption"[\s\S]*?Property="TextAlignment" Value="Right"',
         "Windows settings captions are not trailing in their column")
 require("windows/Gantry.Windows/UI/SettingsWindow.xaml.cs",
-        r'"General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Advanced"',
+        r'"General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Pricing", "Advanced"',
         "the Windows settings panes are not in the contract's order")
 # The hand-drawn switch track is what made it look like something other than a Windows window.
 forbid("windows/Gantry.Windows/UI/SettingsWindow.xaml", r'x:Name="track"',

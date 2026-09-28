@@ -254,12 +254,14 @@ final class FleetStatsViewController: NSViewController {
         if !all.isEmpty {
             body.addArrangedSubview(label(s.t("RECENT PRINTS"), 10, .bold, GantryTheme.muted))
             let stamp = DateFormatter(); stamp.dateFormat = "dd.MM HH:mm"
+            let pricing = PrintCostSettings.current
             let recent = all.prefix(15).map { line -> String in
                 let mark = line.ok ? "✓" : "✕"
                 let g = line.cost.grams.map { String(format: " · %.0f g", $0) } ?? ""
                 return "\(mark) \(stamp.string(from: line.entry.endedAt)) · \(line.printer) · "
                     + (line.entry.job.isEmpty ? "—" : line.entry.job)
                     + String(format: " · %.1f h", line.entry.durationSeconds / 3600) + g + " · " + money(line.cost.total)
+                    + (line.ok ? " → " + s.t("sell for {0}", money(SaleQuote.compute(cost: line.cost, settings: pricing).gross)) : "")
             }
             add(card(Array(recent)))
         }
@@ -381,49 +383,9 @@ final class FleetStatsViewController: NSViewController {
         }
     }
 
+    /// Prices live in Settings → Pricing now, next to the business set-up and the calculator.
     @objc private func pricesPressed() {
-        let s = AppSettings.shared
-        var settings = PrintCostSettings.current
-        func field(_ value: String) -> NSTextField {
-            let f = NSTextField(string: value); f.widthAnchor.constraint(equalToConstant: 170).isActive = true; return f
-        }
-        func number(_ v: Double) -> String { String(format: "%g", v) }
-        let currency = field(settings.currency)
-        let perKg = field(number(settings.filamentPerKg))
-        let materials = field(settings.materialPerKg.sorted { $0.key < $1.key }.map { "\($0.key)=\(number($0.value))" }.joined(separator: ", "))
-        materials.placeholderString = "PETG=90, ASA=120"
-        let kWh = field(number(settings.electricityPerKWh))
-        let watts = field(number(settings.printerWatts))
-        let machine = field(number(settings.machinePerHour))
-        let grid = NSGridView(views: [
-            [label(s.t("Currency"), 12, .regular), currency],
-            [label(s.t("Filament per kg"), 12, .regular), perKg],
-            [label(s.t("Per material (per kg)"), 12, .regular), materials],
-            [label(s.t("Electricity per kWh"), 12, .regular), kWh],
-            [label(s.t("Average printer power (W)"), 12, .regular), watts],
-            [label(s.t("Machine time per hour"), 12, .regular), machine]
-        ])
-        grid.rowSpacing = 8; grid.columnSpacing = 10
-        grid.frame = NSRect(x: 0, y: 0, width: 380, height: 190)
-        let alert = NSAlert()
-        alert.messageText = s.t("Print cost prices")
-        alert.informativeText = s.t("Used to price every print: filament from Spoolbase usage, electricity and machine time from its duration.")
-        alert.accessoryView = grid
-        alert.addButton(withTitle: s.t("Save"))
-        alert.addButton(withTitle: s.t("Cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        func parse(_ f: NSTextField) -> Double? {
-            Double(f.stringValue.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)).flatMap { $0 >= 0 ? $0 : nil }
-        }
-        let name = currency.stringValue.trimmingCharacters(in: .whitespaces)
-        if !name.isEmpty { settings.currency = String(name.prefix(8)) }
-        if let v = parse(perKg) { settings.filamentPerKg = v }
-        if let v = parse(kWh) { settings.electricityPerKWh = v }
-        if let v = parse(watts) { settings.printerWatts = v }
-        if let v = parse(machine) { settings.machinePerHour = v }
-        settings.materialPerKg = PrintCostSettings.parseMaterialPrices(materials.stringValue)
-        PrintCostSettings.current = settings
-        render()
+        NotificationCenter.default.post(name: .gantryShowPricing, object: nil)
     }
 
     // MARK: Building blocks

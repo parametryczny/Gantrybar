@@ -23,6 +23,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var settingsWindow: SettingsWindowController?
     private let spoolbase = SpoolbaseController()
     private var notificationObserver: Any?
+    private var pricingObserver: Any?
     private var updateNotificationObserver: Any?
     private var edgeDock: EdgeDockWindowController?
     private var floatingDashboard: FloatingDashboardWindowController?
@@ -128,6 +129,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             forName: .gantryShowDashboard, object: nil, queue: .main
         ) { [weak self] _ in
             DispatchQueue.main.async { self?.showDashboard() }
+        }
+        pricingObserver = NotificationCenter.default.addObserver(
+            forName: .gantryShowPricing, object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.showSettings()
+                self?.settingsWindow?.selectPricingPane()
+            }
         }
         if Build.hasExtras {
             updateNotificationObserver = NotificationCenter.default.addObserver(

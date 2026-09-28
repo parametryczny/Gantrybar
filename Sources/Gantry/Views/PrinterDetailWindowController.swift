@@ -1101,7 +1101,17 @@ final class PrinterDetailViewController: NSViewController {
                 let minutes = Int(entry.durationSeconds / 60)
                 let duration = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
                 let job = entry.job.isEmpty ? settings.t("Untitled") : entry.job
-                recentPrintsStack.addArrangedSubview(line("\(icon)  \(job)  ·  \(duration)",
+                // What the print cost and, for a good one, what to ask for it (Settings → Pricing).
+                let pricing = PrintCostSettings.current
+                let cost = PrintCost.compute(durationSeconds: entry.durationSeconds,
+                                             uses: PrintCost.uses(serial: serial, startedAt: entry.startedAt, endedAt: entry.endedAt),
+                                             serial: serial, settings: pricing)
+                var value = String(format: "  ·  %.2f %@", cost.total, pricing.currency)
+                if entry.result == .completed {
+                    value += "  →  " + settings.t("sell for {0}",
+                        String(format: "%.2f %@", SaleQuote.compute(cost: cost, settings: pricing).gross, pricing.currency))
+                }
+                recentPrintsStack.addArrangedSubview(line("\(icon)  \(job)  ·  \(duration)" + value,
                     color: entry.result == .completed ? GantryTheme.secondary : .systemOrange,
                     weight: .medium))
             }

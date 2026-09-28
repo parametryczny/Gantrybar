@@ -88,5 +88,6 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate, @un
 
 extension Notification.Name {
     static let gantryShowDashboard = Notification.Name("pl.gantry.showDashboard")
+    static let gantryShowPricing = Notification.Name("pl.gantry.showPricing")
     static let gantryCheckForUpdates = Notification.Name("pl.gantry.checkForUpdates")
 }

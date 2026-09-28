@@ -74,3 +74,56 @@ import Testing
                 ["PETG": 90, "ASA": 119.5, "TPU": 140])
     }
 }
+
+@Suite struct SaleQuoteTests {
+    private func cost(_ total: Double) -> PrintCost {
+        PrintCost(filament: total, grams: 100, energy: 0, machine: 0, kWh: 0)
+    }
+
+    @Test func unregisteredWithoutFeesKeepsTheProfitAfterTax() {
+        var s = PrintCostSettings()
+        s.business = .unregistered; s.incomeTaxPercent = 12; s.marginPercent = 50
+        s.failurePercent = 0; s.laborPerHour = 0; s.packaging = 0; s.platformFeePercent = 0
+        let q = SaleQuote.compute(cost: cost(10), settings: s)
+        #expect(q.vat == 0)
+        // Profit before tax 5 / 0.88; after 12% tax exactly 5 is left.
+        #expect(abs((q.net - q.costs - q.tax) - 5) < 1e-9)
+        #expect(abs(q.gross - (10 + 5 / 0.88)) < 1e-9)
+    }
+
+    @Test func aVatPayerAddsVatOnTopAndPaysTheFeeFromTheGross() {
+        var s = PrintCostSettings()
+        s.business = .companyVAT; s.vatPercent = 23; s.incomeTaxPercent = 19; s.marginPercent = 30
+        s.failurePercent = 0; s.laborPerHour = 0; s.packaging = 0; s.platformFeePercent = 10
+        let q = SaleQuote.compute(cost: cost(20), settings: s)
+        #expect(abs(q.gross - q.net * 1.23) < 1e-9)
+        #expect(abs(q.fee - q.gross * 0.10 / 1.23) < 1e-9)
+        #expect(abs((q.net - q.fee - q.costs - q.tax) - q.profit) < 1e-9)
+    }
+
+    @Test func lumpSumTaxIsTakenFromRevenue() {
+        var s = PrintCostSettings()
+        s.business = .company; s.incomeTaxPercent = 8.5; s.taxOnRevenue = true; s.marginPercent = 20
+        s.failurePercent = 0; s.laborPerHour = 0; s.packaging = 0; s.platformFeePercent = 0
+        let q = SaleQuote.compute(cost: cost(10), settings: s)
+        #expect(abs(q.tax - q.net * 0.085) < 1e-9)
+        #expect(abs((q.net - q.costs - q.tax) - 2) < 1e-9)
+    }
+
+    @Test func labourPackagingAndFailuresAreCosts() {
+        var s = PrintCostSettings()
+        s.failurePercent = 10; s.laborPerHour = 60; s.laborMinutes = 10; s.packaging = 3; s.marginPercent = 0
+        let q = SaleQuote.compute(cost: cost(10), settings: s)
+        #expect(abs(q.failures - 1) < 1e-9)
+        #expect(abs(q.labor - 10) < 1e-9)
+        #expect(abs(q.costs - 24) < 1e-9)
+    }
+
+    @Test func olderSettingsStillDecodeWithSellingDefaults() throws {
+        let old = #"{"currency":"EUR","filamentPerKg":25}"#
+        let s = try JSONDecoder().decode(PrintCostSettings.self, from: Data(old.utf8))
+        #expect(s.currency == "EUR")
+        #expect(s.business == .unregistered)
+        #expect(s.marginPercent == 30)
+    }
+}

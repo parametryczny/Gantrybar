@@ -15,7 +15,7 @@ import CoreImage
 /// Six panes now, one idea each, and none of them scrolls. Only the chrome and the layout changed:
 /// every setting, every action and the whole refresh path are the ones that were already here.
 private enum SettingsPaneID: String {
-    case general, appearance, notifications, windows, integrations, remote, advanced
+    case general, appearance, notifications, windows, integrations, pricing, remote, advanced
 
     /// LITE has no Spoolbase, no updates, no floating window, no edge dock, no Telegram, no web
     /// dashboard and no developer switches, which empties three of the six panes. It therefore shows
@@ -23,7 +23,7 @@ private enum SettingsPaneID: String {
     /// left to hold it.
     static var visible: [SettingsPaneID] {
         Build.isLite ? [.general, .appearance, .notifications]
-                     : [.general, .appearance, .notifications, .windows, .integrations, .remote, .advanced]
+                     : [.general, .appearance, .notifications, .windows, .integrations, .pricing, .remote, .advanced]
     }
 
     var symbolName: String {
@@ -33,6 +33,7 @@ private enum SettingsPaneID: String {
         case .notifications: "bell"
         case .windows: "macwindow.on.rectangle"
         case .integrations: "antenna.radiowaves.left.and.right"
+        case .pricing: "banknote"
         case .remote: "globe"
         case .advanced: "slider.horizontal.3"
         }
@@ -43,6 +44,7 @@ private enum SettingsPaneID: String {
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: PrinterStore
     private let tabController = SettingsTabViewController()
+    private let pricingPane = SettingsPricingPane()
     private var panes: [SettingsPaneID: SettingsPane] = [:]
     /// The one thing that actually sets the window's height.
     ///
@@ -289,6 +291,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// window level, so the panel cannot end up covering the settings window they are typing in.
     /// Brings the pane holding the edge strip's own options to the front, for the strip's settings
     /// button: whoever clicks it came for those options, not for the pane that happened to be open.
+    /// Opens on the pricing pane, for the fleet statistics' "Prices…" button.
+    func selectPricingPane() {
+        guard let index = tabController.tabViewItems.firstIndex(where: {
+            ($0.identifier as? String) == SettingsPaneID.pricing.rawValue
+        }) else { return }
+        tabController.selectedTabViewItemIndex = index
+    }
+
     func selectWindowsPane() {
         guard let index = tabController.tabViewItems.firstIndex(where: {
             ($0.identifier as? String) == SettingsPaneID.windows.rawValue
@@ -372,6 +382,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .notifications: buildNotificationsPane()
         case .windows: buildWindowsPane()
         case .integrations: buildIntegrationsPane()
+        case .pricing: pricingPane.build()
         case .remote: buildRemotePane()
         case .advanced: buildAdvancedPane()
         }
@@ -742,6 +753,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .appearance: refreshAppearancePane(settings)
         case .windows: refreshWindowsPane(settings)
         case .integrations: refreshIntegrationsPane(settings)
+        case .pricing: pricingPane.refresh(settings)
         case .remote: refreshRemoteSection(settings)
         case .advanced:
             refreshAdvancedPane(settings)
@@ -764,6 +776,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case .notifications: settings.t("Notifications")
         case .windows: settings.t("Windows and strip")
         case .integrations: settings.t("Integrations")
+        case .pricing: settings.t("Pricing")
         case .remote: settings.t("Own page")
         case .advanced: settings.t("Advanced")
         }
