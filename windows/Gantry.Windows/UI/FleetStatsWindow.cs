@@ -19,6 +19,7 @@ public sealed class FleetStatsWindow : Window
     private int _periodDays = 30;
     private string _renderedText = "";
     private string _renderedCsv = "";
+    private int _pricesVersion = -1;
 
     private static readonly int[] Periods = { 7, 30, 365, 0 };   // 0 = all time
 
@@ -79,6 +80,8 @@ public sealed class FleetStatsWindow : Window
         });
         PanelWindow.Wrap(this, AppSettings.T("Fleet statistics"), root);
         Render();
+        // Prices are edited in Settings → Pricing; coming back here shows them applied.
+        Activated += (_, _) => { if (_pricesVersion != PrintCostSettings.Version) Render(); };
     }
 
     private string PeriodLabel(int days) => days switch
@@ -148,6 +151,7 @@ public sealed class FleetStatsWindow : Window
 
     private void Render()
     {
+        _pricesVersion = PrintCostSettings.Version;
         _body.Children.Clear();
         var all = Lines(_periodDays);
         var rows = Rows(all);
@@ -231,10 +235,12 @@ public sealed class FleetStatsWindow : Window
         if (all.Count > 0)
         {
             _body.Children.Add(Caption(AppSettings.T("RECENT PRINTS")));
+            var pricing = PrintCostSettings.Current;
             var recent = all.Take(15).Select(line =>
                 $"{(line.Ok ? "✓" : "✕")} {line.Entry.EndedAt:dd.MM HH:mm} · {line.Printer} · " +
                 $"{(string.IsNullOrEmpty(line.Entry.Job) ? "—" : line.Entry.Job)} · {Num(line.Entry.DurationSeconds / 3600, "0.0")} h" +
-                (line.Cost.Grams is { } g ? $" · {Num(g, "0")} g" : "") + $" · {Money(line.Cost.Total)}").ToList();
+                (line.Cost.Grams is { } g ? $" · {Num(g, "0")} g" : "") + $" · {Money(line.Cost.Total)}" +
+                (line.Ok ? " → " + AppSettings.T("sell for {0}").Replace("{0}", Money(SaleQuote.Compute(line.Cost, pricing).Gross)) : "")).ToList();
             _body.Children.Add(Card(recent, titleFirst: false));
         }
 
@@ -348,71 +354,9 @@ public sealed class FleetStatsWindow : Window
         catch (Exception ex) { Gantry.App.LogError("FleetStatsCsv", ex); }
     }
 
-    private void EditPrices()
-    {
-        var settings = PrintCostSettings.Current;
-        string F(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
-        var currency = new TextBox { Text = settings.Currency };
-        var perKg = new TextBox { Text = F(settings.FilamentPerKg) };
-        var materials = new TextBox
-        {
-            Text = string.Join(", ", settings.MaterialPerKg.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={F(pair.Value)}")),
-            ToolTip = "PETG=90, ASA=120",
-        };
-        var kWh = new TextBox { Text = F(settings.ElectricityPerKWh) };
-        var watts = new TextBox { Text = F(settings.PrinterWatts) };
-        var machine = new TextBox { Text = F(settings.MachinePerHour) };
+    /// <summary>Set by the tray: opens Settings on the Pricing pane.</summary>
+    public static Action? PricingRequested;
 
-        var grid = new Grid { Margin = new Thickness(18) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
-        var fields = new (string Label, TextBox Box)[]
-        {
-            (AppSettings.T("Currency"), currency), (AppSettings.T("Filament per kg"), perKg),
-            (AppSettings.T("Per material (per kg)"), materials), (AppSettings.T("Electricity per kWh"), kWh),
-            (AppSettings.T("Average printer power (W)"), watts), (AppSettings.T("Machine time per hour"), machine),
-        };
-        for (int index = 0; index < fields.Length; index++)
-        {
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var label = new TextBlock { Text = fields[index].Label, Foreground = GTheme.Brush(GTheme.Secondary),
-                                        Margin = new Thickness(0, 6, 12, 6), VerticalAlignment = VerticalAlignment.Center };
-            fields[index].Box.Margin = new Thickness(0, 4, 0, 4);
-            Grid.SetRow(label, index); Grid.SetRow(fields[index].Box, index); Grid.SetColumn(fields[index].Box, 1);
-            grid.Children.Add(label); grid.Children.Add(fields[index].Box);
-        }
-        var note = new TextBlock
-        {
-            Text = AppSettings.T("Used to price every print: filament from Spoolbase usage, electricity and machine time from its duration."),
-            TextWrapping = TextWrapping.Wrap, Foreground = GTheme.Brush(GTheme.Muted), FontSize = 11, Margin = new Thickness(0, 10, 0, 10),
-        };
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(note, fields.Length); Grid.SetColumnSpan(note, 2); grid.Children.Add(note);
-
-        var dialog = new Window
-        {
-            Title = AppSettings.T("Print cost prices"), SizeToContent = SizeToContent.WidthAndHeight,
-            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = this, Background = GTheme.Brush(GTheme.Canvas),
-        };
-        var save = new Button { Content = AppSettings.T("Save"), IsDefault = true, Padding = new Thickness(14, 4, 14, 4), Margin = new Thickness(6, 0, 0, 0) };
-        var cancel = new Button { Content = AppSettings.T("Cancel"), IsCancel = true, Padding = new Thickness(14, 4, 14, 4) };
-        save.Click += (_, _) => dialog.DialogResult = true;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        buttons.Children.Add(cancel); buttons.Children.Add(save);
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(buttons, fields.Length + 1); Grid.SetColumnSpan(buttons, 2); grid.Children.Add(buttons);
-        dialog.Content = grid;
-        GTheme.ApplyWindowTheme(dialog);
-        if (dialog.ShowDialog() != true) return;
-
-        if (!string.IsNullOrWhiteSpace(currency.Text)) settings.Currency = currency.Text.Trim()[..Math.Min(8, currency.Text.Trim().Length)];
-        if (PrintCostSettings.ParseAmount(perKg.Text) is { } a) settings.FilamentPerKg = a;
-        if (PrintCostSettings.ParseAmount(kWh.Text) is { } b) settings.ElectricityPerKWh = b;
-        if (PrintCostSettings.ParseAmount(watts.Text) is { } c) settings.PrinterWatts = c;
-        if (PrintCostSettings.ParseAmount(machine.Text) is { } d) settings.MachinePerHour = d;
-        settings.MaterialPerKg = PrintCostSettings.ParseMaterialPrices(materials.Text);
-        PrintCostSettings.Current = settings;
-        Render();
-    }
+    /// Prices live in Settings → Pricing now, next to the business set-up and the calculator.
+    private void EditPrices() => PricingRequested?.Invoke();
 }

@@ -49,6 +49,8 @@ public sealed class TrayIcon : IDisposable
                 ShowDashboard();
                 _dashboard?.ShowDetail(serial);
             }, ShowEdgeDockSettings);
+            // The fleet statistics' "Prices…" button: the same settings window, on the Pricing pane.
+            FleetStatsWindow.PricingRequested = ShowPricingSettings;
         }
         // LITE never checks for or installs updates; it is a fixed, self-contained build.
         if (Build.HasExtras)
@@ -348,6 +350,13 @@ public sealed class TrayIcon : IDisposable
     {
         ShowSettings();
         _settings?.SelectWindowsPane();
+    }
+
+    /// <summary>Settings → Pricing, for the fleet statistics' "Prices…" button.</summary>
+    private void ShowPricingSettings()
+    {
+        ShowSettings();
+        _settings?.SelectPricingPane();
     }
 
     private void ShowSettings()

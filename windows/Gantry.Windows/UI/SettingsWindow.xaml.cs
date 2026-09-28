@@ -32,6 +32,7 @@ public partial class SettingsWindow : Window
         ApplyLanguage();
         LoadSettings();
         ApplyEditionVisibility();
+        WirePricing();
         FloatingWindowCheckBox.Content = AppSettings.T("Show Gantry in a floating window");
         AlwaysOnTopCheckBox.Content = AppSettings.T("Always on top");
         FloatingWindowCheckBox.IsChecked = AppSettings.FloatingWindowEnabled;
@@ -181,7 +182,7 @@ public partial class SettingsWindow : Window
     private void ApplyEditionVisibility()
     {
         if (Build.HasExtras) return;
-        PaneItemIntegrations.Visibility = PaneItemAdvanced.Visibility = Visibility.Collapsed;
+        PaneItemIntegrations.Visibility = PaneItemPricing.Visibility = PaneItemAdvanced.Visibility = Visibility.Collapsed;
         SpoolbaseCheckBox.Visibility = Visibility.Collapsed;
         UpdatesHeading.Visibility = UpdatesCard.Visibility = UpdatesRule.Visibility = Visibility.Collapsed;
         FloatingWindowRow.Visibility = Visibility.Collapsed;
@@ -191,19 +192,22 @@ public partial class SettingsWindow : Window
             DockHint.Visibility = Visibility.Collapsed;
     }
 
-    // Panes in the contract's order, the same six the macOS window shows.
+    // Panes in the contract's order, the same ones the macOS window shows.
     private System.Windows.Controls.ScrollViewer[] Panes => new[]
     {
-        PageGeneral, PageAppearance, PageNotifications, PageWindows, PageIntegrations, PageAdvanced,
+        PageGeneral, PageAppearance, PageNotifications, PageWindows, PageIntegrations, PagePricing, PageAdvanced,
     };
 
     private static readonly string[] PaneTitleKeys =
     {
-        "General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Advanced",
+        "General", "Appearance", "Notifications", "Windows and strip", "Integrations", "Pricing", "Advanced",
     };
 
     /// <summary>For the edge strip's settings button: whoever clicks it came for the strip's options.</summary>
     public void SelectWindowsPane() => PaneList.SelectedItem = PaneItemWindows;
+
+    /// <summary>For the fleet statistics' "Prices…" button.</summary>
+    public void SelectPricingPane() => PaneList.SelectedItem = PaneItemPricing;
 
     private void ShowPane(int index)
     {
@@ -213,6 +217,178 @@ public partial class SettingsWindow : Window
             panes[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
         // The window title names the active pane, so the taskbar and Alt+Tab read correctly too.
         Title = $"{Build.AppName} — {AppSettings.T(PaneTitleKeys[index])}";
+    }
+
+    // MARK: Pricing
+
+    /// <summary>Set while the pane writes stored values into its own fields, so that does not save.</summary>
+    private bool _pricingLoading;
+
+    private System.Windows.Controls.TextBox[] PricingSavedBoxes => new[]
+    {
+        PricingTaxBox, PricingVatBox, PricingMarginBox, PricingFeeBox, PricingLaborRateBox, PricingLaborMinutesBox,
+        PricingPackagingBox, PricingFailureBox, PricingCurrencyBox, PricingFilamentBox, PricingMaterialsBox,
+        PricingEnergyBox, PricingWattsBox, PricingMachineBox,
+    };
+
+    /// <summary>Settings → Pricing: one <see cref="PrintCostSettings"/> value, the same one that prices
+    /// every print in the fleet statistics and the history lists. Saved as typed, like macOS.</summary>
+    private void WirePricing()
+    {
+        foreach (var box in PricingSavedBoxes)
+            box.TextChanged += (_, _) => { if (!_pricingLoading) SavePricing(); };
+        // Units follow the currency once the field is left.
+        PricingCurrencyBox.LostFocus += (_, _) => RefreshPricing();
+        PricingGramsBox.TextChanged += (_, _) => RecalculatePricing();
+        PricingHoursBox.TextChanged += (_, _) => RecalculatePricing();
+        PricingRevenueCheckBox.Click += (_, _) => { SavePricing(); RefreshPricing(); };
+        // Cycles through the three set-ups, like the other choice buttons in this window.
+        PricingBusinessButton.Click += (_, _) =>
+        {
+            var value = PrintCostSettings.Current;
+            var kinds = PrintCostSettings.BusinessKinds;
+            var next = kinds[(Array.IndexOf(kinds, value.Business) + 1) % kinds.Length];
+            // A VAT payer usually settles on a flat or lump-sum rate rather than the scale.
+            if (next == PrintCostSettings.BusinessKind.CompanyVAT && value.IncomeTaxPercent == 12 && !value.TaxOnRevenue)
+                value.IncomeTaxPercent = 19;
+            value.Business = next;
+            PrintCostSettings.Current = value;
+            RefreshPricing();
+        };
+    }
+
+    private static string BusinessName(PrintCostSettings.BusinessKind kind) => kind switch
+    {
+        PrintCostSettings.BusinessKind.Company => AppSettings.T("Company, VAT-exempt"),
+        PrintCostSettings.BusinessKind.CompanyVAT => AppSettings.T("Company, VAT payer"),
+        _ => AppSettings.T("Unregistered activity"),
+    };
+
+    private static string PricingNumber(double value) =>
+        value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Captions in the current language and the stored values, except in a field being typed in.</summary>
+    private void RefreshPricing()
+    {
+        var value = PrintCostSettings.Current;
+        string money = value.Currency;
+        PricingBusinessCaption.Text = AppSettings.T("Business");
+        PricingBusinessButton.Content = BusinessName(value.Business);
+        PricingTaxCaption.Text = AppSettings.T("Income tax");
+        PricingRevenueCheckBox.Content = AppSettings.T("on revenue (lump sum)");
+        PricingRevenueCheckBox.IsChecked = value.TaxOnRevenue;
+        PricingVatCaption.Text = AppSettings.T("VAT");
+        PricingVatBox.IsEnabled = value.Business == PrintCostSettings.BusinessKind.CompanyVAT;
+        PricingBusinessNote.Text = AppSettings.T("An estimate for pricing, not tax advice. Check the limits and rates that apply to you.");
+
+        PricingMarkupHeading.Text = AppSettings.T("Mark-up and extras");
+        PricingMarginCaption.Text = AppSettings.T("Mark-up");
+        PricingFeeCaption.Text = AppSettings.T("Marketplace fee");
+        PricingLaborRateCaption.Text = AppSettings.T("Labour per hour");
+        PricingLaborMinutesCaption.Text = AppSettings.T("Labour per print");
+        PricingPackagingCaption.Text = AppSettings.T("Packaging per order");
+        PricingFailureCaption.Text = AppSettings.T("Failed prints allowance");
+
+        PricingCostsHeading.Text = AppSettings.T("Production costs");
+        PricingCurrencyCaption.Text = AppSettings.T("Currency");
+        PricingFilamentCaption.Text = AppSettings.T("Filament per kg");
+        PricingMaterialsCaption.Text = AppSettings.T("Per material (per kg)");
+        PricingEnergyCaption.Text = AppSettings.T("Electricity per kWh");
+        PricingWattsCaption.Text = AppSettings.T("Average printer power (W)");
+        PricingMachineCaption.Text = AppSettings.T("Machine time per hour");
+        foreach (var unit in new[] { PricingLaborRateUnit, PricingPackagingUnit, PricingFilamentUnit, PricingEnergyUnit, PricingMachineUnit })
+            unit.Text = money;
+
+        PricingCalculatorHeading.Text = AppSettings.T("Calculator");
+        PricingGramsCaption.Text = AppSettings.T("Filament");
+        PricingHoursCaption.Text = AppSettings.T("Print time");
+
+        _pricingLoading = true;
+        try
+        {
+            void Show(System.Windows.Controls.TextBox box, string text)
+            {
+                if (!box.IsKeyboardFocusWithin && box.Text != text) box.Text = text;
+            }
+            Show(PricingTaxBox, PricingNumber(value.IncomeTaxPercent));
+            Show(PricingVatBox, PricingNumber(value.VatPercent));
+            Show(PricingMarginBox, PricingNumber(value.MarginPercent));
+            Show(PricingFeeBox, PricingNumber(value.PlatformFeePercent));
+            Show(PricingLaborRateBox, PricingNumber(value.LaborPerHour));
+            Show(PricingLaborMinutesBox, PricingNumber(value.LaborMinutes));
+            Show(PricingPackagingBox, PricingNumber(value.Packaging));
+            Show(PricingFailureBox, PricingNumber(value.FailurePercent));
+            Show(PricingFilamentBox, PricingNumber(value.FilamentPerKg));
+            Show(PricingEnergyBox, PricingNumber(value.ElectricityPerKWh));
+            Show(PricingWattsBox, PricingNumber(value.PrinterWatts));
+            Show(PricingMachineBox, PricingNumber(value.MachinePerHour));
+            Show(PricingCurrencyBox, value.Currency);
+            Show(PricingMaterialsBox, string.Join(", ", value.MaterialPerKg.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => $"{pair.Key}={PricingNumber(pair.Value)}")));
+        }
+        finally { _pricingLoading = false; }
+        RecalculatePricing();
+    }
+
+    private static double? PricingParse(System.Windows.Controls.TextBox box) =>
+        PrintCostSettings.ParseAmount(box.Text) is { } value && double.IsFinite(value) ? value : null;
+
+    /// <summary>Everything typed so far; a field that does not hold a number keeps the stored value.</summary>
+    private void SavePricing()
+    {
+        var value = PrintCostSettings.Current;
+        value.TaxOnRevenue = PricingRevenueCheckBox.IsChecked == true;
+        if (PricingParse(PricingTaxBox) is { } tax) value.IncomeTaxPercent = Math.Min(90, tax);
+        if (PricingParse(PricingVatBox) is { } vat) value.VatPercent = Math.Min(50, vat);
+        if (PricingParse(PricingMarginBox) is { } margin) value.MarginPercent = margin;
+        if (PricingParse(PricingFeeBox) is { } fee) value.PlatformFeePercent = Math.Min(90, fee);
+        if (PricingParse(PricingLaborRateBox) is { } rate) value.LaborPerHour = rate;
+        if (PricingParse(PricingLaborMinutesBox) is { } minutes) value.LaborMinutes = minutes;
+        if (PricingParse(PricingPackagingBox) is { } packaging) value.Packaging = packaging;
+        if (PricingParse(PricingFailureBox) is { } failures) value.FailurePercent = Math.Min(100, failures);
+        if (PricingParse(PricingFilamentBox) is { } filament) value.FilamentPerKg = filament;
+        if (PricingParse(PricingEnergyBox) is { } energy) value.ElectricityPerKWh = energy;
+        if (PricingParse(PricingWattsBox) is { } watts) value.PrinterWatts = watts;
+        if (PricingParse(PricingMachineBox) is { } machine) value.MachinePerHour = machine;
+        string currency = PricingCurrencyBox.Text.Trim();
+        if (currency.Length > 0) value.Currency = currency[..Math.Min(8, currency.Length)];
+        value.MaterialPerKg = PrintCostSettings.ParseMaterialPrices(PricingMaterialsBox.Text);
+        PrintCostSettings.Current = value;
+        RecalculatePricing();
+    }
+
+    /// <summary>The calculator: a print of this weight and duration, priced with everything above.</summary>
+    private void RecalculatePricing()
+    {
+        var settings = PrintCostSettings.Current;
+        if (PricingParse(PricingGramsBox) is not { } grams || PricingParse(PricingHoursBox) is not { } hours || (grams <= 0 && hours <= 0))
+        {
+            PricingResult.Text = AppSettings.T("Enter the filament weight and print time to see the price.");
+            return;
+        }
+        var cost = PrintCost.Compute(hours * 3600, new[] { new PrintCost.Use(grams, null) }, "", settings);
+        PricingResult.Text = PricingBreakdown(SaleQuote.Compute(cost, settings), settings.Currency);
+    }
+
+    /// <summary>The price and where it comes from, one line each. Same lines as macOS.</summary>
+    private static string PricingBreakdown(SaleQuote quote, string currency)
+    {
+        string Money(double value) => $"{value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} {currency}";
+        var lines = new List<string>
+        {
+            AppSettings.T("Print (filament, power, machine): {0}").Replace("{0}", Money(quote.Print)),
+            AppSettings.T("Failed prints allowance: {0}").Replace("{0}", Money(quote.Failures)),
+            AppSettings.T("Labour: {0}").Replace("{0}", Money(quote.Labor)),
+            AppSettings.T("Packaging: {0}").Replace("{0}", Money(quote.Packaging)),
+            AppSettings.T("Profit after tax: {0}").Replace("{0}", Money(quote.Profit)),
+            AppSettings.T("Marketplace fee: {0}").Replace("{0}", Money(quote.Fee)),
+            AppSettings.T("Income tax: {0}").Replace("{0}", Money(quote.Tax)),
+        };
+        if (quote.Vat > 0) lines.Add(AppSettings.T("VAT: {0}").Replace("{0}", Money(quote.Vat)));
+        lines.Add(quote.Vat > 0
+            ? AppSettings.T("Sell for {0} gross ({1} net)").Replace("{0}", Money(quote.Gross)).Replace("{1}", Money(quote.Net))
+            : AppSettings.T("Sell for {0}").Replace("{0}", Money(quote.Gross)));
+        return string.Join("\n", lines);
     }
 
     private void SyncDockPinned() => Dispatcher.Invoke(() => DockPinnedCheckBox.IsChecked = AppSettings.EdgeDockPinned);
@@ -407,6 +583,7 @@ public partial class SettingsWindow : Window
         PaneItemNotifications.Content = AppSettings.T("Notifications");
         PaneItemWindows.Content = AppSettings.T("Windows and strip");
         PaneItemIntegrations.Content = AppSettings.T("Integrations");
+        PaneItemPricing.Content = AppSettings.T("Pricing");
         PaneItemAdvanced.Content = AppSettings.T("Advanced");
         Title = $"{Build.AppName} — {AppSettings.T(PaneTitleKeys[PaneList.SelectedIndex < 0 ? 0 : PaneList.SelectedIndex])}";
 
@@ -508,6 +685,7 @@ public partial class SettingsWindow : Window
         DockHint.Text = AppSettings.T("A narrow strip pinned to the screen edge, always on top. Hovering expands it to names, clicking opens details.");
         RebuildDockPrinters();
         ApplyDockEnabledState();
+        RefreshPricing();
     }
 
     /// <summary>

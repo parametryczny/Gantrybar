@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Gantry.Models;
 
 namespace Gantry.Services;
 
@@ -10,11 +9,10 @@ namespace Gantry.Services;
 /// The user's prices for turning a print into money: filament per kilogram (optionally per material),
 /// electricity per kWh with each printer's average draw, and machine time per hour. Same JSON as macOS
 /// (<c>print-cost-settings-v1</c>); every field has a default, so a partial value still loads.
+/// Free of app state so the test project can compile it; loading and saving live in PrintCostStore.cs.
 /// </summary>
-public sealed class PrintCostSettings
+public sealed partial class PrintCostSettings
 {
-    private const string Key = "print-cost-settings-v1";
-
     [JsonPropertyName("currency")] public string Currency { get; set; } = "PLN";
     [JsonPropertyName("filamentPerKg")] public double FilamentPerKg { get; set; } = 80;
     [JsonPropertyName("materialPerKg")] public Dictionary<string, double> MaterialPerKg { get; set; } = new();
@@ -23,6 +21,61 @@ public sealed class PrintCostSettings
     [JsonPropertyName("watts")] public Dictionary<string, double> Watts { get; set; } = new();
     [JsonPropertyName("machinePerHour")] public double MachinePerHour { get; set; }
 
+    // Selling: how the seller is set up and what goes on top of the print's cost (Settings → Pricing).
+
+    /// <summary>"unregistered" (działalność nierejestrowana: no VAT), "company" (VAT-exempt) or
+    /// "companyVAT" (charges VAT). Kept as the macOS raw value so the JSON stays shared; an unknown
+    /// value reads as unregistered.</summary>
+    [JsonPropertyName("business")] public string BusinessRaw { get; set; } = "unregistered";
+    /// <summary>Income tax in percent, from the profit or, with <see cref="TaxOnRevenue"/>, from the
+    /// revenue (the Polish lump-sum "ryczałt").</summary>
+    [JsonPropertyName("incomeTaxPercent")] public double IncomeTaxPercent { get; set; } = 12;
+    [JsonPropertyName("taxOnRevenue")] public bool TaxOnRevenue { get; set; }
+    [JsonPropertyName("vatPercent")] public double VatPercent { get; set; } = 23;
+    /// <summary>Mark-up on everything it costs to make and ship one print.</summary>
+    [JsonPropertyName("marginPercent")] public double MarginPercent { get; set; } = 30;
+    /// <summary>A marketplace's cut of the gross price (Allegro, Etsy).</summary>
+    [JsonPropertyName("platformFeePercent")] public double PlatformFeePercent { get; set; }
+    /// <summary>Hands-on time per print and what that hour is worth.</summary>
+    [JsonPropertyName("laborPerHour")] public double LaborPerHour { get; set; }
+    [JsonPropertyName("laborMinutes")] public double LaborMinutes { get; set; } = 10;
+    /// <summary>Box, filler and label per order.</summary>
+    [JsonPropertyName("packaging")] public double Packaging { get; set; }
+    /// <summary>Extra material and machine time set aside for prints that fail, in percent.</summary>
+    [JsonPropertyName("failurePercent")] public double FailurePercent { get; set; } = 5;
+
+    public enum BusinessKind { Unregistered, Company, CompanyVAT }
+
+    /// <summary>In the order the Pricing pane lists them, same as macOS.</summary>
+    public static readonly BusinessKind[] BusinessKinds = { BusinessKind.Unregistered, BusinessKind.Company, BusinessKind.CompanyVAT };
+
+    [JsonIgnore]
+    public BusinessKind Business
+    {
+        get => BusinessRaw switch
+        {
+            "company" => BusinessKind.Company,
+            "companyVAT" => BusinessKind.CompanyVAT,
+            _ => BusinessKind.Unregistered,
+        };
+        set => BusinessRaw = value switch
+        {
+            BusinessKind.Company => "company",
+            BusinessKind.CompanyVAT => "companyVAT",
+            _ => "unregistered",
+        };
+    }
+
+    public static PrintCostSettings FromJson(string raw)
+    {
+        var value = JsonSerializer.Deserialize<PrintCostSettings>(raw) ?? new PrintCostSettings();
+        value.MaterialPerKg ??= new();
+        value.Watts ??= new();
+        value.BusinessRaw ??= "unregistered";
+        value.Currency = string.IsNullOrWhiteSpace(value.Currency) ? "PLN" : value.Currency;
+        return value;
+    }
+
     public double PricePerKg(string? material)
     {
         string key = (material ?? "").Trim().ToUpperInvariant();
@@ -30,25 +83,6 @@ public sealed class PrintCostSettings
     }
 
     public double Power(string serial) => Watts.TryGetValue(serial, out var watts) ? watts : PrinterWatts;
-
-    public static PrintCostSettings Current
-    {
-        get
-        {
-            var raw = Defaults.GetRaw(Key);
-            if (raw is null) return new PrintCostSettings();
-            try
-            {
-                var value = JsonSerializer.Deserialize<PrintCostSettings>(raw) ?? new PrintCostSettings();
-                value.MaterialPerKg ??= new();
-                value.Watts ??= new();
-                value.Currency = string.IsNullOrWhiteSpace(value.Currency) ? "PLN" : value.Currency;
-                return value;
-            }
-            catch { return new PrintCostSettings(); }
-        }
-        set => Defaults.SetRaw(Key, JsonSerializer.Serialize(value));
-    }
 
     /// <summary>"PETG=90, ASA=119,50; TPU = 140" → PETG 90, ASA 119.5, TPU 140.</summary>
     public static Dictionary<string, double> ParseMaterialPrices(string text)
@@ -70,7 +104,7 @@ public sealed class PrintCostSettings
 }
 
 /// <summary>One print's cost, split so the user can see where the money went. Mirrors macOS PrintCost.</summary>
-public sealed record PrintCost(double? Filament, double? Grams, double Energy, double Machine, double KWh)
+public sealed partial record PrintCost(double? Filament, double? Grams, double Energy, double Machine, double KWh)
 {
     public double Total => (Filament ?? 0) + Energy + Machine;
 
@@ -86,28 +120,48 @@ public sealed record PrintCost(double? Filament, double? Grams, double Energy, d
         return new PrintCost(filament, grams, kWh * Math.Max(0, settings.ElectricityPerKWh),
                              hours * Math.Max(0, settings.MachinePerHour), kWh);
     }
+}
 
-    /// <summary>Filament the print used, from Spoolbase's per-print usage records written for this
-    /// printer while it ran (a short grace after the end covers a late FINISH packet).</summary>
-    public static List<Use> Uses(string serial, DateTime startedAt, DateTime endedAt)
+/// <summary>
+/// What a print should sell for, built up from what it cost. Mirrors macOS SaleQuote.
+///
+/// Costs first: the print itself (filament, electricity, machine time), an allowance for prints that
+/// fail, the hands-on work and the packaging. The mark-up is the profit wanted on top of those, after
+/// tax. The price is then solved so that, once the marketplace has taken its cut and the tax office
+/// its share, exactly that profit is left; VAT, when charged, goes on top.
+///
+///     income tax on profit:     net = (costs + profit / (1 − tax)) / (1 − fee)
+///     tax on revenue (ryczałt): net = (costs + profit) / (1 − fee − tax)
+///     gross = net × (1 + VAT)
+///
+/// The marketplace fee is charged on the gross price, which is how Allegro and Etsy bill it.
+/// An estimate for pricing, not tax advice.
+/// </summary>
+public sealed record SaleQuote(double Print, double Failures, double Labor, double Packaging,
+                               double Profit, double Fee, double Tax, double Vat,
+                               double Net, double Gross, bool Complete)
+{
+    public double Costs => Print + Failures + Labor + Packaging;
+
+    public static SaleQuote Compute(PrintCost cost, PrintCostSettings s)
     {
-        var spools = SpoolbaseShared.Spools;
-        var filaments = SpoolbaseShared.Filaments.Filaments;
-        DateTime from = startedAt.ToUniversalTime().AddMinutes(-1), to = endedAt.ToUniversalTime().AddMinutes(10);
-        var uses = new List<Use>();
-        foreach (var usage in spools.UsageEvents)
-        {
-            var at = usage.Timestamp.Kind == DateTimeKind.Local ? usage.Timestamp.ToUniversalTime() : usage.Timestamp;
-            if (usage.PrinterSerial != serial || at < from || at > to) continue;
-            var spool = spools.Spools.FirstOrDefault(value => value.Id == usage.SpoolId);
-            var definition = spool is null ? null : filaments.FirstOrDefault(value => value.Id == spool.FilamentDefinitionId);
-            double? perKg = null;
-            if (spool?.Price is { } price && price >= 0 && spool.NominalWeightGrams > 0)
-                perKg = price / spool.NominalWeightGrams * 1000;
-            else if (definition?.PricePerRoll is { } productPrice && spool is { NominalWeightGrams: > 0 })
-                perKg = productPrice / spool.NominalWeightGrams * 1000;
-            uses.Add(new Use(usage.ConsumedGrams, definition?.Type, perKg));
-        }
-        return uses;
+        double print = cost.Total;
+        double failures = print * Math.Max(0, s.FailurePercent) / 100;
+        double labor = Math.Max(0, s.LaborPerHour) * Math.Max(0, s.LaborMinutes) / 60;
+        double packaging = Math.Max(0, s.Packaging);
+        double costs = print + failures + labor + packaging;
+        double profit = costs * Math.Max(0, s.MarginPercent) / 100;
+        double vatRate = s.Business == PrintCostSettings.BusinessKind.CompanyVAT ? Math.Max(0, s.VatPercent) / 100 : 0;
+        double taxRate = Math.Min(0.9, Math.Max(0, s.IncomeTaxPercent) / 100);
+        // The fee is a share of the gross price; as a share of the net it is that times (1 + VAT).
+        double feeRate = Math.Min(0.9, Math.Max(0, s.PlatformFeePercent) / 100);
+        double net = s.TaxOnRevenue
+            ? (costs + profit) / Math.Max(0.05, 1 - feeRate - taxRate)
+            : (costs + profit / Math.Max(0.05, 1 - taxRate)) / Math.Max(0.05, 1 - feeRate);
+        double gross = net * (1 + vatRate);
+        double fee = gross * feeRate / (1 + vatRate);
+        double tax = s.TaxOnRevenue ? net * taxRate : Math.Max(0, net - fee - costs) * taxRate;
+        return new SaleQuote(print, failures, labor, packaging, profit, fee, tax, gross - net, net, gross,
+                             cost.Filament is not null);
     }
 }

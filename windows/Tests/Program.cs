@@ -413,3 +413,60 @@ Console.WriteLine("Windows G-code farm OK — slicer metadata, thumbnail, file t
         throw new Exception("A socket's power reading was misread");
 }
 Console.WriteLine("Windows socket power OK — Shelly, Tasmota, no meter elsewhere");
+
+// Selling price: mirrors SaleQuoteTests in Tests/GantryTests/PrintCostTests.swift.
+{
+    static PrintCost Cost(double total) => new(total, 100, 0, 0, 0);
+    static bool Near(double a, double b) => Math.Abs(a - b) < 1e-9;
+
+    // Unregistered, no fees: after 12% tax exactly the mark-up is left.
+    var s = new PrintCostSettings
+    {
+        Business = PrintCostSettings.BusinessKind.Unregistered, IncomeTaxPercent = 12, MarginPercent = 50,
+        FailurePercent = 0, LaborPerHour = 0, Packaging = 0, PlatformFeePercent = 0,
+    };
+    var q = SaleQuote.Compute(Cost(10), s);
+    if (q.Vat != 0) throw new Exception("An unregistered seller was charged VAT");
+    if (!Near(q.Net - q.Costs - q.Tax, 5)) throw new Exception("Profit after income tax is not the mark-up");
+    if (!Near(q.Gross, 10 + 5 / 0.88)) throw new Exception("Price with income tax on profit is wrong");
+
+    // A VAT payer adds VAT on top and pays the marketplace fee from the gross.
+    s = new PrintCostSettings
+    {
+        Business = PrintCostSettings.BusinessKind.CompanyVAT, VatPercent = 23, IncomeTaxPercent = 19, MarginPercent = 30,
+        FailurePercent = 0, LaborPerHour = 0, Packaging = 0, PlatformFeePercent = 10,
+    };
+    q = SaleQuote.Compute(Cost(20), s);
+    if (!Near(q.Gross, q.Net * 1.23)) throw new Exception("VAT was not added on top of the net price");
+    if (!Near(q.Fee, q.Gross * 0.10 / 1.23)) throw new Exception("The marketplace fee was not taken from the gross");
+    if (!Near(q.Net - q.Fee - q.Costs - q.Tax, q.Profit)) throw new Exception("A VAT payer does not keep the mark-up");
+
+    // Lump-sum tax is taken from revenue.
+    s = new PrintCostSettings
+    {
+        Business = PrintCostSettings.BusinessKind.Company, IncomeTaxPercent = 8.5, TaxOnRevenue = true, MarginPercent = 20,
+        FailurePercent = 0, LaborPerHour = 0, Packaging = 0, PlatformFeePercent = 0,
+    };
+    q = SaleQuote.Compute(Cost(10), s);
+    if (!Near(q.Tax, q.Net * 0.085)) throw new Exception("Lump-sum tax was not taken from revenue");
+    if (!Near(q.Net - q.Costs - q.Tax, 2)) throw new Exception("A lump-sum seller does not keep the mark-up");
+
+    // Labour, packaging and failures are costs.
+    s = new PrintCostSettings { FailurePercent = 10, LaborPerHour = 60, LaborMinutes = 10, Packaging = 3, MarginPercent = 0 };
+    q = SaleQuote.Compute(Cost(10), s);
+    if (!Near(q.Failures, 1) || !Near(q.Labor, 10) || !Near(q.Costs, 24))
+        throw new Exception("Labour, packaging or the failed-prints allowance were not counted as costs");
+
+    // Older settings still load, with the selling defaults; the business keeps the macOS raw value.
+    var old = PrintCostSettings.FromJson("""{"currency":"EUR","filamentPerKg":25}""");
+    if (old.Currency != "EUR" || old.Business != PrintCostSettings.BusinessKind.Unregistered || old.MarginPercent != 30
+        || old.IncomeTaxPercent != 12 || old.VatPercent != 23 || old.LaborMinutes != 10 || old.FailurePercent != 5)
+        throw new Exception("Older print cost settings did not load with the selling defaults");
+    var shared = PrintCostSettings.FromJson("""{"business":"companyVAT","taxOnRevenue":true}""");
+    if (shared.Business != PrintCostSettings.BusinessKind.CompanyVAT || !shared.TaxOnRevenue
+        || !JsonSerializer.Serialize(shared).Contains("\"business\":\"companyVAT\""))
+        throw new Exception("The business set-up does not round-trip in the macOS JSON");
+    if (PrintCostSettings.FromJson("""{"business":"somethingNew"}""").Business != PrintCostSettings.BusinessKind.Unregistered)
+        throw new Exception("An unknown business set-up did not fall back to unregistered");
+}
+Console.WriteLine("Windows sale quote OK — tax on profit or revenue, VAT on top, fee from gross, costs, old settings");
