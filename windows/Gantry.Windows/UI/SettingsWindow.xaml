@@ -117,6 +117,19 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
+        <!-- Pricing pane: numbers typed into short right-aligned fields, the unit after them. -->
+        <Style x:Key="PaneNumber" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Width" Value="80"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="PaneUnit" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
+
         <!-- Sidebar rows: the Windows 11 Settings idiom, one row per pane. -->
         <Style x:Key="PaneRow" TargetType="ListBoxItem">
             <Setter Property="Foreground" Value="{DynamicResource SettingsSecondaryBrush}"/>
@@ -161,6 +174,7 @@
             <ListBoxItem x:Name="PaneItemNotifications"/>
             <ListBoxItem x:Name="PaneItemWindows"/>
             <ListBoxItem x:Name="PaneItemIntegrations"/>
+            <ListBoxItem x:Name="PaneItemPricing"/>
             <ListBoxItem x:Name="PaneItemAdvanced"/>
             
         </ListBox>
@@ -381,6 +395,124 @@
                         <TextBlock Grid.Row="1" Grid.Column="1" x:Name="WebAddressLabel" FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource SettingsSecondaryBrush}" TextWrapping="Wrap" Margin="10,8,0,0"/>
                         <TextBlock Grid.Row="2" Grid.Column="1" x:Name="WebHint" Style="{StaticResource PaneNote}" Margin="10,7,0,0"/>
                     </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- WYCENA -->
+            <ScrollViewer x:Name="PagePricing" VerticalScrollBarVisibility="Auto" Padding="20" Visibility="Collapsed">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" x:Name="PricingBusinessCaption" Style="{StaticResource PaneCaption}" Margin="0,2,0,0"/>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <Button x:Name="PricingBusinessButton" MinWidth="200"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" x:Name="PricingTaxCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingTaxBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="%" Style="{StaticResource PaneUnit}"/>
+                            <CheckBox x:Name="PricingRevenueCheckBox" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="2" x:Name="PricingVatCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingVatBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="%" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="PricingBusinessNote" Style="{StaticResource PaneNote}" Margin="174,6,0,0"/>
+
+                    <Border Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="PricingMarkupHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" x:Name="PricingMarginCaption" Style="{StaticResource PaneCaption}" Margin="0,2,0,0"/>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <TextBox x:Name="PricingMarginBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="%" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" x:Name="PricingFeeCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingFeeBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="%" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="2" x:Name="PricingLaborRateCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingLaborRateBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock x:Name="PricingLaborRateUnit" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="3" x:Name="PricingLaborMinutesCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingLaborMinutesBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="min" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="4" x:Name="PricingPackagingCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingPackagingBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock x:Name="PricingPackagingUnit" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="5" x:Name="PricingFailureCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingFailureBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="%" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="PricingCostsHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" x:Name="PricingCurrencyCaption" Style="{StaticResource PaneCaption}" Margin="0,2,0,0"/>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <TextBox x:Name="PricingCurrencyBox" Width="80"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" x:Name="PricingFilamentCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingFilamentBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock x:Name="PricingFilamentUnit" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="2" x:Name="PricingMaterialsCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingMaterialsBox" Width="250" ToolTip="PETG=90, ASA=120"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="3" x:Name="PricingEnergyCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingEnergyBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock x:Name="PricingEnergyUnit" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="4" x:Name="PricingWattsCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingWattsBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="W" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="5" x:Name="PricingMachineCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingMachineBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock x:Name="PricingMachineUnit" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Style="{StaticResource PaneRule}"/>
+                    <TextBlock x:Name="PricingCalculatorHeading" Style="{StaticResource PaneHeading}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" x:Name="PricingGramsCaption" Style="{StaticResource PaneCaption}" Margin="0,2,0,0"/>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <TextBox x:Name="PricingGramsBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="g" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" x:Name="PricingHoursCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                            <TextBox x:Name="PricingHoursBox" Style="{StaticResource PaneNumber}"/>
+                            <TextBlock Text="h" Style="{StaticResource PaneUnit}"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="PricingResult" FontSize="12" Foreground="{DynamicResource SettingsTextBrush}"
+                               TextWrapping="Wrap" MaxWidth="336" HorizontalAlignment="Left" Margin="174,10,0,0"
+                               Typography.NumeralAlignment="Tabular"/>
                 </StackPanel>
             </ScrollViewer>
 

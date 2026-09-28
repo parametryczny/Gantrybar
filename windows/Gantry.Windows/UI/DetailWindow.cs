@@ -619,21 +619,31 @@ public sealed class DetailView : UserControl
         }
     }
 
+    private static string PriceText(double value, string currency) =>
+        $"{value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} {currency}";
+
     private void RefreshInsights()
     {
         var snap = PrinterInsights.GetSnapshot(_serial, _pl);
         var sig = $"{snap.History.Count}|{snap.CompletedCount}|{snap.SuccessPercent}|{(int)snap.ConsumedGrams}|"
-                  + string.Join(",", snap.Tasks.Select(task => $"{task.Id}{task.IsDue}{task.IsUrgent}{(int)task.RemainingHours}{task.SnoozedUntil:s}"));
+                  + string.Join(",", snap.Tasks.Select(task => $"{task.Id}{task.IsDue}{task.IsUrgent}{(int)task.RemainingHours}{task.SnoozedUntil:s}"))
+                  + $"|{PrintCostSettings.Version}";
         if (sig == _lastInsightSig) return;
         _lastInsightSig = sig;
         _recentPrints.Children.Clear();
         if (snap.History.Count == 0) _recentPrints.Children.Add(InsightLine(AppSettings.T("No recorded history.")));
+        var pricing = PrintCostSettings.Current;
         foreach (var entry in snap.History.Take(3))
         {
             string icon = entry.Result == PrinterInsights.PrintResult.Completed ? "✓" : entry.Result == PrinterInsights.PrintResult.Failed ? "!" : "×";
             int minutes = (int)(entry.DurationSeconds / 60);
             string duration = minutes >= 60 ? $"{minutes / 60}h {minutes % 60}m" : $"{minutes}m";
-            _recentPrints.Children.Add(InsightLine($"{icon}  {(string.IsNullOrWhiteSpace(entry.Job) ? "—" : entry.Job)} · {duration}"));
+            // What the print cost and, for a good one, what to ask for it (Settings → Pricing).
+            var cost = PrintCost.Compute(entry.DurationSeconds, PrintCost.Uses(_serial, entry.StartedAt, entry.EndedAt), _serial, pricing);
+            string value = $" · {PriceText(cost.Total, pricing.Currency)}";
+            if (entry.Result == PrinterInsights.PrintResult.Completed)
+                value += " → " + AppSettings.T("sell for {0}").Replace("{0}", PriceText(SaleQuote.Compute(cost, pricing).Gross, pricing.Currency));
+            _recentPrints.Children.Add(InsightLine($"{icon}  {(string.IsNullOrWhiteSpace(entry.Job) ? "—" : entry.Job)} · {duration}{value}"));
         }
         _maintenance.Children.Clear();
         foreach (var task in snap.Tasks.OrderByDescending(value => value.IsUrgent).ThenByDescending(value => value.IsDue).ThenBy(value => value.RemainingHours).Take(2))
