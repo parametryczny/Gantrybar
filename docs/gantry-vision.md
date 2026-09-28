@@ -73,16 +73,3 @@ z obecnymi ustawieniami (`DefectEvaluation`) i liczy na całe wydruki, nie na kl
 fałszywe alarmy na 100 godzin druku, złapane potwierdzone wpadki i o ile minut
 wcześniej. Klatki wzorcowe są przy tym pominięte, bo część z nich pochodzi z tych
 samych wydruków.
-
-## Kalibracja stołu i obrysy obiektów
-
-Szczegóły → „Kalibruj stół…”: cztery narożniki powierzchni druku, opcjonalnie drugi
-zestaw przy stole opuszczonym o znaną odległość (`BedCalibration`, homografia z czterech
-par punktów, interpolowana liniowo po wysokości stołu). Z obrysów obiektów w milimetrach
-powstają strefy na klatce (`BedZones`): stół, obiekty (obrys przy obecnej wysokości stołu
-połączony z obrysem na wysokości dyszy, poszerzony o 6 mm) i wolny stół. `FootprintWatch`
-porównuje wolny stół z referencją, która podąża za spokojnymi klatkami, i zgłasza
-spaghetti, gdy wyraźnie większa niż zwykle część wolnego stołu zmienia się w dwóch
-kolejnych spojrzeniach; oderwanie, gdy faktura w obszarze obiektów spada poniżej 55%
-zwykłej i tak zostaje. Wysokość stołu liczona jest z numeru warstwy przy 0,2 mm na
-warstwę. Stoły jeżdżące pod kamerą są wyłączone z tego sprawdzenia.
