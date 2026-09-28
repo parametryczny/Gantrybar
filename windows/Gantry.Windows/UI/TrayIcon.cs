@@ -18,6 +18,7 @@ public sealed class TrayIcon : IDisposable
     private DashboardWindow? _dashboard;
     private SettingsWindow? _settings;
     private SpoolbaseWindow? _spoolbase;
+    private FilamentPillWindow? _filamentPill;
     private EdgeDockWindow? _edgeDock;
 
     public TrayIcon(PrinterStore store)
@@ -135,6 +136,9 @@ public sealed class TrayIcon : IDisposable
             menu.Items.Add(new ToolStripMenuItem(
                 AppSettings.T("Spoolbase — filament stock"),
                 null, (_, _) => ToggleSpoolbase()));
+            menu.Items.Add(new ToolStripMenuItem(
+                AppSettings.T("Filament stock pill"),
+                null, (_, _) => ToggleFilamentPill()));
         }
         menu.Items.Add(new ToolStripSeparator());
 
@@ -328,6 +332,26 @@ public sealed class TrayIcon : IDisposable
             OpenPendingUpdate();
         else
             ShowDashboardFromNotification();
+    }
+
+    /// <summary>The floating pill: a quick plus/minus over the filament stock, on top of everything
+    /// and draggable anywhere. Not an auxiliary window — it is deliberately not centred, not given
+    /// focus and not listed in the taskbar, because it is meant to sit beside whatever you are
+    /// actually doing.</summary>
+    private void ToggleFilamentPill()
+    {
+        if (_filamentPill is { } pill)
+        {
+            pill.Close();
+            _filamentPill = null;
+            Defaults.SetBool("filament-pill-open", false);
+            return;
+        }
+        var window = new FilamentPillWindow(SpoolbaseShared.Filaments) { OpenSpoolbase = ToggleSpoolbase };
+        _filamentPill = window;
+        window.Closed += (_, _) => _filamentPill = null;
+        window.Show();
+        Defaults.SetBool("filament-pill-open", true);
     }
 
     private void ToggleSpoolbase()
