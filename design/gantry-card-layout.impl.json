@@ -1,7 +1,7 @@
 {
   "meta": {
     "name": "Gantry Card Layout — shipped macOS values",
-    "version": "1.16.0",
+    "version": "1.17.0",
     "date": "2026-09-27",
     "note": "Exact values as implemented on macOS. Authority for the Windows/Linux port and enforced by scripts/check_ui_parity.py. Where this disagrees with gantry-design-tokens.json (0.2.0), this file wins."
   },
@@ -522,7 +522,7 @@
   "settingsWindow": {
     "note": "One design on all three platforms, each drawn by its own system's widgets. The card design with a pill tab bar is gone: it was the thing that made the window look like an app pretending to be a preferences window.",
     "chrome": {
-      "macOS": "NSTabViewController tabStyle .toolbar inside a close-only title bar, NSWindow.toolbarStyle .preference",
+      "macOS": "a sidebar of panes (SettingsSidebarController, sidebar material, accent-filled selected row) beside an NSTabViewController with tabStyle .unspecified, inside a close-only title bar; since 1.17.0, when eight toolbar icons no longer fit",
       "windows": "SingleBorderWindow so the system title bar, immersive dark mode and rounded corners apply, a ListBox sidebar, SizeToContent Height",
       "linux": "Gtk.Dialog with use_header_bar, Gtk.StackSidebar over a non-homogeneous Gtk.Stack"
     },

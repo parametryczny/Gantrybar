@@ -602,7 +602,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         if AppSettings.shared.floatingWindowEnabled, let settingsWindow {
             floatingDashboard?.dismissEmbeddedPanel()
-            floatingDashboard?.presentWorkspace(settingsWindow.beginEmbedding(), name: "Ustawienia", size: NSSize(width: 720, height: 620), onDismiss: { [weak settingsWindow] in settingsWindow?.endEmbedding() })
+            floatingDashboard?.presentWorkspace(settingsWindow.beginEmbedding(), name: "Ustawienia", size: NSSize(width: 780, height: 620), onDismiss: { [weak settingsWindow] in settingsWindow?.endEmbedding() })
             return
         }
         settingsWindow?.endEmbedding()

@@ -44,6 +44,7 @@ private enum SettingsPaneID: String {
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let store: PrinterStore
     private let tabController = SettingsTabViewController()
+    private lazy var sidebar = SettingsSidebarController(content: tabController)
     private let pricingPane = SettingsPricingPane()
     private var panes: [SettingsPaneID: SettingsPane] = [:]
     /// The one thing that actually sets the window's height.
@@ -245,13 +246,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        // The toolbar style that puts the pane icons under the title, centred, the way every system
-        // settings pane looks. Without this AppKit lays the toolbar out like a document window's.
-        window.toolbarStyle = .preference
         super.init(window: window)
         window.delegate = self
         buildPanes()
-        window.contentViewController = tabController
+        sidebar.onPick = { [weak self] index in self?.tabController.selectedTabViewItemIndex = index }
+        window.contentViewController = sidebar
         let height = tabController.view.heightAnchor.constraint(equalToConstant: 274)
         height.isActive = true
         paneHeight = height
@@ -270,16 +269,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         embeddedInWorkspace = true
         window?.orderOut(nil)
         window?.contentViewController = nil
-        tabController.tabStyle = .segmentedControlOnTop
         paneHeight?.isActive = false
-        return tabController.view
+        return sidebar.view
     }
     func endEmbedding() {
         guard embeddedInWorkspace else { return }
         embeddedInWorkspace = false
-        tabController.view.removeFromSuperview()
-        tabController.tabStyle = .toolbar
-        window?.contentViewController = tabController
+        sidebar.view.removeFromSuperview()
+        window?.contentViewController = sidebar
         paneHeight?.isActive = true
         resizeToSelectedPane()
     }
@@ -372,7 +369,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabController.tabViewItems = items
         // Before the swap, so the window is already the right size when the new pane appears.
         tabController.onWillSelect = { [weak self] index in self?.resizeToPane(at: index) }
-        tabController.onSelect = { [weak self] in self?.resizeToSelectedPane() }
+        tabController.onSelect = { [weak self] in
+            self?.resizeToSelectedPane()
+            self?.updateSidebar()
+        }
+    }
+
+    private func updateSidebar() {
+        let items = tabController.tabViewItems
+        let symbols = items.map { item in
+            (item.identifier as? String).flatMap(SettingsPaneID.init(rawValue:))?.symbolName ?? "circle"
+        }
+        sidebar.show(titles: items.map(\.label), symbols: symbols, selected: tabController.selectedTabViewItemIndex)
     }
 
     private func content(for id: SettingsPaneID) -> NSGridView {
@@ -692,6 +700,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if index >= 0, index < tabController.tabViewItems.count {
             window.title = tabController.tabViewItems[index].label
         }
+        updateSidebar()
 
         // Every pane, not just the one on screen.
         //
@@ -1737,7 +1746,9 @@ private final class SettingsTabViewController: NSTabViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        tabStyle = .toolbar
+        // The panes are listed in the sidebar beside them (SettingsSidebarController), not in a
+        // toolbar: eight icons no longer fit across the window.
+        tabStyle = .unspecified
         transitionOptions = [.crossfade]
         let remembered = BambuDefaults.shared.integer(forKey: Self.lastPaneKey)
         if remembered > 0, remembered < tabViewItems.count { selectedTabViewItemIndex = remembered }

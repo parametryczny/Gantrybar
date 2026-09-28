@@ -391,3 +391,124 @@ final class SettingsScaleControl: NSView {
     @objc private func stepDown() { onStep?(-1) }
     @objc private func stepUp() { onStep?(1) }
 }
+
+/// The settings window's list of panes, down the left side the way System Settings, Windows and
+/// GNU/Linux all show it. A toolbar of icons ran out of room at eight panes and hid the last ones
+/// behind a » menu; a list has room for as many as there will be.
+@MainActor
+final class SettingsSidebarController: NSViewController {
+    static let width: CGFloat = 186
+    private let content: NSViewController
+    private let list = NSStackView()
+    private var items: [SettingsSidebarItem] = []
+    var onPick: ((Int) -> Void)?
+
+    init(content: NSViewController) {
+        self.content = content
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func loadView() {
+        let root = NSView()
+        let sidebar = NSVisualEffectView()
+        sidebar.material = .sidebar
+        sidebar.blendingMode = .behindWindow
+        sidebar.state = .followsWindowActiveState
+        sidebar.translatesAutoresizingMaskIntoConstraints = false
+        list.orientation = .vertical
+        list.alignment = .leading
+        list.spacing = 2
+        list.translatesAutoresizingMaskIntoConstraints = false
+        sidebar.addSubview(list)
+        root.addSubview(sidebar)
+        addChild(content)
+        let pane = content.view
+        pane.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(pane)
+        NSLayoutConstraint.activate([
+            sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            sidebar.topAnchor.constraint(equalTo: root.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: Self.width),
+            list.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 12),
+            list.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 10),
+            list.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -10),
+            pane.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            pane.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            pane.topAnchor.constraint(equalTo: root.topAnchor),
+            pane.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            // A short pane must not cut the list off.
+            root.heightAnchor.constraint(greaterThanOrEqualTo: list.heightAnchor, constant: 24)
+        ])
+        view = root
+    }
+
+    /// Rebuilds the rows when the panes or their names change, and marks the selected one.
+    func show(titles: [String], symbols: [String], selected: Int) {
+        _ = view
+        if items.map(\.title) != titles || items.count != symbols.count {
+            items.forEach { $0.removeFromSuperview() }
+            items = zip(titles, symbols).enumerated().map { index, pair in
+                let item = SettingsSidebarItem(title: pair.0, symbol: pair.1)
+                item.onPress = { [weak self] in self?.onPick?(index) }
+                return item
+            }
+            for item in items {
+                list.addArrangedSubview(item)
+                item.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
+            }
+        }
+        for (index, item) in items.enumerated() { item.isSelected = index == selected }
+    }
+}
+
+/// One row of the settings sidebar: the pane's symbol and name, filled with the accent colour when
+/// it is the pane on screen.
+@MainActor
+final class SettingsSidebarItem: NSView {
+    var onPress: (() -> Void)?
+    let title: String
+    var isSelected = false { didSet { if isSelected != oldValue { apply() } } }
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+
+    init(title: String, symbol: String) {
+        self.title = title
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        label.stringValue = title
+        label.font = .systemFont(ofSize: 13)
+        label.lineBreakMode = .byTruncatingTail
+        let row = NSStackView(views: [icon, label])
+        row.orientation = .horizontal
+        row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 28),
+            icon.widthAnchor.constraint(equalToConstant: 18),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
+            row.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(title)
+        apply()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func mouseDown(with event: NSEvent) { onPress?() }
+    override func accessibilityPerformPress() -> Bool { onPress?(); return true }
+
+    private func apply() {
+        layer?.backgroundColor = isSelected ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
+        label.textColor = isSelected ? .white : .labelColor
+        icon.contentTintColor = isSelected ? .white : .controlAccentColor
+    }
+}

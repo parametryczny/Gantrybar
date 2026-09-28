@@ -90,12 +90,16 @@ require("Sources/Gantry/App/GantryTheme.swift", rf"gap:\s*CGFloat\s*=\s*{theme_g
         "theme gap differs from the contract")
 # No platform pins a settings-window size any more: the window fits whichever pane is showing,
 # which is what a system settings window does. The per-platform chrome rules live further down.
+# Since 1.17.0 the panes are listed in a sidebar on macOS too, as on Windows and GNU/Linux: a toolbar
+# of eight icons no longer fit across the window and hid the last panes behind a » menu.
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"tabStyle = \.toolbar",
-        "macOS settings window does not use the system's toolbar-style pane switcher")
+        r"tabStyle = \.unspecified",
+        "macOS settings window still switches panes from a toolbar instead of the sidebar")
 require("Sources/Gantry/Views/SettingsWindowController.swift",
-        r"toolbarStyle = \.preference",
-        "macOS settings window lays its toolbar out like a document window's")
+        r"window\.contentViewController = sidebar",
+        "the macOS settings window does not show the pane sidebar")
+forbid("Sources/Gantry/Views/SettingsWindowController.swift", r"toolbarStyle = \.preference",
+       "the macOS settings window is back to a toolbar of pane icons")
 # macOS carries one pane the other two do not: the bridge to the user's own page lives only here for
 # now, and the contract records that rather than letting the panes drift apart unnoticed.
 macos_panes = len(settings_window["panes"]) + len(settings_window.get("macOSOnlyPanes", []))
