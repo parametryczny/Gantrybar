@@ -133,6 +133,8 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
         grid.section(calculatorHeading)
         productPopup.target = self
         productPopup.action = #selector(productChanged)
+        productPopup.translatesAutoresizingMaskIntoConstraints = false
+        productPopup.widthAnchor.constraint(lessThanOrEqualToConstant: SettingsMetrics.controlColumn).isActive = true
         grid.field(productCaption, productPopup)
         grid.field(gramsCaption, row(gramsField, NSTextField(labelWithString: "g")))
         grid.field(hoursCaption, row(hoursField, NSTextField(labelWithString: "h")))

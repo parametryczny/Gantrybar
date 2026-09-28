@@ -410,8 +410,15 @@ final class SettingsSidebarController: NSViewController {
 
     required init?(coder: NSCoder) { nil }
 
+    /// The pane column's width: caption column, gap, control column and the inset on both sides
+    /// (the contract's contentWidth). The panes scroll, so they have no width of their own to give;
+    /// under the toolbar the tab controller used to size the window from each pane's preferred size,
+    /// and inside this container nothing did, so the window came up with no width at all.
+    static let paneWidth: CGFloat = SettingsMetrics.captionColumn + SettingsMetrics.columnSpacing
+        + SettingsMetrics.controlColumn + 2 * SettingsMetrics.paneInset
+
     override func loadView() {
-        let root = NSView()
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: Self.width + Self.paneWidth, height: 420))
         let sidebar = NSVisualEffectView()
         sidebar.material = .sidebar
         sidebar.blendingMode = .behindWindow
@@ -439,10 +446,20 @@ final class SettingsSidebarController: NSViewController {
             pane.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             pane.topAnchor.constraint(equalTo: root.topAnchor),
             pane.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            pane.widthAnchor.constraint(equalToConstant: Self.paneWidth),
             // A short pane must not cut the list off.
             root.heightAnchor.constraint(greaterThanOrEqualTo: list.heightAnchor, constant: 24)
         ])
         view = root
+        preferredContentSize = root.frame.size
+    }
+
+    /// Follows the pane's own height, so the window keeps fitting it.
+    override func preferredContentSizeDidChange(for viewController: NSViewController) {
+        super.preferredContentSizeDidChange(for: viewController)
+        let size = viewController.preferredContentSize
+        guard size.height > 1 else { return }
+        preferredContentSize = NSSize(width: Self.width + Self.paneWidth, height: size.height)
     }
 
     /// Rebuilds the rows when the panes or their names change, and marks the selected one.
