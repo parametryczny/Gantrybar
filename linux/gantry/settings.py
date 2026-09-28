@@ -199,6 +199,9 @@ class SettingsDialog(Gtk.Dialog):
         name = self.stack.get_visible_child_name()
         if name is None:
             return
+        if name == "pricing" and hasattr(self, "pricing_product"):
+            # Spoolbase may have gained a product or a roll price since the pane was built.
+            self._pricing_refresh_products(printcost.load(self.app.config))
         header = self.get_header_bar()
         if header is not None:
             header.set_title(self._pane_title(name))
@@ -244,9 +247,22 @@ class SettingsDialog(Gtk.Dialog):
         self.autostart = self._check(i18n.t("Start after login"), autostart_enabled())
         self.spoolbase = self._check(i18n.t("Spoolbase — filament stock"),
                                      bool(self.app.config.data.get("spoolbase_enabled", True)))
+        self.spool_pair = self._check(i18n.t("Pair AMS rolls with Spoolbase"),
+                                      bool(self.app.config.data.get("spool_auto_pair", True)))
+        self.spool_pair.set_sensitive(self.spoolbase.get_active())
+        self.spoolbase.connect("toggled", lambda check: self.spool_pair.set_sensitive(check.get_active()))
+        # The macOS checkbox's subtitle: a dim line under the label, indented past the tick box.
+        pair_hint = Gtk.Label(label=i18n.t("Bambu RFID rolls are matched to their Spoolbase roll, so prints are priced with what you paid"),
+                              xalign=0, wrap=True)
+        pair_hint.set_max_width_chars(46)
+        pair_hint.set_margin_start(24)
+        pair_hint.get_style_context().add_class("settings-hint")
+        pair = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        pair.pack_start(self.spool_pair, False, False, 0)
+        pair.pack_start(pair_hint, False, False, 0)
         # Spoolbase is a full-edition tool, so LITE's basics are language and launch at login only.
         pane.group(i18n.t("Options"),
-                   [self.autostart, self.spoolbase] if edition.HAS_EXTRAS else [self.autostart])
+                   [self.autostart, self.spoolbase, pair] if edition.HAS_EXTRAS else [self.autostart])
 
         self._build_updates(pane)
         if not edition.HAS_EXTRAS:
@@ -537,6 +553,11 @@ class SettingsDialog(Gtk.Dialog):
         self.pricing_energy = number(value.electricityPerKWh)
         self.pricing_watts = number(value.printerWatts)
         self.pricing_machine = number(value.machinePerHour)
+        # The calculator's filament: the default price first, then every Spoolbase product with a price.
+        self.pricing_product = Gtk.ComboBoxText()
+        self._pricing_product_ids: list[str] = []
+        self._pricing_product_titles: list[str] = []
+        self._pricing_refresh_products(value)
         self.pricing_grams = Gtk.Entry(xalign=1, placeholder_text="120")
         self.pricing_grams.set_width_chars(8)
         self.pricing_hours = Gtk.Entry(xalign=1, placeholder_text="4.5")
@@ -566,9 +587,11 @@ class SettingsDialog(Gtk.Dialog):
         pane.field(i18n.t("Electricity per kWh"), row(self.pricing_energy, self._pricing_units[3]))
         pane.field(i18n.t("Average printer power (W)"), row(self.pricing_watts, "W"))
         pane.field(i18n.t("Machine time per hour"), row(self.pricing_machine, self._pricing_units[4]))
+        pane.note(i18n.t("A roll with a price in Spoolbase is charged at that price. The prices here are for prints whose roll has none."))
 
         pane.section(i18n.t("Calculator"))
-        pane.field(i18n.t("Filament"), row(self.pricing_grams, "g"))
+        pane.field(i18n.t("Filament"), self.pricing_product)
+        pane.field(i18n.t("Weight"), row(self.pricing_grams, "g"))
         pane.field(i18n.t("Print time"), row(self.pricing_hours, "h"))
         pane.aligned(self.pricing_result)
 
@@ -579,6 +602,7 @@ class SettingsDialog(Gtk.Dialog):
             entry.connect("changed", self._pricing_changed)
         self.pricing_business.connect("changed", self._pricing_changed)
         self.pricing_on_revenue.connect("toggled", self._pricing_changed)
+        self.pricing_product.connect("changed", lambda *_: self._pricing_recalculate())
         self.pricing_grams.connect("changed", lambda *_: self._pricing_recalculate())
         self.pricing_hours.connect("changed", lambda *_: self._pricing_recalculate())
         self._pricing_recalculate()
@@ -617,6 +641,7 @@ class SettingsDialog(Gtk.Dialog):
         value.materialPerKg = printcost.parse_material_prices(self.pricing_materials.get_text())
         for unit in self._pricing_units:
             unit.set_text(value.currency)
+        self._pricing_refresh_products(value)
         if value != before:
             printcost.save(self.app.config, value)
             # The statistics price every print with these, so an open one follows.
@@ -624,6 +649,38 @@ class SettingsDialog(Gtk.Dialog):
             if stats is not None and hasattr(stats, "prices_changed"):
                 stats.prices_changed()
         self._pricing_recalculate()
+
+    def _pricing_priced_products(self) -> list[tuple[Any, float]]:
+        store = getattr(self.app, "filament_store", None)
+        spools = getattr(self.app, "physical_spools", None)
+        priced = [(item, price) for item in list(getattr(store, "filaments", []) or [])
+                  if (price := printcost.spoolbase_price_per_kg(item, spools)) is not None]
+        return sorted(priced, key=lambda pair: pair[0].brand + pair[0].name)
+
+    def _pricing_refresh_products(self, value: printcost.PrintCostSettings) -> None:
+        """The calculator's filament menu: the default price first, then every Spoolbase product that
+        has a price, priced the way a print from one of its rolls would be. The choice is kept."""
+        priced = self._pricing_priced_products()
+        money = value.currency
+        titles = [i18n.t("Default price ({0} per kg)").format(f"{value.filamentPerKg:g} {money}")] + [
+            f"{item.brand} {item.name} {item.colorName} · {price:.2f} {money}/kg" for item, price in priced]
+        if titles == self._pricing_product_titles:
+            return
+        keep = self.pricing_product.get_active_id()
+        self.pricing_product.remove_all()
+        self.pricing_product.append("", titles[0])
+        for (item, _price), title in zip(priced, titles[1:]):
+            self.pricing_product.append(item.id, title)
+        self._pricing_product_ids = [item.id for item, _price in priced]
+        self._pricing_product_titles = titles
+        self.pricing_product.set_active_id(keep if keep in self._pricing_product_ids else "")
+
+    def _pricing_selected_product(self) -> Any | None:
+        chosen = self.pricing_product.get_active_id()
+        if not chosen:
+            return None
+        store = getattr(self.app, "filament_store", None)
+        return next((item for item in list(getattr(store, "filaments", []) or []) if item.id == chosen), None)
 
     def _pricing_recalculate(self) -> None:
         """The calculator: a print of this weight and duration, priced with everything above."""
@@ -634,7 +691,11 @@ class SettingsDialog(Gtk.Dialog):
         if grams is None or hours is None or not (grams > 0 or hours > 0):
             self.pricing_result.set_text(i18n.t("Enter the filament weight and print time to see the price."))
         else:
-            cost = printcost.compute(hours * 3600, [printcost.Use(grams)], "", settings)
+            product = self._pricing_selected_product()
+            spools = getattr(self.app, "physical_spools", None)
+            use = printcost.Use(grams, getattr(product, "type", None),
+                                None if product is None else printcost.spoolbase_price_per_kg(product, spools))
+            cost = printcost.compute(hours * 3600, [use], "", settings)
             self.pricing_result.set_text(printcost.SaleQuote.compute(cost, settings).breakdown(settings.currency))
         # The breakdown is several lines where the hint was one: the window follows, as it does per pane.
         if (self._ready and self.pricing_result.get_text().count("\n") != lines_before
@@ -871,7 +932,7 @@ class SettingsDialog(Gtk.Dialog):
         """macOS applies settings as controls change; GTK now follows the same Done-only flow."""
         for combo in (self.language, self.theme, self.transparency, self.dock_display, self.update_format):
             combo.connect("changed", self._live_changed)
-        checks = [self.autostart, self.spoolbase, self.developer, self.allow_scripts,
+        checks = [self.autostart, self.spoolbase, self.spool_pair, self.developer, self.allow_scripts,
                   self.spool_grams, self.monochrome, self.quiet, self.auto_update,
                   self.telegram_enabled, self.dock_enabled, self.dock_only_printing,
                   self.web_enabled]
@@ -907,6 +968,7 @@ class SettingsDialog(Gtk.Dialog):
             quiet_hours_start=self.quiet_start.get_text().strip(),
             quiet_hours_end=self.quiet_end.get_text().strip(),
             spoolbase_enabled=self.spoolbase.get_active(),
+            spool_auto_pair=self.spool_pair.get_active(),
             card_show_spool_grams=self.spool_grams.get_active(),
             card_show_details_chip=self.details_chip.get_active(),
             monochrome=self.monochrome.get_active(),

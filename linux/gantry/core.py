@@ -91,6 +91,11 @@ class FilamentSlot:
     active: bool = False
     # Remaining grams from the AMS NFC/RFID tag (tray_weight * remain%); None for a chipless spool.
     remaining_weight_g: float | None = None
+    # Bambu RFID: the roll's own tag id (tray_uuid), the product (tray_sub_brands, "PETG Basic") and
+    # the roll's full weight (tray_weight). None for a roll without a tag.
+    spool_uid: str | None = None
+    product_name: str | None = None
+    nominal_grams: float | None = None
 
     @property
     def present(self) -> bool:
@@ -255,6 +260,24 @@ def _nfc_grams(tray: dict[str, Any]) -> float | None:
     return nominal * remain / 100.0
 
 
+def tag_uid(tray: dict[str, Any]) -> str | None:
+    """The roll's RFID tag id. A roll without a tag reports all zeros, which is no id at all."""
+    value = tray.get("tray_uuid")
+    raw = value.strip() if isinstance(value, str) else ""
+    if not raw or all(character == "0" for character in raw):
+        return None
+    return raw.upper()
+
+
+def _non_empty(value: Any) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _nominal_grams(tray: dict[str, Any]) -> float | None:
+    nominal = _number(tray.get("tray_weight"))
+    return nominal if nominal is not None and nominal > 0 else None
+
+
 def _display_name(value: str) -> str:
     value = urllib.parse.unquote(value)
     if any(marker in value for marker in ("Ã", "Å", "Ä")):
@@ -322,6 +345,9 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
                 remaining=_known_remain(tray.get("remain")) if material else None,
                 active=resolve_active(slot_id, matches),
                 remaining_weight_g=_nfc_grams(tray) if material else None,
+                spool_uid=tag_uid(tray) if material else None,
+                product_name=_non_empty(tray.get("tray_sub_brands")) if material else None,
+                nominal_grams=_nominal_grams(tray) if material else None,
             ))
         # Keep the last known humidity/temperature when a mid-print report omits them.
         previous_unit = next((g for g in previous if g.group_id == f"ams-{unit_id}"), None)
@@ -365,6 +391,9 @@ def _parse_ams_groups(value: dict[str, Any], external_trays: list[dict[str, Any]
                 remaining=_known_remain(external.get("remain")) if material else None,
                 active=resolve_active(slot_id, matches),
                 remaining_weight_g=_nfc_grams(external) if material else None,
+                spool_uid=tag_uid(external) if material else None,
+                product_name=_non_empty(external.get("tray_sub_brands")) if material else None,
+                nominal_grams=_nominal_grams(external) if material else None,
             )],
         ))
 

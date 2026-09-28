@@ -57,6 +57,8 @@ DEFAULTS: dict[str, Any] = {
     "quiet_hours_start": "22:00",
     "quiet_hours_end": "07:00",
     "spoolbase_enabled": True,
+    # Pair Bambu RFID rolls in the AMS with their Spoolbase rolls on their own (as on macOS).
+    "spool_auto_pair": True,
     "printer_control_enabled": False,
     "developer_mode": False,
     "card_show_filename": True,

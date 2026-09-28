@@ -108,6 +108,13 @@ class PhysicalSpoolStore:
     def spools_for_definition(self, definition_id: str) -> list[dict[str, Any]]:
         return [s for s in self.spools if s.get("filamentDefinitionID") == definition_id]
 
+    def last_price(self, definition_id: str) -> float | None:
+        """The price of the most recently added roll of this product, to suggest for the next one."""
+        priced = [s for s in self.spools_for_definition(definition_id) if isinstance(s.get("price"), (int, float))]
+        if not priced:
+            return None
+        return float(max(priced, key=lambda s: _parse_iso(s.get("createdAt")))["price"])
+
     def next_spool_id(self) -> str:
         highest = 0
         for spool in self.spools:
@@ -155,6 +162,22 @@ class PhysicalSpoolStore:
             if callable(self.on_change):
                 self.on_change()
         return created
+
+    @serialized
+    def set_tag(self, spool_id: str, tag_uid: str | None) -> None:
+        """The Bambu RFID tag this roll was paired with in an AMS (``tagUID``, as on macOS), so the same
+        roll is recognised again in any slot of any printer. Optional and additive in the JSON."""
+        spool = self.spool(spool_id)
+        if spool is None:
+            return
+        if tag_uid:
+            spool["tagUID"] = tag_uid
+        else:
+            spool.pop("tagUID", None)
+        spool["updatedAt"] = _now_iso()
+        self._save()
+        if callable(self.on_change):
+            self.on_change()
 
     @serialized
     def delete(self, spool_id: str) -> None:

@@ -1317,6 +1317,16 @@ class Gantry:
                 card = self.cards.get(serial)
                 if card is not None:
                     card.show_notice(msg)
+            # A Bambu RFID roll is paired with its Spoolbase roll (SpoolAutoPair on macOS), on the card.
+            if (current.filament_groups != previous.filament_groups
+                    and bool(self.config.data.get("spool_auto_pair", True))):
+                from . import spoolautopair
+                store = getattr(self, "filament_store", None)
+                notices = spoolautopair.pair(serial, current.filament_groups, self.physical_spools,
+                                             list(getattr(store, "filaments", []) or []))
+                card = self.cards.get(serial)
+                if notices and card is not None:
+                    card.show_notice("\n".join(notices))
         # Card layout, header and window fitting only matter when somebody can see them. With the
         # popover hidden this was the whole cost of a telemetry packet, several times a second, for
         # nothing. Notifications, Telegram, the tray label and the strip below are unaffected: they

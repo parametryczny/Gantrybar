@@ -257,6 +257,27 @@ def uses(app: Any, serial: str, started: datetime, ended: datetime) -> list[Use]
     return result
 
 
+def roll_price_per_kg(spool: dict[str, Any]) -> float | None:
+    """Price of one kilogram of a roll's filament, from what the roll cost and its full weight."""
+    price = spool.get("price")
+    nominal = float(spool.get("nominalWeightGrams", 0) or 0)
+    if not isinstance(price, (int, float)) or price < 0 or nominal <= 0:
+        return None
+    return float(price) / nominal * 1000
+
+
+def spoolbase_price_per_kg(filament: Any, spools: Any) -> float | None:
+    """What a kilogram of this Spoolbase product costs: the average over its rolls that have a price,
+    otherwise the product's price per roll (a roll is taken as 1 kg when no roll says otherwise)."""
+    rolls = [] if spools is None else [value for value in (roll_price_per_kg(spool) for spool in
+                                                              spools.spools_for_definition(filament.id))
+                                       if value is not None]
+    if rolls:
+        return sum(rolls) / len(rolls)
+    price = getattr(filament, "pricePerRoll", None)
+    return float(price) if isinstance(price, (int, float)) else None
+
+
 def entry_times(item: dict[str, Any]) -> tuple[datetime, datetime]:
     """(started, ended) of a history entry; a missing start is the end minus the duration."""
     ended = _date(item.get("endedAt")) or datetime.min.replace(tzinfo=timezone.utc)
