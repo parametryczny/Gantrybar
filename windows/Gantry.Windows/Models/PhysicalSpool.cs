@@ -29,6 +29,14 @@ public sealed class PhysicalSpool
     [JsonPropertyName("tareGrams")] public double? TareGrams { get; set; }
     // What the roll cost; entered on macOS. Kept here so saving on Windows does not drop it.
     [JsonPropertyName("price")] public double? Price { get; set; }
+    // The Bambu RFID tag this roll was paired with in an AMS, so the same roll is recognised again in
+    // any slot of any printer. Null for rolls without a tag or never paired. Same key as macOS.
+    [JsonPropertyName("tagUID")] public string? TagUid { get; set; }
+
+    /// <summary>Price of one kilogram of this roll's filament, from what the roll cost and its full weight.</summary>
+    [JsonIgnore]
+    public double? PricePerKg => Price is { } price && price >= 0 && NominalWeightGrams > 0
+        ? price / NominalWeightGrams * 1000 : null;
 
     /// <summary>Locally computed fill level (no RFID). Never pushed back to firmware.</summary>
     [JsonIgnore]

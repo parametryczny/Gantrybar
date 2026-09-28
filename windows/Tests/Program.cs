@@ -470,3 +470,79 @@ Console.WriteLine("Windows socket power OK — Shelly, Tasmota, no meter elsewhe
         throw new Exception("An unknown business set-up did not fall back to unregistered");
 }
 Console.WriteLine("Windows sale quote OK — tax on profit or revenue, VAT on top, fee from gross, costs, old settings");
+
+// Pairing Bambu RFID rolls with Spoolbase: the same cases as macOS SpoolAutoPairTests, plus the rules
+// that pick the roll (known tag, a roll assigned by hand, a stored roll, a new one priced like the product).
+{
+    static Gantry.Models.FilamentSlot TaggedSlot(string material, string color, string? product = null) => new()
+    {
+        Id = "ams-0-0", Label = "A1", Material = material, ColorHex = color, RemainingPercent = 100,
+        SpoolUid = "ABCDEF0123", ProductName = product,
+    };
+    var other = new PairProduct(Guid.NewGuid(), "Devil Design", "PETG", "PETG", "000000", null);
+    var bambu = new PairProduct(Guid.NewGuid(), "Bambu Lab", "PETG Basic", "PETG", "000000", 89);
+    var pla = new PairProduct(Guid.NewGuid(), "Bambu Lab", "PLA Basic", "PLA", "000000", null);
+    if (SpoolAutoPairRules.BestProduct(TaggedSlot("PETG", "000000FF", "PETG Basic"), new[] { other, bambu, pla })?.Id != bambu.Id)
+        throw new Exception("The printer's brand and the product name did not win at the same colour");
+    var red = new PairProduct(Guid.NewGuid(), "Bambu Lab", "PETG Basic", "PETG", "FF0000", null);
+    if (SpoolAutoPairRules.BestProduct(TaggedSlot("PETG", "0000FFFF"), new[] { red }) is not null)
+        throw new Exception("A different colour was taken as the same product");
+    if (SpoolAutoPairRules.TagUid("00000000000000000000000000000000") is not null || SpoolAutoPairRules.TagUid("a1b2c3") != "A1B2C3"
+        || SpoolAutoPairRules.TagUid(null) is not null)
+        throw new Exception("A tag of zeros was read as a tag, or a tag was not upper-cased");
+
+    var pairDirectory = Path.Combine(Path.GetTempPath(), "gantry-autopair-test-" + Guid.NewGuid());
+    try
+    {
+        var pairStore = new PhysicalSpoolStore(pairDirectory);
+        var slot = TaggedSlot("PETG", "000000FF", "PETG Basic");
+        slot.NominalGrams = 1000;
+        slot.RemainingWeightGrams = 1000;
+        var groups = new List<Gantry.Models.FilamentGroup>
+        {
+            new() { Id = "ams-0", DisplayName = "AMS A", DeclaredCapacity = 4, Slots = new() { slot } },
+        };
+        var products = new[] { other, bambu };
+        // No roll in storage: one is added, priced like the product, with the tag kept on it.
+        var paired = SpoolAutoPairRules.Pair("X1", groups, pairStore, products);
+        var inX1 = pairStore.SpoolAt(Gantry.Models.SpoolLocation.At("X1", Gantry.Models.SpoolFeeder.Ams, 0, 0));
+        if (paired.Count != 1 || paired[0].Product != "Bambu Lab PETG Basic" || paired[0].Slot != "AMS A A1"
+            || inX1 is null || inX1.TagUid != "ABCDEF0123" || inX1.Price != 89.0)
+            throw new Exception("A tagged roll with no stored roll was not added priced like the product");
+        string created = paired[0].SpoolId;
+        if (SpoolAutoPairRules.Pair("X1", groups, pairStore, products).Count != 0)
+            throw new Exception("A roll already paired in its slot was paired again");
+        // The same roll in another printer is recognised by its tag.
+        var elsewhere = SpoolAutoPairRules.Pair("P1", groups, pairStore, products);
+        if (elsewhere.Count != 1 || elsewhere[0].SpoolId != created || elsewhere[0].Product is not null
+            || pairStore.Spool(created)!.Location.PrinterSerial != "P1")
+            throw new Exception("A known tag was not recognised in another printer");
+        // A roll assigned by hand is never replaced.
+        var manual = pairStore.CreateRolls(pla.Id, 1, 1000)[0].Id;
+        var k1 = Gantry.Models.SpoolLocation.At("K1", Gantry.Models.SpoolFeeder.Ams, 0, 0);
+        pairStore.Assign(manual, k1);
+        if (SpoolAutoPairRules.Pair("K1", groups, pairStore, products).Count != 0 || pairStore.SpoolAt(k1)?.Id != manual)
+            throw new Exception("A roll assigned by hand was replaced");
+        // A new tag takes an opened stored roll of the product before an older unopened one.
+        var unopened = pairStore.CreateRolls(bambu.Id, 1, 1000)[0];
+        var opened = pairStore.CreateRolls(bambu.Id, 1, 1000, remaining: 600)[0];
+        slot.SpoolUid = "FEED0001";
+        var fromStorage = SpoolAutoPairRules.Pair("Z1", groups, pairStore, products);
+        if (fromStorage.Count != 1 || fromStorage[0].SpoolId != opened.Id || pairStore.Spool(opened.Id)!.TagUid != "FEED0001"
+            || pairStore.Spool(unopened.Id)!.TagUid is not null)
+            throw new Exception("The opened stored roll was not the one paired");
+        // The tag is saved in the shared JSON under the macOS key and survives a restart.
+        if (!File.ReadAllText(Path.Combine(pairDirectory, "spools-v1.state-v2.json")).Contains("\"tagUID\": \"FEED0001\""))
+            throw new Exception("The tag was not saved as tagUID");
+        if (new PhysicalSpoolStore(pairDirectory).Spool(opened.Id)?.TagUid != "FEED0001")
+            throw new Exception("The tag did not survive a restart");
+        // Only a real change in the filament groups runs the pairing again.
+        var copy = groups.Select(group => group.Clone()).ToList();
+        if (SpoolAutoPairRules.GroupsChanged(groups, copy)) throw new Exception("Equal filament groups were seen as changed");
+        copy[0].Slots[0].SpoolUid = "OTHER";
+        if (!SpoolAutoPairRules.GroupsChanged(groups, copy) || !SpoolAutoPairRules.GroupsChanged(null, copy))
+            throw new Exception("A changed tag was not seen as a change");
+    }
+    finally { if (Directory.Exists(pairDirectory)) Directory.Delete(pairDirectory, true); }
+}
+Console.WriteLine("Windows Spoolbase pairing OK — product match, zero tag, known tag, manual roll kept, opened roll first");

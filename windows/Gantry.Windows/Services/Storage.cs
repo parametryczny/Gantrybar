@@ -308,6 +308,13 @@ public static class AppSettings
         set => Defaults.SetBool("spoolbase-enabled", value);
     }
 
+    /// <summary>Pair Bambu RFID rolls in the AMS with their Spoolbase rolls on their own (SpoolAutoPair).</summary>
+    public static bool SpoolAutoPair
+    {
+        get => Defaults.GetBool("spool-auto-pair", true);
+        set => Defaults.SetBool("spool-auto-pair", value);
+    }
+
     /// <summary>Whether the read-only LAN web dashboard (http://&lt;ip&gt;:8787) runs.</summary>
     public static bool WebDashboardEnabled
     {
