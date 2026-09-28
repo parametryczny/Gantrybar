@@ -134,7 +134,12 @@ public partial class SettingsWindow : Window
             OnTransparencyChanged?.Invoke();   // live-refresh the open flyout's acrylic tint
         };
         StartupCheckBox.Click += (_, _) => LaunchAtLogin.SetEnabled(StartupCheckBox.IsChecked == true);
-        SpoolbaseCheckBox.Click += (_, _) => AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;
+        SpoolbaseCheckBox.Click += (_, _) =>
+        {
+            AppSettings.SpoolbaseEnabled = SpoolbaseCheckBox.IsChecked == true;
+            SpoolAutoPairCheckBox.IsEnabled = AppSettings.SpoolbaseEnabled;
+        };
+        SpoolAutoPairCheckBox.Click += (_, _) => AppSettings.SpoolAutoPair = SpoolAutoPairCheckBox.IsChecked == true;
         PrinterControlCheckBox.Click += (_, _) => AppSettings.PrinterControlEnabled = PrinterControlCheckBox.IsChecked == true;
         DeveloperCheckBox.Click += (_, _) => AppSettings.DeveloperMode = DeveloperCheckBox.IsChecked == true;
         ScriptActionsCheckBox.Click += (_, _) => AppSettings.AllowScriptActions = ScriptActionsCheckBox.IsChecked == true;
@@ -183,7 +188,7 @@ public partial class SettingsWindow : Window
     {
         if (Build.HasExtras) return;
         PaneItemIntegrations.Visibility = PaneItemPricing.Visibility = PaneItemAdvanced.Visibility = Visibility.Collapsed;
-        SpoolbaseCheckBox.Visibility = Visibility.Collapsed;
+        SpoolbaseCheckBox.Visibility = SpoolAutoPairCheckBox.Visibility = SpoolAutoPairNote.Visibility = Visibility.Collapsed;
         UpdatesHeading.Visibility = UpdatesCard.Visibility = UpdatesRule.Visibility = Visibility.Collapsed;
         FloatingWindowRow.Visibility = Visibility.Collapsed;
         CardSpoolGramsCheckBox.Visibility = Visibility.Collapsed;
@@ -241,6 +246,7 @@ public partial class SettingsWindow : Window
         PricingCurrencyBox.LostFocus += (_, _) => RefreshPricing();
         PricingGramsBox.TextChanged += (_, _) => RecalculatePricing();
         PricingHoursBox.TextChanged += (_, _) => RecalculatePricing();
+        PricingProductCombo.SelectionChanged += (_, _) => RecalculatePricing();
         PricingRevenueCheckBox.Click += (_, _) => { SavePricing(); RefreshPricing(); };
         // Cycles through the three set-ups, like the other choice buttons in this window.
         PricingBusinessButton.Click += (_, _) =>
@@ -299,8 +305,12 @@ public partial class SettingsWindow : Window
         foreach (var unit in new[] { PricingLaborRateUnit, PricingPackagingUnit, PricingFilamentUnit, PricingEnergyUnit, PricingMachineUnit })
             unit.Text = money;
 
+        PricingCostsNote.Text = AppSettings.T("A roll with a price in Spoolbase is charged at that price. The prices here are for prints whose roll has none.");
+
         PricingCalculatorHeading.Text = AppSettings.T("Calculator");
-        PricingGramsCaption.Text = AppSettings.T("Filament");
+        PricingProductCaption.Text = AppSettings.T("Filament");
+        RefreshPricingProducts(money, value.FilamentPerKg);
+        PricingGramsCaption.Text = AppSettings.T("Weight");
         PricingHoursCaption.Text = AppSettings.T("Print time");
 
         _pricingLoading = true;
@@ -328,6 +338,44 @@ public partial class SettingsWindow : Window
         }
         finally { _pricingLoading = false; }
         RecalculatePricing();
+    }
+
+    /// <summary>Spoolbase products in the calculator's menu, in menu order after the first "default" entry.</summary>
+    private List<Guid> _pricingProductIds = new();
+
+    /// <summary>The calculator's filament menu: the default price first, then every Spoolbase product that
+    /// has a price, priced the way a print from one of its rolls would be.</summary>
+    private void RefreshPricingProducts(string money, double fallback)
+    {
+        if (!GTheme.IsLight && SpoolbaseChrome.DarkCombo is { } comboStyle) PricingProductCombo.Style = comboStyle;
+        else { PricingProductCombo.ClearValue(StyleProperty); PricingProductCombo.Foreground = Brushes.Black; }
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var priced = SpoolbaseShared.Filaments.Filaments
+            .Select(filament => (Filament: filament, PerKg: SpoolbasePricePerKg(filament)))
+            .Where(entry => entry.PerKg is not null)
+            .OrderBy(entry => entry.Filament.Brand + entry.Filament.Name, StringComparer.Ordinal)
+            .ToList();
+        var titles = new List<string> { AppSettings.T("Default price ({0} per kg)").Replace("{0}", $"{PricingNumber(fallback)} {money}") };
+        titles.AddRange(priced.Select(entry =>
+            $"{entry.Filament.Brand} {entry.Filament.Name} {entry.Filament.ColorName} · {entry.PerKg!.Value.ToString("0.00", invariant)} {money}/kg"));
+        int selected = PricingProductCombo.SelectedIndex - 1;
+        Guid? keep = selected >= 0 && selected < _pricingProductIds.Count ? _pricingProductIds[selected] : null;
+        if (PricingProductCombo.Items.Cast<object>().Select(item => item as string).SequenceEqual(titles)) return;
+        _pricingProductIds = priced.Select(entry => entry.Filament.Id).ToList();
+        PricingProductCombo.Items.Clear();
+        foreach (var title in titles) PricingProductCombo.Items.Add(title);
+        int restored = keep is { } id ? _pricingProductIds.IndexOf(id) : -1;
+        PricingProductCombo.SelectedIndex = restored >= 0 ? restored + 1 : 0;
+    }
+
+    /// <summary>What a kilogram of this product costs in Spoolbase: the average over its rolls that have a
+    /// price, otherwise the product's price per roll over a 1 kg roll.</summary>
+    internal static double? SpoolbasePricePerKg(Filament filament)
+    {
+        var rolls = SpoolbaseShared.Spools.SpoolsForDefinition(filament.Id)
+            .Select(spool => spool.PricePerKg).Where(price => price is not null).Select(price => price!.Value).ToList();
+        if (rolls.Count > 0) return rolls.Average();
+        return filament.PricePerRoll;   // a roll is taken as 1 kg when no roll says otherwise
     }
 
     private static double? PricingParse(System.Windows.Controls.TextBox box) =>
@@ -366,7 +414,11 @@ public partial class SettingsWindow : Window
             PricingResult.Text = AppSettings.T("Enter the filament weight and print time to see the price.");
             return;
         }
-        var cost = PrintCost.Compute(hours * 3600, new[] { new PrintCost.Use(grams, null) }, "", settings);
+        int index = PricingProductCombo.SelectedIndex - 1;
+        var product = index >= 0 && index < _pricingProductIds.Count
+            ? SpoolbaseShared.Filaments.Filaments.FirstOrDefault(f => f.Id == _pricingProductIds[index]) : null;
+        var use = new PrintCost.Use(grams, product?.Type, product is null ? null : SpoolbasePricePerKg(product));
+        var cost = PrintCost.Compute(hours * 3600, new[] { use }, "", settings);
         PricingResult.Text = PricingBreakdown(SaleQuote.Compute(cost, settings), settings.Currency);
     }
 
@@ -597,6 +649,8 @@ public partial class SettingsWindow : Window
         TransparencyButton.Content = TransparencyName(AppSettings.PanelTransparency);
         StartupCheckBox.Content = AppSettings.T("Start with Windows");
         SpoolbaseCheckBox.Content = AppSettings.T("Spoolbase — filament stock");
+        SpoolAutoPairCheckBox.Content = AppSettings.T("Pair AMS rolls with Spoolbase");
+        SpoolAutoPairNote.Text = AppSettings.T("Bambu RFID rolls are matched to their Spoolbase roll, so prints are priced with what you paid");
         PrinterControlCheckBox.Content = AppSettings.T("Printer control");
         PrinterControlHint.Text = AppSettings.T("Enables temperature, fan and speed controls in Details. Off by default.");
         DeveloperCheckBox.Content = AppSettings.T("Developer mode (control + automations)");
@@ -728,6 +782,8 @@ public partial class SettingsWindow : Window
     {
         StartupCheckBox.IsChecked = LaunchAtLogin.IsEnabled;
         SpoolbaseCheckBox.IsChecked = AppSettings.SpoolbaseEnabled;
+        SpoolAutoPairCheckBox.IsChecked = AppSettings.SpoolAutoPair;
+        SpoolAutoPairCheckBox.IsEnabled = AppSettings.SpoolbaseEnabled;
         PrinterControlCheckBox.IsChecked = AppSettings.PrinterControlEnabled;
         DeveloperCheckBox.IsChecked = AppSettings.DeveloperMode;
         ScriptActionsCheckBox.IsChecked = AppSettings.AllowScriptActions;

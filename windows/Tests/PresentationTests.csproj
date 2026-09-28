@@ -31,5 +31,6 @@
     <Compile Include="../Gantry.Windows/Services/PrinterFileTargets.cs" Link="PrinterFileTargets.cs" />
     <Compile Include="../Gantry.Windows/Farm/FarmModels.cs" Link="FarmModels.cs" />
     <Compile Include="../Gantry.Windows/Services/PrintCost.cs" Link="PrintCost.cs" />
+    <Compile Include="../Gantry.Windows/Services/SpoolAutoPairRules.cs" Link="SpoolAutoPairRules.cs" />
   </ItemGroup>
 </Project>

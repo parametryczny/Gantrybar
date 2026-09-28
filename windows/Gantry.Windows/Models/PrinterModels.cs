@@ -208,8 +208,20 @@ public sealed class FilamentSlot
     public bool IsActive { get; set; }
     /// <summary>Remaining grams from the AMS NFC/RFID tag (tray_weight × remain), when known.</summary>
     public double? RemainingWeightGrams { get; set; }
+    /// <summary>Bambu RFID: the roll's own tag id (tray_uuid), the product (tray_sub_brands, "PETG Basic")
+    /// and the roll's full weight (tray_weight). Null for a roll without a tag.</summary>
+    public string? SpoolUid { get; set; }
+    public string? ProductName { get; set; }
+    public double? NominalGrams { get; set; }
 
     public bool IsPresent => !string.IsNullOrEmpty(Material) && Material != "—";
+
+    /// <summary>Every field the same, like the Swift struct's synthesized ==.</summary>
+    public bool SameAs(FilamentSlot other) =>
+        Id == other.Id && Label == other.Label && Material == other.Material && ColorHex == other.ColorHex
+        && RemainingPercent == other.RemainingPercent && IsActive == other.IsActive
+        && RemainingWeightGrams == other.RemainingWeightGrams && SpoolUid == other.SpoolUid
+        && ProductName == other.ProductName && NominalGrams == other.NominalGrams;
 
     public FilamentSlot Clone() => (FilamentSlot)MemberwiseClone();
 }

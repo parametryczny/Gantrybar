@@ -74,6 +74,14 @@ public sealed class PhysicalSpoolStore
     public PhysicalSpool? SpoolAt(SpoolLocation location) =>
         location.IsStorage ? null : _spools.FirstOrDefault(s => s.Location.SameSlot(location));
 
+    public List<PhysicalSpool> SpoolsForDefinition(Guid definitionId) =>
+        _spools.Where(s => s.FilamentDefinitionId == definitionId).ToList();
+
+    /// <summary>What the newest roll of this product with a price cost; null when none has one.</summary>
+    public double? LastPrice(Guid definitionId) =>
+        _spools.Where(s => s.FilamentDefinitionId == definitionId && s.Price is not null)
+            .OrderByDescending(s => s.CreatedAt).FirstOrDefault()?.Price;
+
     public string NextSpoolId()
     {
         var max = _spools
@@ -91,13 +99,14 @@ public sealed class PhysicalSpoolStore
     /// dropped straight into storage (spec §1: adding a filament creates one physical roll per spool). A
     /// full roll has remaining == nominal == <paramref name="weight"/>; an opened roll passes a smaller
     /// <paramref name="remaining"/>.</summary>
-    public void CreateRolls(Guid definitionId, int count, double weight, double? remaining = null, double? price = null)
+    public List<PhysicalSpool> CreateRolls(Guid definitionId, int count, double weight, double? remaining = null, double? price = null)
     {
-        if (count <= 0) return;
+        var created = new List<PhysicalSpool>();
+        if (count <= 0) return created;
         for (int i = 0; i < count; i++)
         {
             double rest = remaining ?? weight;
-            _spools.Add(new PhysicalSpool
+            var spool = new PhysicalSpool
             {
                 Id = NextSpoolId(),
                 FilamentDefinitionId = definitionId,
@@ -107,8 +116,21 @@ public sealed class PhysicalSpoolStore
                 Location = SpoolLocation.Storage(),
                 OpenedAt = rest < weight ? DateTime.UtcNow : null,
                 Price = price is { } value && value >= 0 ? value : null
-            });
+            };
+            _spools.Add(spool);
+            created.Add(spool);
         }
+        ChangedInternal(SaveSpools);
+        return created;
+    }
+
+    /// <summary>Keeps the Bambu RFID tag a roll was paired with (null forgets it).</summary>
+    public void SetTagUid(string id, string? tagUid)
+    {
+        var s = Spool(id);
+        if (s is null) return;
+        s.TagUid = tagUid;
+        s.UpdatedAt = DateTime.UtcNow;
         ChangedInternal(SaveSpools);
     }
 

@@ -195,6 +195,8 @@
                         <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,9,0,0">
                             <CheckBox x:Name="StartupCheckBox"/>
                             <CheckBox x:Name="SpoolbaseCheckBox"/>
+                            <CheckBox x:Name="SpoolAutoPairCheckBox" Margin="0,4,0,0"/>
+                            <TextBlock x:Name="SpoolAutoPairNote" Style="{StaticResource PaneNote}" Margin="22,2,0,4"/>
                         </StackPanel>
                     </Grid>
 
@@ -493,19 +495,24 @@
                             <TextBlock x:Name="PricingMachineUnit" Style="{StaticResource PaneUnit}"/>
                         </StackPanel>
                     </Grid>
+                    <TextBlock x:Name="PricingCostsNote" Style="{StaticResource PaneNote}" Margin="174,6,0,0"/>
 
                     <Border Style="{StaticResource PaneRule}"/>
                     <TextBlock x:Name="PricingCalculatorHeading" Style="{StaticResource PaneHeading}"/>
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" x:Name="PricingGramsCaption" Style="{StaticResource PaneCaption}" Margin="0,2,0,0"/>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" x:Name="PricingProductCaption" Style="{StaticResource PaneCaption}" Margin="0,2,0,0"/>
                         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <ComboBox x:Name="PricingProductCombo" MinWidth="250" MaxWidth="336"/>
+                        </StackPanel>
+                        <TextBlock Grid.Row="1" x:Name="PricingGramsCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
                             <TextBox x:Name="PricingGramsBox" Style="{StaticResource PaneNumber}"/>
                             <TextBlock Text="g" Style="{StaticResource PaneUnit}"/>
                         </StackPanel>
-                        <TextBlock Grid.Row="1" x:Name="PricingHoursCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
-                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
+                        <TextBlock Grid.Row="2" x:Name="PricingHoursCaption" Style="{StaticResource PaneCaption}" Margin="0,11,0,0"/>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="10,8,0,0">
                             <TextBox x:Name="PricingHoursBox" Style="{StaticResource PaneNumber}"/>
                             <TextBlock Text="h" Style="{StaticResource PaneUnit}"/>
                         </StackPanel>

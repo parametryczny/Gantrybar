@@ -271,6 +271,10 @@ public static class StatusParser
                         ColorHex = material != null ? ((hasTray ? Str(tray, "tray_color") : null) ?? "8E8E93FF") : null,
                         RemainingPercent = material != null && hasTray ? KnownRemain(tray, "remain") : null,
                         RemainingWeightGrams = material != null && hasTray ? NfcGrams(tray) : null,
+                        SpoolUid = material != null && hasTray ? SpoolAutoPairRules.TagUid(Str(tray, "tray_uuid")) : null,
+                        ProductName = material != null && hasTray && Str(tray, "tray_sub_brands") is { } product
+                            && !string.IsNullOrWhiteSpace(product) ? product : null,
+                        NominalGrams = material != null && hasTray && Num(tray, "tray_weight") is { } nominal && nominal > 0 ? nominal : null,
                         IsActive = ResolveActive(slotId, matches)
                     });
                 }

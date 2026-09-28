@@ -615,6 +615,14 @@ public sealed class PrinterStore
                         if (!SpoolNotices.TryGetValue(serial, out var list)) SpoolNotices[serial] = list = new();
                         list.Add(string.Format(AppSettings.T("{0} returned to storage (NFC tag detected in {1})"), spoolId, slot));
                     }
+                // Bambu RFID rolls find their Spoolbase roll on their own (the setting and Spoolbase are
+                // checked inside), after the stale assignments above went back to storage.
+                if (SpoolAutoPairRules.GroupsChanged(previous?.FilamentGroups, value.FilamentGroups))
+                    foreach (var text in SpoolAutoPair.Pair(serial, value.FilamentGroups))
+                    {
+                        if (!SpoolNotices.TryGetValue(serial, out var list)) SpoolNotices[serial] = list = new();
+                        list.Add(text);
+                    }
                 RecordTemperature(serial, value);
                 if (Printers.FirstOrDefault(p => p.Serial == serial) is { } observedPrinter)
                     PrinterInsights.Observe(observedPrinter, previous, value);
