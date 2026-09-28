@@ -1372,5 +1372,12 @@
   "VAT: {0}": "VAT: {0}",
   "Sell for {0} gross ({1} net)": "Sprzedaj za {0} brutto ({1} netto)",
   "Sell for {0}": "Sprzedaj za {0}",
-  "sell for {0}": "sprzedaj za {0}"
+  "sell for {0}": "sprzedaj za {0}",
+  "Weight": "Waga",
+  "Default price ({0} per kg)": "Cena domyślna ({0} za kg)",
+  "A roll with a price in Spoolbase is charged at that price. The prices here are for prints whose roll has none.": "Rolka z ceną w Spoolbase jest liczona po swojej cenie. Te ceny dotyczą wydruków z rolki bez ceny.",
+  "{0} recognised in {1}": "{0} rozpoznana w {1}",
+  "{0} ({1}) paired with {2}": "{0} ({1}) sparowana z {2}",
+  "Pair AMS rolls with Spoolbase": "Paruj rolki z AMS ze Spoolbase",
+  "Bambu RFID rolls are matched to their Spoolbase roll, so prints are priced with what you paid": "Rolki Bambu z RFID są łączone z rolką w Spoolbase, więc wydruk kosztuje tyle, ile za nią zapłaciłeś"
 }

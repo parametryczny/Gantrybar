@@ -30,6 +30,9 @@ struct PhysicalSpool: Codable, Identifiable, Hashable, Sendable {
     /// What this roll cost (in the currency set under print-cost prices), nil when not entered.
     /// Optional and additive, so older files and the Windows/Linux readers keep working.
     var price: Double?
+    /// The Bambu RFID tag this roll was paired with in an AMS, so the same roll is recognised again
+    /// in any slot of any printer. Nil for rolls without a tag or never paired.
+    var tagUID: String?
 
     /// Price of one kilogram of this roll's filament, from what the roll cost and its full weight.
     var pricePerKg: Double? {

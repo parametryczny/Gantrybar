@@ -224,6 +224,18 @@ enum BambuStatusParser {
     }
 
     /// scaled by `remain` (%). Nil when the tag carries no weight (non-RFID / third-party spool).
+    /// The roll's RFID tag id. A roll without a tag reports all zeros, which is no id at all.
+    static func tagUID(_ tray: [String: Any]) -> String? {
+        guard let raw = string(tray["tray_uuid"])?.trimmingCharacters(in: .whitespaces), !raw.isEmpty,
+              raw.contains(where: { $0 != "0" }) else { return nil }
+        return raw.uppercased()
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return value
+    }
+
     private static func nfcWeightGrams(_ tray: [String: Any]) -> Double? {
         guard let nominal = number(tray["tray_weight"]), nominal > 0 else { return nil }
         let remain = integer(tray["remain"]) ?? 100
@@ -292,7 +304,10 @@ enum BambuStatusParser {
                         colorHex: material != nil ? (string(tray["tray_color"]) ?? "8E8E93FF") : nil,
                         remainingPercent: material != nil ? knownRemain(tray["remain"]) : nil,
                         isActive: resolveActive(id: slotID, matches: matches),
-                        remainingWeightGrams: material != nil ? nfcWeightGrams(tray) : nil
+                        remainingWeightGrams: material != nil ? nfcWeightGrams(tray) : nil,
+                        spoolUID: material != nil ? tagUID(tray) : nil,
+                        productName: material != nil ? nonEmpty(string(tray["tray_sub_brands"])) : nil,
+                        nominalGrams: material != nil ? number(tray["tray_weight"]).flatMap { $0 > 0 ? $0 : nil } : nil
                     ))
                 }
                 // Mid-print reports often omit the unit's humidity/temperature. Keep the last known

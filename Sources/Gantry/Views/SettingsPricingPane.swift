@@ -56,6 +56,11 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
 
     // Calculator
     private let calculatorHeading = settingsHeading()
+    private let costsNote = settingsNote()
+    private let productCaption = settingsCaption()
+    private let productPopup = NSPopUpButton()
+    /// Spoolbase products in the calculator's menu, in menu order after the first "default" entry.
+    private var productIDs: [UUID] = []
     private let gramsCaption = settingsCaption()
     private let gramsField = SettingsPricingPane.numberField()
     private let hoursCaption = settingsCaption()
@@ -123,8 +128,12 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
         grid.field(energyCaption, row(energyField, energyUnit))
         grid.field(wattsCaption, row(wattsField, NSTextField(labelWithString: "W")))
         grid.field(machineCaption, row(machineField, machineUnit))
+        grid.aligned(costsNote)
 
         grid.section(calculatorHeading)
+        productPopup.target = self
+        productPopup.action = #selector(productChanged)
+        grid.field(productCaption, productPopup)
         grid.field(gramsCaption, row(gramsField, NSTextField(labelWithString: "g")))
         grid.field(hoursCaption, row(hoursField, NSTextField(labelWithString: "h")))
         grid.aligned(result)
@@ -159,6 +168,9 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
         failureCaption.stringValue = s.t("Failed prints allowance") + ":"
 
         costsHeading.stringValue = s.t("Production costs")
+        costsNote.stringValue = s.t("A roll with a price in Spoolbase is charged at that price. The prices here are for prints whose roll has none.")
+        productCaption.stringValue = s.t("Filament") + ":"
+        refreshProducts(money: money, fallback: value.filamentPerKg)
         currencyCaption.stringValue = s.t("Currency") + ":"
         filamentCaption.stringValue = s.t("Filament per kg") + ":"
         materialsCaption.stringValue = s.t("Per material (per kg)") + ":"
@@ -168,7 +180,7 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
         for unit in [laborRateUnit, packagingUnit, filamentUnit, energyUnit, machineUnit] { unit.stringValue = money }
 
         calculatorHeading.stringValue = s.t("Calculator")
-        gramsCaption.stringValue = s.t("Filament") + ":"
+        gramsCaption.stringValue = s.t("Weight") + ":"
         hoursCaption.stringValue = s.t("Print time") + ":"
 
         func show(_ field: NSTextField, _ number: Double) {
@@ -239,6 +251,34 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
         recalculate()
     }
 
+    @objc private func productChanged() { recalculate() }
+
+    /// The calculator's filament menu: the default price first, then every Spoolbase product that
+    /// has a price, priced the way a print from one of its rolls would be.
+    private func refreshProducts(money: String, fallback: Double) {
+        let s = AppSettings.shared
+        let priced = SpoolbaseShared.filaments.filaments
+            .compactMap { filament in Self.spoolbasePricePerKg(filament).map { (filament, $0) } }
+            .sorted { ($0.0.brand + $0.0.name) < ($1.0.brand + $1.0.name) }
+        let titles = [s.t("Default price ({0} per kg)", String(format: "%g %@", fallback, money))]
+            + priced.map { String(format: "%@ %@ %@ · %.2f %@/kg", $0.0.brand, $0.0.name, $0.0.colorName, $0.1, money) }
+        let selected = productPopup.indexOfSelectedItem - 1
+        let keep = productIDs.indices.contains(selected) ? productIDs[selected] : nil
+        guard productPopup.itemTitles != titles else { return }
+        productPopup.removeAllItems()
+        productPopup.addItems(withTitles: titles)
+        productIDs = priced.map(\.0.id)
+        if let keep, let index = productIDs.firstIndex(of: keep) { productPopup.selectItem(at: index + 1) }
+    }
+
+    /// What a kilogram of this product costs in Spoolbase: the average over its rolls that have a
+    /// price, otherwise the product's price per roll over a 1 kg roll.
+    static func spoolbasePricePerKg(_ filament: Filament) -> Double? {
+        let rolls = SpoolbaseShared.spools.spools(forDefinition: filament.id).compactMap(\.pricePerKg)
+        if !rolls.isEmpty { return rolls.reduce(0, +) / Double(rolls.count) }
+        return filament.pricePerRoll   // a roll is taken as 1 kg when no roll says otherwise
+    }
+
     /// The calculator: a print of this weight and duration, priced with everything above.
     private func recalculate() {
         let s = AppSettings.shared
@@ -247,8 +287,12 @@ final class SettingsPricingPane: NSObject, NSTextFieldDelegate {
             result.stringValue = s.t("Enter the filament weight and print time to see the price.")
             return
         }
-        let cost = PrintCost.compute(durationSeconds: hours * 3600, uses: [PrintCost.Use(grams: grams, material: nil)],
-                                     serial: "", settings: settings)
+        let index = productPopup.indexOfSelectedItem - 1
+        let product = productIDs.indices.contains(index)
+            ? SpoolbaseShared.filaments.filaments.first { $0.id == productIDs[index] } : nil
+        let use = PrintCost.Use(grams: grams, material: product?.type,
+                                pricePerKg: product.flatMap { Self.spoolbasePricePerKg($0) })
+        let cost = PrintCost.compute(durationSeconds: hours * 3600, uses: [use], serial: "", settings: settings)
         result.stringValue = SaleQuote.compute(cost: cost, settings: settings).breakdown(currency: settings.currency)
     }
 }

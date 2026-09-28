@@ -145,6 +145,11 @@ struct FilamentSlot: Equatable, Identifiable, Sendable {
     let isActive: Bool
     /// Remaining filament weight in grams from the AMS NFC/RFID tag (tray_weight × remain), when known.
     var remainingWeightGrams: Double? = nil
+    /// Bambu RFID: the roll's own tag id (`tray_uuid`), the product (`tray_sub_brands`, "PETG Basic")
+    /// and the roll's full weight (`tray_weight`). Nil for a roll without a tag.
+    var spoolUID: String? = nil
+    var productName: String? = nil
+    var nominalGrams: Double? = nil
 
     var isPresent: Bool {
         guard let material else { return false }

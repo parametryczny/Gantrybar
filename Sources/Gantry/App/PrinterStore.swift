@@ -1039,6 +1039,11 @@ final class PrinterStore: ObservableObject {
                     let text = AppSettings.shared.t("{0} returned to storage (NFC tag detected in {1})", item.spoolID, item.slot)
                     spoolNotices[serial, default: []].append(text)
                 }
+                if value.filamentGroups != previous?.filamentGroups {
+                    for text in SpoolAutoPair.pair(serial: serial, groups: value.filamentGroups) {
+                        spoolNotices[serial, default: []].append(text)
+                    }
+                }
             }
             recordTemperature(serial: serial, value: value)
             connectionMessages[serial] = nil

@@ -67,6 +67,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let languageCaption = settingsCaption()
     private lazy var launchCheck = SettingsCheckbox(target: self, action: #selector(launchAtLoginChanged))
     private lazy var spoolbaseCheck = SettingsCheckbox(target: self, action: #selector(spoolbaseToggled))
+    private lazy var spoolPairCheck = SettingsCheckbox(target: self, action: #selector(spoolPairToggled))
     private let basicsCaption = settingsCaption()
 
     private let updatesHeading = settingsHeading()
@@ -405,7 +406,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let grid = SettingsGrid()
         grid.field(languageCaption, languageControl)
         // Spoolbase is a full-edition tool, so LITE's basics are language and launch at login only.
-        grid.group(basicsCaption, Build.hasExtras ? [launchCheck, spoolbaseCheck] : [launchCheck])
+        grid.group(basicsCaption, Build.hasExtras ? [launchCheck, spoolbaseCheck, spoolPairCheck] : [launchCheck])
         if Build.hasExtras {
             // LITE never checks for or installs updates, so it has no updates section at all.
             grid.section(updatesHeading)
@@ -811,6 +812,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             spoolbaseCheck.title = settings.t("Spoolbase")
             spoolbaseCheck.setSubtitle(settings.t("Filament stock in the menu"))
             spoolbaseCheck.isOn = settings.spoolbaseEnabled
+            spoolPairCheck.title = settings.t("Pair AMS rolls with Spoolbase")
+            spoolPairCheck.setSubtitle(settings.t("Bambu RFID rolls are matched to their Spoolbase roll, so prints are priced with what you paid"))
+            spoolPairCheck.isOn = settings.spoolAutoPair
+            spoolPairCheck.setEnabled(settings.spoolbaseEnabled)
 
             setText(updatesHeading, settings.t("Updates"))
             setText(updateCaption, settings.t("Check for updates") + ":")
@@ -1421,6 +1426,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func spoolbaseToggled() {
         AppSettings.shared.spoolbaseEnabled = spoolbaseCheck.isOn
+    }
+
+    @objc private func spoolPairToggled() {
+        AppSettings.shared.spoolAutoPair = spoolPairCheck.isOn
     }
 
     @objc private func autoUpdateToggled() {
