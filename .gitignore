@@ -1,0 +1,22 @@
+.DS_Store
+.build/
+dist/
+linux/build/
+linux/dist/
+__pycache__/
+*.pyc
+*.xcuserstate
+
+# Locally built minimal ffmpeg for the macOS bundle (scripts/build-ffmpeg-macos-minimal.sh)
+vendor/
+
+# Staged from i18n/ and Resources/ by the Linux packaging scripts.
+linux/gantry/data/i18n/
+linux/gantry/data/web-dashboard.html
+
+# Local Windows test installers belong to CI artifacts and releases, not the source tree.
+dist-windows-test/
+
+# The remote page's own settings and its data directory stay on the user's server.
+web/config.php
+web/data/
