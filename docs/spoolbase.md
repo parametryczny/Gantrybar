@@ -7,6 +7,9 @@ Gantry pokazywał jej kolor, procent i gramy, a po wydruku sam odejmował zużyc
 Wszystko działa **lokalnie, bez chmury i bez logowania**, tak samo na **macOS, Windows i Linux**.
 Różni się tylko sposób otwierania okien (opisany niżej).
 
+Sama mechanika — co Gantry robi w każdym możliwym układzie tagu, rolki i gniazda — jest rozpisana w
+[filament-logika.md](filament-logika.md).
+
 ---
 
 ## 1. Jak działa aplikacja (w skrócie)
@@ -85,30 +88,97 @@ Gantry odejmie zużycie od tej właśnie rolki.
 
 ---
 
-## 4. Gramy i procent na karcie
+## 4. Przekładanie rolek: co robi Gantry, a co Ty
 
-Domyślnie karta pokazuje kolory i procent slotów. Żeby widzieć **gramy**:
+To jest sedno i najczęstsze źródło nieporozumień, więc po kolei. **Wszystko zależy od jednej rzeczy:
+czy rolka ma tag RFID.**
 
-- w **Ustawieniach** włącz **„Gramy na rolce (AMS NFC / Spoolbase)"**.
+### 4.1. Rolka z tagiem (Bambu z chipem) — Gantry robi to sam
 
-Skąd biorą się gramy:
+Tag to numer, który drukarka odczytuje z rolki. Gantry traktuje go jako **tożsamość rolki**: ta sama
+rolka jest rozpoznawana w dowolnym gnieździe dowolnej drukarki, choćbyś przekładał ją codziennie.
 
-- **rolka Bambu z tagiem RFID/NFC:** liczone z odczytu tagu, `tray_weight × remain%` (np. 1000 g ×
-  85% = 850 g),
-- **rolka przypisana w Spoolbase:** z jej zapisanej wagi (działa też dla filamentu bez tagu),
-- **rolka bez tagu i bez przypisania:** brak źródła wagi (przypisz rolkę ze Spoolbase, żeby ją mieć).
+Gdy wkładasz oznaczoną rolkę:
 
----
+| Sytuacja | Co się dzieje |
+| --- | --- |
+| tag znany (jakaś rolka w magazynie go ma) | ta rolka wraca do gniazda, bez pytania |
+| tag nieznany, ale masz w magazynie taki produkt | Gantry bierze rolkę **rozpieczętowaną**, a gdy takiej nie ma — **najstarszą czekającą**, zapisuje na niej tag i wkłada do gniazda. Rolka schodzi ze stanu |
+| tag nieznany i nie ma pasującego produktu | Gantry **pyta**, jedną rolką naraz, z gotowym wpisem wypełnionym danymi z tagu. „Nie, nie pytaj więcej" zapisuje ten tag na liście odrzuconych |
+| w gnieździe wisiała inna rolka | ta wraca do magazynu, a na jej miejsce wjeżdża właściwa |
 
-## 5. Tag NFC/RFID kontra ręczne przypisanie
+**Rozstrzyga niezgodność numerów, nie moment włożenia.** Dlatego działa też wtedy, gdy przełożyłeś
+szpulę przy zamkniętej aplikacji, przy uśpionym komputerze albo w trakcie wznawiania połączenia —
+Gantry zobaczy to przy pierwszym spojrzeniu i poprawi.
 
-Jeśli do slotu z **ręcznie przypisaną** rolką **włożysz rolkę z tagiem NFC/RFID**, Gantry rozpozna, że
-tamta rolka została wyjęta, i **automatycznie ją odpina** (wraca do magazynu). Na karcie pojawia się
-wtedy krótka informacja z przyciskiem **OK**, np.:
+> **Każda oznaczona szpula to osobna rolka.** Trzy drukarki z tym samym PETG to trzy rolki zdjęte ze
+> stanu, każda ze swoim tagiem.
+
+Gdy wyjmiesz rolkę, gniazdo musi zgłaszać pustkę **przez dwie minuty**, zanim rolka wróci do magazynu
+jako otwarta. Dwie minuty zapasu, bo AMS mignie pustym gniazdem przy każdej zmianie filamentu
+w trakcie druku. Tag zostaje na rolce, więc następne włożenie rozpozna ją od razu.
+
+### 4.2. Rolka bez chipa — przypisujesz Ty
+
+Filament innych marek nie ma czego odczytać, więc:
+
+- gdy w magazynie jest **dokładnie jedna** rolka pasująca materiałem i kolorem, zostaje przypisana sama,
+- przy dwóch kandydatkach albo przy żadnej gniazdo zostaje puste, a rolkę wskazujesz klikiem w gniazdo,
+- **ręczne przypisanie w gnieździe, które nie czyta żadnego tagu, nigdy nie jest ruszane.** Gantry nie
+  ma prawa zdjąć czegoś, co ustawiłeś ręcznie, na podstawie zgadywania.
+
+### 4.3. Przeniesienie do innej drukarki
+
+- **z tagiem:** po prostu przełóż. Nic nie klikasz.
+- **bez chipa:** wyjmij fizycznie, w drugiej drukarce kliknij gniazdo i wybierz tę samą rolkę
+  (`SP-000xx`). Gramy jadą razem z nią, poprzednie gniazdo zostaje zwolnione.
+
+### 4.4. Co Gantry mówi, kiedy coś przepina
+
+Na karcie pojawia się krótka informacja z przyciskiem **OK**, na przykład:
 
 > „SP-00003 wróciła do magazynu (wykryto tag NFC w AMS A2)".
 
-Dzięki temu slot zawsze pokazuje dane rolki, która faktycznie w nim siedzi.
+Nic nie dzieje się po cichu.
+
+### 4.5. Kiedy to wyłączyć
+
+| Ustawienie | Co wyłącza |
+| --- | --- |
+| **Spoolbase, magazyn filamentów** (Ustawienia → Ogólne) | wszystko: żadnych przypisań, odejmowania ani pytań |
+| **Paruj rolki z AMS ze Spoolbase** (Ustawienia → Ogólne) | automatyczne przypinanie i odpinanie. Odczyt z tagu dalej widać na karcie |
+| **Pytaj o rolki spoza Spoolbase** (Ustawienia → Ogólne) | okno z propozycją dodania rolki do magazynu |
+
+Pełna mechanika, wariant po wariancie, włącznie z tymi, w których Gantry celowo nie robi nic:
+[filament-logika.md](filament-logika.md).
+
+---
+
+## 5. Gramy i procent na karcie
+
+Domyślnie karta pokazuje kolory i procent slotów. Gramy z tagu pokazują się zawsze; te doliczone ze
+Spoolbase — po włączeniu **„Gramy na rolce"** w Ustawieniach → Wygląd → Karty drukarek.
+
+Skąd biorą się liczby, w tej kolejności:
+
+1. **Gniazdo czyta tag:** procent i gramy **z tagu**, bo to pomiar drukarki — która wie też
+   o filamencie zużytym poza Gantry, na przykład gdy drukowałeś bez włączonej aplikacji.
+2. **Gniazdo bez tagu z przypisaną rolką:** procent i gramy **z magazynu**, bo gniazdo nic nie mierzy.
+3. **Gniazdo bez tagu i bez rolki:** materiał i kolor z AMS, poziom tylko wtedy, gdy jest wiarygodny.
+
+Dwa odczyty drukarki są odrzucane, bo pomiarem nie są:
+
+- **`remain` ujemne** (AMS wysyła `-1`, gdy nie mierzy) znaczy „nie wiem", a nie „pusta" ani „pełna",
+- **waga pełnej szpuli poniżej 150 g** nie jest wagą szpuli — najmniejsza, jaką się kupuje, to ćwierć
+  kilograma. Jeden taki odczyt potrafił wcześniej zapisać rolce pojemność 100 g na stałe.
+
+**Stan rolki w magazynie schodzi za tagiem w dół, nigdy w górę.** Gdy tag mówi mniej niż magazyn,
+rację ma tag. Filamentu nie przybywa samo z siebie, a ręcznie wpisany stan nie rośnie.
+
+**Nazwa koloru** nie mieści się w kafelku szerokim na 56 punktów, więc jest w dymku, razem z gniazdem,
+materiałem, produktem, poziomem i gramami. Tag niesie samo RGBA, więc nazwę daje katalog Bambu:
+najpierw dokładny kod koloru, potem najbliższy w promieniu, w którym to jeszcze ten sam kolor. Dalej —
+bez nazwy, zamiast podstawiać sąsiedni odcień.
 
 ---
 
@@ -119,8 +189,17 @@ Po zakończonym wydruku Gantry odejmuje realnie zużyty filament od przypisanej 
 - **Klipper / Moonraker:** realne `filament_used` (mm) przeliczone na gramy (Ø1,75, gęstość wg typu),
 - **Bambu:** `used_g` z wydrukowanego pliku `.gcode.3mf` pobranego po **lokalnym FTPS** (bez chmury).
 
-Odejmowanie jest **idempotentne per zadanie**: reconnect, restart albo dwa komputery patrzące na tę
-samą drukarkę nie policzą zużycia dwa razy. Gdy rolka zejdzie do zera, dostaje status „pusta".
+Każde obciążenie jest **jednorazowe dla pary (drukarka, zadanie)**: ponowne połączenie, restart albo
+dwa komputery patrzące na tę samą drukarkę nie policzą zużycia dwa razy. Gdy rolka zejdzie do zera,
+idzie do historii zamiast na półkę, żeby lista wolnych rolek nie zapełniała się pustymi szpulami.
+
+Trzy przypadki, w których Gantry celowo **nie** odejmuje:
+
+- **gniazdo bez przypisanej rolki** → zapis „zużycie bez rolki": gramy i materiał są zapamiętane do
+  wyceny, ale nie ma czego odjąć,
+- **wydruk, którego końca Gantry nie widziało** (aplikacja była zamknięta) → rozliczany po fakcie jako
+  **szacunek**, bez odejmowania, bo nikt nie potwierdził, że doszedł do końca. Do kosztów trafia,
+- **wydruk przerwany** → obciąża proporcjonalnie do postępu sprzed przerwania, jako szacunek.
 
 ---
 
@@ -132,7 +211,10 @@ samą drukarkę nie policzą zużycia dwa razy. Gdy rolka zejdzie do zera, dosta
 | oznaczyć rolkę w slocie | karta → **klik w slot** → Nowa / z katalogu / istniejąca |
 | poprawić wagę rolki | klik w slot → **Ustaw pozostałe gramy** |
 | zdjąć rolkę ze slotu | klik w slot → **Odepnij** |
-| przenieść rolkę do innej drukarki | klik w slot drugiej drukarki → wybierz `SP-000xx` |
-| widzieć gramy na karcie | Ustawienia → **Gramy na rolce (AMS NFC / Spoolbase)** |
+| przełożyć rolkę **z tagiem** | nic. Po prostu przełóż ją fizycznie |
+| przełożyć rolkę **bez chipa** | klik w slot drugiej drukarki → wybierz `SP-000xx` |
+| widzieć gramy doliczone ze Spoolbase | Ustawienia → Wygląd → **Gramy na rolce** |
+| wyłączyć samo przypinanie | Ustawienia → Ogólne → **Paruj rolki z AMS ze Spoolbase** |
 
-Zobacz też: [automations.md](automations.md) (reguły i sterowanie w Szczegółach).
+Zobacz też: [filament-logika.md](filament-logika.md) (pełna mechanika, wariant po wariancie),
+[automations.md](automations.md) (reguły i sterowanie w Szczegółach).

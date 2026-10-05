@@ -2,9 +2,13 @@
 
 Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są opisane w tym pliku.
 
-## Niewydane
+## 0.14.0 - 2026-10-05
+
+Opis wydania dla ludzi: [docs/release-0.14.0.md](docs/release-0.14.0.md).
 
 ### Zmienione
+
+- **nagłówek karty to jeden kafelek**: ikona drukarki, nazwa, pigułka protokołu i wejście w szczegóły stały obok siebie jako cztery osobne drobiazgi, choć mówią o jednym — która to drukarka i jak w nią wejść. Teraz siedzą w jednej ramce z zielonym obrysem i klika się w cały kafelek, a nie w ikonkę wielkości paznokcia. Pigułka protokołu straciła przy tym własny obrys, bo ramka w ramce to szum. Na macOS, Windows i GNU/Linuksie.
 
 - **oznaczone klatki liczą się także przy wskazanym silniku**: odkąd Gantry Vision stał się podstawą, przycisk „Zaznacz defekt…" nie robił dla wykrywania zupełnie nic, bo model był wyłącznym sędzią. Teraz pytane są obie strony naraz i mocniejszy powód wygrywa. Model zna kamery, na których był uczony; Twoje klatki znają kamerę, która stoi przed Tobą. Gdy silnik mówi „coś podobnego do awarii, ale za słabo", a zdjęcie z tej samej kamery, które sam oznaczyłeś, mówi wprost, to Twoje zdjęcie ma rację. Dotyczy tak samo pilnowania w tle jak przycisku „Testuj".
 - **silnik podaje swój zmierzony próg**: suwak czułości jest wspólny dla wszystkich silników, ale skala wyników nie. „90%" u jednego modelu znaczy co innego niż u drugiego, a ustawienie go za wysoko potrafi wyciszyć wykrywanie tak, że nigdy się o tym nie dowiesz: Gantry Vision przy 70% łapie w swoim teście wszystkie błędy, a przy 90% dwa na dwadzieścia dwa. Gdy suwak stoi powyżej progu, przy którym silnik był mierzony, Ustawienia piszą to wprost obok suwaka.
@@ -62,6 +66,9 @@ Wszystkie istotne zmiany w aplikacji Gantry (dawniej BambuBar / PrismBar) są op
 
 ### Poprawione
 
+- **przełącznik zakresu w kaflu floty nie rozpycha okna**: „dziś" bez zapisanego filamentu ma w kaflu cztery wiersze, „7 dni" pięć. Karty w rzędzie mają równą wysokość, a równość da się spełnić na dwa sposoby: skurczyć kafel albo podciągnąć kartę do niego — i układ wybierał to drugie, bo karta nie ma wysokości danej z góry, tylko minimalną. Rząd rósł o wiersz, za rzędem zmierzona wysokość treści, a za nią okno. Kafel wypełniający domyka teraz rząd, kiedy się mieści, i nigdy go nie rozpycha. Na macOS, Windows i GNU/Linuksie.
+- **nagłówek karty przestał mrugać**: nazwa protokołu była przepisywana przy każdej ramce telemetrii, choć nie zmienia się nigdy. Każdy wpis unieważniał rozmiar pigułki i pociągał za sobą cały nagłówek, a ten w ciasnym układzie raz ją mieścił, a raz nie.
+- **szerokość pigułki protokołu na Windows mierzona przez napis w środku**: mierzona przez samą pigułkę wychodziła zerowa, gdy ta była schowana, więc miejsce „się znajdowało", pigułka wracała i mrugała.
 - **CI znowu wiarygodne**: kontrakt okien (1.15.0) opisuje nową przestrzeń roboczą macOS z paskiem nawigacji, więc sprawdzenie zgodności UI przestało być czerwone; test ponawiania kamery Elegoo nie zależy już od tego, czy zegar na obciążonym runnerze spóźni się o kilkadziesiąt milisekund; błędy kompilacji i testów pokazują się jako adnotacje w podsumowaniu przebiegu.
 
 - **okna zachowują się jak okna systemowe**: okno floty w trybie okna było domyślnie nad wszystkimi innymi oknami, więc nie dawało się go zasłonić, a alert Gantry otwierał się pod nim i trzeba było wachlować oknami, żeby zauważyć, o co pyta. Teraz jest zwykłym oknem; pinezka w nagłówku floty dalej je podnosi, gdy ktoś tego chce, a zapisane „na górze” z poprzednich wersji jest raz czyszczone, bo była to wartość fabryczna, nie wybór. Do tego każdy alert przechodzi przez jedno miejsce, które na czas pytania sprowadza wszystkie podniesione okna Gantry, także pasek krawędziowy, na zwykły poziom i po zamknięciu przywraca je na swoje. Żaden alert nie może już schować się za czymkolwiek, co należy do Gantry.

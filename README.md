@@ -9,6 +9,7 @@ A local, cross-platform monitor for your 3D printer fleet.
 Watch every printer from the menu bar, the system tray or the panel:
 live state, progress, layers, temperatures, filament and notifications.
 
+[![CI](https://github.com/parametryczny/gantrybar/actions/workflows/ci.yml/badge.svg)](https://github.com/parametryczny/gantrybar/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/parametryczny/gantrybar?label=release&color=blue)](https://github.com/parametryczny/gantrybar/releases/latest)
 [![License](https://img.shields.io/github/license/parametryczny/gantrybar?label=license&color=blue)](LICENSE)
 [![Platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-supported-black)](#downloads--pobieranie)
@@ -35,15 +36,9 @@ Grab the latest build from the **[Releases page](https://github.com/parametryczn
 - **Windows x64** — `Gantry-Setup-Windows-x64.exe` (installer / instalator, zalecany) or portable `Gantry-Windows-x64.zip`
 - **GNU/Linux** — packages in preparation: `.deb` / `.rpm` for classic system installation and a portable `.AppImage` containing the app and most required libraries (beta, GTK) / pakiety w przygotowaniu: `.deb` / `.rpm` do klasycznej instalacji systemowej oraz przenośny `.AppImage` z aplikacją i większością potrzebnych bibliotek
 
+- **Your own page / Własna strona** — `Gantry-*-web.zip`: the PHP page you upload to your own hosting to watch the fleet from outside; not needed to run the app / strona PHP do wgrania na własny hosting, żeby widzieć flotę z zewnątrz; do działania aplikacji niepotrzebna. **[docs/strona-wlasny-serwer.md](docs/strona-wlasny-serwer.md)**
+
 Neither Windows download needs a separate .NET install. On macOS the app is self‑signed, so on first launch open it with right‑click → **Open**. / Żaden wariant Windows nie wymaga osobnej instalacji .NET. Na macOS aplikacja jest podpisana lokalnie — przy pierwszym uruchomieniu otwórz ją PPM → **Otwórz**.
-
-### Gantry LITE
-
-The same app, cut down to a monitor: the menu‑bar/tray icon, the fleet panel with printer cards, adding printers (Bambu Lab, Anycubic, Elegoo, Klipper/Moonraker, Prusa, Snapmaker — and whatever is added later), notifications, quiet hours, language, theme, transparency and the card‑content switches. No Spoolbase, detail view, camera, maintenance, automations, diagnostics, fleet statistics, Telegram, web dashboard, floating window, edge dock, guide — and no updater: LITE does not check for or install updates. Files: `Gantry-LITE-*-macOS.zip`, `Gantry-LITE-Setup-Windows-x64.exe`, `Gantry-LITE-*-Linux-all.deb`.
-
-*Ta sama aplikacja obcięta do monitora: ikona w pasku menu/zasobniku, panel floty z kartami drukarek, dodawanie drukarek (Bambu Lab, Anycubic, Elegoo, Klipper/Moonraker, Prusa, Snapmaker — i kolejne w przyszłości), powiadomienia, godziny ciszy, język, motyw, przezroczystość i przełączniki zawartości karty. Bez Spoolbase, szczegółów, kamery, konserwacji, automatyzacji, diagnostyki, statystyk floty, Telegrama, panelu webowego, trybu okna, paska krawędziowego, przewodnika — i bez aktualizacji: LITE ich nie sprawdza ani nie instaluje.*
-
-Building it / Budowanie: `scripts/build-app.sh lite` (macOS), `dotnet build -p:GantryEdition=lite` (Windows), `GANTRY_EDITION=lite linux/scripts/build-deb.sh` (GNU/Linux).
 
 ---
 
@@ -68,6 +63,11 @@ A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers 
 - **One dashboard for the whole fleet** — print state, progress, ETA, layers and temperatures (nozzle/bed/chamber, dual‑nozzle L/R) on macOS‑style cards
 - **Filament at a glance** — AMS, AMS HT, Creality CFS, Happy Hare MMU and external spools with slot colours, humidity, and active / low‑filament highlighting
 - **Spoolbase** — a built‑in filament inventory (catalog of 1150+ spools): grouped by type, colour‑coded stock badges, add/edit/delete, quick spool‑count changes and search, plus **physical spools** (grams) assigned to AMS/EXT with auto‑decrement after a print. Guide: **[docs/spoolbase.md](docs/spoolbase.md)**
+- **Gantry Vision — print-failure watch** — Gantry watches the chamber camera while a print runs and warns when several looks in a row show the same trouble. The engine ships in the app; nothing to download or pick. It learns your camera as you print, so it gets better at telling your normal print from a failure. Guide: **[docs/gantry-vision.md](docs/gantry-vision.md)**
+- **Smart sockets and emergency power-off** — Tasmota, Shelly Gen1/Plus/Pro/Gen3, any Home Assistant entity (and through it Tapo, Kasa, Zigbee) or two URLs of your own, per printer. Switch from the card, from automations or from Telegram; one big red button cuts them all at once
+- **Your own page on the internet** — the fleet on a page you host yourself, with no port opened on the router and no cloud account: Gantry dials out to it. Guide: **[docs/strona-wlasny-serwer.md](docs/strona-wlasny-serwer.md)**
+- **What a print cost, and what to sell it for** — filament from the price of the roll actually used, electricity and machine time; a quote that leaves the profit you set after commission and tax. Plus production statistics: printer utilisation, prints per week, filament by material
+- **Farm and print queue** — a library of sliced 3MF plates, upload over FTPS, start on confirmation, and a queue that picks the AMS slot by material, colour and nozzle diameter
 - **Printer details view** — an in‑panel detail screen (open with the **Details** button, with a Back button — no extra window) showing a live temperature graph, fans, speed and nozzle diameter, the full AMS/filament layout and a **live camera**; reorder its cards by drag‑and‑drop
 - **Live camera** — Bambu chamber camera over **RTSPS/RTSP**, Anycubic Kobra S1 over FLV and Elegoo/Klipper/Creality webcams via MJPEG, with a mode/resolution badge
 - **Automations & control** (developer mode) — Gantry can send commands (chamber light, pause/resume/stop) and run per‑printer rules: a trigger (manual / layer ≥ N / progress ≥ % / state change) → an action (LED, pause/resume/stop, notification, a custom MQTT/G‑code command, or a **script** — paste Python via `#!` shebang). See **[docs/automations.md](docs/automations.md)**
@@ -140,7 +140,7 @@ chmod +x scripts/build-app.sh scripts/build-dmg.sh
 ./scripts/build-dmg.sh              # dist/Gantry-<version>-macOS.dmg (drag‑to‑install)
 ```
 
-Windows ships as a self-contained `Gantry.exe` with an Inno Setup installer, with no .NET runtime needed on the target PC. GNU/Linux ships as `.deb`, `.rpm` and `.AppImage`. Every build is on the [releases page](https://github.com/parametryczny/gantrybar/releases). On the first macOS launch, allow Local Network access when asked.
+See [windows/README.md](windows/README.md) for the Windows build (GitHub Actions produces a self‑contained `Gantry.exe` and an Inno Setup installer, no .NET runtime required on the target PC) and [linux/README.md](linux/README.md) for the GNU/Linux beta and its `.deb`, `.rpm` and `.AppImage` builds. On the first macOS launch, allow Local Network access when asked.
 
 ### Tests
 
@@ -182,6 +182,11 @@ Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa druk
 - **Jeden pulpit dla całej floty** — stan druku, postęp, czas do końca, warstwy i temperatury (dysza/stół/komora, dwie dysze L/P) na kartach w stylu macOS
 - **Filament na pierwszy rzut oka** — AMS, AMS HT, Creality CFS, Happy Hare MMU i szpule zewnętrzne z kolorami slotów, wilgotnością oraz wyróżnianiem aktywnego / kończącego się filamentu
 - **Spoolbase** — wbudowany magazyn filamentów (katalog 1150+ szpul): grupowanie po typie, kolorowe plakietki stanu, dodawanie/edycja/usuwanie, szybka zmiana liczby szpul i wyszukiwarka, plus **fizyczne rolki** (gramy) przypisane do AMS/EXT z automatycznym odejmowaniem po wydruku. Poradnik: **[docs/spoolbase.md](docs/spoolbase.md)**
+- **Gantry Vision — pilnowanie wydruków** — Gantry ogląda kamerę w trakcie druku i ostrzega, gdy kilka spojrzeń z rzędu pokazuje to samo nieszczęście. Silnik jest w aplikacji, nic nie trzeba pobierać ani wybierać. Uczy się Twojej kamery w miarę drukowania, więc z czasem coraz lepiej odróżnia Twój normalny druk od awarii. Poradnik: **[docs/gantry-vision.md](docs/gantry-vision.md)**
+- **Smart gniazdka i awaryjne wyłączenie zasilania** — Tasmota, Shelly Gen1/Plus/Pro/Gen3, dowolna encja Home Assistant (a przez nią Tapo, Kasa, Zigbee) albo dwa własne adresy URL, per drukarka. Przełączasz z karty, z automatyzacji i z Telegrama, a jeden duży czerwony przycisk gasi wszystkie naraz
+- **Własna strona w internecie** — flota na stronie, którą stawiasz u siebie: bez otwierania portu na routerze i bez konta w cudzej chmurze, bo to Gantry dzwoni do strony. Poradnik: **[docs/strona-wlasny-serwer.md](docs/strona-wlasny-serwer.md)**
+- **Ile kosztował wydruk i za ile go sprzedać** — filament z ceny faktycznie użytej rolki, prąd i czas maszyny; cena, po której po prowizji i podatku zostaje założony zysk. Do tego statystyki produkcji: wykorzystanie drukarek, wydruki w tygodniu, zużycie wg materiału
+- **Farma i kolejka druku** — biblioteka pociętych płyt 3MF, wysyłanie po FTPS, start po potwierdzeniu i kolejka dobierająca slot AMS po materiale, kolorze i średnicy dyszy
 - **Widok „Szczegóły" drukarki** — ekran szczegółów **w obrębie panelu** (przycisk **Szczegóły**, z przyciskiem „Wróć" — bez osobnego okna): wykres temperatur w czasie, wentylatory, prędkość i średnica dyszy, pełny układ AMS/filamentów oraz **kamera na żywo**; kafle można przestawiać przeciągnij‑i‑upuść
 - **Kamera na żywo** — kamera komory Bambu przez **RTSPS/RTSP**, Anycubic Kobra S1 przez FLV oraz kamery **Elegoo/Klipper/Creality** przez MJPEG, z plakietką trybu i rozdzielczości
 - **Automatyzacje i sterowanie** (tryb deweloperski) — Gantry wysyła komendy (światło komory, pauza/wznów/stop) i uruchamia reguły per drukarka: wyzwalacz (ręcznie / warstwa ≥ N / postęp ≥ % / zmiana stanu) → akcja (LED, pauza/wznów/stop, powiadomienie, własna komenda MQTT/G‑code lub **skrypt** — czysty Python przez `#!` shebang). Zobacz **[docs/automations.md](docs/automations.md)**
@@ -251,7 +256,7 @@ chmod +x scripts/build-app.sh scripts/build-dmg.sh
 ./scripts/build-dmg.sh              # dist/Gantry-<wersja>-macOS.dmg (przeciągnij, by zainstalować)
 ```
 
-Wersja Windows to samodzielny `Gantry.exe` z instalatorem Inno Setup, bez środowiska .NET na docelowym PC. Wersja GNU/Linux to paczki `.deb`, `.rpm` oraz `.AppImage`. Wszystkie wydania są na [stronie wydań](https://github.com/parametryczny/gantrybar/releases). Przy pierwszym uruchomieniu na macOS zezwól na dostęp do sieci lokalnej.
+Budowa wersji Windows: [windows/README.md](windows/README.md) (GitHub Actions tworzy samodzielny `Gantry.exe` i instalator Inno Setup, bez środowiska .NET na docelowym PC). Wersja GNU/Linux i paczki `.deb`, `.rpm` oraz `.AppImage`: [linux/README.md](linux/README.md). Przy pierwszym uruchomieniu na macOS zezwól na dostęp do sieci lokalnej.
 
 ### Prywatność
 
