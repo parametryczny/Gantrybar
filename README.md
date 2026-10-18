@@ -1,283 +1,103 @@
 <div align="center">
 
-<img src="docs/branding/gantry-appicon.png" width="168" alt="Gantry">
+<img src="docs/branding/gantry-appicon.png" width="72" alt="Gantry app icon">
 
 # Gantry
 
-A local, cross-platform monitor for your 3D printer fleet.
+### Your 3D printer fleet. One place.
 
-Watch every printer from the menu bar, the system tray or the panel:
-live state, progress, layers, temperatures, filament and notifications.
+Follow prints, organise filament, plan production and understand costs. Local monitoring, with optional access through your own hosting.
 
-[![CI](https://github.com/parametryczny/gantrybar/actions/workflows/ci.yml/badge.svg)](https://github.com/parametryczny/gantrybar/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/parametryczny/gantrybar?label=release&color=blue)](https://github.com/parametryczny/gantrybar/releases/latest)
-[![License](https://img.shields.io/github/license/parametryczny/gantrybar?label=license&color=blue)](LICENSE)
-[![Platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-supported-black)](#downloads--pobieranie)
-[![Downloads](https://img.shields.io/github/downloads/parametryczny/gantrybar/total?label=downloads&color=orange)](https://github.com/parametryczny/gantrybar/releases)
+**English** · **[Polski](README.pl.md)**
 
-**[English](#english)** · **[Polski](#polski)**
+**[Download](https://github.com/parametryczny/Gantrybar/releases/latest)** · **[Quick start](docs/wiki/Getting-started-EN.md)** · **[Guides](docs/wiki/Home.md)** · **[What’s new](docs/release-0.14.0.md)**
+
+[![Release](https://img.shields.io/github/v/release/parametryczny/Gantrybar?label=stable)](https://github.com/parametryczny/Gantrybar/releases/latest) [![License](https://img.shields.io/github/license/parametryczny/Gantrybar)](LICENSE) [![Downloads](https://img.shields.io/github/downloads/parametryczny/Gantrybar/total)](https://github.com/parametryczny/Gantrybar/releases)
+
+**macOS · Windows · Linux**
 
 </div>
 
-<img width="1448" height="1086" alt="gantey" src="https://github.com/user-attachments/assets/b63a071b-1afc-4f47-a04d-d22056a7eb49" />
+> **Release status:** the current public release is **0.12.0**. Screenshots and guides below preview **0.14.0**, which is still in development. Its release remains a draft; these additions are not included in the current stable download.
 
+![Gantry 0.14 Modern fleet window with six demonstration printers](docs/renders/readme-modern-en.png)
 
-Gantry watches **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) and Snapmaker** printers over your own network. No account, no cloud, no middleman server.
+*Actual Gantry interface, rendered with fictional printer data. Modern theme, 0.14 preview.*
 
-*Gantry obserwuje drukarki **Bambu Lab, Anycubic Kobra S1, Elegoo Centauri Carbon, Klipper/Moonraker, Prusa (PrusaLink) i Snapmaker** po Twojej własnej sieci. Bez konta, bez chmury, bez serwera pośredniczącego.*
+Gantry keeps the fleet close: a menu-bar or tray preview, a full window, or a compact edge panel. Check progress, remaining time, temperatures, loaded filament and camera feeds without opening a separate slicer for every printer.
 
----
+## Explore Gantry 0.14
 
-## Downloads / Pobieranie
+| Area | What it helps you do |
+| --- | --- |
+| **Fleet** | Follow live status and cameras, receive notifications and adjust each printer’s tools. Choose Basic, Modern or a minimal LITE view. [Views](docs/wiki/Appearance-and-LITE-EN.md) · [Printer tools](docs/wiki/Printer-tools-EN.md) |
+| **Farm** | Search sliced files, choose compatible printers, map materials and plan batches. Track pickup, quality checks and manual orders. [Farm guide](docs/wiki/Farm-EN.md) |
+| **Filament** | See AMS, HT, MMU and external spools. Manage physical rolls in Spoolbase and link them to loaded slots. [Spoolbase](docs/wiki/Spoolbase-EN.md) |
+| **Energy & costs** | Record metering-socket readings throughout a print, review history and export reports. Measured, partial and estimated values remain distinguishable. [Energy and reports](docs/wiki/Energy-and-reports-EN.md) |
+| **Vision & maintenance** | Review suspected print failures, label frames and keep service tasks, schedules, problems and parts together. [Vision](docs/wiki/Gantry-Vision-EN.md) · [Maintenance](docs/wiki/Maintenance-EN.md) |
+| **Remote access** | View the fleet on your LAN or generate a configured website package for your own hosting. Add Telegram alerts if you want them. [Web dashboard](docs/wiki/Web-dashboard-EN.md) |
 
-Grab the latest build from the **[Releases page](https://github.com/parametryczny/gantrybar/releases/latest)** / Pobierz najnowszy build ze **[strony wydań](https://github.com/parametryczny/gantrybar/releases/latest)**:
+### From file to finished batch
 
-- **macOS** — `Gantry-*-macOS.dmg` (drag‑to‑Applications installer / instalator przeciągnij‑do‑Programów)
-- **Windows x64** — `Gantry-Setup-Windows-x64.exe` (installer / instalator, zalecany) or portable `Gantry-Windows-x64.zip`
-- **GNU/Linux** — packages in preparation: `.deb` / `.rpm` for classic system installation and a portable `.AppImage` containing the app and most required libraries (beta, GTK) / pakiety w przygotowaniu: `.deb` / `.rpm` do klasycznej instalacji systemowej oraz przenośny `.AppImage` z aplikacją i większością potrzebnych bibliotek
+![Gantry 0.14 Farm: searchable files, six printers and material mapping](docs/renders/readme-farm-en.png)
 
-- **Your own page / Własna strona** — `Gantry-*-web.zip`: the PHP page you upload to your own hosting to watch the fleet from outside; not needed to run the app / strona PHP do wgrania na własny hosting, żeby widzieć flotę z zewnątrz; do działania aplikacji niepotrzebna. **[docs/strona-wlasny-serwer.md](docs/strona-wlasny-serwer.md)**
+*Native Farm preview with demonstration files, printer states and an example order.*
 
-Neither Windows download needs a separate .NET install. On macOS the app is self‑signed, so on first launch open it with right‑click → **Open**. / Żaden wariant Windows nie wymaga osobnej instalacji .NET. Na macOS aplikacja jest podpisana lokalnie — przy pierwszym uruchomieniu otwórz ją PPM → **Otwórz**.
+Prepare a file, select printers and map materials in one workspace. Queue batches, confirm pickup and accept or reject finished copies. Manual orders link a reference, SKU, quantity and deadline to a sliced plate. **WooCommerce and Etsy integrations are planned.**
 
----
+Uploading a file alone does not start a print. Queue starts require explicit approval of a prepared, empty bed; Gantry does not reslice a file for a different printer.
 
-## English
+## Download and start
 
-A compact, MIT‑licensed monitor named **Gantry**. It discovers Bambu printers on the local network, connects to Anycubic/Klipper/Prusa/Snapmaker by address, and lays out larger fleets in an adaptive “bento” dashboard.
+Get the installer from **[the latest public release](https://github.com/parametryczny/Gantrybar/releases/latest)**. Choose the package for your system:
 
-### Supported printers
+| System | Package |
+| --- | --- |
+| macOS | `Gantry-*-macOS.dmg`; alternative storage builds are ZIP archives |
+| Windows x64 | `Gantry-Setup-Windows-x64.exe` or portable `Gantry-Windows-x64.zip` |
+| Linux | `.deb`, `.rpm` or portable `.AppImage` |
 
-| Type | Protocol | Notes |
-|------|----------|-------|
-| **Bambu Lab** | MQTT/TLS (local) | full AMS / AMS HT / external, dual‑nozzle (H2D/X2D), HMS errors — no Bambu Cloud account |
-| **Anycubic Kobra S1** | MQTT/TLS (LAN mode) | status, temperatures, print controls, chamber light, ACE Pro and FLV camera on port 18088; no Anycubic Cloud account |
-| **Elegoo Centauri Carbon** | SDCP/WebSocket (local) | CC1 on port 3030, MJPEG camera on 3031; no access code |
-| **Elegoo Centauri Carbon 2** | MQTT (LAN-only) | CC2 on port 1883, Canvas A1–A4 and MJPEG camera on 8080; printer access code required |
-| **Klipper / Moonraker** | Moonraker HTTP | Happy Hare MMU and Creality CFS auto‑detected; also covers Qidi, Creality K1/K2, Snapmaker **U1** |
-| **Prusa** | PrusaLink HTTP | local IP + API key, no Prusa account |
-| **Snapmaker** | HTTP (port 8080) | Snapmaker **2.0 / Artisan**; authorize on the printer touchscreen after adding |
+Windows release packages include their runtime. Package requirements and installation notes belong to the selected release.
 
-### Features
+1. Install Gantry and allow local-network access when prompted.
+2. Choose **Add printer…**, select its type and enter its address and required credentials.
+3. Check the status card, then open Details to verify available readings and the camera.
+4. Enable the optional modules you need. [Continue with the quick start](docs/wiki/Getting-started-EN.md).
 
-- **One dashboard for the whole fleet** — print state, progress, ETA, layers and temperatures (nozzle/bed/chamber, dual‑nozzle L/R) on macOS‑style cards
-- **Filament at a glance** — AMS, AMS HT, Creality CFS, Happy Hare MMU and external spools with slot colours, humidity, and active / low‑filament highlighting
-- **Spoolbase** — a built‑in filament inventory (catalog of 1150+ spools): grouped by type, colour‑coded stock badges, add/edit/delete, quick spool‑count changes and search, plus **physical spools** (grams) assigned to AMS/EXT with auto‑decrement after a print. Guide: **[docs/spoolbase.md](docs/spoolbase.md)**
-- **Gantry Vision — print-failure watch** — Gantry watches the chamber camera while a print runs and warns when several looks in a row show the same trouble. The engine ships in the app; nothing to download or pick. It learns your camera as you print, so it gets better at telling your normal print from a failure. Guide: **[docs/gantry-vision.md](docs/gantry-vision.md)**
-- **Smart sockets and emergency power-off** — Tasmota, Shelly Gen1/Plus/Pro/Gen3, any Home Assistant entity (and through it Tapo, Kasa, Zigbee) or two URLs of your own, per printer. Switch from the card, from automations or from Telegram; one big red button cuts them all at once
-- **Your own page on the internet** — the fleet on a page you host yourself, with no port opened on the router and no cloud account: Gantry dials out to it. Guide: **[docs/strona-wlasny-serwer.md](docs/strona-wlasny-serwer.md)**
-- **What a print cost, and what to sell it for** — filament from the price of the roll actually used, electricity and machine time; a quote that leaves the profit you set after commission and tax. Plus production statistics: printer utilisation, prints per week, filament by material
-- **Farm and print queue** — a library of sliced 3MF plates, upload over FTPS, start on confirmation, and a queue that picks the AMS slot by material, colour and nozzle diameter
-- **Printer details view** — an in‑panel detail screen (open with the **Details** button, with a Back button — no extra window) showing a live temperature graph, fans, speed and nozzle diameter, the full AMS/filament layout and a **live camera**; reorder its cards by drag‑and‑drop
-- **Live camera** — Bambu chamber camera over **RTSPS/RTSP**, Anycubic Kobra S1 over FLV and Elegoo/Klipper/Creality webcams via MJPEG, with a mode/resolution badge
-- **Automations & control** (developer mode) — Gantry can send commands (chamber light, pause/resume/stop) and run per‑printer rules: a trigger (manual / layer ≥ N / progress ≥ % / state change) → an action (LED, pause/resume/stop, notification, a custom MQTT/G‑code command, or a **script** — paste Python via `#!` shebang). See **[docs/automations.md](docs/automations.md)**
-- **Per‑printer advanced overrides** — an optional separate camera IP, custom light‑on/off commands, and Moonraker object‑name overrides for non‑standard Klipper setups
-- **Automatic updates** (macOS + Windows) — a dedicated Updates card in Settings with an auto‑download/install toggle; the download is verified (code signature on macOS, SHA‑256 on Windows) and installs silently
-- **Notifications** — print finished, printer error, paused, low filament, high AMS humidity — with quiet hours
-- **Looks native** — light/dark theme, adjustable panel transparency, Polish and English
-- **Secure by default** — access codes/API keys in the macOS Keychain, Windows DPAPI or Linux Secret Service; local‑only, no cloud; TLS certificate pinning after the first trusted connection
-- **Finds printers for you** — Bambu discovery via SSDP multicast plus a unicast subnet scan (a VPN like Tailscale carries no multicast, so add its IP/CIDR/range as an extra scan target)
-- Persistent drag‑and‑drop card ordering, a compact one‑line mode for four or more printers, automatic reconnect and address refresh
+### Printers
 
-<p align="center">
-  <img src="docs/renders/gantry-linux-cards.png" width="70%" alt="Gantry cards on GNU/Linux (GTK)">
-</p>
+Bambu Lab · Anycubic Kobra S1 · Elegoo Centauri Carbon / CC2 · Klipper / Moonraker · PrusaLink · Snapmaker. The 0.14 preview also includes OctoPrint.
 
-### Telegram: your fleet in your pocket
+Available readings, filament systems, cameras and control commands depend on the printer and its firmware. [Connection requirements and protocols](docs/connections-EN.md).
 
-![Gantry on Telegram: notifications, printer control and camera photos](docs/renders/readme-telegram.png)
+## Your data, your setup
 
-Print alerts reach your phone and the bot answers back. `/status` picks a printer and gives you its
-job, progress, layers, ETA, temperatures, AMS humidity and loaded slots, plus buttons for pause,
-resume, stop, chamber light and a camera photo. `/all` summarises the fleet, `/spools` lists rolls
-running low, `/history` the recent prints, `/watch 10m` sends a photo on a timer and `/mute 2h`
-silences alerts.
+Local monitoring requires no Gantry account or Gantry-operated server. Optional hosting and Telegram send the data needed for the integrations you enable; remote viewing requires the Gantry computer to stay running and connected.
 
-**The bridge is your own computer.** There is no Gantry server: you create your **own bot** with
-BotFather and paste the token into Settings, where it stays. The bot replies only to your configured
-chat. A sleeping laptop means a silent bot, and everything resumes by itself once it wakes.
-Step by step: **[docs/telegram-setup.md](docs/telegram-setup.md)**.
+Vision can miss failures or raise false alarms. Confirm results against the camera image. Labelling a frame does **not** automatically retrain model weights. [How Vision works](docs/wiki/Gantry-Vision-EN.md).
 
-### Edge panel: always on top, never in the way
+## More views
 
-![The Gantry edge panel: 22 points wide at rest, unfolding on hover](docs/renders/readme-edge-panel.png)
+<details>
+<summary><strong>The edge panel</strong> — a compact view beside your work</summary>
 
-A strip 22 points wide, pinned to the left or right edge of the screen, carrying one progress ring
-per printer. At rest it shows only the status colour and how full each ring is. Hovering unfolds it
-into names, percentages and remaining time; clicking a row opens that printer's details. It rides
-above other windows and across every desktop, and a click never steals focus from what you are
-typing in. **Off by default**, because it is a second surface next to the popover, not a replacement.
+![Gantry edge-panel promotional render](docs/renders/readme-edge-panel.png)
 
-One caveat on GNU/Linux: **Wayland has no protocol for keeping a window on top**. It works normally
-on X11 and on wlroots compositors (Sway, Hyprland); under GNOME's Wayland session another window can
-cover the strip.
+Existing promotional illustration. The current app lets you choose expansion on hover or click, select printers and show camera previews. [View settings](docs/wiki/Appearance-and-LITE-EN.md).
 
-### Requirements
+</details>
 
-- macOS 26 or newer, 64‑bit Windows 10/11, or a Debian/Ubuntu‑family desktop for the Linux beta
-- the computer and the printers on the same local network, LAN access enabled on each printer
-- for Bambu: the serial number and Access Code/PIN; for Anycubic Kobra S1: IP + LAN mode; for Elegoo CC1: IP + MainboardID; for Elegoo CC2: IP + serial + access code and LAN-only mode; for Prusa: the PrusaLink API key
-- to build from source: Swift 6 + Xcode Command Line Tools (macOS), .NET 8 SDK (Windows), or Python 3.10 + GTK 3 + Ayatana AppIndicator (Linux)
+<details>
+<summary><strong>Telegram</strong> — notifications and fleet access on your phone</summary>
 
-### Adding printers
+Configure your own bot and chat; the Gantry computer provides the connection. [Telegram setup, commands and controls](docs/wiki/Telegram-EN.md).
 
-Click the Gantry icon, then `+`, and pick the printer type:
+</details>
 
-- **Bambu** — choose a device from **Detected** (or import from Bambu Studio), enter the Access Code/PIN and click **Add**. Import matches discovered printers with codes already stored in the local Bambu Studio configuration.
-- **Anycubic** — select **Kobra S1**, enable LAN mode on the printer and enter its IP. Gantry obtains the local MQTT session automatically; no account or access code is needed. Details: **[docs/anycubic-kobra-s1.md](docs/anycubic-kobra-s1.md)**.
-- **Elegoo** — select **Centauri Carbon** or **Centauri Carbon 2**. CC1 needs no code. For CC2, first enable **LAN-only** on the printer and enter the access code shown by the printer. Details: **[docs/elegoo-centauri.md](docs/elegoo-centauri.md)**.
-- **Klipper (Moonraker)** — enter the host IP and port (default 7125). No code needed.
-- **Prusa (PrusaLink)** — enter the IP, port (default 80) and the API key from PrusaLink settings.
-- **Snapmaker** — enter the IP (port 8080). After adding, tap **Allow** on the printer's touchscreen to authorize; re‑authorize after each power cycle.
+## Guides and community
 
-### Build and run
+[All PL/EN guides](docs/wiki/Home.md) · [Troubleshooting](docs/wiki/Troubleshooting-EN.md) · [Release notes](docs/release-0.14.0.md)
 
-```bash
-git clone https://github.com/parametryczny/gantrybar.git
-cd gantrybar
-chmod +x scripts/build-app.sh scripts/build-dmg.sh
-./scripts/build-app.sh local        # dist/Gantry.app
-./scripts/build-dmg.sh              # dist/Gantry-<version>-macOS.dmg (drag‑to‑install)
-```
+Found a problem? [Open an issue](https://github.com/parametryczny/Gantrybar/issues) with your Gantry version, printer model, operating system and steps to reproduce. Remove access codes and other private data from logs and screenshots.
 
-See [windows/README.md](windows/README.md) for the Windows build (GitHub Actions produces a self‑contained `Gantry.exe` and an Inno Setup installer, no .NET runtime required on the target PC) and [linux/README.md](linux/README.md) for the GNU/Linux beta and its `.deb`, `.rpm` and `.AppImage` builds. On the first macOS launch, allow Local Network access when asked.
-
-### Tests
-
-```bash
-swift build --disable-sandbox
-.build/debug/Gantry --self-test
-```
-
-The self‑test covers SSDP parsing, MQTT framing, Unicode print names, telemetry and the AMS layouts. Run the Linux unit tests with `PYTHONPATH=linux python3 -m unittest discover -s linux/tests`.
-
-### Privacy
-
-Gantry reads printer status only from the local network and stores credentials in the OS secure store (Keychain / DPAPI / Secret Service). Bambu Studio configuration is read only after you choose **Import printers and codes**. See [SECURITY.md](SECURITY.md) for the local‑network trust model and vulnerability reporting.
-
-### Project status
-
-An early, community‑built project. The local printer protocols used here are not guaranteed to remain stable, so firmware changes may require updates to Gantry. Gantry is independent and is not affiliated with, endorsed by or sponsored by Bambu Lab, Anycubic, Elegoo, Prusa Research, Snapmaker or Creality; product names are trademarks of their respective owners.
-
----
-
-## Polski
-
-Kompaktowy monitor drukarek 3D na licencji MIT o nazwie **Gantry**. Wykrywa drukarki Bambu w sieci lokalnej, łączy się z Anycubic/Klipper/Prusa/Snapmaker po adresie i prezentuje większe floty na adaptacyjnym pulpicie „bento".
-
-### Obsługiwane drukarki
-
-| Typ | Protokół | Uwagi |
-|-----|----------|-------|
-| **Bambu Lab** | MQTT/TLS (lokalnie) | pełne AMS / AMS HT / zewnętrzny, dwie dysze (H2D/X2D), błędy HMS — bez konta Bambu Cloud |
-| **Anycubic Kobra S1** | MQTT/TLS (tryb LAN) | stan, temperatury, sterowanie drukiem, światło komory, ACE Pro i kamera FLV na porcie 18088; bez konta Anycubic Cloud |
-| **Elegoo Centauri Carbon** | SDCP/WebSocket (lokalnie) | CC1 na porcie 3030, kamera MJPEG na 3031; bez kodu dostępu |
-| **Elegoo Centauri Carbon 2** | MQTT (LAN-only) | CC2 na porcie 1883, Canvas A1–A4 i kamera MJPEG na 8080; wymagany kod drukarki |
-| **Klipper / Moonraker** | Moonraker HTTP | Happy Hare MMU i Creality CFS wykrywane automatycznie; obejmuje też Qidi, Creality K1/K2, Snapmaker **U1** |
-| **Prusa** | PrusaLink HTTP | lokalne IP + klucz API, bez konta Prusy |
-| **Snapmaker** | HTTP (port 8080) | Snapmaker **2.0 / Artisan**; po dodaniu zatwierdź na ekranie drukarki |
-
-### Funkcje
-
-- **Jeden pulpit dla całej floty** — stan druku, postęp, czas do końca, warstwy i temperatury (dysza/stół/komora, dwie dysze L/P) na kartach w stylu macOS
-- **Filament na pierwszy rzut oka** — AMS, AMS HT, Creality CFS, Happy Hare MMU i szpule zewnętrzne z kolorami slotów, wilgotnością oraz wyróżnianiem aktywnego / kończącego się filamentu
-- **Spoolbase** — wbudowany magazyn filamentów (katalog 1150+ szpul): grupowanie po typie, kolorowe plakietki stanu, dodawanie/edycja/usuwanie, szybka zmiana liczby szpul i wyszukiwarka, plus **fizyczne rolki** (gramy) przypisane do AMS/EXT z automatycznym odejmowaniem po wydruku. Poradnik: **[docs/spoolbase.md](docs/spoolbase.md)**
-- **Gantry Vision — pilnowanie wydruków** — Gantry ogląda kamerę w trakcie druku i ostrzega, gdy kilka spojrzeń z rzędu pokazuje to samo nieszczęście. Silnik jest w aplikacji, nic nie trzeba pobierać ani wybierać. Uczy się Twojej kamery w miarę drukowania, więc z czasem coraz lepiej odróżnia Twój normalny druk od awarii. Poradnik: **[docs/gantry-vision.md](docs/gantry-vision.md)**
-- **Smart gniazdka i awaryjne wyłączenie zasilania** — Tasmota, Shelly Gen1/Plus/Pro/Gen3, dowolna encja Home Assistant (a przez nią Tapo, Kasa, Zigbee) albo dwa własne adresy URL, per drukarka. Przełączasz z karty, z automatyzacji i z Telegrama, a jeden duży czerwony przycisk gasi wszystkie naraz
-- **Własna strona w internecie** — flota na stronie, którą stawiasz u siebie: bez otwierania portu na routerze i bez konta w cudzej chmurze, bo to Gantry dzwoni do strony. Poradnik: **[docs/strona-wlasny-serwer.md](docs/strona-wlasny-serwer.md)**
-- **Ile kosztował wydruk i za ile go sprzedać** — filament z ceny faktycznie użytej rolki, prąd i czas maszyny; cena, po której po prowizji i podatku zostaje założony zysk. Do tego statystyki produkcji: wykorzystanie drukarek, wydruki w tygodniu, zużycie wg materiału
-- **Farma i kolejka druku** — biblioteka pociętych płyt 3MF, wysyłanie po FTPS, start po potwierdzeniu i kolejka dobierająca slot AMS po materiale, kolorze i średnicy dyszy
-- **Widok „Szczegóły" drukarki** — ekran szczegółów **w obrębie panelu** (przycisk **Szczegóły**, z przyciskiem „Wróć" — bez osobnego okna): wykres temperatur w czasie, wentylatory, prędkość i średnica dyszy, pełny układ AMS/filamentów oraz **kamera na żywo**; kafle można przestawiać przeciągnij‑i‑upuść
-- **Kamera na żywo** — kamera komory Bambu przez **RTSPS/RTSP**, Anycubic Kobra S1 przez FLV oraz kamery **Elegoo/Klipper/Creality** przez MJPEG, z plakietką trybu i rozdzielczości
-- **Automatyzacje i sterowanie** (tryb deweloperski) — Gantry wysyła komendy (światło komory, pauza/wznów/stop) i uruchamia reguły per drukarka: wyzwalacz (ręcznie / warstwa ≥ N / postęp ≥ % / zmiana stanu) → akcja (LED, pauza/wznów/stop, powiadomienie, własna komenda MQTT/G‑code lub **skrypt** — czysty Python przez `#!` shebang). Zobacz **[docs/automations.md](docs/automations.md)**
-- **Nadpisania per drukarka** — opcjonalne osobne IP kamery, własne komendy światła wł./wył. oraz nazwy obiektów Moonraker dla niestandardowych konfiguracji Klippera
-- **Automatyczne aktualizacje** (macOS + Windows) — dedykowana karta w Ustawieniach z przełącznikiem auto; pobranie jest weryfikowane (podpis kodu na macOS, SHA‑256 na Windows) i instalowane po cichu
-- **Powiadomienia** — koniec druku, błąd, pauza, niski filament, wysoka wilgotność AMS — z godzinami ciszy
-- **Wygląda natywnie** — motyw jasny/ciemny, regulowana przezroczystość panelu, polski i angielski
-- **Bezpieczne domyślnie** — kody dostępu / klucze API w pęku kluczy macOS, DPAPI Windows lub Secret Service na Linuksie; wyłącznie lokalnie, bez chmury; przypinanie certyfikatu TLS po pierwszym zaufanym połączeniu
-- **Znajduje drukarki za Ciebie** — wykrywanie Bambu przez multicast SSDP i unicastowy skan podsieci (VPN jak Tailscale nie przenosi multicastu — dodaj jego IP/CIDR/zakres jako dodatkowy cel skanu)
-- Trwałe porządkowanie kart przeciągnij‑i‑upuść, kompaktowy tryb jednoliniowy przy czterech i więcej drukarkach, automatyczne łączenie ponowne i odświeżanie adresów
-
-### Telegram: flota w kieszeni
-
-![Gantry na Telegramie: powiadomienia, sterowanie drukarką i zdjęcia z kamery](docs/renders/readme-telegram.png)
-
-Alerty o wydrukach trafiają na telefon, a bot odpowiada. `/status` wybiera drukarkę i pokazuje
-zadanie, postęp, warstwy, czas do końca, temperatury, wilgotność AMS i załadowane sloty, plus
-przyciski pauzy, wznowienia, stopu, światła komory i zdjęcia z kamery. `/all` streszcza flotę,
-`/spools` wypisuje kończące się rolki, `/history` ostatnie wydruki, `/watch 10m` wysyła zdjęcie
-cyklicznie, a `/mute 2h` wycisza alerty.
-
-**Mostkiem jest Twój komputer.** Nie ma serwera Gantry: zakładasz **własnego bota** u BotFather
-i wklejasz token w Ustawieniach, gdzie zostaje. Bot odpowiada wyłącznie na skonfigurowany czat.
-Uśpiony laptop oznacza milczącego bota, a po wybudzeniu wszystko wraca samo.
-Krok po kroku: **[docs/telegram-setup.md](docs/telegram-setup.md)**.
-
-### Panel krawędziowy: zawsze na wierzchu, nigdy na drodze
-
-![Panel krawędziowy Gantry: 22 punkty w spoczynku, rozsuwa się po najechaniu](docs/renders/readme-edge-panel.png)
-
-Pasek szeroki na 22 punkty, przyklejony do lewej albo prawej krawędzi ekranu, z jednym pierścieniem
-postępu na drukarkę. W spoczynku niesie tylko kolor statusu i wypełnienie pierścienia. Najechanie
-kursorem rozsuwa go do nazw, procentów i pozostałego czasu, a kliknięcie wiersza otwiera szczegóły
-tej drukarki. Widać go nad innymi oknami i na każdym pulpicie, a kliknięcie nie zabiera fokusu temu,
-w czym akurat piszesz. **Domyślnie wyłączony**, bo to druga powierzchnia obok popovera, a nie jego
-zamiennik.
-
-Jedno zastrzeżenie na GNU/Linuksie: **Wayland nie ma protokołu trzymania okna na wierzchu**.
-Na X11 i na kompozytorach wlroots (Sway, Hyprland) działa normalnie; w sesji Wayland pod GNOME pasek
-da się przykryć innym oknem.
-
-### Wymagania
-
-- macOS 26 lub nowszy, 64‑bitowy Windows 10/11 albo desktop z rodziny Debian/Ubuntu dla wersji beta
-- komputer i drukarki w tej samej sieci lokalnej, włączony dostęp LAN na każdej drukarce
-- Bambu: numer seryjny i kod dostępu; Anycubic Kobra S1: IP + tryb LAN; Elegoo CC1: IP + MainboardID; Elegoo CC2: IP + numer seryjny + kod i tryb LAN-only; Prusa: klucz API PrusaLink
-- budowa ze źródeł: Swift 6 + Xcode CLT (macOS), .NET 8 SDK (Windows) albo Python 3.10 + GTK 3 + Ayatana AppIndicator (Linux)
-
-### Dodawanie drukarek
-
-Kliknij ikonę Gantry, potem `+`, i wybierz typ drukarki:
-
-- **Bambu** — wybierz urządzenie z listy **Wykryte** (lub zaimportuj z Bambu Studio), wpisz kod dostępu i kliknij **Dodaj**. Import dopasowuje wykryte drukarki do kodów z lokalnej konfiguracji Bambu Studio.
-- **Anycubic** — wybierz **Kobra S1**, włącz tryb LAN w drukarce i podaj jej IP. Gantry sam pobierze lokalną sesję MQTT; konto i kod dostępu nie są potrzebne. Szczegóły: **[docs/anycubic-kobra-s1.md](docs/anycubic-kobra-s1.md)**.
-- **Elegoo** — wybierz **Centauri Carbon** albo **Centauri Carbon 2**. CC1 nie wymaga kodu. W CC2 najpierw włącz na drukarce **LAN-only**, a następnie wpisz pokazywany przez nią kod dostępu. Szczegóły: **[docs/elegoo-centauri.md](docs/elegoo-centauri.md)**.
-- **Klipper (Moonraker)** — podaj IP hosta i port (domyślnie 7125). Kod niepotrzebny.
-- **Prusa (PrusaLink)** — podaj IP, port (domyślnie 80) i klucz API z ustawień PrusaLink.
-- **Snapmaker** — podaj IP (port 8080). Po dodaniu dotknij **Zezwól** na ekranie drukarki; po każdym wyłączeniu autoryzację trzeba powtórzyć.
-
-### Budowanie i uruchamianie
-
-```bash
-git clone https://github.com/parametryczny/gantrybar.git
-cd gantrybar
-chmod +x scripts/build-app.sh scripts/build-dmg.sh
-./scripts/build-app.sh local        # dist/Gantry.app
-./scripts/build-dmg.sh              # dist/Gantry-<wersja>-macOS.dmg (przeciągnij, by zainstalować)
-```
-
-Budowa wersji Windows: [windows/README.md](windows/README.md) (GitHub Actions tworzy samodzielny `Gantry.exe` i instalator Inno Setup, bez środowiska .NET na docelowym PC). Wersja GNU/Linux i paczki `.deb`, `.rpm` oraz `.AppImage`: [linux/README.md](linux/README.md). Przy pierwszym uruchomieniu na macOS zezwól na dostęp do sieci lokalnej.
-
-### Prywatność
-
-Gantry odczytuje status drukarek wyłącznie z sieci lokalnej i przechowuje poświadczenia w systemowym magazynie sekretów (Keychain / DPAPI / Secret Service). Konfiguracja Bambu Studio jest czytana dopiero po wybraniu **Importuj drukarki i kody**. Zobacz [SECURITY.md](SECURITY.md).
-
-### Status projektu
-
-To wczesny projekt tworzony przez społeczność. Protokół MQTT Bambu Lab nie jest stabilnym publicznym API, więc zmiany firmware'u mogą wymagać aktualizacji. Gantry jest niezależny i nie jest powiązany z Bambu Lab, Prusa Research, Snapmaker ani Creality; nazwy produktów są znakami towarowymi ich właścicieli.
-
----
-
-## Author / Autor
-
-**Kamil Grzegorczyk**
-
-- GitHub: [@parametryczny](https://github.com/parametryczny)
-- X: [@_parametryczny](https://x.com/_parametryczny)
-- Support / Wsparcie: [suppi.pl/parametryczny](https://suppi.pl/parametryczny)
-
-## License / Licencja
-
-[MIT](LICENSE)
-
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. / Wkład mile widziany — zajrzyj do [CONTRIBUTING.md](CONTRIBUTING.md) przed otwarciem pull requesta.
+Created by **[Kamil Grzegorczyk / parametryczny](https://github.com/parametryczny)**. [Support development](https://buycoffee.to/parametryczny) · [Contribute](CONTRIBUTING.md) · [MIT license](LICENSE).

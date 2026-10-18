@@ -1,47 +1,27 @@
-# Contributing to BambuBar
+# Contributing to Gantry / Współtworzenie Gantry
 
-Thank you for helping improve BambuBar.
+[English](#english) · [Polski](#polski)
 
-## Before opening a change
+## English
 
-- search existing issues and pull requests
-- keep changes focused and avoid committing printer access codes, real serial numbers or private IP addresses
-- use fictional printer data in tests and screenshots
+Search existing issues before opening a new one. Include your Gantry version, operating system, printer model, expected behaviour and steps to reproduce.
 
-## Build and verify
+Keep changes focused. Never commit access codes, API keys, private hostnames or real printer identifiers. Use fictional filenames and demonstration data in screenshots and tests.
 
-Requirements: macOS 26 or newer, Swift 6 and Xcode Command Line Tools.
+For build commands and verification, see [Build and contribute](docs/development-EN.md). Describe what changed, why it helps and how you tested it. Check relevant desktop behaviour on the target systems; do not describe a cross-compilation as a completed runtime test.
 
-```bash
-swift build --disable-sandbox
-.build/debug/Gantry --self-test
-.build/debug/Gantry --storage-self-test
-.build/debug/Gantry --certificate-pin-self-test
-```
+Keep interface copy and user guides aligned in Polish and English. Include screenshots for visual changes, showing narrow and wide layouts where relevant. Keep the full and LITE modes consistent with their documented scope.
 
-Run the unit tests (parsers, MQTT codec, discovery) with:
+Contributions use the project’s [MIT license](LICENSE).
 
-```bash
-./scripts/run-tests.sh
-```
+## Polski
 
-The script wraps `swift test` and, on Command Line Tools–only machines,
-supplies the swift-testing plugin and framework search paths and builds
-outside the project tree. With a full Xcode install, plain `swift test` also
-works.
+Przed nowym zgłoszeniem sprawdź istniejące problemy. Podaj wersję Gantry, system, model drukarki, oczekiwany efekt i kroki odtworzenia.
 
-To compile and package both storage variants:
+Zachowaj jasny zakres zmiany. Nie zapisuj kodów dostępu, kluczy API, prywatnych nazw hostów ani rzeczywistych identyfikatorów drukarek. W zrzutach i testach używaj fikcyjnych nazw plików oraz danych demonstracyjnych.
 
-```bash
-chmod +x scripts/build-app.sh scripts/build-release.sh
-./scripts/build-app.sh local
-./scripts/build-app.sh keychain
-```
+Polecenia budowania i kontroli znajdziesz w [Budowaniu i współtworzeniu](docs/development-PL.md). Opisz zmianę, jej cel i sposób sprawdzenia. Zweryfikuj właściwe zachowanie pulpitu na systemach docelowych; nie opisuj kompilacji krzyżowej jako ukończonego testu działania.
 
-The Keychain storage self-test needs an interactive, unlocked login keychain and is therefore intended for local verification rather than CI.
+Utrzymuj zgodność tekstów interfejsu i poradników po polsku oraz angielsku. Do zmian wyglądu dołącz zrzuty, w razie potrzeby dla wąskiego i szerokiego układu. Zachowaj opisany zakres trybu pełnego i LITE.
 
-## Pull requests
-
-Describe what changed, why it is useful and how it was tested. Keep UI changes consistent with the compact native macOS design and include screenshots when the appearance changes.
-
-By contributing, you agree that your contribution is licensed under the MIT License used by this project.
+Wkład do projektu podlega [licencji MIT](LICENSE).
