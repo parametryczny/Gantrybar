@@ -2,12 +2,26 @@
 
 ## Polski
 
-Nowa strona główna używa `readme-modern-pl.png` i `readme-farm-pl.png`; angielska wersja odpowiadających im plików kończy się na `-en.png`. Zrzuty przedstawiają podgląd Gantry 0.14 z fikcyjnymi drukarkami, nazwami Demo/Sample i przykładowymi danymi. Angielski podgląd Farmy zawiera przetłumaczone podpisy demonstracyjne. Kafel statystyk jest ukryty ustawieniem widoku we flotowym kadrze demonstracyjnym.
+Cztery rendery promocyjne są widoczne bez rozwijania sekcji w obu README:
 
-Dotychczasowy `readme-edge-panel.png` pozostaje ilustracją promocyjną. Zawiera hasła po angielsku; obie wersje README mają własne opisy funkcji i podpisy. Starszego renderu Telegrama nie używamy w nowej stronie, ponieważ zawiera rzeczywistą nazwę zadania. Historyczne zasoby pozostają w repozytorium.
+- `readme-dashboard-demo.png` — główny render floty na górze strony.
+- `readme-window-mode.png` — dotychczasowy render okna i paska przy opisie widoków.
+- `readme-edge-panel.png` — dotychczasowy render panelu bocznego.
+- `readme-telegram-demo.png` — render Telegrama z demonstracyjnymi nazwami zadań.
+
+Warianty `-demo` zachowują kompozycję oryginałów, zastępując nazwy plików fikcyjnymi przykładami. Zmieniono je wbudowanym narzędziem imagegen; oryginały pozostają zachowane. Polecenie edycji: „Zachowaj kompozycję, urządzenia, oświetlenie, napisy marki i pozostałe dane. Podmień wszystkie nazwy zadań we wszystkich powtórzeniach na demo-bracket.3mf, sample-tray.3mf, demo-mount.3mf, sample-case.3mf lub demo-clip.3mf. Nie zamazuj tekstu”. W Telegramie podpis danych zmieniono na demonstracyjny.
+
+Rendery ilustrują również wcześniejszy wygląd kart. Aktualne zrzuty Modern i Farmy 0.14 z nazwami Demo/Sample pozostają jako uzupełnienie w plikach `readme-modern-{pl,en}.png` i `readme-farm-{pl,en}.png`. Angielski podgląd Farmy zawiera przetłumaczone podpisy demonstracyjne. Główne opisy i podpisy są dostępne po polsku i angielsku; zachowano dotychczasowe hasła w samych renderach.
 
 ## English
 
-The new homepage uses `readme-modern-en.png` and `readme-farm-en.png`; their Polish counterparts end in `-pl.png`. The screenshots preview Gantry 0.14 with fictional printers, Demo/Sample filenames and demonstration data. The English Farm preview includes translated demonstration labels. The fleet demonstration hides the statistics tile through the view setting.
+Four promotional renders are visible without expanding sections in both READMEs:
 
-The existing `readme-edge-panel.png` remains a promotional illustration. Its slogans are in English; both READMEs provide their own feature text and captions. The older Telegram campaign is excluded from the new homepage because it contains a real job name. Historical assets remain in the repository.
+- `readme-dashboard-demo.png` — the main fleet campaign at the top.
+- `readme-window-mode.png` — the existing window and menu-bar campaign beside the view description.
+- `readme-edge-panel.png` — the existing edge-panel campaign.
+- `readme-telegram-demo.png` — the Telegram campaign with demonstration job names.
+
+The `-demo` variants preserve the original compositions while replacing filenames with fictional examples. They were edited with the built-in imagegen tool; the originals remain intact. Editing prompt: “Preserve composition, devices, lighting, branding and other data. Replace all job titles across all repeated instances with demo-bracket.3mf, sample-tray.3mf, demo-mount.3mf, sample-case.3mf or demo-clip.3mf. Do not blur text”. The Telegram data caption was also changed to identify demonstration data.
+
+Campaign renders also illustrate an earlier card design. Current Modern and Farm 0.14 screenshots using Demo/Sample filenames remain as supplements in `readme-modern-{pl,en}.png` and `readme-farm-{pl,en}.png`. The English Farm preview includes translated demonstration labels. Main text and captions are available in Polish and English; original in-image campaign slogans are preserved.

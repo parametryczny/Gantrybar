@@ -20,9 +20,9 @@ Monitoruj wydruki, zarządzaj filamentem, planuj produkcję i sprawdzaj koszty. 
 
 > **Status wydania:** aktualna publiczna wersja to **0.12.0**. Poniższe zrzuty i poradniki przedstawiają **0.14.0**, nad którą nadal pracujemy. Jej wydanie pozostaje szkicem; tych nowości nie ma jeszcze w aktualnym stabilnym pakiecie.
 
-![Okno floty Gantry 0.14 Modern z sześcioma przykładowymi drukarkami](docs/renders/readme-modern-pl.png)
+![Render Gantry: wszystkie drukarki w jednym widoku](docs/renders/readme-dashboard-demo.png)
 
-*Rzeczywisty interfejs Gantry z fikcyjnymi danymi drukarek. Motyw Modern, podgląd 0.14.*
+*Render promocyjny Gantry z demonstracyjnymi nazwami zadań. Poniżej znajdziesz także aktualny podgląd Modern i Farmy 0.14.*
 
 Gantry daje podgląd floty w pasku menu lub zasobniku, pełnym oknie albo wąskim panelu przy krawędzi ekranu. Sprawdzisz postęp, pozostały czas, temperatury, załadowany filament i kamery bez otwierania osobnego slicera dla każdej drukarki.
 
@@ -39,11 +39,24 @@ Gantry daje podgląd floty w pasku menu lub zasobniku, pełnym oknie albo wąski
 
 ### Flota, którą masz pod ręką
 
+![Render Gantry: podgląd w pasku i pełne okno](docs/renders/readme-window-mode.png)
+
+*Dotychczasowy render trybów okna i paska, z demonstracyjnymi plikami i wcześniejszym układem kart.*
+
 Zacznij od jednej drukarki, a kolejne dodawaj do tego samego widoku. Karty pokazują nazwę zadania, postęp, pozostały czas i godzinę zakończenia, warstwy, temperatury oraz załadowany filament. Dostępne odczyty i ich widoczność zależą od urządzenia oraz ustawień karty.
 
 **Pełne okno** daje miejsce na całą flotę i boczną nawigację między modułami. **Pasek menu lub zasobnik** pozwala szybko sprawdzić stan podczas innej pracy. **Panel przy krawędzi** utrzymuje wybrane drukarki w zasięgu wzroku; może rozwijać się po najechaniu albo dopiero po kliknięciu. Pinezka pełnego okna zachowuje jego położenie na używanym monitorze.
 
 Wybierz szablon **Basic** lub **Modern**, jasny albo ciemny motyw i potrzebne odczyty. Otwórz Szczegóły, gdy chcesz zobaczyć wykres temperatur, wentylatory, prędkość, materiały i kamerę. Wspólny nagłówek pozwala też włączyć lub zgasić światło we wszystkich połączonych drukarkach obsługujących tę komendę.
+
+<details>
+<summary>Aktualny interfejs Modern — podgląd 0.14</summary>
+
+![Okno floty Gantry 0.14 Modern z sześcioma przykładowymi drukarkami](docs/renders/readme-modern-pl.png)
+
+*Rzeczywisty interfejs Gantry z fikcyjnymi danymi drukarek. Motyw Modern, podgląd 0.14.*
+
+</details>
 
 ### Od pliku do gotowej partii
 
@@ -146,25 +159,23 @@ Podgląd lokalny nie wymaga konta Gantry ani serwera prowadzonego przez Gantry. 
 
 Vision może przeoczyć defekt lub zgłosić fałszywy alarm. Porównuj wynik z obrazem kamery. Oznaczenie klatki **nie** powoduje automatycznego trenowania wag modelu. [Jak działa Vision](docs/wiki/Gantry-Vision-PL.md).
 
-## Inne widoki
+## Panel boczny i Telegram
 
-<details>
-<summary><strong>Panel przy krawędzi</strong> — podgląd obok Twojej pracy</summary>
+### Panel przy krawędzi — podgląd obok Twojej pracy
 
 ![Dotychczasowy render promocyjny panelu bocznego Gantry](docs/renders/readme-edge-panel.png)
 
 Dotychczasowa ilustracja promocyjna. W aktualnej aplikacji wybierzesz rozwijanie po najechaniu lub kliknięciu, drukarki i podglądy kamer. [Ustawienia widoku](docs/wiki/Appearance-and-LITE-PL.md).
 
-</details>
+### Telegram — powiadomienia i flota na telefonie
 
-<details>
-<summary><strong>Telegram</strong> — powiadomienia i flota na telefonie</summary>
+![Render Gantry i Telegrama z demonstracyjnymi nazwami plików](docs/renders/readme-telegram-demo.png)
+
+*Dotychczasowa kompozycja renderu z nazwami zadań zastąpionymi fikcyjnymi przykładami.*
 
 Własny bot wysyła alerty o zakończeniu, błędzie, pauzie czy niskim poziomie filamentu do skonfigurowanego czatu. Z telefonu sprawdzisz status całej floty albo pojedynczej drukarki, ostatnie wydruki i zdjęcie z kamery. Przyciski udostępniają obsługiwane sterowanie; cisza nocna i czasowe wyciszenie pomagają ograniczyć powiadomienia.
 
 Komputer z Gantry jest mostem do Telegrama i musi pozostać włączony oraz połączony z siecią. [Konfiguracja, polecenia i sterowanie w Telegramie](docs/wiki/Telegram-PL.md).
-
-</details>
 
 ## Poradniki i społeczność
 

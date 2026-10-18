@@ -20,9 +20,9 @@ Follow prints, organise filament, plan production and understand costs. Local mo
 
 > **Release status:** the current public release is **0.12.0**. Screenshots and guides below preview **0.14.0**, which is still in development. Its release remains a draft; these additions are not included in the current stable download.
 
-![Gantry 0.14 Modern fleet window with six demonstration printers](docs/renders/readme-modern-en.png)
+![Gantry promotional render: all your printers in one view](docs/renders/readme-dashboard-demo.png)
 
-*Actual Gantry interface, rendered with fictional printer data. Modern theme, 0.14 preview.*
+*Gantry promotional render with demonstration job names. Current Modern and Farm 0.14 previews also appear below.*
 
 Gantry keeps the fleet close: a menu-bar or tray preview, a full window, or a compact edge panel. Check progress, remaining time, temperatures, loaded filament and camera feeds without opening a separate slicer for every printer.
 
@@ -39,11 +39,24 @@ Gantry keeps the fleet close: a menu-bar or tray preview, a full window, or a co
 
 ### A fleet view that fits your day
 
+![Gantry promotional render: menu-bar preview and full window](docs/renders/readme-window-mode.png)
+
+*Existing window and menu-bar campaign render, with demonstration files and an earlier card layout.*
+
 Start with one printer and bring the next ones into the same view. Cards show the job name, progress, remaining time and finish time, layers, temperatures and loaded filament. Available readings and their visibility depend on the device and card settings.
 
 The **full window** provides room for the fleet and navigation between modules. The **menu bar or system tray** offers a quick status check while you work. The **edge panel** keeps selected printers within sight; choose expansion on hover or only after clicking. Pinning the full window preserves its position on the monitor you are using.
 
 Choose **Basic** or **Modern**, a light or dark theme and the readings you need. Open Details for temperature traces, fans, speed, materials and the camera. The shared header also lets you switch lighting on or off across connected printers that support the command.
+
+<details>
+<summary>Current Modern interface — 0.14 preview</summary>
+
+![Gantry 0.14 Modern fleet window with six demonstration printers](docs/renders/readme-modern-en.png)
+
+*Actual Gantry interface, rendered with fictional printer data. Modern theme, 0.14 preview.*
+
+</details>
 
 ### From file to finished batch
 
@@ -146,25 +159,23 @@ Local monitoring requires no Gantry account or Gantry-operated server. Optional 
 
 Vision can miss failures or raise false alarms. Confirm results against the camera image. Labelling a frame does **not** automatically retrain model weights. [How Vision works](docs/wiki/Gantry-Vision-EN.md).
 
-## More views
+## Edge panel and Telegram
 
-<details>
-<summary><strong>The edge panel</strong> — a compact view beside your work</summary>
+### The edge panel — a compact view beside your work
 
 ![Gantry edge-panel promotional render](docs/renders/readme-edge-panel.png)
 
 Existing promotional illustration. The current app lets you choose expansion on hover or click, select printers and show camera previews. [View settings](docs/wiki/Appearance-and-LITE-EN.md).
 
-</details>
+### Telegram — notifications and fleet access on your phone
 
-<details>
-<summary><strong>Telegram</strong> — notifications and fleet access on your phone</summary>
+![Gantry Telegram promotional render with demonstration filenames](docs/renders/readme-telegram-demo.png)
+
+*Existing campaign composition with job titles replaced by fictional examples.*
 
 Your own bot sends finish, error, pause and low-filament alerts to the configured chat. Check the fleet or a single printer, recent prints and a camera photo from your phone. Buttons expose supported controls; quiet hours and temporary muting help manage notifications.
 
 The Gantry computer bridges the connection to Telegram and must remain running and online. [Telegram setup, commands and controls](docs/wiki/Telegram-EN.md).
-
-</details>
 
 ## Guides and community
 
