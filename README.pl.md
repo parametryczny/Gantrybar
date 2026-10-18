@@ -20,9 +20,13 @@ Monitoruj wydruki, zarządzaj filamentem, planuj produkcję i sprawdzaj koszty. 
 
 > **Status wydania:** aktualna publiczna wersja to **0.12.0**. Poniższe zrzuty i poradniki przedstawiają **0.14.0**, nad którą nadal pracujemy. Jej wydanie pozostaje szkicem; tych nowości nie ma jeszcze w aktualnym stabilnym pakiecie.
 
+![Okno floty Gantry 0.14 Modern z sześcioma przykładowymi drukarkami](docs/renders/readme-modern-pl.png)
+
+*Rzeczywisty interfejs Gantry z fikcyjnymi danymi drukarek. Motyw Modern, podgląd 0.14.*
+
 ![Render Gantry: wszystkie drukarki w jednym widoku](docs/renders/readme-dashboard-demo.png)
 
-*Render promocyjny Gantry z demonstracyjnymi nazwami zadań. Poniżej znajdziesz także aktualny podgląd Modern i Farmy 0.14.*
+*Render promocyjny Gantry z demonstracyjnymi nazwami zadań. Nad renderem znajdziesz aktualny ekran główny Modern, a niżej — podglądy paska menu i Farmy 0.14.*
 
 Gantry daje podgląd floty w pasku menu lub zasobniku, pełnym oknie albo wąskim panelu przy krawędzi ekranu. Sprawdzisz postęp, pozostały czas, temperatury, załadowany filament i kamery bez otwierania osobnego slicera dla każdej drukarki.
 
@@ -49,14 +53,15 @@ Zacznij od jednej drukarki, a kolejne dodawaj do tego samego widoku. Karty pokaz
 
 Wybierz szablon **Basic** lub **Modern**, jasny albo ciemny motyw i potrzebne odczyty. Otwórz Szczegóły, gdy chcesz zobaczyć wykres temperatur, wentylatory, prędkość, materiały i kamerę. Wspólny nagłówek pozwala też włączyć lub zgasić światło we wszystkich połączonych drukarkach obsługujących tę komendę.
 
-<details>
-<summary>Aktualny interfejs Modern — podgląd 0.14</summary>
 
-![Okno floty Gantry 0.14 Modern z sześcioma przykładowymi drukarkami](docs/renders/readme-modern-pl.png)
 
-*Rzeczywisty interfejs Gantry z fikcyjnymi danymi drukarek. Motyw Modern, podgląd 0.14.*
+#### Gantry w pasku menu — topbar
 
-</details>
+<p align="center">
+  <img src="docs/renders/readme-topbar-pl.png" width="645" alt="Gantry Modern rozwinięte z paska menu, cztery przykładowe drukarki">
+</p>
+
+*Aktualny podgląd rozwinięty z paska menu: cztery drukarki, trzy trwające wydruki i demonstracyjne nazwy plików. To widok aplikacji, bez bocznej nawigacji pełnego okna.*
 
 ### Od pliku do gotowej partii
 

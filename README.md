@@ -20,9 +20,13 @@ Follow prints, organise filament, plan production and understand costs. Local mo
 
 > **Release status:** the current public release is **0.12.0**. Screenshots and guides below preview **0.14.0**, which is still in development. Its release remains a draft; these additions are not included in the current stable download.
 
+![Gantry 0.14 Modern fleet window with six demonstration printers](docs/renders/readme-modern-en.png)
+
+*Actual Gantry interface, rendered with fictional printer data. Modern theme, 0.14 preview.*
+
 ![Gantry promotional render: all your printers in one view](docs/renders/readme-dashboard-demo.png)
 
-*Gantry promotional render with demonstration job names. Current Modern and Farm 0.14 previews also appear below.*
+*Gantry promotional render with demonstration job names. The current Modern main window appears above this render; menu-bar and Farm 0.14 previews appear below.*
 
 Gantry keeps the fleet close: a menu-bar or tray preview, a full window, or a compact edge panel. Check progress, remaining time, temperatures, loaded filament and camera feeds without opening a separate slicer for every printer.
 
@@ -49,14 +53,15 @@ The **full window** provides room for the fleet and navigation between modules. 
 
 Choose **Basic** or **Modern**, a light or dark theme and the readings you need. Open Details for temperature traces, fans, speed, materials and the camera. The shared header also lets you switch lighting on or off across connected printers that support the command.
 
-<details>
-<summary>Current Modern interface — 0.14 preview</summary>
 
-![Gantry 0.14 Modern fleet window with six demonstration printers](docs/renders/readme-modern-en.png)
 
-*Actual Gantry interface, rendered with fictional printer data. Modern theme, 0.14 preview.*
+#### Gantry in the menu bar — topbar
 
-</details>
+<p align="center">
+  <img src="docs/renders/readme-topbar-en.png" width="645" alt="Gantry Modern expanded from the menu bar with four demonstration printers">
+</p>
+
+*Current expanded menu-bar preview: four printers, three active prints and demonstration filenames. This is the application view without the full window’s navigation rail.*
 
 ### From file to finished batch
 
