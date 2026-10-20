@@ -14,16 +14,19 @@ Gantry 0.14.0 documentation for macOS, Windows and Linux. The guides describe a 
 
 | Polski | English |
 | --- | --- |
-| [Pierwsze uruchomienie](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Getting-started-PL.md) | [Getting started](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Getting-started-EN.md) |
-| [Basic, Modern i LITE](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Appearance-and-LITE-PL.md) | [Basic, Modern and LITE](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Appearance-and-LITE-EN.md) |
-| [Ustawienia i narzędzia drukarki](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-PL.md) | [Printer settings and tools](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-EN.md) |
-| [Farma i kolejka](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Farm-PL.md) | [Farm and queue](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Farm-EN.md) |
-| [Magazyn, rolki i etykiety](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Spoolbase-PL.md) | [Inventory, rolls and labels](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Spoolbase-EN.md) |
-| [Energia, koszty i eksport](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-PL.md) | [Energy, costs and exports](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-EN.md) |
-| [LAN i własny hosting](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-PL.md) | [LAN and own hosting](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-EN.md) |
-| [Vision i dane do oceny](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Gantry-Vision-PL.md) | [Vision and evaluation data](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Gantry-Vision-EN.md) |
-| [Konserwacja i serwis](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Maintenance-PL.md) | [Maintenance & service](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Maintenance-EN.md) |
-| [Rozwiązywanie problemów](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Troubleshooting-PL.md) | [Troubleshooting](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Troubleshooting-EN.md) |
-| [Telegram i powiadomienia](Telegram-PL.md) | [Telegram and notifications](Telegram-EN.md) |
+| [Instalacja i aktualizacja](https://github.com/parametryczny/Gantrybar/wiki/Installation-PL) | [Installation and updates](https://github.com/parametryczny/Gantrybar/wiki/Installation-EN) |
+| [Pierwsze uruchomienie](https://github.com/parametryczny/Gantrybar/wiki/Getting-started-PL) | [Getting started](https://github.com/parametryczny/Gantrybar/wiki/Getting-started-EN) |
+| [Basic, Modern i LITE](https://github.com/parametryczny/Gantrybar/wiki/Appearance-and-LITE-PL) | [Basic, Modern and LITE](https://github.com/parametryczny/Gantrybar/wiki/Appearance-and-LITE-EN) |
+| [Ustawienia i narzędzia drukarki](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-PL) | [Printer settings and tools](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-EN) |
+| [Farma i kolejka](https://github.com/parametryczny/Gantrybar/wiki/Farm-PL) | [Farm and queue](https://github.com/parametryczny/Gantrybar/wiki/Farm-EN) |
+| [Magazyn, rolki i etykiety](https://github.com/parametryczny/Gantrybar/wiki/Spoolbase-PL) | [Inventory, rolls and labels](https://github.com/parametryczny/Gantrybar/wiki/Spoolbase-EN) |
+| [Energia, koszty i eksport](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-PL) | [Energy, costs and exports](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-EN) |
+| [LAN i własny hosting](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-PL) | [LAN and own hosting](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-EN) |
+| [Vision i dane do oceny](https://github.com/parametryczny/Gantrybar/wiki/Gantry-Vision-PL) | [Vision and evaluation data](https://github.com/parametryczny/Gantrybar/wiki/Gantry-Vision-EN) |
+| [Konserwacja i serwis](https://github.com/parametryczny/Gantrybar/wiki/Maintenance-PL) | [Maintenance & service](https://github.com/parametryczny/Gantrybar/wiki/Maintenance-EN) |
+| [Rozwiązywanie problemów](https://github.com/parametryczny/Gantrybar/wiki/Troubleshooting-PL) | [Troubleshooting](https://github.com/parametryczny/Gantrybar/wiki/Troubleshooting-EN) |
+| [Telegram i powiadomienia](https://github.com/parametryczny/Gantrybar/wiki/Telegram-PL) | [Telegram and notifications](https://github.com/parametryczny/Gantrybar/wiki/Telegram-EN) |
+| [Monitoring SLA i Fiberpunk](https://github.com/parametryczny/Gantrybar/wiki/SLA-monitoring-PL) | [SLA and Fiberpunk monitoring](https://github.com/parametryczny/Gantrybar/wiki/SLA-monitoring-EN) |
+| [Sieć drukarek](https://github.com/parametryczny/Gantrybar/wiki/Printer-network-PL) | [Printer network](https://github.com/parametryczny/Gantrybar/wiki/Printer-network-EN) |
 
 [Repozytorium / Repository](https://github.com/parametryczny/Gantrybar) · [Wydania / Releases](https://github.com/parametryczny/Gantrybar/releases) · [Wsparcie / Support](https://buycoffee.to/parametryczny)

@@ -1,6 +1,6 @@
 # Telegram: your bot and fleet
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Telegram-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Telegram-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Gantry connects directly to Telegram’s Bot API using your own bot. Enabled alerts and requested camera images pass through Telegram. The computer running Gantry must remain awake and online.
 

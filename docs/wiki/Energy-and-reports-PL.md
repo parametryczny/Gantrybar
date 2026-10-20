@@ -1,6 +1,6 @@
 # Energia, koszty i eksport wydruków
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 ## Uruchom pomiar w tle
 

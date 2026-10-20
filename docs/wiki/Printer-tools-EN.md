@@ -1,6 +1,6 @@
 # Printer settings and tools
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 In full Gantry, open **sidebar → Printer settings** (the icon above Settings), then select a printer. In menu-bar/tray mode, choose **Printer settings** directly from the application menu. **Save printer settings** applies changes; switching printers keeps separate form drafts.
 
@@ -28,4 +28,4 @@ A transport failure selects the other address for reconnection. API reads, contr
 
 Per-printer settings also include external EXT spool visibility, menu-bar or tray progress, edge-strip visibility, strip camera, average power and machine wear. Open connection editing and socket configuration from this page. Klipper also exposes Moonraker object names, while supported printers offer custom light commands.
 
-Blank average power uses the fleet default. A metering socket supplies real energy readings; [Energy and reports](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-EN.md) explains measurement, gaps and exports.
+Blank average power uses the fleet default. A metering socket supplies real energy readings; [Energy and reports](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-EN) explains measurement, gaps and exports.

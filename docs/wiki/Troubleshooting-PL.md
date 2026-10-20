@@ -1,6 +1,6 @@
 # Rozwiązywanie problemów
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Troubleshooting-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Troubleshooting-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Zanim zmienisz konfigurację, zapisz wersję Gantry, system, nazwę widoku i sposób odtworzenia problemu. W zgłoszeniu pomiń hasła, kody dostępu, klucze mostu i zdjęcia, których nie chcesz udostępniać.
 
@@ -28,7 +28,7 @@ Sprawdź, czy plik jest pocięty, rodzaj drukarki, średnicę dyszy, wybraną p�
 
 ## WWW działa w Wi-Fi, ale nie poza nim
 
-Adres lokalnego komputera działa tylko w osiągalnej sieci. Dostęp poza Wi-Fi wymaga własnego hostingu i włączonego mostu. Sprawdź [Panel WWW](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-PL.md), stan synchronizacji i czy komputer nie śpi.
+Adres lokalnego komputera działa tylko w osiągalnej sieci. Dostęp poza Wi-Fi wymaga własnego hostingu i włączonego mostu. Sprawdź [Panel WWW](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-PL), stan synchronizacji i czy komputer nie śpi.
 
 JSON „Zaloguj się.” po logowaniu pod `api.php?action=login` może wskazywać starsze pliki logowania. Podmień komplet aktualnych plików strony, zachowaj konfigurację i dane, po czym zaloguj się ponownie. Nie generuj nowego klucza w ramach przypadkowego „czyszczenia cache”.
 
@@ -43,3 +43,7 @@ Sprawdź kamerę w szczegółach, oświetlenie, połączenie i komunikat o model
 - typ drukarki, widok i wybrany okres;
 - dokładny komunikat i kroki odtworzenia;
 - zrzut po usunięciu danych prywatnych.
+
+## Checkboxy, kontrast lub pasek wyglądają nieprawidłowo
+
+Zamknij poprzedni proces i zainstaluj aktualną paczkę 0.14.0; przy ZIP zastąp cały folder. Zaznaczone „Filamenty / AMS” i „Postęp” powinny pokazywać te elementy od razu. Dla Windows w tym szkicu poprawiona kompilacja ma oznaczenie `windows.20261020-r3` w informacji o programie. Zgłoś wersję, motyw, szablon i skalę ekranu, jeśli problem pozostał; nie usuwaj historii ani magazynu.

@@ -1,6 +1,14 @@
 # Farma: od pliku do wydruku
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Farm-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Farm-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
+
+## Włącz Farmę
+
+W **Ustawienia → Ogólne → Flota — Farma** włącz moduł plików, kolejki i zamówień. Domyślnie jest wyłączony.
+
+Wyłączenie chowa Farmę w aplikacji i panelu WWW, zatrzymuje obserwowanie katalogu oraz kolejne wysyłki i automatyczne starty. Trwający wydruk nie jest zatrzymywany. Biblioteka, kolejka, zamówienia i historia pozostają zapisane. Transfer już rozpoczęty może się dokończyć bez uruchamiania druku. Po ponownym włączeniu trzeba jeszcze raz potwierdzić pusty stół przed automatycznym startem.
+
+Monitoring drukarek, statystyki i Spoolbase mają własne ustawienia i pozostają niezależne od tego przełącznika.
 
 ## Przygotuj bibliotekę
 

@@ -1,6 +1,6 @@
 # Konserwacja i serwis floty
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Maintenance-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Maintenance-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Moduł jest dostępny w pełnej aplikacji Gantry: menu Gantry → **Konserwacja i serwis…**, boczna nawigacja → Konserwacja lub ikona konserwacji na karcie drukarki. Nie jest dostępny w trybie LITE. Nowe formularze serwisu nie są dostępne w panelu WWW.
 

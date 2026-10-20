@@ -1,6 +1,14 @@
 # Farm: from file to print
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Farm-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Farm-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
+
+## Enable the Farm
+
+Turn on the files, queue and orders module in **Settings → General → Fleet — Farm**. It is off by default.
+
+Turning it off hides the Farm in the app and web dashboard, stops the folder watcher, and blocks further uploads and automatic starts. A running print keeps running. Your library, queue, orders and history stay saved. An upload already in progress may finish without starting the print. After re-enabling the module, confirm the empty bed again before an automatic start.
+
+Printer monitoring, statistics and Spoolbase have their own settings and remain independent of this switch.
 
 ## Prepare the library
 

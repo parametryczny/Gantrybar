@@ -1,6 +1,6 @@
 # Basic, Modern and LITE mode
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Appearance-and-LITE-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Appearance-and-LITE-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 ## Basic or Modern?
 
@@ -40,3 +40,7 @@ The new **AMS / Filaments** view also has an EXT switch. Hiding is respected in 
 ## Window, AMS and edge dock
 
 Full desktop mode has a navigation rail with modules in the main content area. In AMS / Filaments, select a printer and colour slot to see its details or assign a roll. Windows and strip settings offer click-to-expand instead of hover expansion; pinned strips remain expanded. The header bulb controls lighting across supported connected printers.
+
+## Visibility and readability
+
+Checked card-content options show their readings; unchecked options hide them. Changes apply without closing settings and persist when reopened. Field, hint and checkbox contrast has been increased.

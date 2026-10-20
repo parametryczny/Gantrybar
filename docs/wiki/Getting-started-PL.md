@@ -1,6 +1,6 @@
 # Pierwsze uruchomienie Gantry
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Getting-started-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Getting-started-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Gantry pokazuje stan drukarek w pasku menu, zasobniku lub oknie floty. Do lokalnego podglądu nie potrzebujesz konta Gantry.
 
@@ -24,11 +24,11 @@ Nie wszystkie drukarki udostępniają identyczne dane lub polecenia. Stan można
 
 | Chcesz… | Otwórz |
 | --- | --- |
-| tylko sprawdzać stan | [Wygląd i LITE](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Appearance-and-LITE-PL.md) |
-| wysyłać pliki do floty | [Farma](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Farm-PL.md) |
-| prowadzić magazyn rolek | [Spoolbase](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Spoolbase-PL.md) |
-| podglądać flotę na telefonie | [Panel WWW](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-PL.md) |
-| skonfigurować kamerę, przycisk HTTP lub adres zapasowy | [Narzędzia drukarki](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-PL.md) |
-| zapisywać energię i koszty | [Energia i raporty](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-PL.md) |
+| tylko sprawdzać stan | [Wygląd i LITE](https://github.com/parametryczny/Gantrybar/wiki/Appearance-and-LITE-PL) |
+| wysyłać pliki do floty | [Farma](https://github.com/parametryczny/Gantrybar/wiki/Farm-PL) |
+| prowadzić magazyn rolek | [Spoolbase](https://github.com/parametryczny/Gantrybar/wiki/Spoolbase-PL) |
+| podglądać flotę na telefonie | [Panel WWW](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-PL) |
+| skonfigurować kamerę, przycisk HTTP lub adres zapasowy | [Narzędzia drukarki](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-PL) |
+| zapisywać energię i koszty | [Energia i raporty](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-PL) |
 
-Przy problemach zacznij od [Rozwiązywania problemów](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Troubleshooting-PL.md). Nie usuwaj konfiguracji ani magazynu, aby „odświeżyć” podgląd.
+Przy problemach zacznij od [Rozwiązywania problemów](https://github.com/parametryczny/Gantrybar/wiki/Troubleshooting-PL). Nie usuwaj konfiguracji ani magazynu, aby „odświeżyć” podgląd.

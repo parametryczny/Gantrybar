@@ -1,6 +1,6 @@
 # Gantry Vision: obserwacja i dane do oceny
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Gantry-Vision-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Gantry-Vision-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Vision obserwuje obraz podczas drukowania i zgłasza podejrzenie problemu. Wynik jest wskazówką do sprawdzenia wydruku, nie potwierdzeniem jego jakości.
 
@@ -56,4 +56,4 @@ Wbudowany Fast ONNX ma normalizację ImageNet w grafie. Adapter podaje RGB / 255
 
 Informacja o zbyt ciemnej kamerze dotyczy aktywnego druku po rozpoczęciu warstw. Znika po pauzie, zakończeniu, przerwaniu, zmianie zadania lub odzyskaniu czytelnego obrazu. Nie kasuje innych ostrzeżeń.
 
-Powiadomienie Vision może zawierać dokładnie tę klatkę, która wywołała alarm. Zdjęcia w powiadomieniach włączysz osobno dla drukarki. Kamerę zewnętrzną skonfigurujesz w [Ustawieniach i narzędziach drukarki](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-PL.md).
+Powiadomienie Vision może zawierać dokładnie tę klatkę, która wywołała alarm. Zdjęcia w powiadomieniach włączysz osobno dla drukarki. Kamerę zewnętrzną skonfigurujesz w [Ustawieniach i narzędziach drukarki](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-PL).

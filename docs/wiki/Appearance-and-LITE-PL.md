@@ -1,6 +1,6 @@
 # Basic, Modern i tryb LITE
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Appearance-and-LITE-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Appearance-and-LITE-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 ## Basic czy Modern?
 
@@ -40,3 +40,7 @@ Nowy widok **AMS / Filamenty** ma również własny przełącznik EXT. Ukrywanie
 ## Okno, AMS i pasek boczny
 
 Pełny tryb okna ma boczną nawigację. Moduły otwierają się w obszarze głównym. W zakładce AMS / Filamenty wybierz drukarkę i slot koloru, aby zobaczyć dane oraz przypisać rolkę. W ustawieniach Okna i pasek można wybrać rozwijanie paska po kliknięciu zamiast po najechaniu. Przypięty pasek pozostaje rozwinięty. Żarówka w nagłówku włącza lub wyłącza światło obsługiwanych, połączonych drukarek.
+
+## Widoczność i czytelność
+
+Zaznaczone opcje zawartości kart pokazują wybrane odczyty; odznaczone je ukrywają. Zmiana działa bez zamykania ustawień i pozostaje zapisana po ich ponownym otwarciu. Pola, opisy i znaczniki mają zwiększony kontrast.

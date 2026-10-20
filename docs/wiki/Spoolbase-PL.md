@@ -1,6 +1,6 @@
 # Spoolbase: magazyn, rolki i etykiety
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Spoolbase-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Spoolbase-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 ## Dwie rzeczy, które warto rozróżnić
 
@@ -51,3 +51,15 @@ Ręcznie przypisana rolka bez raportowanego materiału nie wraca do magazynu tyl
 ## Stan AMS i rozliczenie wydruku
 
 Naprawiono rozliczanie szpul: odczyt pozostałości z AMS i gramy slicera nie zmniejszają już stanu dwukrotnie. Dla rozpoznanej szpuli z poprawnym odczytem AMS zapisuje się źródło stanu, również na czas restartu; zużycie slicera nadal trafia do historii i kosztów. Bez takiego odczytu działa zwykłe odejmowanie. Odczyt 0 g poprawnie oznacza pustą rolkę. Dodano automatyczne przypisanie dokładnie jednej pasującej rolki bez RFID; przy kilku kandydatkach potrzebny jest wybór ręczny. Podczas przerwy w odczytach AMS prezentowany jest ostatni znany stan.
+
+## Kolor AMS a przypisanie rolki
+
+Kolor zgłaszany przez załadowany AMS/EXT ma pierwszeństwo przed kolorem zapisanym przy rolce Spoolbase. Magazyn dostarcza kolor zastępczy, gdy drukarka nie podaje poprawnego koloru.
+
+Jeśli kolory się różnią, Gantry pokazuje ostrzeżenie o przypisaniu. W **AMS / Filamenty → drukarka → slot → Zmień przypisanie…** sprawdź, czy wskazana jest faktycznie założona rolka. To przypisanie wpływa również na ilość filamentu i koszty. Samo poprawne wyświetlenie koloru nie zmienia definicji ani cen magazynu.
+
+RFID identyfikuje fizyczną rolkę. Przy automatycznym doborze produktu wymagany jest ten sam materiał i bardzo bliski kolor; samo podobieństwo ciemnych odcieni nie wystarcza.
+
+## Szczegóły i eksport magazynu
+
+Przycisk Rozwiń/Zwiń zmienia ilość informacji: rozwinięty widok pokazuje gramy i lokalizacje fizycznych rolek. Licznik zamkniętych szpul jest osobny od rozpoczętych rolek. Ikona pobierania w nagłówku zapisuje magazyn jako TXT lub CSV; ceny i wartości dotyczą zapisanych danych, a brakujących ilości nie należy traktować jako pomiaru.

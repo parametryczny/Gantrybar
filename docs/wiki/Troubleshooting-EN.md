@@ -1,6 +1,6 @@
 # Troubleshooting
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Troubleshooting-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Troubleshooting-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Before changing configuration, record the Gantry version, operating system, view and reproduction steps. Exclude passwords, access codes, bridge keys and images you do not want to share.
 
@@ -28,7 +28,7 @@ Check that the file is sliced, the printer type, nozzle, selected plate and ever
 
 ## Web works on Wi-Fi but not outside it
 
-A local computer address works only on a reachable network. Access outside Wi-Fi needs own hosting and an enabled bridge. Check [Web dashboard](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-EN.md), synchronisation status and computer sleep.
+A local computer address works only on a reachable network. Access outside Wi-Fi needs own hosting and an enabled bridge. Check [Web dashboard](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-EN), synchronisation status and computer sleep.
 
 A “Sign in” JSON response after login at `api.php?action=login` can indicate older login files. Replace the complete current website files, preserve configuration and data, then sign in again. Do not generate a new key as an arbitrary cache-clearing step.
 
@@ -43,3 +43,7 @@ Check the camera in Details, lighting, connection and model message. ONNX requir
 - printer type, view and selected period;
 - exact message and reproduction steps;
 - a screenshot with private information removed.
+
+## Incorrect checkbox, contrast or dock appearance
+
+Close the old process and install the current 0.14.0 asset; replace the whole folder for a ZIP update. Checked Filaments / AMS and Progress should show the readings immediately. The corrected Windows build in this draft is identified as `windows.20261020-r3` in About. If a problem remains, include version, theme, template and display scale; do not delete history or stock.

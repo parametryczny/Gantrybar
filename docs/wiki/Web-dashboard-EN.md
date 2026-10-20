@@ -1,6 +1,6 @@
 # Web dashboard: local network and your own hosting
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Gantry provides two different viewing methods. A local address does not become an internet address when you leave Wi-Fi.
 

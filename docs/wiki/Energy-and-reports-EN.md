@@ -1,6 +1,6 @@
 # Energy, costs and print exports
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 ## Enable background metering
 

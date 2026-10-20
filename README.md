@@ -182,6 +182,14 @@ Your own bot sends finish, error, pause and low-filament alerts to the configure
 
 The Gantry computer bridges the connection to Telegram and must remain running and online. [Telegram setup, commands and controls](docs/wiki/Telegram-EN.md).
 
+## Installation and updates
+
+Choose the package for your system after 0.14.0 is published: **macOS Universal DMG/ZIP**, **Windows x64 installer or portable ZIP**, or **Linux x86_64 DEB, RPM or AppImage**. While 0.14.0 is a draft, Latest continues to offer the previous stable release.
+
+[Installation, system requirements and SHA-256 verification](docs/wiki/Installation-EN.md) · [Experimental SLA / Fiberpunk monitoring](docs/wiki/SLA-monitoring-EN.md).
+
+The latest refinements improve checkbox behaviour, settings contrast, edge-dock rounding, card refresh and Spoolbase exports. Farm is optional and off by default; enable it in Settings → General.
+
 ## Guides and community
 
 [All PL/EN guides](docs/wiki/Home.md) · [Troubleshooting](docs/wiki/Troubleshooting-EN.md) · [Release notes](docs/release-0.14.0.md)

@@ -2,6 +2,19 @@
 
 **[Polski](#polski)** · **[English](#english)**
 
+## Paczki / Downloads
+
+**Szkic / Draft — 0.14.0 nie jest jeszcze publicznym wydaniem. / 0.14.0 is not public yet.**
+
+| System | Pliki / Files |
+| --- | --- |
+| macOS Universal (Apple Silicon + Intel) | DMG, Local ZIP, Keychain ZIP |
+| Windows 10/11 x64 | instalator / installer PL/EN, portable ZIP — r3 |
+| Linux x86_64 | DEB, RPM, AppImage |
+| Dokumentacja / Documentation | PL/EN Wiki + instrukcje instalacji / installation guides |
+
+Szczegóły instalacji / Installation details: [PL](https://github.com/parametryczny/Gantrybar/wiki/Installation-PL) · [EN](https://github.com/parametryczny/Gantrybar/wiki/Installation-EN). Sumy dołączonych plików / Attached asset checksums: `SHA256SUMS.txt`.
+
 ## Polski
 
 Gantry 0.14.0 łączy zwarty interfejs Modern, przebudowaną Farmę, czytelniejszą obsługę AMS i Spoolbase, rozbudowany serwis floty oraz energię i koszty każdego wydruku. Nowe narzędzia drukarek obejmują kamerę zewnętrzną, zdjęcia w powiadomieniach, skrót do panelu WWW, własny przycisk HTTP i zapasowy adres API.
@@ -21,6 +34,21 @@ Aplikacja nie wymaga konta ani chmury producenta Gantry. Drukarki obsługuje lok
 - **WWW na komputerze i telefonie.** Układ zgodny z aplikacją, generator paczki hostingowej, respektowanie ukrytego EXT i zapamiętanie logowania na 30 dni.
 - **Narzędzia drukarek.** Zewnętrzna kamera, zdjęcia w powiadomieniach, panel WWW, własny GET/POST, zapasowy adres API i interwały odświeżania.
 - **LITE w pełnej aplikacji.** Szybki powrót do samego podglądu stanu w pasku lub zasobniku, z zachowaniem danych pełnej wersji.
+
+### Dopracowanie wydania — 20 października
+
+- **Ustawienia, które od razu zmieniają widok.** Zaznaczenie „Pokaż AMS”, postępu i pozostałych odczytów odpowiada ich rzeczywistej widoczności. Poprawiono zapis opcji, odświeżanie kart i znaczniki checkboxów.
+- **Czytelniejszy interfejs.** Mocniejszy kontrast pól i opisów, spójne menu, listy wyboru i przewijanie, wektorowe ikony oraz zachowanie stylów po otwarciu ustawień wewnątrz głównego okna.
+- **Zaokrąglony pasek krawędziowy.** Zachowana przezroczystość poza obrysem; zamknięty panel nie próbuje ponownie otwierać się po zmianach drukarki.
+- **Spoolbase w zwartym i rozwiniętym widoku.** Gramy, lokalizacja rozpoczętych rolek, dopasowanie kolumn i eksport magazynu TXT/CSV.
+- **Kolor z drukarki ma pierwszeństwo.** Prawidłowy kolor załadowanego slotu AMS/EXT jest ważniejszy od zastępczego koloru Spoolbase. Różnica wskazuje na potrzebę sprawdzenia przypisanej rolki; nie zmienia automatycznie jej definicji i ceny.
+- **Farma jest opcjonalna i domyślnie wyłączona.** Włączysz ją w Ustawieniach → Ogólne. Ukrycie modułu zachowuje pliki, kolejkę i zamówienia; nie ukrywa statystyk ani Spoolbase.
+- **Wykres floty.** Wypełnienie zamyka się do poziomej podstawy, nie po skosie między pierwszym i ostatnim punktem. Wykres nie zwiększa wysokości kafla i nie zasłania przycisku „Więcej”.
+- **Historia i eksport.** Poprawione otwieranie okien z osadzonych paneli, lista od początku i właściwe okno nadrzędne dla zapisu raportu.
+- **Kamera per drukarka.** Obrót 0/90/180/270° oraz odbicia poziome/pionowe, dodatkowo do orientacji zapisanej w Moonrakerze.
+- **Instalacja PL/EN i licencja MIT.** Instalator Windows ma wybór języka, opis instalacji i pełny tekst licencji. Oznaczenie wydawcy: `/parametryczny`. Licencja Gantry pozostaje MIT.
+
+Poprawki Windows sprawdzono w 473 kontrolach interfejsu dla Basic/Modern, jasnego/ciemnego motywu i PL/EN, a także w teście instalacji, autostartu i odinstalowania z zachowaniem danych. Testy wykonano w Wine; nie są certyfikacją działania na każdym fizycznym komputerze ani gwarancją zgodności wszystkich urządzeń.
 
 ### Wygląd i codzienna obsługa
 
@@ -110,6 +138,8 @@ Naprawiono rozliczanie szpul: odczyt pozostałości z AMS i gramy slicera nie zm
 
 ### WWW na telefonie i własnym serwerze
 
+Gotowy ZIP strony nie jest dołączany do wydania. Wygeneruj własną paczkę WWW w Gantry — z adresem i konfiguracją swojego hostingu.
+
 Na komputerze panel ma boczną nawigację; na telefonie — nawigację na dole i drukarki jedna pod drugą. Podgląd obejmuje również monitoring oraz, po włączeniu udostępniania, farmę, historię, koszty, Spoolbase i konserwację.
 
 **Generuj paczkę WWW…** przygotowuje ZIP z aktualną stroną, adresem hostingu, kluczem mostu i hashem hasła. Klucz nie trafia do JavaScript. Generowanie paczki nie włącza synchronizacji ani nie publikuje strony.
@@ -172,6 +202,26 @@ Przy aktualizacji własnego hostingu zachowaj istniejący `config.php` i `data/`
 
 📚 [Wiki / instrukcje](https://github.com/parametryczny/Gantrybar/wiki) · ☕ [Wesprzyj Gantry](https://buycoffee.to/parametryczny)
 
+### Eksperymentalny monitoring SLA i Fiberpunk
+
+Lokalny monitoring przez LAN/Wi-Fi dla Elegoo Saturn 4 Ultra 12K/16K, Mars 5 Ultra, Anycubic Photon Mono X 6K oraz Prusa SL1/SL1S SPEED. Osobny monitor Fiberpunk Node/Node Pro odczytuje dane dostępne w lokalnym API adaptera. Stan, postęp, plik, warstwy i czas są pokazywane w zakresie raportowanym przez urządzenie. Bez sterowania, Farmy, wysyłania plików ani detekcji spaghetti SLA. Implementacja przeszła testy parserów i symulowanych połączeń; zgodność wymaga jeszcze potwierdzenia na fizycznych drukarkach. Szczegóły: [monitoring SLA](wiki/SLA-monitoring-PL.md).
+
+Rozszerzenie: Saturn 3 Ultra / Mars 4 Ultra przez UDP, Photon P1 / P1 Max przez lokalny MQTT i Formlabs przez PreForm Server. Phrozen można monitorować przez zgodny mostek OctoPrint/Chituboard; bezpośrednie Mighty 8K nadal nie jest potwierdzone. Formlabs pokazuje rzeczywisty status i dostępny czas, bez udawanego procentu.
+
+Widok listy drukarek dopasowany do Obsidiana: pojedynczy nagłówek rozwiniętej drukarki, czytelne strzałki rozwijania i zwijania, spójne powierzchnie oraz wyrównanie kart.
+
+Dodawanie drukarki: typ wybierany kafelkowymi przyciskami, z zawijaniem do szerokości okna. Edycja i opcje zaawansowane otwierają pełne ustawienia wybranej drukarki również z topbara; dane połączenia mają osobny formularz. Obrót kamery 0/90/180/270° i odbicia w poziomie/pionie są zapisywane per drukarka, dodatkowo do orientacji z Moonrakera. Korekta obejmuje podglądy i zdjęcia; obszar Vision podąża za obrotem.
+
+#### Spójne formularze Obsidian
+
+- Wspólne przyciski, pola tekstowe, wysokości kontrolek i hierarchia tekstów w ustawieniach, automatyzacjach, konfiguracji gniazdek, edycji filamentów oraz pomocniczych oknach Vision.
+- Ustawienia korzystają z palety wybranego szablonu; motyw obejmuje także mniejsze okna i formularze.
+- Czytelniejsze długie opisy i etykiety. Katalog filamentów ma osobne wiersze danych szpuli i działań, bez ściskania wszystkiego w jednej linii.
+- Zachowane natywne pola haseł, edycja, formatowanie liczb, skróty klawiaturowe i wygląd Basic. Systemowe okna wyboru plików oraz potwierdzeń pozostają natywne.
+
+
+---
+
 ## English
 
 Gantry 0.14.0 brings together the compact Modern interface, a redesigned Farm, clearer AMS and Spoolbase handling, fleet maintenance, and energy and costs for every print. New printer tools include an external camera, notification photos, a web-panel shortcut, a custom HTTP button and an alternate API address.
@@ -191,6 +241,21 @@ The app requires no account or Gantry-operated cloud. It connects to printers lo
 - **Web access on desktop and phone.** App-style layouts, a hosting package generator, hidden-EXT preferences and a 30-day remembered login.
 - **Printer tools.** External camera, notification photos, web panel, custom GET/POST, alternate API address and polling intervals.
 - **LITE inside the full app.** Switch back to status-only monitoring in the menu bar or tray while preserving full-edition data.
+
+### Release refinements — October 20
+
+- **Settings update the view immediately.** The checked state of Show AMS, progress and other readings matches their visibility. Preference persistence, live card refresh and checkbox marks have been corrected.
+- **More readable controls.** Stronger field/hint contrast, shared menus, selectors and scrolling, vector icons, and retained styles when settings open inside the main window.
+- **Rounded edge dock.** Transparency is preserved outside its silhouette; a closed dock no longer tries to reopen after printer settings change.
+- **Compact and expanded Spoolbase.** Remaining grams, locations of opened rolls, responsive columns and TXT/CSV stock export.
+- **Printer colour takes priority.** A valid loaded AMS/EXT colour takes precedence over Spoolbase's fallback colour. A mismatch calls for checking the assigned physical roll; it does not automatically rewrite its definition or price.
+- **Farm is optional and off by default.** Enable it in Settings → General. Hiding the module retains files, queue and orders; statistics and Spoolbase remain separate.
+- **Fleet chart.** The fill closes to a horizontal baseline rather than diagonally between its first and last points. It does not increase tile height or obscure More.
+- **History and exports.** Correct dialog ownership when opened from embedded panels, initial scroll at the start of history and the visible owner for report saving.
+- **Per-printer camera correction.** Rotation by 0/90/180/270° and horizontal/vertical flips, in addition to orientation from Moonraker.
+- **PL/EN installer and MIT.** The Windows installer offers language selection, installation notes and complete licence terms. Publisher: `/parametryczny`. Gantry remains MIT-licensed.
+
+Windows fixes passed 473 UI checks across Basic/Modern, light/dark and PL/EN, plus installation, autostart and uninstall-with-data-retention tests. These ran under Wine; they do not certify every physical computer or guarantee device compatibility.
 
 ### Appearance and everyday use
 
@@ -280,6 +345,8 @@ Spool accounting no longer deducts both the AMS remaining-quantity update and sl
 
 ### Web access on a phone and your own server
 
+A generic web ZIP is not attached to the release. Generate your own website package in Gantry, with your hosting address and configuration.
+
 Desktop uses side navigation; phones use bottom navigation with vertically stacked printer cards. Viewing also includes monitoring and, when sharing is enabled, the Farm, history, costs, Spoolbase and maintenance.
 
 **Generate website package…** prepares a ZIP with the current dashboard, hosting address, bridge key and password hash. The key is not included in JavaScript. Generating the ZIP neither enables synchronisation nor publishes the site.
@@ -341,3 +408,20 @@ Saved printers, history and inventory are preserved. The switch in the full app 
 When updating your hosting, preserve the existing `config.php` and `data/`, and update website files together. A new key or password from a newly generated package changes the website configuration. Preserving existing data does not enable new sharing scopes.
 
 📚 [Wiki / guides](https://github.com/parametryczny/Gantrybar/wiki) · ☕ [Support Gantry](https://buycoffee.to/parametryczny)
+
+### Experimental SLA and Fiberpunk monitoring
+
+Local LAN/Wi-Fi monitoring for Elegoo Saturn 4 Ultra 12K/16K, Mars 5 Ultra, Anycubic Photon Mono X 6K and Prusa SL1/SL1S SPEED. A separate Fiberpunk Node/Node Pro monitor reads the adapter’s local API. State, progress, job, layers and remaining time are displayed when reported by the device. No controls, Farm, uploads or SLA spaghetti detection. Parsers and simulated connections have been tested; physical printer compatibility still needs validation. See [SLA monitoring](wiki/SLA-monitoring-EN.md).
+
+Extended monitoring: Saturn 3 Ultra / Mars 4 Ultra via UDP, Photon P1 / P1 Max via local MQTT, and Formlabs via PreForm Server. Phrozen can be monitored through a compatible OctoPrint/Chituboard bridge; direct Mighty 8K support remains unverified. Formlabs shows its actual status and available remaining time without an invented percentage.
+
+The compact printer list now follows Obsidian: one header per expanded printer, clear expand/collapse arrows, consistent surfaces and aligned cards.
+
+Add printer: wrapping tile buttons select the printer type. Edit and advanced actions open the selected printer’s full settings from the top bar as well; connection credentials keep a separate form. Per-printer camera correction supports 0/90/180/270° rotation and horizontal/vertical flips after Moonraker orientation. Previews and snapshots share the correction; the Vision detection area follows rotation.
+
+#### Consistent Obsidian forms
+
+- Shared buttons, text fields, control heights and typography across settings, automations, smart socket configuration, filament editing and supporting Vision dialogs.
+- Settings follow the selected template palette, including auxiliary windows and forms.
+- More readable long descriptions and labels. The filament catalogue separates spool values and actions into rows instead of squeezing every control into one line.
+- Native secure fields, editing, number formatters, keyboard shortcuts and Basic appearance are preserved. OS file pickers and confirmation dialogs remain native.

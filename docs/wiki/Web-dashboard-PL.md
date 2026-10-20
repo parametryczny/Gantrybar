@@ -1,6 +1,6 @@
 # Panel WWW: sieć lokalna i własny hosting
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Gantry oferuje dwa różne sposoby podglądu. Adres lokalny nie staje się adresem internetowym po wyjściu z Wi-Fi.
 

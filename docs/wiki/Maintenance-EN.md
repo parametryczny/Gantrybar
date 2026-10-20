@@ -1,6 +1,6 @@
 # Fleet maintenance and service
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Maintenance-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Maintenance-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 The module is available in full Gantry: Gantry menu → **Maintenance & service…**, the Maintenance sidebar item, or a printer card’s maintenance indicator. It is hidden in LITE mode. The new service forms are not exposed in the web dashboard.
 

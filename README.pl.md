@@ -182,6 +182,14 @@ Własny bot wysyła alerty o zakończeniu, błędzie, pauzie czy niskim poziomie
 
 Komputer z Gantry jest mostem do Telegrama i musi pozostać włączony oraz połączony z siecią. [Konfiguracja, polecenia i sterowanie w Telegramie](docs/wiki/Telegram-PL.md).
 
+## Instalacja i aktualizacja
+
+Po publikacji 0.14.0 wybierz **macOS Universal DMG/ZIP**, **Windows x64 — instalator lub przenośny ZIP** albo **Linux x86_64 — DEB, RPM lub AppImage**. Dopóki 0.14.0 jest szkicem, Latest prowadzi do poprzedniego stabilnego wydania.
+
+[Instalacja, wymagania i weryfikacja SHA-256](docs/wiki/Installation-PL.md) · [Eksperymentalny monitoring SLA / Fiberpunk](docs/wiki/SLA-monitoring-PL.md).
+
+Ostatnie poprawki obejmują checkboxy, kontrast ustawień, zaokrąglenia paska, odświeżanie kart i eksport Spoolbase. Farma jest opcjonalna i domyślnie wyłączona; włączysz ją w Ustawieniach → Ogólne.
+
 ## Poradniki i społeczność
 
 [Wszystkie poradniki PL/EN](docs/wiki/Home.md) · [Rozwiązywanie problemów](docs/wiki/Troubleshooting-PL.md) · [Opis wydania](docs/release-0.14.0.md)

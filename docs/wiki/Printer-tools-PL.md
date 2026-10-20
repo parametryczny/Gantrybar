@@ -1,6 +1,6 @@
 # Ustawienia i narzędzia drukarki
 
-[English](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-EN.md) · [Spis treści](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[English](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 W pełnej wersji Gantry wybierz **boczne menu → Ustawienia drukarek** (ikona nad Ustawieniami), a następnie drukarkę na górze. W trybie samego paska/zasobnika wybierz **Ustawienia drukarek** bezpośrednio z menu aplikacji. Zmiany zatwierdza **Zapisz ustawienia drukarki**. Przełączanie między drukarkami zachowuje osobne szkice formularza.
 
@@ -30,4 +30,4 @@ Po błędzie połączenia sieciowego kolejne połączenie użyje drugiego adresu
 
 Dla wybranej drukarki ustawisz także widoczność zewnętrznych szpul EXT, postęp w pasku lub zasobniku, obecność w pasku krawędziowym, kamerę pod paskiem, średnią moc i amortyzację. Z tego widoku otworzysz edycję połączenia i konfigurację gniazdka. Klipper ma dodatkowo własne nazwy obiektów Moonrakera, a obsługiwane drukarki — własne komendy światła.
 
-Puste pole średniej mocy korzysta z ustawienia floty. Gniazdko z pomiarem dostarcza rzeczywiste odczyty energii; [Energia i raporty](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-PL.md) wyjaśnia pomiar, braki i eksport.
+Puste pole średniej mocy korzysta z ustawienia floty. Gniazdko z pomiarem dostarcza rzeczywiste odczyty energii; [Energia i raporty](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-PL) wyjaśnia pomiar, braki i eksport.

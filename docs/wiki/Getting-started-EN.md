@@ -1,6 +1,6 @@
 # Getting started with Gantry
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Getting-started-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Getting-started-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Gantry shows printer status in the menu bar, system tray or fleet window. Local viewing requires no Gantry account.
 
@@ -24,11 +24,11 @@ Different printers expose different readings and commands. Status may work while
 
 | You want to… | Read |
 | --- | --- |
-| only monitor status | [Appearance and LITE](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Appearance-and-LITE-EN.md) |
-| send files to the fleet | [Farm](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Farm-EN.md) |
-| manage physical rolls | [Spoolbase](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Spoolbase-EN.md) |
-| view the fleet on a phone | [Web dashboard](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Web-dashboard-EN.md) |
-| configure a camera, HTTP button or alternate address | [Printer tools](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-EN.md) |
-| record energy and costs | [Energy and reports](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Energy-and-reports-EN.md) |
+| only monitor status | [Appearance and LITE](https://github.com/parametryczny/Gantrybar/wiki/Appearance-and-LITE-EN) |
+| send files to the fleet | [Farm](https://github.com/parametryczny/Gantrybar/wiki/Farm-EN) |
+| manage physical rolls | [Spoolbase](https://github.com/parametryczny/Gantrybar/wiki/Spoolbase-EN) |
+| view the fleet on a phone | [Web dashboard](https://github.com/parametryczny/Gantrybar/wiki/Web-dashboard-EN) |
+| configure a camera, HTTP button or alternate address | [Printer tools](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-EN) |
+| record energy and costs | [Energy and reports](https://github.com/parametryczny/Gantrybar/wiki/Energy-and-reports-EN) |
 
-Start with [Troubleshooting](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Troubleshooting-EN.md) when something is missing. Do not delete configuration or inventory simply to refresh a view.
+Start with [Troubleshooting](https://github.com/parametryczny/Gantrybar/wiki/Troubleshooting-EN) when something is missing. Do not delete configuration or inventory simply to refresh a view.

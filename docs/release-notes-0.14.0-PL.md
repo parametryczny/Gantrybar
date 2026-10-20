@@ -1,0 +1,203 @@
+# Gantry 0.14.0 — Modern, AMS, serwis floty i energia każdego wydruku
+
+Gantry 0.14.0 łączy zwarty interfejs Modern, przebudowaną Farmę, czytelniejszą obsługę AMS i Spoolbase, rozbudowany serwis floty oraz energię i koszty każdego wydruku. Nowe narzędzia drukarek obejmują kamerę zewnętrzną, zdjęcia w powiadomieniach, skrót do panelu WWW, własny przycisk HTTP i zapasowy adres API.
+
+Aplikacja nie wymaga konta ani chmury producenta Gantry. Drukarki obsługuje lokalnie; opcjonalny panel internetowy działa na Twoim hostingu.
+
+## Najważniejsze zmiany
+
+- **Gantry Basic i Gantry Modern.** Dwa szablony kart, zwarte odczyty i spójne nagłówki całej aplikacji.
+- **Nowa Konserwacja i serwis.** Status „W serwisie”, własne zadania i checklisty, szablony, terminy godzinowe i kalendarzowe, problemy ze zdjęciami, historia kosztów i magazyn części.
+- **Osobny widok AMS / Filamenty.** Wybór drukarki, kolorowe sloty, aktywny podajnik, procent i gramy oraz przypisania rolek Spoolbase.
+- **Farma: plik → drukarki → materiały.** Katalogi według typu drukarki, lista plików, dobór AMS, kontrola przed startem, kolejka i historia.
+- **Energia całego cyklu.** Pomiar z obsługiwanych gniazdek w tle, wykres, kWh i koszty w historii.
+- **Zwarte statystyki i eksport.** Raport przy nazwie wydruku oraz CSV całej historii.
+- **Spoolbase: zamówienia, palety i etykiety.** Edytowalny import, lokalny OCR, kolory producentów i etykiety QR.
+- **Wygodniejsza obsługa floty.** Światło we wszystkich obsługiwanych drukarkach, poprawione kliknięcia nagłówka i opcjonalne otwieranie paska bocznego dopiero po kliknięciu.
+- **WWW na komputerze i telefonie.** Układ zgodny z aplikacją, generator paczki hostingowej, respektowanie ukrytego EXT i zapamiętanie logowania na 30 dni.
+- **Narzędzia drukarek.** Zewnętrzna kamera, zdjęcia w powiadomieniach, panel WWW, własny GET/POST, zapasowy adres API i interwały odświeżania.
+- **LITE w pełnej aplikacji.** Szybki powrót do samego podglądu stanu w pasku lub zasobniku, z zachowaniem danych pełnej wersji.
+
+## Dopracowanie wydania — 20 października
+
+- **Ustawienia, które od razu zmieniają widok.** Zaznaczenie „Pokaż AMS”, postępu i pozostałych odczytów odpowiada ich rzeczywistej widoczności. Poprawiono zapis opcji, odświeżanie kart i znaczniki checkboxów.
+- **Czytelniejszy interfejs.** Mocniejszy kontrast pól i opisów, spójne menu, listy wyboru i przewijanie, wektorowe ikony oraz zachowanie stylów po otwarciu ustawień wewnątrz głównego okna.
+- **Zaokrąglony pasek krawędziowy.** Zachowana przezroczystość poza obrysem; zamknięty panel nie próbuje ponownie otwierać się po zmianach drukarki.
+- **Spoolbase w zwartym i rozwiniętym widoku.** Gramy, lokalizacja rozpoczętych rolek, dopasowanie kolumn i eksport magazynu TXT/CSV.
+- **Kolor z drukarki ma pierwszeństwo.** Prawidłowy kolor załadowanego slotu AMS/EXT jest ważniejszy od zastępczego koloru Spoolbase. Różnica wskazuje na potrzebę sprawdzenia przypisanej rolki; nie zmienia automatycznie jej definicji i ceny.
+- **Farma jest opcjonalna i domyślnie wyłączona.** Włączysz ją w Ustawieniach → Ogólne. Ukrycie modułu zachowuje pliki, kolejkę i zamówienia; nie ukrywa statystyk ani Spoolbase.
+- **Wykres floty.** Wypełnienie zamyka się do poziomej podstawy, nie po skosie między pierwszym i ostatnim punktem. Wykres nie zwiększa wysokości kafla i nie zasłania przycisku „Więcej”.
+- **Historia i eksport.** Poprawione otwieranie okien z osadzonych paneli, lista od początku i właściwe okno nadrzędne dla zapisu raportu.
+- **Kamera per drukarka.** Obrót 0/90/180/270° oraz odbicia poziome/pionowe, dodatkowo do orientacji zapisanej w Moonrakerze.
+- **Instalacja PL/EN i licencja MIT.** Instalator Windows ma wybór języka, opis instalacji i pełny tekst licencji. Oznaczenie wydawcy: `/parametryczny`. Licencja Gantry pozostaje MIT.
+
+Poprawki Windows sprawdzono w 473 kontrolach interfejsu dla Basic/Modern, jasnego/ciemnego motywu i PL/EN, a także w teście instalacji, autostartu i odinstalowania z zachowaniem danych. Testy wykonano w Wine; nie są certyfikacją działania na każdym fizycznym komputerze ani gwarancją zgodności wszystkich urządzeń.
+
+## Wygląd i codzienna obsługa
+
+Nad ikoną Ustawień dodano **Ustawienia drukarek**. Wybierz urządzenie u góry, aby skonfigurować połączenie, widoczność EXT i pasków, kamerę, własne komendy światła, gniazdko, moc oraz amortyzację. Formularz zachowuje osobne robocze zmiany dla każdej drukarki. W trybie samego paska lub zasobnika ten widok otworzysz bezpośrednio z menu aplikacji. Pinezka pełnego okna zachowuje jego położenie na bieżącym monitorze.
+
+- Ustawienia paska: kompaktowe kafelki wyboru drukarek i kamer zamiast pionowych list; nowy podgląd położenia z sześcioma punktami, podpisem i obsługą klawiatury.
+
+Ustawienia mają wspólną skalę tekstu: nagłówki 14, etykiety i opcje 13, opisy 12. Dłuższe nazwy opcji zawijają się do pełnych wierszy. Ujednolicono odstępy i szerokości opisów, a zatłoczone wiersze limitu kamer i wyboru modelu Vision rozdzielono.
+
+W **Ustawieniach → Wygląd** wybierzesz Gantry Basic lub Gantry Modern. Modern pokazuje nazwę drukarki i typ połączenia, stan, plik, postęp, pozostały czas, godzinę zakończenia, warstwy, temperatury i filament w zwartym układzie. Odczyty i ich widoczność zależą od drukarki oraz ustawień karty.
+
+Nagłówki Farmy, Monitoringu, Diagnostyki, Spoolbase, Statystyk i pozostałych widoków korzystają ze wspólnego stylu Gantry. W trybie okna usunięto zbędny efekt „okna w oknie”. Sterowanie otrzymało spójniejsze nagłówki, przyciski i odstępy. Statystyki przenoszą listę plików obok podsumowania, gdy jest na to miejsce; węższe okna układają treść pionowo.
+
+Z głównych kart Modern usunięto osobne skróty pauzy i lampki, zwalniając miejsce na stan drukarki. Sterowanie pozostaje dostępne w przeznaczonym do tego panelu.
+
+Dopracowano odstępy górnych ikon i obsługę pierwszego kliknięcia: przyciski reagują również wtedy, gdy okno nie było aktywne. W **Ustawieniach → Okna i pasek** można włączyć **„Rozwijaj pasek dopiero po kliknięciu”**. Domyślnie pasek rozwija się po najechaniu; przypięty pozostaje rozwinięty.
+
+Przycisk żarówki w nagłówku aplikacji pozwala wysłać **włącz lub wyłącz światło** do wszystkich połączonych drukarek, dla których Gantry obsługuje takie polecenie lub skonfigurowano własne polecenie LED. Zbiorcze sterowanie światłem jest też dostępne na hostingu, gdy włączono zdalne sterowanie; lokalny panel tylko do podglądu nie wysyła poleceń.
+
+Poprawiono otwieranie historii od początku listy, uzupełnianie formularza „Edytuj drukarkę”, widoczność ostatniego rzędu kart — również MINI i statystyk — oraz rozmiar i wypełnienie wykresu floty. Drukarka bez aktywnego zadania pokazuje **„Czeka na wydruk”**.
+
+## Narzędzia drukarek i powiadomienia
+
+- Zewnętrzna kamera HTTP/HTTPS JPEG lub MJPEG przypisana do dowolnej drukarki; wspólny podgląd w szczegółach, monitoringu, pasku i istniejącym dostępie WWW.
+- Zdjęcia w powiadomieniach; alert Vision pokazuje klatkę zgłoszenia. Przełącznik zdjęć per drukarka; wygląd powiadomienia zależy od ustawień środowiska.
+- Skrót do panelu WWW i własny ręczny przycisk GET/POST z opcjonalnym JSON-em oraz tokenem Bearer w magazynie kluczy. Zapis nie wykonuje żądania.
+- Zapasowy adres API oraz osobne interwały odświeżania podczas druku i w spoczynku dla PrusaLink, Moonrakera i OctoPrint. Sterowanie oraz transfery korzystają z wybranego adresu; brak automatycznego ponawiania poleceń pod drugim adresem.
+- Instrukcja konfiguracji: [Ustawienia i narzędzia drukarki](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-PL).
+
+## AMS / Filamenty i ukrywanie EXT
+
+Dostępny jest osobny widok **AMS / Filamenty** z menu Gantry i bocznej nawigacji. Wybierz drukarkę, aby zobaczyć jej moduły i kolorowe pola slotów. Każdy slot pokazuje materiał, pozostały procent i gramy, gdy są dostępne; strzałka wyróżnia slot drukujący. Przy module są odczyty temperatury i wilgotności, jeśli drukarka je podaje.
+
+Kliknięcie slotu otwiera szczegóły koloru, ilości i przypisanej rolki. Przy włączonym Spoolbase można przypisać rolkę lub zmienić jej przypisanie bez szukania slotu w karcie drukarki. Widok dopasowuje liczbę kolumn do szerokości i obsługuje raportowane moduły AMS/HT oraz źródła zewnętrzne.
+
+**EXT można ukryć osobno dla każdej drukarki**: w „Edytuj drukarkę”, w szczegółach → „Filamenty / AMS” oraz przełącznikiem EXT w nowym widoku. Preferencja dotyczy wszystkich zewnętrznych źródeł tej drukarki i jest respektowana także w panelu WWW — lokalnym oraz na hostingu. Ukrycie zmienia prezentację; zachowuje fizyczne indeksy slotów, przypisania i zużycie filamentu.
+
+## Farma: plik → drukarki → materiały
+
+Folder farmy otrzymuje podkatalogi **X2D, X1, P1, P2, MINI i A1**. Biblioteka pokazuje pliki jako listę z odświeżaniem. Usunięcie z biblioteki może również przenieść zapisany oryginał do systemowego kosza; plik w aktywnym zadaniu lub kolejce nie zostanie usunięty tą operacją.
+
+Po wybraniu pliku Gantry pokazuje jego podgląd, płytę, czas i materiały oraz zgodność drukarek. **Dobierz AMS** proponuje pasujące sloty; źródła można wybrać ręcznie. **Sprawdź wybór** pokazuje brak materiału, za małą ilość filamentu, niezgodną dyszę i przygotowanie stołu przed startem.
+
+Materiały i wybór płyty są skupione w obszarze roboczym zamiast rozwijać formularz w każdej karcie. Do sześciu drukarek służy zwarta siatka 2 × 3; w małym oknie zawartość nadal może wymagać przewijania. Odświeżenie AMS zachowuje zaznaczenia i nadal dostępne przypisania.
+
+Farma obsługuje pocięte 3MF dla Bambu Lab oraz G-code dla obsługiwanych drukarek Klipper, PrusaLink i OctoPrint. Zmiana kolejności narzędzi odbywa się w roboczej kopii tekstowego G-code. Oryginał pozostaje bez zmian; BG-code i pliki z sumami kontrolnymi wymagające takiej zmiany trzeba ponownie wyeksportować.
+
+**Samo wysłanie pliku nie uruchamia druku.** Osobny start wymaga potwierdzeń. Kolejka może uruchomić kopię po jawnym dopuszczeniu przygotowanej drukarki.
+
+### Farma: przygotowanie, produkcja i jakość
+
+- Nowy układ: lista plików, drukarki pośrodku i osobny inspektor materiałów. Sześć drukarek bez przewijania w standardowym szerokim oknie.
+- Wyszukiwanie plików w aplikacji i panelu WWW; obsługa wielu słów, wielkości liter i polskich znaków wraz z filtrem katalogu.
+- Osobne zakładki przygotowania, kolejki, odbioru i jakości, zamówień oraz historii.
+- Plany partii uwzględniają wcześniejsze zadania i rezerwacje filamentu. Dodanie partii nie uruchamia druku; zgoda na pusty stół dotyczy jednego startu.
+- Odbiór i kontrola jakości jako osobne kroki; odrzucona kopia tworzy wstrzymany ponowny druk z zapisanym powodem.
+- Ręczne zamówienia z SKU, plikiem, płytą, liczbą kopii i terminem. Zliczanie zaakceptowanych kopii oraz ochrona przed podwójnym planowaniem. WooCommerce i Etsy pozostają planowanymi integracjami.
+- Kompaktowa historia z eksportem CSV; respektowanie ukrytego EXT w inspektorach materiałów.
+
+## Energia, koszty i historia
+
+Tasmota i obsługiwane gniazdka Shelly z pomiarem mocy są odpytywane co około **5 sekund**. Cykl obejmuje przygotowanie zgłoszone jako aktywny wydruk, druk i pauzy, aż do zakończenia lub przerwania.
+
+Raport rozróżnia:
+
+| Źródło energii | Co oznacza |
+| --- | --- |
+| Pomiar | energia policzona z odczytów gniazdka |
+| Pomiar częściowy | odczytany fragment oraz szacunek brakującego czasu |
+| Szacunek | wynik ze skonfigurowanej średniej mocy drukarki |
+
+Uśpienie komputera, zamknięcie aplikacji lub brak odczytów pozostawiają lukę, zamiast dopisywać fikcyjny pomiar. Brak informacji o zużyciu filamentu jest pokazywany jako brak danych — nie jako 0 g.
+
+Raport TXT pojedynczego wydruku i CSV historii zawierają czas, filament, energię, źródło pomiaru i rozbicie kosztów. To raport danych zadania, **nie pobieranie oryginalnego pliku 3MF/G-code**. Lista „Pliki i wydruki” używa wierszy zamiast osobnych kart. Ikona pobierania przy nazwie zapisuje raport konkretnego zadania, a okno historii ma także eksport zbiorczy. W szerokim oknie podsumowanie kosztów i czasu pozostaje po lewej, lista wydruków po prawej.
+
+## Spoolbase
+
+Import zamówienia rozpoznaje materiał, produkt, kolor, ilość, wagę i cenę. Przed dodaniem sprawdzasz pozycje oraz **cenę jednej rolki**. Obraz jest odczytywany lokalnie przez OCR; rozpoznane pozycje można poprawić przed zapisem.
+
+Paleta w edytorze podpowiada kolory z katalogu marki. Profile slicera można odczytać na własne żądanie, aby uzupełnić nazwy serii; nie zastępują one katalogu kolorów.
+
+Etykiety **62 × 37 mm** zawierają kod QR identyfikujący rodzaj filamentu w magazynie. Etykietę można wydrukować lub zapisać jako PDF. Kod etykiety nie jest kodem dostępu do drukarki.
+
+Poprawiono obsługę rolek przypisanych ręcznie do slotu, dla którego drukarka nie raportuje materiału: sam brak odczytu nie odsyła już rolki do magazynu. Rozpoznanie wyjęcia wymaga wcześniejszego zobaczenia filamentu w tym przypisaniu oraz utrzymującego się pustego slotu. Ukryty EXT nie przesuwa przypisań AMS/HT.
+
+Naprawiono rozliczanie szpul: odczyt pozostałości z AMS i gramy slicera nie zmniejszają już stanu dwukrotnie. Dla rozpoznanej szpuli z poprawnym odczytem AMS zapisuje się źródło stanu, również na czas restartu; zużycie slicera nadal trafia do historii i kosztów. Bez takiego odczytu działa zwykłe odejmowanie. Odczyt 0 g poprawnie oznacza pustą rolkę. Dodano automatyczne przypisanie dokładnie jednej pasującej rolki bez RFID; przy kilku kandydatkach potrzebny jest wybór ręczny. Podczas przerwy w odczytach AMS prezentowany jest ostatni znany stan.
+
+## WWW na telefonie i własnym serwerze
+
+Gotowy ZIP strony nie jest dołączany do wydania. Wygeneruj własną paczkę WWW w Gantry — z adresem i konfiguracją swojego hostingu.
+
+Na komputerze panel ma boczną nawigację; na telefonie — nawigację na dole i drukarki jedna pod drugą. Podgląd obejmuje również monitoring oraz, po włączeniu udostępniania, farmę, historię, koszty, Spoolbase i konserwację.
+
+**Generuj paczkę WWW…** przygotowuje ZIP z aktualną stroną, adresem hostingu, kluczem mostu i hashem hasła. Klucz nie trafia do JavaScript. Generowanie paczki nie włącza synchronizacji ani nie publikuje strony.
+
+Po wgraniu plików na hosting z PHP i HTTPS włączasz most w Gantry. To aplikacja inicjuje połączenie z hostingiem, więc ten tryb nie wymaga przekierowania portów na routerze. Panel lokalny i własny hosting to dwa różne sposoby dostępu.
+
+Poprawiono logowanie formularzem i przekierowanie ze starszego adresu `api.php?action=login`, które mogło kończyć się widokiem JSON „Zaloguj się.”. Sesja jest zapisywana przed przejściem do panelu.
+
+Opcja **„Zapamiętaj mnie na 30 dni”** zachowuje zalogowanie w danej przeglądarce. Bez niej sesja ma limit 12 godzin. Wylogowanie lub zmiana hasła unieważniają dostęp. Strona dodana do ekranu początkowego telefonu może korzystać z osobnego magazynu cookies i przy pierwszym uruchomieniu wymagać własnego logowania; później działa ten sam mechanizm zapamiętania.
+
+Przeglądarka nadal pokazuje domenę w pasku adresu. Nazwa „Gantry” dotyczy tytułu strony i nazwy skrótu, nie zastępuje adresu w Safari. Zmiany strony wymagają aktualizacji plików na hostingu; aktualizacja samej aplikacji nie podmienia zdalnej instalacji.
+
+## Gantry Vision i monitoring
+
+Informacja o zbyt ciemnej kamerze dotyczy wyłącznie trwającego druku po rozpoczęciu warstw. Znika po pauzie, zakończeniu, przerwaniu, zmianie zadania lub odzyskaniu czytelnego obrazu, bez kasowania pozostałych ostrzeżeń.
+
+Monitoring otrzymuje adaptacyjną siatkę kamer. Szczegóły, monitoring i pasek współdzielą obraz tej samej drukarki, aby otwarcie kolejnego widoku nie odbierało podglądu pozostałym. Zamknięcie widoku zwalnia jego własne odbiorniki.
+
+Opcjonalne ograniczenie liczby klatek w większej flocie zmniejsza koszt podglądu kamer. Limit dotyczy ściany Monitoringu; szczegóły i pasek zachowują swój normalny podgląd. Strumienie H.264 wymagają szczególnego traktowania klatek kluczowych.
+
+**Gantry Vision Fast** jest wbudowanym modelem domyślnym z klasami `ok`, `spaghetti` i `detached`. Można wybrać inny zgodny plik modelu. Nazwa i zalecany próg czułości pochodzą z metadanych. Klasa oderwania korzysta również z przykładów syntetycznych; skuteczność na rzeczywistych awariach wymaga dalszej weryfikacji.
+
+Vision obsługuje ręczne oznaczanie klatek, archiwum obserwacji, odpowiedzi na alarmy i eksport ZIP. Potwierdzenie defektu przez użytkownika może utworzyć problem ze zdjęciem w module serwisowym; sam alarm modelu nie tworzy zgłoszenia.
+
+Archiwum może zapisywać zdjęcia pierwszej warstwy, 25%, 50%, 75% i końca wydruku. Zdjęcie końcowe wykorzystuje ostatnią dostępną klatkę. Ręczna etykieta pozostaje oddzielona od przewidywania modelu; zapis lub eksport danych nie trenuje automatycznie wag sieci.
+
+Lokalne próby nowych wag, w tym wariantu Infill ograniczającego alarmy na regularnym wypełnieniu, są osobnymi eksperymentami. Nie stanowią ogólnego wyniku dokładności i nie zastępują automatycznie modeli w instalatorze. Wybrany model, czułość i opcja automatycznej pauzy pozostają ustawieniami użytkownika.
+
+Poprawiono rozpoznawanie odpowiedzi tunelu plikowego Bambu na porcie próbowanym jako kamera: taka odpowiedź nie jest już traktowana jak prawidłowy strumień obrazu. Ten przypadek otrzymuje właściwą diagnostykę zamiast długiego oczekiwania na klatkę.
+
+Gantry respektuje teraz obrót 0°/90°/180°/270° oraz odbicia poziome i pionowe zapisane w konfiguracji kamery Moonrakera. Orientacja jest stosowana przed udostępnieniem klatki pozostałym podglądom i zdjęciom, w tym dla WWW oraz narzędzi korzystających z kamery. Poprawka rozwiązuje pomijanie konfiguracji, które mogło pokazywać np. Artillery do góry nogami; bez zapisanych ustawień aplikacja nie zgaduje obrotu według marki.
+
+Poprawiono podwójną normalizację wejścia modelu Vision. Metadane `input.normalization: embedded` oznaczają wejście RGB / 255; starsze własne modele zachowują normalizację ImageNet, jeśli nie określono inaczej. Aktualizacja nie zmienia samoczynnie modelu wybranego przez użytkownika.
+
+## Konserwacja i serwis — nowy moduł desktopowy
+
+Z menu **Gantry → Konserwacja i serwis…**, bocznej nawigacji lub ikony konserwacji na karcie otworzysz wspólny widok floty. Podsumowanie pokazuje zadania do wykonania, drukarki w serwisie, otwarte problemy i części do uzupełnienia. Wybór drukarki, wyszukiwanie i filtr wymagających uwagi pomagają przejść do konkretnego urządzenia.
+
+- **Status „W serwisie”.** Drukarka jest pomijana przy doborze Farmy. Gantry blokuje nowe wysyłki, przypisania kopii i starty. Włączenie serwisu wyłącza wcześniejszą zgodę kolejki na start; wyjście z serwisu nie przywraca jej automatycznie. Trwający wydruk pozostaje bez zmian.
+- **Własne zadania i checklisty.** Nazwa, kroki, postęp oraz zadanie jednorazowe lub cykliczne. Zapis wykonania wymaga zaznaczenia wszystkich kroków. Zadania można edytować, archiwizować i przywracać.
+- **Szablony.** Zapis checklisty i terminów jako szablonu do ponownego użycia; nowe zadanie można od razu przypisać wszystkim drukarkom.
+- **Harmonogram godzinowy i kalendarzowy.** Podaj godziny druku, liczbę dni lub oba parametry — obowiązuje wcześniejszy termin. Wykonanie rozpoczyna następny cykl. Dotychczasowe zadania zachowują też odłożenie przypomnienia o siedem dni.
+- **Rejestr problemów.** Tytuł, notatka, priorytet, zdjęcie oraz status otwarty / w trakcie / rozwiązany. Potwierdzony przez użytkownika defekt Vision może utworzyć zgłoszenie ze zdjęciem; samo przewidywanie modelu nie tworzy problemu.
+- **Szczegółowa historia.** Data, godziny pracy, notatka, wykonana checklista, zużyta część i koszt. Stare i nowe wpisy są wspólnie uporządkowane chronologicznie.
+- **Magazyn części.** Ilość, minimum i cena jednostkowa. Przy wykonaniu wybierzesz jedną pozycję części z ilością oraz dopiszesz inne koszty. Zapis historii i zmniejszenie stanu następują razem; niewystarczający zapas blokuje zapis. Późniejsza zmiana ceny części nie przelicza historycznego kosztu.
+
+Widok dopasowuje się do okna: przy większej szerokości zadania i historia są obok siebie, przy mniejszej — pionowo. Dane i zdjęcia serwisu są przechowywane lokalnie, a wcześniejsze liczniki i historia pozostają zachowane.
+
+Moduł serwisowy działa w pełnej wersji Gantry. Panel WWW uwzględnia stan serwisowy przy ocenie zgodności drukarek w Farmie; nowe formularze zadań, problemów i części otwiera się w aplikacji.
+
+## Tryb LITE
+
+W **Ustawieniach → Zaawansowane** przełącznik LITE uruchamia uproszczony tryb z podglądem stanu drukarek w pasku menu lub zasobniku. Szczegóły, sterowanie, statystyki, wycena, Farma, AMS jako osobny moduł, Spoolbase, serwis, kamery i integracje pełnej edycji są ukrywane. W ustawieniach pozostają podstawowe opcje i powrót do pełnego trybu. Zmiana wymaga ponownego uruchomienia aplikacji.
+
+Zapisane drukarki, historia i magazyn nie są kasowane. Przełącznik w pełnej aplikacji nie zmniejsza rozmiaru jej pliku; osobny instalator LITE jest okrojonym wariantem i wymaga instalacji pełnej aplikacji, aby odzyskać jej narzędzia.
+
+## Aktualizacja aplikacji i strony
+
+Przy aktualizacji własnego hostingu zachowaj istniejący `config.php` i `data/`, a pliki strony aktualizuj razem. Nowy klucz lub hasło z nowo wygenerowanej paczki zmieniają konfigurację strony. Zachowanie istniejących danych nie włącza nowych zakresów udostępniania.
+
+📚 [Wiki / instrukcje](https://github.com/parametryczny/Gantrybar/wiki) · ☕ [Wesprzyj Gantry](https://buycoffee.to/parametryczny)
+
+## Eksperymentalny monitoring SLA i Fiberpunk
+
+Lokalny monitoring przez LAN/Wi-Fi dla Elegoo Saturn 4 Ultra 12K/16K, Mars 5 Ultra, Anycubic Photon Mono X 6K oraz Prusa SL1/SL1S SPEED. Osobny monitor Fiberpunk Node/Node Pro odczytuje dane dostępne w lokalnym API adaptera. Stan, postęp, plik, warstwy i czas są pokazywane w zakresie raportowanym przez urządzenie. Bez sterowania, Farmy, wysyłania plików ani detekcji spaghetti SLA. Implementacja przeszła testy parserów i symulowanych połączeń; zgodność wymaga jeszcze potwierdzenia na fizycznych drukarkach. Szczegóły: [monitoring SLA](wiki/SLA-monitoring-PL.md).
+
+Rozszerzenie: Saturn 3 Ultra / Mars 4 Ultra przez UDP, Photon P1 / P1 Max przez lokalny MQTT i Formlabs przez PreForm Server. Phrozen można monitorować przez zgodny mostek OctoPrint/Chituboard; bezpośrednie Mighty 8K nadal nie jest potwierdzone. Formlabs pokazuje rzeczywisty status i dostępny czas, bez udawanego procentu.
+
+Widok listy drukarek dopasowany do Obsidiana: pojedynczy nagłówek rozwiniętej drukarki, czytelne strzałki rozwijania i zwijania, spójne powierzchnie oraz wyrównanie kart.
+
+Dodawanie drukarki: typ wybierany kafelkowymi przyciskami, z zawijaniem do szerokości okna. Edycja i opcje zaawansowane otwierają pełne ustawienia wybranej drukarki również z topbara; dane połączenia mają osobny formularz. Obrót kamery 0/90/180/270° i odbicia w poziomie/pionie są zapisywane per drukarka, dodatkowo do orientacji z Moonrakera. Korekta obejmuje podglądy i zdjęcia; obszar Vision podąża za obrotem.
+
+### Spójne formularze Obsidian
+
+- Wspólne przyciski, pola tekstowe, wysokości kontrolek i hierarchia tekstów w ustawieniach, automatyzacjach, konfiguracji gniazdek, edycji filamentów oraz pomocniczych oknach Vision.
+- Ustawienia korzystają z palety wybranego szablonu; motyw obejmuje także mniejsze okna i formularze.
+- Czytelniejsze długie opisy i etykiety. Katalog filamentów ma osobne wiersze danych szpuli i działań, bez ściskania wszystkiego w jednej linii.
+- Zachowane natywne pola haseł, edycja, formatowanie liczb, skróty klawiaturowe i wygląd Basic. Systemowe okna wyboru plików oraz potwierdzeń pozostają natywne.

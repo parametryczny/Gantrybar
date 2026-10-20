@@ -1,6 +1,6 @@
 # Gantry Vision: observation and evaluation data
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Gantry-Vision-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Gantry-Vision-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 Vision observes the camera while printing and reports suspected problems. Its result is a reason to inspect the print, not a certificate of quality.
 
@@ -56,4 +56,4 @@ Bundled Fast ONNX embeds ImageNet normalization. The adapter passes RGB / 255 wi
 
 A dark-camera notice applies during active printing after layers begin. It clears on pause, completion, interruption, job change or visibility recovery without removing unrelated warnings.
 
-A Vision notification can include the exact frame that triggered it. Notification photos can be enabled per printer. Configure an external camera in [Printer settings and tools](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Printer-tools-EN.md).
+A Vision notification can include the exact frame that triggered it. Notification photos can be enabled per printer. Configure an external camera in [Printer settings and tools](https://github.com/parametryczny/Gantrybar/wiki/Printer-tools-EN).

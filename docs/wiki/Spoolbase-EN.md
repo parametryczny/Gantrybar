@@ -1,6 +1,6 @@
 # Spoolbase: inventory, rolls and labels
 
-[Polski](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Spoolbase-PL.md) · [Contents](https://github.com/parametryczny/Gantrybar/blob/main/docs/wiki/Home.md)
+[Polski](https://github.com/parametryczny/Gantrybar/wiki/Spoolbase-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
 ## Two different records
 
@@ -51,3 +51,15 @@ A manually assigned roll with no reported material is not returned to stock mere
 ## AMS balance and print accounting
 
 Spool accounting no longer deducts both the AMS remaining-quantity update and slicer grams from the same balance. A recognised roll with a valid AMS quantity retains its balance source across restarts; slicer usage still enters history and cost reports. Rolls without such readings use normal subtraction. An AMS reading of 0 g now marks the roll empty. Gantry automatically assigns exactly one matching untagged roll; multiple candidates require manual selection. If AMS readings stop, the last known quantity is retained.
+
+## AMS colour and spool assignment
+
+The colour reported by a loaded AMS/EXT takes priority over the colour saved for its assigned Spoolbase roll. Inventory supplies a fallback when the printer reports no valid colour.
+
+If the colours differ, Gantry warns about the assignment. Open **AMS / Filaments → printer → slot → Change assignment…** and check that the selected roll is the one actually loaded. This assignment also affects filament balances and costs. Displaying the correct colour does not rewrite inventory definitions or prices.
+
+RFID identifies the physical roll. Automatic product matching requires the same material and a very close colour; loosely similar dark shades are not enough.
+
+## Stock details and export
+
+Expand/Collapse changes the amount of detail; the expanded view shows physical-roll grams and locations. The closed-spool count is separate from opened rolls. The header download action exports stock as TXT or CSV. Prices and values follow stored data; missing quantities are not measurements.
