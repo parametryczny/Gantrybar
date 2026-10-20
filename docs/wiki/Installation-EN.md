@@ -2,7 +2,7 @@
 
 [Polski](https://github.com/parametryczny/Gantrybar/wiki/Installation-PL) · [Contents](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
-This guide covers Gantry 0.14.0. While the release remains a draft, the public **Latest** button still points to the previous stable release. The 0.14.0 assets become public after the author publishes it.
+This guide covers Gantry 0.14.0. [Download the release](https://github.com/parametryczny/Gantrybar/releases/tag/v0.14.0) and choose the package for your system.
 
 ## Choose an asset
 

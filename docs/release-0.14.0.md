@@ -4,8 +4,6 @@
 
 ## Paczki / Downloads
 
-**Szkic / Draft — 0.14.0 nie jest jeszcze publicznym wydaniem. / 0.14.0 is not public yet.**
-
 | System | Pliki / Files |
 | --- | --- |
 | macOS Universal (Apple Silicon + Intel) | DMG, Local ZIP, Keychain ZIP |
@@ -218,7 +216,6 @@ Dodawanie drukarki: typ wybierany kafelkowymi przyciskami, z zawijaniem do szero
 - Ustawienia korzystają z palety wybranego szablonu; motyw obejmuje także mniejsze okna i formularze.
 - Czytelniejsze długie opisy i etykiety. Katalog filamentów ma osobne wiersze danych szpuli i działań, bez ściskania wszystkiego w jednej linii.
 - Zachowane natywne pola haseł, edycja, formatowanie liczb, skróty klawiaturowe i wygląd Basic. Systemowe okna wyboru plików oraz potwierdzeń pozostają natywne.
-
 
 ---
 

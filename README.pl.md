@@ -18,7 +18,7 @@ Monitoruj wydruki, zarządzaj filamentem, planuj produkcję i sprawdzaj koszty. 
 
 </div>
 
-> **Status wydania:** aktualna publiczna wersja to **0.12.0**. Poniższe zrzuty i poradniki przedstawiają **0.14.0**, nad którą nadal pracujemy. Jej wydanie pozostaje szkicem; tych nowości nie ma jeszcze w aktualnym stabilnym pakiecie.
+> **Aktualne wydanie: [Gantry 0.14.0](https://github.com/parametryczny/Gantrybar/releases/tag/v0.14.0)** — dostępne dla macOS, Windows i Linux. Poniższe zrzuty i poradniki opisują to wydanie.
 
 ![Okno floty Gantry 0.14 Modern z sześcioma przykładowymi drukarkami](docs/renders/readme-modern-pl.png)
 
@@ -53,8 +53,6 @@ Zacznij od jednej drukarki, a kolejne dodawaj do tego samego widoku. Karty pokaz
 
 Wybierz szablon **Basic** lub **Modern**, jasny albo ciemny motyw i potrzebne odczyty. Otwórz Szczegóły, gdy chcesz zobaczyć wykres temperatur, wentylatory, prędkość, materiały i kamerę. Wspólny nagłówek pozwala też włączyć lub zgasić światło we wszystkich połączonych drukarkach obsługujących tę komendę.
 
-
-
 #### Gantry w pasku menu — topbar
 
 <p align="center">
@@ -72,7 +70,6 @@ Wybierz szablon **Basic** lub **Modern**, jasny albo ciemny motyw i potrzebne od
 W jednym widoku wybierzesz plik, drukarki i źródła materiałów. Zaplanujesz partie, potwierdzisz odbiór i zaakceptujesz lub odrzucisz gotowe kopie. Ręczne zamówienia łączą numer, SKU, ilość i termin z pociętą płytą. **Integracje z WooCommerce i Etsy są planowane.**
 
 Samo wysłanie pliku nie uruchamia druku. Start z kolejki wymaga wyraźnego zatwierdzenia pustego, przygotowanego stołu; Gantry nie przelicza pliku na profil innej drukarki.
-
 
 **Praktyczny przebieg pracy:** wyszukaj np. fikcyjny `demo-bracket.3mf`, wybierz zgodne drukarki, sprawdź materiały i zaplanuj liczbę kopii płyty. Plan uwzględnia wcześniejsze zadania i rezerwacje filamentu; samo dodanie partii nie uruchamia maszyn. Po zdjęciu wydruku potwierdzasz pusty stół, a następnie oceniasz jakość gotowych kopii.
 
@@ -184,7 +181,7 @@ Komputer z Gantry jest mostem do Telegrama i musi pozostać włączony oraz poł
 
 ## Instalacja i aktualizacja
 
-Po publikacji 0.14.0 wybierz **macOS Universal DMG/ZIP**, **Windows x64 — instalator lub przenośny ZIP** albo **Linux x86_64 — DEB, RPM lub AppImage**. Dopóki 0.14.0 jest szkicem, Latest prowadzi do poprzedniego stabilnego wydania.
+Pobierz **Gantry 0.14.0** dla swojego systemu: **macOS Universal DMG/ZIP**, **Windows x64 — instalator lub przenośny ZIP** albo **Linux x86_64 — DEB, RPM lub AppImage**.
 
 [Instalacja, wymagania i weryfikacja SHA-256](docs/wiki/Installation-PL.md) · [Eksperymentalny monitoring SLA / Fiberpunk](docs/wiki/SLA-monitoring-PL.md).
 

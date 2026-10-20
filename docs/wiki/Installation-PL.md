@@ -2,7 +2,7 @@
 
 [English](https://github.com/parametryczny/Gantrybar/wiki/Installation-EN) · [Spis treści](https://github.com/parametryczny/Gantrybar/wiki/Home)
 
-Dokument dotyczy Gantry 0.14.0. Dopóki wydanie jest szkicem, publiczny przycisk **Latest** prowadzi do poprzedniej stabilnej wersji. Pliki 0.14.0 będą publicznie dostępne po opublikowaniu wydania przez autora.
+Dokument dotyczy Gantry 0.14.0. [Pobierz wydanie](https://github.com/parametryczny/Gantrybar/releases/tag/v0.14.0) i wybierz paczkę dla swojego systemu.
 
 ## Wybierz plik
 

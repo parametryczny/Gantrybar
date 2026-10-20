@@ -10,7 +10,7 @@ Gantry 0.14.0 documentation for macOS, Windows and Linux. The guides describe a 
 
 ## Przewodniki / Guides
 
-**Podgląd 0.14.0 — wersja w rozwoju. / 0.14.0 preview — in development.**
+**[Pobierz Gantry 0.14.0 / Download Gantry 0.14.0](https://github.com/parametryczny/Gantrybar/releases/tag/v0.14.0).**
 
 | Polski | English |
 | --- | --- |

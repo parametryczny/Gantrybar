@@ -46,4 +46,4 @@ Sprawdź kamerę w szczegółach, oświetlenie, połączenie i komunikat o model
 
 ## Checkboxy, kontrast lub pasek wyglądają nieprawidłowo
 
-Zamknij poprzedni proces i zainstaluj aktualną paczkę 0.14.0; przy ZIP zastąp cały folder. Zaznaczone „Filamenty / AMS” i „Postęp” powinny pokazywać te elementy od razu. Dla Windows w tym szkicu poprawiona kompilacja ma oznaczenie `windows.20261020-r3` w informacji o programie. Zgłoś wersję, motyw, szablon i skalę ekranu, jeśli problem pozostał; nie usuwaj historii ani magazynu.
+Zamknij poprzedni proces i zainstaluj aktualną paczkę 0.14.0; przy ZIP zastąp cały folder. Zaznaczone „Filamenty / AMS” i „Postęp” powinny pokazywać te elementy od razu. Dla Windows poprawiona kompilacja ma oznaczenie `windows.20261020-r3` w informacji o programie. Zgłoś wersję, motyw, szablon i skalę ekranu, jeśli problem pozostał; nie usuwaj historii ani magazynu.

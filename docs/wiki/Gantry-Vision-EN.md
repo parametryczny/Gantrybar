@@ -51,7 +51,6 @@ Gantry now respects 0°/90°/180°/270° rotation and horizontal/vertical flips 
 
 Bundled Fast ONNX embeds ImageNet normalization. The adapter passes RGB / 255 without normalizing twice (`input.normalization: embedded`). A custom model needs correct normalization metadata. Technical format compatibility is not a failure-detection accuracy measurement.
 
-
 ## Dark chamber and alarm photos
 
 A dark-camera notice applies during active printing after layers begin. It clears on pause, completion, interruption, job change or visibility recovery without removing unrelated warnings.

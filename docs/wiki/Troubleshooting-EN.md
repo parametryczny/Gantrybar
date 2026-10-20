@@ -46,4 +46,4 @@ Check the camera in Details, lighting, connection and model message. ONNX requir
 
 ## Incorrect checkbox, contrast or dock appearance
 
-Close the old process and install the current 0.14.0 asset; replace the whole folder for a ZIP update. Checked Filaments / AMS and Progress should show the readings immediately. The corrected Windows build in this draft is identified as `windows.20261020-r3` in About. If a problem remains, include version, theme, template and display scale; do not delete history or stock.
+Close the old process and install the current 0.14.0 asset; replace the whole folder for a ZIP update. Checked Filaments / AMS and Progress should show the readings immediately. The corrected Windows build is identified as `windows.20261020-r3` in About. If a problem remains, include version, theme, template and display scale; do not delete history or stock.

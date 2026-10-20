@@ -18,7 +18,7 @@ Follow prints, organise filament, plan production and understand costs. Local mo
 
 </div>
 
-> **Release status:** the current public release is **0.12.0**. Screenshots and guides below preview **0.14.0**, which is still in development. Its release remains a draft; these additions are not included in the current stable download.
+> **Current release: [Gantry 0.14.0](https://github.com/parametryczny/Gantrybar/releases/tag/v0.14.0)** — available for macOS, Windows and Linux. Screenshots and guides below describe this release.
 
 ![Gantry 0.14 Modern fleet window with six demonstration printers](docs/renders/readme-modern-en.png)
 
@@ -53,8 +53,6 @@ The **full window** provides room for the fleet and navigation between modules. 
 
 Choose **Basic** or **Modern**, a light or dark theme and the readings you need. Open Details for temperature traces, fans, speed, materials and the camera. The shared header also lets you switch lighting on or off across connected printers that support the command.
 
-
-
 #### Gantry in the menu bar — topbar
 
 <p align="center">
@@ -72,7 +70,6 @@ Choose **Basic** or **Modern**, a light or dark theme and the readings you need.
 Prepare a file, select printers and map materials in one workspace. Queue batches, confirm pickup and accept or reject finished copies. Manual orders link a reference, SKU, quantity and deadline to a sliced plate. **WooCommerce and Etsy integrations are planned.**
 
 Uploading a file alone does not start a print. Queue starts require explicit approval of a prepared, empty bed; Gantry does not reslice a file for a different printer.
-
 
 **A practical workflow:** search for a fictional file such as `demo-bracket.3mf`, select compatible printers, check materials and plan the number of plate copies. The plan accounts for earlier jobs and filament reservations; adding a batch alone does not start machines. After removing a print, confirm the empty bed and assess the finished copies.
 
@@ -184,7 +181,7 @@ The Gantry computer bridges the connection to Telegram and must remain running a
 
 ## Installation and updates
 
-Choose the package for your system after 0.14.0 is published: **macOS Universal DMG/ZIP**, **Windows x64 installer or portable ZIP**, or **Linux x86_64 DEB, RPM or AppImage**. While 0.14.0 is a draft, Latest continues to offer the previous stable release.
+Download **Gantry 0.14.0** for your system: **macOS Universal DMG/ZIP**, **Windows x64 installer or portable ZIP**, or **Linux x86_64 DEB, RPM or AppImage**.
 
 [Installation, system requirements and SHA-256 verification](docs/wiki/Installation-EN.md) · [Experimental SLA / Fiberpunk monitoring](docs/wiki/SLA-monitoring-EN.md).
 

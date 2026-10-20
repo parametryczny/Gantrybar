@@ -51,7 +51,6 @@ Gantry respektuje teraz obrót 0°/90°/180°/270° oraz odbicia poziome i piono
 
 Wbudowany Fast ONNX ma normalizację ImageNet w grafie. Adapter podaje RGB / 255 bez drugiej normalizacji (`input.normalization: embedded`). Własny model musi mieć prawidłowe metadane normalizacji. Zgodność techniczna formatu nie jest pomiarem skuteczności rozpoznawania awarii.
 
-
 ## Ciemna komora i zdjęcia w alarmach
 
 Informacja o zbyt ciemnej kamerze dotyczy aktywnego druku po rozpoczęciu warstw. Znika po pauzie, zakończeniu, przerwaniu, zmianie zadania lub odzyskaniu czytelnego obrazu. Nie kasuje innych ostrzeżeń.
