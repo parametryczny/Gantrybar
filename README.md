@@ -12,7 +12,7 @@ Follow prints, organise filament, plan production and understand costs. Local mo
 
 **[Download](https://github.com/parametryczny/Gantrybar/releases/latest)** · **[Quick start](docs/wiki/Getting-started-EN.md)** · **[Guides](docs/wiki/Home.md)** · **[What’s new](docs/release-0.14.0.md)**
 
-[![Release](https://img.shields.io/github/v/release/parametryczny/Gantrybar?label=stable)](https://github.com/parametryczny/Gantrybar/releases/latest) [![License](https://img.shields.io/github/license/parametryczny/Gantrybar)](LICENSE) [![Downloads](https://img.shields.io/github/downloads/parametryczny/Gantrybar/total)](https://github.com/parametryczny/Gantrybar/releases)
+[![Release](https://img.shields.io/github/v/release/parametryczny/Gantrybar?label=stable)](https://github.com/parametryczny/Gantrybar/releases/latest) [![License](https://img.shields.io/github/license/parametryczny/Gantrybar)](LICENSE) [![Downloads](https://img.shields.io/github/downloads/parametryczny/Gantrybar/total)](https://github.com/parametryczny/Gantrybar/releases) [![Donate](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/KamilGrzegorczyk)
 
 **macOS · Windows · Linux**
 

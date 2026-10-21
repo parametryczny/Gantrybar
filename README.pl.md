@@ -12,7 +12,7 @@ Monitoruj wydruki, zarządzaj filamentem, planuj produkcję i sprawdzaj koszty. 
 
 **[Pobierz](https://github.com/parametryczny/Gantrybar/releases/latest)** · **[Pierwsze kroki](docs/wiki/Getting-started-PL.md)** · **[Poradniki](docs/wiki/Home.md)** · **[Co nowego](docs/release-0.14.0.md)**
 
-[![Wydanie](https://img.shields.io/github/v/release/parametryczny/Gantrybar?label=stabilne)](https://github.com/parametryczny/Gantrybar/releases/latest) [![Licencja](https://img.shields.io/github/license/parametryczny/Gantrybar)](LICENSE) [![Pobrania](https://img.shields.io/github/downloads/parametryczny/Gantrybar/total)](https://github.com/parametryczny/Gantrybar/releases)
+[![Wydanie](https://img.shields.io/github/v/release/parametryczny/Gantrybar?label=stabilne)](https://github.com/parametryczny/Gantrybar/releases/latest) [![Licencja](https://img.shields.io/github/license/parametryczny/Gantrybar)](LICENSE) [![Pobrania](https://img.shields.io/github/downloads/parametryczny/Gantrybar/total)](https://github.com/parametryczny/Gantrybar/releases) [![Wesprzyj](https://img.shields.io/badge/Wesprzyj-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/KamilGrzegorczyk)
 
 **macOS · Windows · Linux**
 
