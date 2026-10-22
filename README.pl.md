@@ -18,6 +18,12 @@ Monitoruj wydruki, zarządzaj filamentem, planuj produkcję i sprawdzaj koszty. 
 
 </div>
 
+### Zobacz Gantry w działaniu
+
+https://github.com/user-attachments/assets/84d32f75-bed8-4c18-bf6c-9a9516541b3b
+
+*Film prezentujący Gantry — wersja angielska.*
+
 > **Aktualne wydanie: [Gantry 0.14.0](https://github.com/parametryczny/Gantrybar/releases/tag/v0.14.0)** — dostępne dla macOS, Windows i Linux. Poniższe zrzuty i poradniki opisują to wydanie.
 
 ![Okno floty Gantry 0.14 Modern z sześcioma przykładowymi drukarkami](docs/renders/readme-modern-pl.png)

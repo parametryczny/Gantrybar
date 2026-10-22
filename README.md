@@ -18,6 +18,12 @@ Follow prints, organise filament, plan production and understand costs. Local mo
 
 </div>
 
+### See Gantry in action
+
+https://github.com/user-attachments/assets/84d32f75-bed8-4c18-bf6c-9a9516541b3b
+
+*Video walkthrough in English.*
+
 > **Current release: [Gantry 0.14.0](https://github.com/parametryczny/Gantrybar/releases/tag/v0.14.0)** — available for macOS, Windows and Linux. Screenshots and guides below describe this release.
 
 ![Gantry 0.14 Modern fleet window with six demonstration printers](docs/renders/readme-modern-en.png)
