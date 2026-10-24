@@ -1,4 +1,4 @@
-# Bambuddy — monitoring in Gantry
+# Bambuddy: monitoring in Gantry
 
 Open **Settings → Integrations → Bambuddy connection**. Available on macOS, Windows and Linux, in Polish and English.
 

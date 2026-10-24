@@ -11,51 +11,51 @@ Lokalna integracja rozwojowa, dodana po wydaniu 0.14.0. Dokument opisuje nowy ko
 
 Spoolman zastępuje lokalny magazyn w widokach, przypisaniach AMS/EXT, kalkulacji z przypisanej szpuli i panelu WWW. Lokalne dane Spoolbase pozostają zachowane. Ich zawartość nie jest używana jako zastępstwo podczas awarii serwera.
 
-Gantry odświeża magazyn co około 15 sekund. Przy awarii pokazuje ostatni zapisany stan z komunikatem o braku połączenia. Podstawowe dodawanie i edycja są dostępne bezpośrednio w Gantry; usuwanie i pozostałe funkcje pozostają pod **Edytuj w Spoolmanie**. Przypisanie do slotu w Gantry jest lokalnym powiązaniem, nie poleceniem zmiany lokalizacji na serwerze.
+Gantry odświeża magazyn co około 15 sekund. Przy awarii pokazuje ostatni zapisany stan z komunikatem o braku połączenia. Podstawowe dodawanie i edycja są dostępne bezpośrednio w Gantry; usuwanie i pozostałe funkcje pozostają pod **Edytuj w Spoolman**. Przypisanie do slotu w Gantry jest lokalnym powiązaniem, nie poleceniem zmiany lokalizacji na serwerze.
 
 ## Szpule, AMS i tagi
 
 - Produkt/filament i fizyczna szpula mają różne identyfikatory. Dwie identyczne szpule nie zostaną połączone w jedną.
 - Każdy serwer ma osobny magazyn podręczny. Zachowuj stały adres serwera; zmiana aliasu adresu tworzy osobne źródło.
-- Automatyczne przypisanie wymaga jednego, dokładnie pasującego identyfikatora tagu zapisanego w Spoolmanie (`tags[].uid` lub dodatkowe pole `tag`). Gantry porównuje identyfikator przekazany przez drukarkę; nie odczytuje dowolnych naklejek NFC telefonem.
+- Automatyczne przypisanie wymaga jednego, dokładnie pasującego identyfikatora tagu zapisanego w Spoolman (`tags[].uid` lub dodatkowe pole `tag`). Gantry porównuje identyfikator przekazany przez drukarkę; nie odczytuje dowolnych naklejek NFC telefonem.
 - Kolor i typ materiału nie wystarczają do rozpoznania konkretnej szpuli. Dla materiałów bez pasującego tagu wybierz szpulę ręcznie w slocie AMS/EXT.
-- Możesz ręcznie przypisać inną szpulę lub odpiąć obecną także wtedy, gdy slot odczytuje RFID. Ręczny wybór pozostaje zapisany po odczytach drukarki, odświeżeniu magazynu i restarcie. Odpięcie nie usuwa szpuli ani jej wagi w Spoolmanie. Dopiero inny, niepusty tag ponownie włącza automatyczne dopasowanie dla tego slotu.
+- Możesz ręcznie przypisać inną szpulę lub odpiąć obecną także wtedy, gdy slot odczytuje RFID. Ręczny wybór pozostaje zapisany po odczytach drukarki, odświeżeniu magazynu i restarcie. Odpięcie nie usuwa szpuli ani jej wagi w Spoolman. Dopiero inny, niepusty tag ponownie włącza automatyczne dopasowanie dla tego slotu.
 - Zmiana zaobserwowanego tagu usuwa powiązanie z poprzednim tagiem. Sam brak tagu nie jest wiarygodnym dowodem wyjęcia szpuli bez RFID; takie przypisanie trzeba skorygować ręcznie.
-- Zakończenie wydruku nie usuwa szpuli. Brak wagi nie oznacza pustej szpuli: wyświetlany jest znak „—”. Puste i zarchiwizowane szpule są zachowywane.
+- Zakończenie wydruku nie usuwa szpuli. Brak wagi nie oznacza pustej szpuli: wyświetlany jest brak danych. Puste i zarchiwizowane szpule są zachowywane.
 
 ## Dodawanie i edycja w Gantry
 
 W aktywnym oknie **Spoolman** dostępne są:
 
-- **Dodaj filament…** — definicja produktu: nazwa, materiał, producent z listy Spoolmana (lub bez producenta), kolor z palety albo HEX, gęstość, średnica, pełna waga netto i opcjonalna cena.
-- **Dodaj szpulę…** — fizyczna rolka istniejącego filamentu, także takiego, który nie ma jeszcze szpul. Możesz podać początkową i pozostałą wagę netto, tarę, cenę i lokalizację. Kolejna rolka dostaje nowy identyfikator.
-- **Edytuj filament…** przy szpuli — zmienia wspólną definicję jej filamentu. Nazwa, materiał i kolor dotyczą wszystkich jego szpul. Samo poprawienie nazwy nie usuwa ustawień wielokolorowych; jawna zmiana koloru zastępuje je jednym kolorem.
-- **Koryguj wagę…** przy szpuli — ustawia pozostałe gramy tylko tej fizycznej rolki. Wpisuj **wagę samego filamentu, bez pustej szpuli**. Dla nieznanej wagi początkowej wpisz ją w formularzu; pozostała nie może jej przekraczać.
+- **Dodaj filament…**: definicja produktu: nazwa, materiał, producent z listy Spoolman (lub bez producenta), kolor z palety albo HEX, gęstość, średnica, pełna waga netto i opcjonalna cena.
+- **Dodaj szpulę…**: fizyczna rolka istniejącego filamentu, także takiego, który nie ma jeszcze szpul. Możesz podać początkową i pozostałą wagę netto, tarę, cenę i lokalizację. Kolejna rolka dostaje nowy identyfikator.
+- **Edytuj filament…** przy szpuli: zmienia wspólną definicję jej filamentu. Nazwa, materiał i kolor dotyczą wszystkich jego szpul. Samo poprawienie nazwy nie usuwa ustawień wielokolorowych; jawna zmiana koloru zastępuje je jednym kolorem.
+- **Koryguj wagę…** przy szpuli: ustawia pozostałe gramy tylko tej fizycznej rolki. Wpisuj **wagę samego filamentu, bez pustej szpuli**. Dla nieznanej wagi początkowej wpisz ją w formularzu; pozostała nie może jej przekraczać.
 
-Cena jest kwotą w walucie skonfigurowanej w Spoolmanie. Gantry jej nie przelicza. Puste opcjonalne pole ceny oznacza brak ceny, nie zero.
+Cena jest kwotą w walucie skonfigurowanej w Spoolman. Gantry jej nie przelicza. Puste opcjonalne pole ceny oznacza brak ceny, nie zero.
 
-Przycisk **Zapisz w Spoolmanie** wykonuje zapis na serwerze i odświeża magazyn. Ręczne operacje działają także przy wyłączonym automatycznym raportowaniu zużycia. Nie zmieniają kodu ani koloru RFID w drukarce. Zapis dotyczy tylko edytowanych pól; dodatkowe metadane, tagi, historia i pozostałe ustawienia pozostają zachowane. Zmiana początkowej lub pozostałej wagi może przeliczyć sumaryczną wagę zużytą po stronie Spoolmana.
+Przycisk **Zapisz w Spoolman** wykonuje zapis na serwerze i odświeża magazyn. Ręczne operacje działają także przy wyłączonym automatycznym raportowaniu zużycia. Nie zmieniają kodu ani koloru RFID w drukarce. Zapis dotyczy tylko edytowanych pól; dodatkowe metadane, tagi, historia i pozostałe ustawienia pozostają zachowane. Zmiana początkowej lub pozostałej wagi może przeliczyć sumaryczną wagę zużytą po stronie Spoolman.
 
 Serwer lub proxy musi dopuszczać zapis. Błąd połączenia lub odmowa zapisu nie tworzą lokalnego zamiennika. Jeśli potwierdzenie zapisu zaginie, Gantry nie ponawia żądania i blokuje ponowny zapis w tym formularzu: zamknij go, odśwież i sprawdź dane, zanim spróbujesz ponownie.
 
 ## Kto rozlicza zużycie?
 
-**Gantry rozlicza zużycie w Spoolmanie** jest domyślnie wyłączone.
+**Gantry rozlicza zużycie w Spoolman** jest domyślnie wyłączone.
 
 | Sytuacja | Ustawienie |
 | --- | --- |
-| Zużycie zgłasza Moonraker, Bambuddy, HaspelSync albo inne Gantry | Wyłączone — Gantry odczytuje magazyn i zachowuje własną historię |
+| Zużycie zgłasza Moonraker, Bambuddy, HaspelSync albo inne Gantry | Wyłączone: Gantry odczytuje magazyn i zachowuje własną historię |
 | To Gantry ma zgłaszać zużycie przypisanych szpul | Włączone tylko w jednym egzemplarzu Gantry |
 
 Gantry korzysta z dotychczasowego rozliczenia wydruku i przypisania konkretnej szpuli. Nie wymyśla zużycia, gdy brak wystarczających danych lub przypisania. Integracja nie wprowadza dokładności 0,1 g ani automatycznego ważenia.
 
-Przed żądaniem zapisu Gantry zapisuje lokalnie zamiar rozliczenia. Powtórne zgłoszenie tego samego wydruku jest blokowane. Jeśli odpowiedź serwera zaginie, wynik jest oznaczony jako niepewny i **nie jest automatycznie ponawiany**. Sprawdź wtedy zużycie w Spoolmanie; ewentualną korektę wykonaj na serwerze. Nie włączaj równocześnie drugiego narzędzia odejmującego te same gramy.
+Przed żądaniem zapisu Gantry zapisuje lokalnie zamiar rozliczenia. Powtórne zgłoszenie tego samego wydruku jest blokowane. Jeśli odpowiedź serwera zaginie, wynik jest oznaczony jako niepewny i **nie jest automatycznie ponawiany**. Sprawdź wtedy zużycie w Spoolman; ewentualną korektę wykonaj na serwerze. Nie włączaj równocześnie drugiego narzędzia odejmującego te same gramy.
 
 Ceny są używane w walucie wybranej w Gantry, bez przeliczenia kursów. Ujednolić trzeba walutę i podstawę kosztów netto/brutto w obu systemach.
 
 ## Przeniesienie danych do Spoolbase
 
-Można wykonać import także bez włączania Spoolmana jako aktywnego źródła:
+Można wykonać import także bez włączania Spoolman jako aktywnego źródła:
 
 1. Wpisz adres w konfiguracji magazynu i wybierz **Importuj do Spoolbase…**.
 2. Sprawdź liczbę nowych szpul i potwierdź import.
@@ -63,7 +63,7 @@ Można wykonać import także bez włączania Spoolmana jako aktywnego źródła
 
 Import jest jednostronny i dodaje nowe produkty oraz szpule. Zachowuje wagi, ceny, tagi, daty, tekst lokalizacji, archiwizację i metadane źródłowe. Nie przelicza walut i nie odtwarza historycznych wydruków. Przypisania AMS/EXT wybierzesz ponownie. Powtórny import z tego samego adresu nie dubluje danych i nie nadpisuje lokalnych korekt.
 
-Przed importem powstaje kopia produktów, szpul i lokalnych zdarzeń zużycia w katalogu `Spoolman-import-backups` danych aplikacji. Serwer Spoolmana nie jest zmieniany.
+Przed importem powstaje kopia produktów, szpul i lokalnych zdarzeń zużycia w katalogu `Spoolman-import-backups` danych aplikacji. Serwer Spoolman nie jest zmieniany.
 
 ## Zakres i testy
 

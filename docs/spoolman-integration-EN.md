@@ -21,16 +21,16 @@ Inventory refreshes approximately every 15 seconds. Offline, Gantry shows the la
 - Colour and material type cannot identify a physical roll. Select an AMS/EXT roll manually if no matching tag is available.
 - You can manually assign a different roll or unassign the current one even when the slot reports RFID. Manual choices survive printer telemetry, inventory refresh and restart. Unassignment does not delete the roll or change its weight in Spoolman. Automatic matching resumes for that slot only after a different, nonempty tag is observed.
 - A different observed tag clears a binding made for the previous tag. An absent tag cannot reliably prove removal of a roll without RFID; correct those bindings manually.
-- Finishing a print does not delete its spool. Unknown weight appears as “—”, not zero. Empty and archived rolls are retained.
+- Finishing a print does not delete its spool. Unknown weight is shown as missing data, not zero. Empty and archived rolls are retained.
 
 ## Create and edit in Gantry
 
 The active **Spoolman** window offers:
 
-- **Add filament…** — product definition: name, material, an existing Spoolman vendor (or no vendor), a colour picker or HEX, density, diameter, full net weight and an optional price.
-- **Add spool…** — a new physical roll of an existing filament, including a filament with no rolls yet. Set initial and remaining net weight, tare, price and location. Each roll gets its own ID.
-- **Edit filament…** beside a roll — edits its shared filament definition. Name, material and colour apply to every roll of that filament. Renaming does not remove multicolour settings; explicitly changing colour replaces them with one colour.
-- **Correct weight…** beside a roll — sets the remaining grams of that physical roll only. Enter **filament weight without the empty spool**. If initial weight is unknown, enter it in the form; remaining weight cannot exceed it.
+- **Add filament…**: product definition: name, material, an existing Spoolman vendor (or no vendor), a colour picker or HEX, density, diameter, full net weight and an optional price.
+- **Add spool…**: a new physical roll of an existing filament, including a filament with no rolls yet. Set initial and remaining net weight, tare, price and location. Each roll gets its own ID.
+- **Edit filament…** beside a roll: edits its shared filament definition. Name, material and colour apply to every roll of that filament. Renaming does not remove multicolour settings; explicitly changing colour replaces them with one colour.
+- **Correct weight…** beside a roll: sets the remaining grams of that physical roll only. Enter **filament weight without the empty spool**. If initial weight is unknown, enter it in the form; remaining weight cannot exceed it.
 
 Price uses the currency configured in Spoolman; Gantry does not convert it. An empty optional price means no price, not zero.
 
@@ -44,7 +44,7 @@ The server or proxy must allow writes. Failed writes never create a local replac
 
 | Situation | Setting |
 | --- | --- |
-| Moonraker, Bambuddy, HaspelSync or another Gantry already reports usage | Off — Gantry reads inventory and keeps its own print history |
+| Moonraker, Bambuddy, HaspelSync or another Gantry already reports usage | Off: Gantry reads inventory and keeps its own print history |
 | This Gantry instance should report consumption of assigned rolls | On in one Gantry instance only |
 
 Reporting uses Gantry's existing print accounting and physical spool assignment. It does not invent consumption when data or assignments are missing. This integration does not introduce automatic weighing or a 0.1 g accuracy claim.
