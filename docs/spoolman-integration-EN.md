@@ -1,6 +1,6 @@
 # Spoolman in Gantry
 
-Local development integration added after release 0.14.0. This describes the new code, not an update to the published installers.
+Spoolman integration prepared for Gantry 0.15.0.
 
 ## Setup
 

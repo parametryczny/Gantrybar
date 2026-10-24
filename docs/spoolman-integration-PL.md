@@ -1,6 +1,6 @@
 # Spoolman w Gantry
 
-Lokalna integracja rozwojowa, dodana po wydaniu 0.14.0. Dokument opisuje nowy kod; nie oznacza aktualizacji instalatorów opublikowanego wydania.
+Integracja Spoolman przygotowana do Gantry 0.15.0.
 
 ## Włączenie
 
